@@ -1,0 +1,763 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  authUid      String?   @unique
+  email        String    @unique
+  passwordHash String?
+  name         String
+  title        String?
+  phone        String?
+  avatarUrl    String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  roleId String
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  businessUnits  UserBusinessUnit[]
+  permissions    UserPermission[]
+  sessions       Session[]
+  auditLogs      AuditLog[]
+  notifications  Notification[]
+  transactions   FinanceTransaction[] @relation("CreatedTransactions")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  isSystem    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  users       User[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String  @id @default(cuid())
+  code        String  @unique
+  name        String
+  module      String
+  description String?
+
+  roles RolePermission[]
+  users UserPermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model UserPermission {
+  userId       String
+  permissionId String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, permissionId])
+}
+
+model BusinessUnit {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  slug        String   @unique
+  name        String
+  shortName   String
+  location    String
+  subtitle    String?
+  description String?
+  accent      String
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users        UserBusinessUnit[]
+  transactions FinanceTransaction[]
+}
+
+model UserBusinessUnit {
+  userId         String
+  businessUnitId String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessUnit   BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Cascade)
+
+  @@id([userId, businessUnitId])
+}
+
+model FinanceTransaction {
+  id             String   @id @default(cuid())
+  businessUnitId String
+  businessUnit   BusinessUnit @relation(fields: [businessUnitId], references: [id])
+  type           String
+  amount         Decimal
+  currency       String   @default("TZS")
+  category       String?
+  description    String?
+  occurredAt     DateTime
+  createdById    String?
+  createdBy      User?    @relation("CreatedTransactions", fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+
+  @@index([businessUnitId, type, occurredAt])
+  @@index([occurredAt])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  action      String
+  module      String
+  recordType  String?
+  recordId    String?
+  description String
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([module])
+  @@index([userId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  href      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+}
+
+// ---------------------------------------------------------------------------
+// School Management (transport lives here — not a separate business module)
+// ---------------------------------------------------------------------------
+
+model SchoolStudent {
+  id           String    @id @default(cuid())
+  admissionNo  String    @unique
+  firstName    String
+  lastName     String
+  gender       String?
+  dateOfBirth  DateTime?
+  classId      String?
+  class        SchoolClass? @relation(fields: [classId], references: [id])
+  status       String    @default("active")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  fees         SchoolFee[]
+  attendance   SchoolAttendance[]
+  examResults  SchoolExamResult[]
+}
+
+model SchoolTeacher {
+  id        String   @id @default(cuid())
+  staffNo   String   @unique
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+  subject   String?
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+}
+
+model SchoolClass {
+  id        String          @id @default(cuid())
+  name      String
+  level     String
+  year      Int
+  students  SchoolStudent[]
+  createdAt DateTime        @default(now())
+}
+
+model SchoolFee {
+  id          String        @id @default(cuid())
+  studentId   String
+  student     SchoolStudent @relation(fields: [studentId], references: [id])
+  term        String
+  amount      Decimal
+  paidAmount  Decimal       @default(0)
+  status      String        @default("pending")
+  dueDate     DateTime?
+  createdAt   DateTime      @default(now())
+}
+
+model SchoolAttendance {
+  id        String        @id @default(cuid())
+  studentId String
+  student   SchoolStudent @relation(fields: [studentId], references: [id])
+  date      DateTime
+  status    String
+  createdAt DateTime      @default(now())
+
+  @@index([studentId, date])
+}
+
+model SchoolExam {
+  id        String             @id @default(cuid())
+  name      String
+  term      String
+  year      Int
+  createdAt DateTime           @default(now())
+  results   SchoolExamResult[]
+}
+
+model SchoolExamResult {
+  id        String        @id @default(cuid())
+  examId    String
+  exam      SchoolExam    @relation(fields: [examId], references: [id])
+  studentId String
+  student   SchoolStudent @relation(fields: [studentId], references: [id])
+  subject   String
+  score     Decimal
+  grade     String?
+  createdAt DateTime      @default(now())
+}
+
+model SchoolBus {
+  id           String              @id @default(cuid())
+  plateNumber  String              @unique
+  name         String
+  capacity     Int
+  status       String              @default("active")
+  createdAt    DateTime            @default(now())
+  drivers      SchoolDriver[]
+  routes       SchoolRoute[]
+  fuelLogs     SchoolFuel[]
+  maintenance  SchoolMaintenance[]
+}
+
+model SchoolDriver {
+  id        String     @id @default(cuid())
+  name      String
+  licenseNo String     @unique
+  phone     String?
+  busId     String?
+  bus       SchoolBus? @relation(fields: [busId], references: [id])
+  status    String     @default("active")
+  createdAt DateTime   @default(now())
+}
+
+model SchoolRoute {
+  id        String     @id @default(cuid())
+  name      String
+  origin    String
+  destination String
+  busId     String?
+  bus       SchoolBus? @relation(fields: [busId], references: [id])
+  createdAt DateTime   @default(now())
+}
+
+model SchoolFuel {
+  id        String    @id @default(cuid())
+  busId     String
+  bus       SchoolBus @relation(fields: [busId], references: [id])
+  litres    Decimal
+  amount    Decimal
+  filledAt  DateTime
+  createdAt DateTime  @default(now())
+}
+
+model SchoolMaintenance {
+  id          String    @id @default(cuid())
+  busId       String
+  bus         SchoolBus @relation(fields: [busId], references: [id])
+  description String
+  cost        Decimal
+  servicedAt  DateTime
+  createdAt   DateTime  @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Rice Mill & Warehouse
+// ---------------------------------------------------------------------------
+
+model RiceFarmer {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  phone     String?
+  village   String?
+  createdAt DateTime @default(now())
+}
+
+model RiceWarehouse {
+  id        String      @id @default(cuid())
+  name      String
+  location  String
+  capacity  Decimal
+  createdAt DateTime    @default(now())
+  stock     RiceStock[]
+}
+
+model RiceStock {
+  id          String        @id @default(cuid())
+  warehouseId String
+  warehouse   RiceWarehouse @relation(fields: [warehouseId], references: [id])
+  grade       String
+  quantityKg  Decimal
+  updatedAt   DateTime      @updatedAt
+}
+
+model RiceMilling {
+  id         String   @id @default(cuid())
+  inputKg    Decimal
+  outputKg   Decimal
+  milledAt   DateTime
+  createdAt  DateTime @default(now())
+}
+
+model RiceGrading {
+  id        String   @id @default(cuid())
+  grade     String
+  quantityKg Decimal
+  gradedAt  DateTime
+  createdAt DateTime @default(now())
+}
+
+model RiceSale {
+  id         String        @id @default(cuid())
+  customer   String
+  quantityKg Decimal
+  amount     Decimal
+  soldAt     DateTime
+  createdAt  DateTime      @default(now())
+  payments   RicePayment[]
+}
+
+model RicePayment {
+  id        String   @id @default(cuid())
+  saleId    String
+  sale      RiceSale @relation(fields: [saleId], references: [id])
+  amount    Decimal
+  paidAt    DateTime
+  method    String
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Farm & Tractor Services
+// ---------------------------------------------------------------------------
+
+model FarmPlot {
+  id        String        @id @default(cuid())
+  name      String
+  hectares  Decimal
+  crop      String?
+  createdAt DateTime      @default(now())
+  seasons   FarmSeason[]
+}
+
+model FarmSeason {
+  id        String     @id @default(cuid())
+  plotId    String
+  plot      FarmPlot   @relation(fields: [plotId], references: [id])
+  name      String
+  year      Int
+  createdAt DateTime   @default(now())
+  harvests  FarmHarvest[]
+}
+
+model FarmInput {
+  id        String   @id @default(cuid())
+  name      String
+  category  String
+  quantity  Decimal
+  unit      String
+  createdAt DateTime @default(now())
+}
+
+model FarmOperation {
+  id          String   @id @default(cuid())
+  description String
+  plotId      String?
+  operatedAt  DateTime
+  createdAt   DateTime @default(now())
+}
+
+model FarmHarvest {
+  id        String     @id @default(cuid())
+  seasonId  String
+  season    FarmSeason @relation(fields: [seasonId], references: [id])
+  quantity  Decimal
+  unit      String
+  harvestedAt DateTime
+  createdAt DateTime   @default(now())
+}
+
+model Tractor {
+  id           String                @id @default(cuid())
+  code         String                @unique
+  model        String
+  status       String                @default("active")
+  createdAt    DateTime              @default(now())
+  jobs         TractorJob[]
+  fuelLogs     TractorFuel[]
+  maintenance  TractorMaintenance[]
+}
+
+model TractorJob {
+  id        String   @id @default(cuid())
+  tractorId String
+  tractor   Tractor  @relation(fields: [tractorId], references: [id])
+  client    String
+  service   String
+  amount    Decimal
+  jobDate   DateTime
+  createdAt DateTime @default(now())
+}
+
+model TractorFuel {
+  id        String   @id @default(cuid())
+  tractorId String
+  tractor   Tractor  @relation(fields: [tractorId], references: [id])
+  litres    Decimal
+  amount    Decimal
+  filledAt  DateTime
+  createdAt DateTime @default(now())
+}
+
+model TractorMaintenance {
+  id          String   @id @default(cuid())
+  tractorId   String
+  tractor     Tractor  @relation(fields: [tractorId], references: [id])
+  description String
+  cost        Decimal
+  servicedAt  DateTime
+  createdAt   DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Supermarket
+// ---------------------------------------------------------------------------
+
+model ProductCategory {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  products  Product[]
+}
+
+model Product {
+  id         String          @id @default(cuid())
+  sku        String          @unique
+  name       String
+  categoryId String?
+  category   ProductCategory? @relation(fields: [categoryId], references: [id])
+  price      Decimal
+  createdAt  DateTime        @default(now())
+  stock      Stock?
+  saleItems  SaleItem[]
+}
+
+model Supplier {
+  id        String     @id @default(cuid())
+  name      String
+  phone     String?
+  createdAt DateTime   @default(now())
+  purchases Purchase[]
+}
+
+model Purchase {
+  id         String   @id @default(cuid())
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  amount     Decimal
+  purchasedAt DateTime
+  createdAt  DateTime @default(now())
+}
+
+model Sale {
+  id        String     @id @default(cuid())
+  receiptNo String     @unique
+  total     Decimal
+  soldAt    DateTime
+  createdAt DateTime   @default(now())
+  items     SaleItem[]
+}
+
+model SaleItem {
+  id        String  @id @default(cuid())
+  saleId    String
+  sale      Sale    @relation(fields: [saleId], references: [id])
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  unitPrice Decimal
+}
+
+model Stock {
+  id        String  @id @default(cuid())
+  productId String  @unique
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  updatedAt DateTime @updatedAt
+  movements StockMovement[]
+}
+
+model StockMovement {
+  id        String   @id @default(cuid())
+  stockId   String
+  stock     Stock    @relation(fields: [stockId], references: [id])
+  type      String
+  quantity  Int
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Property & Rentals
+// ---------------------------------------------------------------------------
+
+model Property {
+  id        String          @id @default(cuid())
+  name      String
+  address   String
+  type      String
+  createdAt DateTime        @default(now())
+  units     PropertyUnit[]
+  expenses  PropertyExpense[]
+  bookings  HallBooking[]
+}
+
+model PropertyUnit {
+  id         String     @id @default(cuid())
+  propertyId String
+  property   Property   @relation(fields: [propertyId], references: [id])
+  name       String
+  rentAmount Decimal
+  status     String     @default("vacant")
+  createdAt  DateTime   @default(now())
+  contracts  RentalContract[]
+}
+
+model Tenant {
+  id        String           @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
+  createdAt DateTime         @default(now())
+  contracts RentalContract[]
+}
+
+model RentalContract {
+  id         String        @id @default(cuid())
+  unitId     String
+  unit       PropertyUnit  @relation(fields: [unitId], references: [id])
+  tenantId   String
+  tenant     Tenant        @relation(fields: [tenantId], references: [id])
+  startDate  DateTime
+  endDate    DateTime?
+  status     String        @default("active")
+  createdAt  DateTime      @default(now())
+  invoices   RentInvoice[]
+}
+
+model RentInvoice {
+  id         String         @id @default(cuid())
+  contractId String
+  contract   RentalContract @relation(fields: [contractId], references: [id])
+  amount     Decimal
+  dueDate    DateTime
+  status     String         @default("pending")
+  createdAt  DateTime       @default(now())
+  payments   RentPayment[]
+}
+
+model RentPayment {
+  id        String      @id @default(cuid())
+  invoiceId String
+  invoice   RentInvoice @relation(fields: [invoiceId], references: [id])
+  amount    Decimal
+  paidAt    DateTime
+  createdAt DateTime    @default(now())
+}
+
+model PropertyExpense {
+  id          String   @id @default(cuid())
+  propertyId  String
+  property    Property @relation(fields: [propertyId], references: [id])
+  description String
+  amount      Decimal
+  incurredAt  DateTime
+  createdAt   DateTime @default(now())
+}
+
+model HallBooking {
+  id         String   @id @default(cuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id])
+  client     String
+  eventDate  DateTime
+  amount     Decimal
+  status     String   @default("confirmed")
+  createdAt  DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Livestock Farm
+// ---------------------------------------------------------------------------
+
+model Animal {
+  id         String          @id @default(cuid())
+  tagNumber  String          @unique
+  species    String
+  breed      String?
+  sex        String?
+  status     String          @default("active")
+  createdAt  DateTime        @default(now())
+  health     AnimalHealth[]
+  breeding   AnimalBreeding[]
+}
+
+model AnimalHealth {
+  id          String   @id @default(cuid())
+  animalId    String
+  animal      Animal   @relation(fields: [animalId], references: [id])
+  condition   String
+  treatment   String?
+  recordedAt  DateTime
+  createdAt   DateTime @default(now())
+}
+
+model AnimalBreeding {
+  id         String   @id @default(cuid())
+  animalId   String
+  animal     Animal   @relation(fields: [animalId], references: [id])
+  partnerTag String?
+  date       DateTime
+  createdAt  DateTime @default(now())
+}
+
+model AnimalBirth {
+  id        String   @id @default(cuid())
+  motherTag String
+  count     Int
+  bornAt    DateTime
+  createdAt DateTime @default(now())
+}
+
+model AnimalDeath {
+  id        String   @id @default(cuid())
+  tagNumber String
+  cause     String?
+  diedAt    DateTime
+  createdAt DateTime @default(now())
+}
+
+model AnimalFeed {
+  id        String   @id @default(cuid())
+  feedType  String
+  quantity  Decimal
+  unit      String
+  fedAt     DateTime
+  createdAt DateTime @default(now())
+}
+
+model LivestockSale {
+  id        String   @id @default(cuid())
+  description String
+  quantity  Int
+  amount    Decimal
+  soldAt    DateTime
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Beekeeping
+// ---------------------------------------------------------------------------
+
+model Apiary {
+  id        String   @id @default(cuid())
+  name      String
+  location  String
+  createdAt DateTime @default(now())
+  hives     Hive[]
+}
+
+model Hive {
+  id        String     @id @default(cuid())
+  apiaryId  String
+  apiary    Apiary     @relation(fields: [apiaryId], references: [id])
+  code      String     @unique
+  status    String     @default("active")
+  createdAt DateTime   @default(now())
+  colonies  Colony[]
+  inspections Inspection[]
+}
+
+model Colony {
+  id        String   @id @default(cuid())
+  hiveId    String
+  hive      Hive     @relation(fields: [hiveId], references: [id])
+  strength  String
+  createdAt DateTime @default(now())
+}
+
+model Inspection {
+  id          String   @id @default(cuid())
+  hiveId      String
+  hive        Hive     @relation(fields: [hiveId], references: [id])
+  notes       String
+  inspectedAt DateTime
+  createdAt   DateTime @default(now())
+}
+
+model HoneyHarvest {
+  id         String      @id @default(cuid())
+  quantityKg Decimal
+  harvestedAt DateTime
+  createdAt  DateTime    @default(now())
+  stock      HoneyStock?
+}
+
+model HoneyStock {
+  id        String       @id @default(cuid())
+  harvestId String       @unique
+  harvest   HoneyHarvest @relation(fields: [harvestId], references: [id])
+  quantityKg Decimal
+  updatedAt DateTime     @updatedAt
+}
+
+model HoneySale {
+  id         String   @id @default(cuid())
+  customer   String
+  quantityKg Decimal
+  amount     Decimal
+  soldAt     DateTime
+  createdAt  DateTime @default(now())
+}

@@ -1,0 +1,86 @@
+import { cn } from "@/lib/cn";
+import type { LucideIcon } from "lucide-react";
+import {
+  LayoutDashboard,
+  Building2,
+  Landmark,
+  FileChartColumnIncreasing,
+  Users,
+  Settings,
+  ScrollText,
+  GraduationCap,
+  UserRound,
+  UserPlus,
+  UsersRound,
+  BookOpen,
+  ClipboardCheck,
+  ClipboardList,
+  BadgeDollarSign,
+  Bus,
+  Fuel,
+  Wrench,
+  Wallet,
+  Wheat,
+  Warehouse,
+  Tractor,
+  ShoppingCart,
+  PawPrint,
+  Hexagon,
+  MapPinned,
+  Route,
+  Package,
+  Stethoscope,
+  Flower2,
+  Home,
+  LayoutGrid,
+  FileText,
+  BarChart3,
+} from "lucide-react";
+
+export const NAV_ICONS: Record<string, LucideIcon> = {
+  dashboard: LayoutDashboard,
+  home: Home,
+  building: Building2,
+  grid: LayoutGrid,
+  finance: Landmark,
+  file: FileText,
+  reports: FileChartColumnIncreasing,
+  chart: BarChart3,
+  users: Users,
+  settings: Settings,
+  audit: ScrollText,
+  school: GraduationCap,
+  user: UserRound,
+  "user-plus": UserPlus,
+  "users-round": UsersRound,
+  book: BookOpen,
+  clipboard: ClipboardCheck,
+  "clipboard-list": ClipboardList,
+  money: BadgeDollarSign,
+  bus: Bus,
+  fuel: Fuel,
+  wrench: Wrench,
+  wallet: Wallet,
+  wheat: Wheat,
+  warehouse: Warehouse,
+  tractor: Tractor,
+  cart: ShoppingCart,
+  paw: PawPrint,
+  hexagon: Hexagon,
+  map: MapPinned,
+  route: Route,
+  package: Package,
+  health: Stethoscope,
+  flower: Flower2,
+};
+
+export function NavGlyph({
+  name,
+  className,
+}: {
+  name: string;
+  className?: string;
+}) {
+  const Icon = NAV_ICONS[name] ?? LayoutDashboard;
+  return <Icon className={cn("h-5 w-5", className)} strokeWidth={1.75} />;
+}
