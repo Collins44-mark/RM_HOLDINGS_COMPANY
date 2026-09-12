@@ -82,14 +82,71 @@ export const FARM_NAV: NavItem[] = [
 ];
 
 export const SUPERMARKET_NAV: NavItem[] = [
-  { href: "/supermarket", label: "Store Dashboard", icon: "dashboard", exact: true },
-  { href: "/supermarket/products", label: "Products", icon: "package" },
-  { href: "/supermarket/categories", label: "Categories", icon: "book" },
-  { href: "/supermarket/suppliers", label: "Suppliers", icon: "users" },
-  { href: "/supermarket/purchases", label: "Purchases", icon: "wallet" },
-  { href: "/supermarket/sales", label: "Sales", icon: "cart" },
-  { href: "/supermarket/stock", label: "Stock", icon: "warehouse" },
-  { href: "/supermarket/reports", label: "Reports", icon: "reports" },
+  {
+    href: "/supermarket",
+    label: "Overview",
+    icon: "dashboard",
+    exact: true,
+    children: [
+      { href: "/supermarket", label: "Dashboard", icon: "dashboard", exact: true },
+    ],
+  },
+  {
+    href: "/supermarket/sales",
+    label: "Sales",
+    icon: "cart",
+    exact: true,
+    children: [
+      { href: "/supermarket/pos", label: "POS / New Sale", icon: "cart" },
+      { href: "/supermarket/sales", label: "Sales", icon: "cart", exact: true },
+      { href: "/supermarket/returns", label: "Returns", icon: "clipboard" },
+    ],
+  },
+  {
+    href: "/supermarket/products",
+    label: "Inventory",
+    icon: "package",
+    exact: true,
+    children: [
+      { href: "/supermarket/products", label: "Products", icon: "package" },
+      { href: "/supermarket/stock", label: "Stock", icon: "warehouse", exact: true },
+      { href: "/supermarket/categories", label: "Categories", icon: "book" },
+      { href: "/supermarket/stock-adjustments", label: "Stock Adjustments", icon: "wrench" },
+      { href: "/supermarket/low-stock", label: "Low Stock", icon: "warehouse" },
+    ],
+  },
+  {
+    href: "/supermarket/purchases",
+    label: "Purchasing",
+    icon: "wallet",
+    exact: true,
+    children: [
+      { href: "/supermarket/purchases", label: "Purchases", icon: "wallet", exact: true },
+      { href: "/supermarket/purchase-orders", label: "Purchase Orders", icon: "file" },
+      { href: "/supermarket/suppliers", label: "Suppliers", icon: "users" },
+    ],
+  },
+  {
+    href: "/supermarket/expenses",
+    label: "Finance",
+    icon: "finance",
+    exact: true,
+    children: [
+      { href: "/supermarket/expenses", label: "Expenses", icon: "wallet" },
+      { href: "/supermarket/payments", label: "Payments", icon: "money" },
+    ],
+  },
+  {
+    href: "/supermarket/reports",
+    label: "Reports",
+    icon: "reports",
+    children: [
+      { href: "/supermarket/reports/sales", label: "Sales Reports", icon: "reports" },
+      { href: "/supermarket/reports/inventory", label: "Inventory Reports", icon: "warehouse" },
+      { href: "/supermarket/reports/purchases", label: "Purchase Reports", icon: "wallet" },
+      { href: "/supermarket/reports/profit-loss", label: "Profit & Loss", icon: "chart" },
+    ],
+  },
 ];
 
 export const PROPERTY_NAV: NavItem[] = [

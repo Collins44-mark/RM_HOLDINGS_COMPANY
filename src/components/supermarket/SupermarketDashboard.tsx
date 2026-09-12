@@ -24,10 +24,10 @@ import type {
 } from "@/lib/data/sample-supermarket";
 
 const QUICK_ACTIONS = [
-  { href: "/supermarket/sales", label: "New Sale", icon: ShoppingBag },
+  { href: "/supermarket/pos", label: "New Sale", icon: ShoppingBag },
   { href: "/supermarket/products", label: "Add Product", icon: PackagePlus },
   { href: "/supermarket/purchases", label: "Record Purchase", icon: Wallet },
-  { href: "/supermarket/stock", label: "Stock Adjustment", icon: SlidersHorizontal },
+  { href: "/supermarket/stock-adjustments", label: "Stock Adjustment", icon: SlidersHorizontal },
 ] as const;
 
 export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboard }) {
@@ -40,7 +40,7 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
         description="Monitor sales, inventory, purchasing and daily performance."
         action={
           <Link
-            href="/supermarket/sales"
+            href="/supermarket/pos"
             className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-[14px] bg-navy px-4 text-[14px] font-semibold text-white transition hover:bg-[#132844] sm:w-auto"
           >
             <Plus className="h-4 w-4" strokeWidth={2.2} />

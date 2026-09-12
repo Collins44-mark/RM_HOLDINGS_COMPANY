@@ -86,7 +86,7 @@ export const SUPERMARKET_SAMPLE: SupermarketSampleDashboard = {
       label: "Low Stock",
       count: 12,
       hint: "Below reorder level",
-      href: "/supermarket/stock",
+      href: "/supermarket/low-stock",
       tone: "watch",
     },
     {
