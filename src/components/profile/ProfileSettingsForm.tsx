@@ -39,7 +39,7 @@ export function ProfileSettingsForm({ user }: { user: AuthUser }) {
   }, [state, router]);
 
   return (
-    <div className="mx-auto w-full max-w-[760px] space-y-4 sm:space-y-5">
+    <div className="w-full max-w-none space-y-4 sm:space-y-5">
       <header>
         <h1 className={TYPE.sectionTitle}>Profile Settings</h1>
         <p className={`mt-1 ${TYPE.sectionSubtitle}`}>
