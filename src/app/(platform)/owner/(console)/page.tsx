@@ -2,7 +2,6 @@ import { BusinessPerformanceSection } from "@/components/dashboard/BusinessPerfo
 import { BusinessSnapshot } from "@/components/dashboard/BusinessSnapshot";
 import { GroupOverviewSection } from "@/components/dashboard/GroupOverviewSection";
 import { WelcomeBanner } from "@/components/dashboard/WelcomeBanner";
-import { getAuthUser } from "@/lib/auth/session";
 import { getConsolidatedFinance, getExecutiveInsights } from "@/lib/data/finance";
 import { parsePeriod } from "@/lib/data/period";
 import { formatHeroDate, formatSnapshotUpdated, greetingForHour } from "@/lib/format/datetime";
@@ -16,7 +15,6 @@ export default async function OwnerDashboardPage({
 }: {
   searchParams: Promise<{ period?: string; from?: string; to?: string }>;
 }) {
-  const user = await getAuthUser();
   const params = await searchParams;
   const period = parsePeriod(typeof params.period === "string" ? params.period : undefined);
   const from = typeof params.from === "string" ? params.from : undefined;
@@ -43,7 +41,7 @@ export default async function OwnerDashboardPage({
     <div className="space-y-6">
       <WelcomeBanner
         greeting={greetingForHour(hour)}
-        name={user?.name ?? "Super Admin"}
+        name="Super Admin"
         weekday={heroDate.weekday}
         date={heroDate.date}
         weather={weather}

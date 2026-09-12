@@ -1,4 +1,7 @@
+"use client";
+
 import { CloudSun } from "lucide-react";
+import { useAuth } from "@/components/auth/AuthProvider";
 import type { WeatherSnapshot } from "@/lib/weather";
 
 export function WelcomeBanner({
@@ -14,6 +17,8 @@ export function WelcomeBanner({
   date: string;
   weather: WeatherSnapshot;
 }) {
+  const { user } = useAuth();
+  const displayName = user?.name ?? name;
   return (
     <section className="relative isolate min-h-[188px] overflow-hidden rounded-[20px] border border-white/40 text-white shadow-[0_10px_30px_rgba(12,28,48,0.12)]">
       <img
@@ -29,7 +34,7 @@ export function WelcomeBanner({
             {greeting},
           </p>
           <h1 className="mt-1 text-[22px] font-bold leading-tight tracking-[-0.03em] text-white sm:text-[28px] md:text-[32px]">
-            {name}
+            {displayName}
           </h1>
           <p className="mt-3 text-[14px] font-semibold text-white sm:mt-4 sm:text-[15px]">
             Welcome to RM Holdings Management System

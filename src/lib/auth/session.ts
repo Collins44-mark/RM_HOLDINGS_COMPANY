@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { isAppDatabaseAvailable, prisma } from "@/lib/db";
@@ -87,7 +88,7 @@ function authUserFromSupabase(user: User): AuthUser {
   };
 }
 
-export async function getAuthUser(): Promise<AuthUser | null> {
+export const getAuthUser = cache(async function getAuthUser(): Promise<AuthUser | null> {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return null;
 
@@ -119,7 +120,7 @@ export async function getAuthUser(): Promise<AuthUser | null> {
     modules: [...SUPER_ADMIN_IDENTITY.modules],
     permissions: [...SUPER_ADMIN_IDENTITY.permissions],
   };
-}
+});
 
 export async function requireAuth() {
   const user = await getAuthUser();

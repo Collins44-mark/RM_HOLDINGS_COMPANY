@@ -28,6 +28,26 @@ export async function refreshSupabaseSession(request: NextRequest) {
     },
   });
 
+  const isClientNavigation =
+    request.headers.has("next-url") ||
+    request.headers.get("rsc") === "1" ||
+    request.headers.get("next-router-prefetch") === "1";
+
+  // Soft navigations already passed getUser() on the document request.
+  // Read the cookie session locally so each Link click is not a Supabase Auth round-trip.
+  if (isClientNavigation) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (session?.user?.id) {
+      return {
+        userId: session.user.id,
+        email: session.user.email ?? null,
+        response,
+      };
+    }
+  }
+
   const {
     data: { user },
   } = await supabase.auth.getUser();

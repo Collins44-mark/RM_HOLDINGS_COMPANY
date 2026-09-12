@@ -6,8 +6,6 @@ import { consoleNavigation } from "@/lib/auth/nav";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import type { ModuleCode } from "@/lib/config/app";
 
-export const dynamic = "force-dynamic";
-
 export async function ModuleConsole({
   module: moduleCode,
   children,

@@ -1,3 +1,5 @@
+import { unstable_cache } from "next/cache";
+
 export type WeatherSnapshot = {
   temperatureC: number;
   label: string;
@@ -23,11 +25,11 @@ const WMO_LABELS: Record<number, string> = {
   95: "Thunderstorm",
 };
 
-export async function getMorogoroWeather(): Promise<WeatherSnapshot> {
+async function fetchMorogoroWeather(): Promise<WeatherSnapshot> {
   try {
     const response = await fetch(
       "https://api.open-meteo.com/v1/forecast?latitude=-6.8278&longitude=37.6612&current=temperature_2m,weather_code",
-      { next: { revalidate: 1800 }, signal: AbortSignal.timeout(2000) },
+      { cache: "force-cache", next: { revalidate: 1800 }, signal: AbortSignal.timeout(2000) },
     );
     if (!response.ok) return FALLBACK;
     const data = (await response.json()) as {
@@ -45,3 +47,7 @@ export async function getMorogoroWeather(): Promise<WeatherSnapshot> {
     return FALLBACK;
   }
 }
+
+export const getMorogoroWeather = unstable_cache(fetchMorogoroWeather, ["morogoro-weather"], {
+  revalidate: 1800,
+});

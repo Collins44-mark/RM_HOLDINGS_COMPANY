@@ -4,6 +4,7 @@ import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Lock } from "lucide-react";
 import { updateProfileAction, type ProfileState } from "@/actions/profile";
+import { useAuth } from "@/components/auth/AuthProvider";
 import type { AuthUser } from "@/lib/auth/types";
 import { TYPE } from "@/lib/theme/tokens";
 import { cn } from "@/lib/cn";
@@ -25,7 +26,9 @@ const fieldClass =
 const readOnlyClass =
   "h-12 w-full min-w-0 rounded-[14px] border border-black/[0.04] bg-[#f3f5f8] py-0 pl-4 pr-11 text-[15px] font-medium text-slate-500 outline-none";
 
-export function ProfileSettingsForm({ user }: { user: AuthUser }) {
+export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
+  const { user: authUser } = useAuth();
+  const user = userProp ?? authUser;
   const router = useRouter();
   const [state, action, pending] = useActionState<ProfileState, FormData>(
     updateProfileAction,
@@ -37,6 +40,8 @@ export function ProfileSettingsForm({ user }: { user: AuthUser }) {
       router.refresh();
     }
   }, [state, router]);
+
+  if (!user) return null;
 
   return (
     <div className="w-full max-w-none space-y-4 sm:space-y-5">
