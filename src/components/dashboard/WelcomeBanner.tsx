@@ -34,9 +34,6 @@ export function WelcomeBanner({
           <p className="mt-3 text-[14px] font-semibold text-white sm:mt-4 sm:text-[15px]">
             Welcome to RM Holdings Management System
           </p>
-          <p className="mt-1 max-w-md text-[13px] font-normal leading-6 text-white/78 sm:text-[13.5px]">
-            Monitor and manage all your business units from one place.
-          </p>
         </div>
 
         <div className="flex flex-col items-start justify-between gap-4 self-stretch sm:items-end">

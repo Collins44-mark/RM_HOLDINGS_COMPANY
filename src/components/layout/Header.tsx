@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, ChevronDown, LogOut, Search, Sun, UserRound } from "lucide-react";
+import { Bell, ChevronDown, LogOut, Search, UserRound } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
 import { SEARCH_INDEX } from "@/lib/config/navigation";
 import { isOwnerRole } from "@/lib/auth/rbac";
@@ -199,14 +199,6 @@ export function Header({
             </div>
           ) : null}
         </div>
-
-        <button
-          type="button"
-          className="inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-navy"
-          aria-label="Appearance"
-        >
-          <Sun className="h-5 w-5" strokeWidth={1.75} />
-        </button>
 
         <div
           className="relative"
