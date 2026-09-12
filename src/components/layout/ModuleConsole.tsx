@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db";
+import { isAppDatabaseAvailable, prisma } from "@/lib/db";
 import { AppShell } from "@/components/layout/AppShell";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { requireModuleAccess } from "@/lib/auth/session";
@@ -17,13 +17,15 @@ export async function ModuleConsole({
 }) {
   const user = await requireModuleAccess(moduleCode);
   const { nav, workspace } = consoleNavigation(user, moduleCode);
-  const notifications = await prisma.notification
-    .findMany({
-      where: { userId: user.id, isRead: false },
-      orderBy: { createdAt: "desc" },
-      take: 8,
-    })
-    .catch(() => []);
+  const notifications = isAppDatabaseAvailable()
+    ? await prisma.notification
+        .findMany({
+          where: { userId: user.id, isRead: false },
+          orderBy: { createdAt: "desc" },
+          take: 8,
+        })
+        .catch(() => [])
+    : [];
 
   return (
     <AuthProvider user={user}>

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { AppShell } from "@/components/layout/AppShell";
-import { prisma } from "@/lib/db";
+import { isAppDatabaseAvailable, prisma } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/session";
 import { landingPathFor } from "@/lib/auth/access";
 import { identityFromUser } from "@/lib/auth/types";
@@ -40,11 +40,13 @@ export default async function WorkspaceLayout({
     })),
   ];
 
-  const notifications = await prisma.notification.findMany({
-    where: { userId: user.id, isRead: false },
-    orderBy: { createdAt: "desc" },
-    take: 8,
-  });
+  const notifications = isAppDatabaseAvailable()
+    ? await prisma.notification.findMany({
+        where: { userId: user.id, isRead: false },
+        orderBy: { createdAt: "desc" },
+        take: 8,
+      })
+    : [];
 
   return (
     <AuthProvider user={user}>

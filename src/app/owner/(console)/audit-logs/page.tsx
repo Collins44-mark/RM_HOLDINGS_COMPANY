@@ -1,15 +1,17 @@
 import { PageHeader, Surface } from "@/components/ui/PageHeader";
-import { prisma } from "@/lib/db";
+import { isAppDatabaseAvailable, prisma } from "@/lib/db";
 import { formatDateTime } from "@/lib/format/datetime";
 
 export const metadata = { title: "Audit Logs" };
 
 export default async function AuditLogsPage() {
-  const logs = await prisma.auditLog.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 50,
-    include: { user: true },
-  });
+  const logs = isAppDatabaseAvailable()
+    ? await prisma.auditLog.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        include: { user: true },
+      })
+    : [];
 
   return (
     <div>

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
-import { prisma } from "@/lib/db";
+import { isAppDatabaseAvailable, prisma } from "@/lib/db";
 import { LOGIN_PATH } from "@/lib/config/app";
 import { canAccessPath, defaultHomeFor } from "@/lib/auth/access";
 import { isOwnerRole } from "@/lib/auth/rbac";
@@ -33,6 +33,7 @@ async function findProfile(input: { authUid?: string | null; email?: string | nu
   const authUid = input.authUid?.trim() || null;
   const email = input.email?.toLowerCase().trim() || null;
   if (!authUid && !email) return null;
+  if (!isAppDatabaseAvailable()) return null;
 
   try {
     return await prisma.user.findFirst({

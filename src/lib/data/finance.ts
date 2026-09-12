@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db";
+import { isAppDatabaseAvailable, prisma } from "@/lib/db";
 import { BUSINESS_UNITS, homePathForModule } from "@/lib/config/app";
 import { asNumber } from "@/lib/format/currency";
 import { percentChange, ratioPercent } from "@/lib/format/percent";
@@ -215,6 +215,10 @@ export async function getConsolidatedFinance(input: {
     from: input.from,
     to: input.to,
   });
+
+  if (!isAppDatabaseAvailable()) {
+    return sampleConsolidatedFinance(range, previous);
+  }
 
   try {
     const units = await prisma.businessUnit.findMany({

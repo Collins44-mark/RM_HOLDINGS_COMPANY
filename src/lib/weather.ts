@@ -27,7 +27,7 @@ export async function getMorogoroWeather(): Promise<WeatherSnapshot> {
   try {
     const response = await fetch(
       "https://api.open-meteo.com/v1/forecast?latitude=-6.8278&longitude=37.6612&current=temperature_2m,weather_code",
-      { next: { revalidate: 1800 } },
+      { next: { revalidate: 1800 }, signal: AbortSignal.timeout(2000) },
     );
     if (!response.ok) return FALLBACK;
     const data = (await response.json()) as {

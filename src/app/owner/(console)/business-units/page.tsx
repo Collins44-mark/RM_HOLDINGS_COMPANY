@@ -2,15 +2,17 @@ import Link from "next/link";
 import { BusinessUnitCard } from "@/components/dashboard/BusinessUnitCard";
 import { PageHeader, Surface } from "@/components/ui/PageHeader";
 import { BUSINESS_UNITS } from "@/lib/config/app";
-import { prisma } from "@/lib/db";
+import { isAppDatabaseAvailable, prisma } from "@/lib/db";
 
 export const metadata = { title: "Business Units" };
 
 export default async function BusinessUnitsPage() {
-  const units = await prisma.businessUnit.findMany({
-    orderBy: { sortOrder: "asc" },
-    include: { _count: { select: { users: true, transactions: true } } },
-  });
+  const units = isAppDatabaseAvailable()
+    ? await prisma.businessUnit.findMany({
+        orderBy: { sortOrder: "asc" },
+        include: { _count: { select: { users: true, transactions: true } } },
+      })
+    : [];
 
   return (
     <div className="space-y-6">

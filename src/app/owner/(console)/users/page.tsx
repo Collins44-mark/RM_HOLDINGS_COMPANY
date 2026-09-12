@@ -1,16 +1,18 @@
 import { PageHeader, Surface } from "@/components/ui/PageHeader";
-import { prisma } from "@/lib/db";
+import { isAppDatabaseAvailable, prisma } from "@/lib/db";
 
 export const metadata = { title: "Users & Permissions" };
 
 export default async function UsersPage() {
-  const users = await prisma.user.findMany({
-    orderBy: { name: "asc" },
-    include: {
-      role: true,
-      businessUnits: { include: { businessUnit: true } },
-    },
-  });
+  const users = isAppDatabaseAvailable()
+    ? await prisma.user.findMany({
+        orderBy: { name: "asc" },
+        include: {
+          role: true,
+          businessUnits: { include: { businessUnit: true } },
+        },
+      })
+    : [];
 
   return (
     <div>
