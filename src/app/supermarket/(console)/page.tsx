@@ -1,7 +1,8 @@
-import { ModuleHome } from "@/components/modules/ModuleHome";
+import { SupermarketDashboard } from "@/components/supermarket/SupermarketDashboard";
+import { SUPERMARKET_SAMPLE } from "@/lib/data/sample-supermarket";
 
 export const metadata = { title: "Supermarket" };
 
 export default function SupermarketHomePage() {
-  return <ModuleHome module="supermarket" />;
+  return <SupermarketDashboard data={SUPERMARKET_SAMPLE} />;
 }
