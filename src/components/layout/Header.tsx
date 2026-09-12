@@ -2,10 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, ChevronDown, LogOut, Search, Settings, Sun, UserRound } from "lucide-react";
+import { Bell, ChevronDown, LogOut, Search, Sun, UserRound } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
 import { SEARCH_INDEX } from "@/lib/config/navigation";
-import { cn } from "@/lib/cn";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import type { AuthUser } from "@/lib/auth/types";
 
@@ -238,23 +237,12 @@ export function Header({
           {profileOpen ? (
             <div className="absolute right-0 top-[calc(100%+8px)] w-56 overflow-hidden rounded-2xl border border-black/6 bg-white py-1 shadow-[0_16px_40px_rgba(16,24,40,0.12)]">
               <Link
-                href="/owner/settings"
-                className={cn(
-                  "flex items-center gap-2 px-3 py-2.5 text-sm text-navy hover:bg-slate-50",
-                  !isOwnerRole(user.roleCode) && "pointer-events-none opacity-40",
-                )}
-                onClick={() => setProfileOpen(false)}
-              >
-                <UserRound className="h-4 w-4" />
-                Profile
-              </Link>
-              <Link
-                href={isOwnerRole(user.roleCode) ? "/owner/settings" : "#"}
+                href="/profile"
                 className="flex items-center gap-2 px-3 py-2.5 text-sm text-navy hover:bg-slate-50"
                 onClick={() => setProfileOpen(false)}
               >
-                <Settings className="h-4 w-4" />
-                Account settings
+                <UserRound className="h-4 w-4" />
+                Profile Settings
               </Link>
               <form action={logoutAction}>
                 <button

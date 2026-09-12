@@ -18,6 +18,9 @@ export function hasModuleAccess(identity: AccessIdentity, moduleCode: string) {
 }
 
 export function canAccessPath(identity: AccessIdentity, pathname: string) {
+  if (pathname === "/profile" || pathname.startsWith("/profile/")) {
+    return true;
+  }
   if (pathname === "/dashboard") {
     return canAccessOwnerPath(identity, "/owner");
   }

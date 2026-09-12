@@ -50,13 +50,23 @@ async function findProfile(input: { authUid?: string | null; email?: string | nu
   }
 }
 
+function displayNameFromAuth(user: User, fallback: string) {
+  const metadata = user.user_metadata ?? {};
+  if (typeof metadata.full_name === "string" && metadata.full_name.trim()) {
+    return metadata.full_name.trim();
+  }
+  if (typeof metadata.name === "string" && metadata.name.trim()) {
+    return metadata.name.trim();
+  }
+  return fallback;
+}
+
 function authUserFromSupabase(user: User): AuthUser {
   const metadata = user.user_metadata ?? {};
-  const fullName =
-    (typeof metadata.full_name === "string" && metadata.full_name.trim()) ||
-    (typeof metadata.name === "string" && metadata.name.trim()) ||
-    user.email?.split("@")[0] ||
-    "Super Admin";
+  const fullName = displayNameFromAuth(
+    user,
+    user.email?.split("@")[0] || "Super Admin",
+  );
 
   return {
     id: user.id,
@@ -98,6 +108,7 @@ export async function getAuthUser(): Promise<AuthUser | null> {
   const hydrated = toAuthUser(profile, user.id);
   return {
     ...hydrated,
+    name: displayNameFromAuth(user, hydrated.name),
     authUid: user.id,
     sessionId: user.id,
     roleCode: SUPER_ADMIN_IDENTITY.roleCode,
