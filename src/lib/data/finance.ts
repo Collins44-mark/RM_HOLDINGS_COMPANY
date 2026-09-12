@@ -7,6 +7,12 @@ import {
   previousPeriodRange,
   type RevenuePeriod,
 } from "@/lib/data/period";
+import {
+  EXPENSE_RATIO,
+  SAMPLE_FINANCE_YEAR,
+  YEARLY_REVENUE,
+  splitYear,
+} from "@/lib/data/sample-finance";
 
 export const FINANCE_DETAIL_HREF: Record<string, string> = {
   rice: "/rice/sales",
@@ -117,50 +123,35 @@ function snapshot(revenue: number, expenses: number) {
   };
 }
 
-export async function getConsolidatedFinance(input: {
-  period: RevenuePeriod;
-  from?: string;
-  to?: string;
-  now?: Date;
-}) {
-  const now = input.now ?? new Date();
-  const range = periodRange(input.period, now, {
-    from: input.from,
-    to: input.to,
-  });
-  const previous = previousPeriodRange(input.period, now, {
-    from: input.from,
-    to: input.to,
-  });
+function sampleAmount(code: string, type: "REVENUE" | "EXPENSE", from: Date, to: Date) {
+  const annual =
+    type === "REVENUE"
+      ? (YEARLY_REVENUE[code] ?? 0)
+      : Math.round((YEARLY_REVENUE[code] ?? 0) * (EXPENSE_RATIO[code] ?? 0.6));
+  return splitYear(annual, SAMPLE_FINANCE_YEAR)
+    .filter((item) => item.occurredAt >= from && item.occurredAt <= to)
+    .reduce((sum, item) => sum + item.amount, 0);
+}
 
-  const units = await prisma.businessUnit.findMany({
-    where: { isActive: true },
-    orderBy: { sortOrder: "asc" },
-  });
-
-  const [revenueMap, expenseMap, prevRevenueMap, prevExpenseMap] = await Promise.all([
-    totalsByUnit(range.from, range.to, "REVENUE"),
-    totalsByUnit(range.from, range.to, "EXPENSE"),
-    totalsByUnit(previous.from, previous.to, "REVENUE"),
-    totalsByUnit(previous.from, previous.to, "EXPENSE"),
-  ]);
-
-  const rows: UnitFinanceRow[] = units.map((unit) => {
-    const meta = BUSINESS_UNITS.find((item) => item.code === unit.code);
-    const revenue = revenueMap.get(unit.id) ?? 0;
-    const expenses = expenseMap.get(unit.id) ?? 0;
+function sampleConsolidatedFinance(
+  range: { from: Date; to: Date; label: string },
+  previous: { from: Date; to: Date; label: string },
+) {
+  const rows: UnitFinanceRow[] = BUSINESS_UNITS.map((unit) => {
+    const revenue = sampleAmount(unit.code, "REVENUE", range.from, range.to);
+    const expenses = sampleAmount(unit.code, "EXPENSE", range.from, range.to);
     const operatingPosition = revenue - expenses;
     const margin = ratioPercent(operatingPosition, revenue);
-    const prevRevenue = prevRevenueMap.get(unit.id) ?? 0;
-    const prevExpenses = prevExpenseMap.get(unit.id) ?? 0;
+    const prevRevenue = sampleAmount(unit.code, "REVENUE", previous.from, previous.to);
+    const prevExpenses = sampleAmount(unit.code, "EXPENSE", previous.from, previous.to);
     const prevMargin = ratioPercent(prevRevenue - prevExpenses, prevRevenue);
     return {
       code: unit.code,
       name: unit.name,
-      location: meta?.location ?? "",
-      subtitle: meta?.subtitle,
-      accent: meta?.accent ?? unit.accent,
-      tint: meta?.tint ?? "rgba(90, 122, 160, 0.12)",
+      location: unit.location,
+      subtitle: unit.subtitle,
+      accent: unit.accent,
+      tint: unit.tint,
       revenue,
       expenses,
       operatingPosition,
@@ -177,31 +168,127 @@ export async function getConsolidatedFinance(input: {
     rows.reduce((sum, row) => sum + row.revenue, 0),
     rows.reduce((sum, row) => sum + row.expenses, 0),
   );
-
   const previousTotals = snapshot(
-    [...prevRevenueMap.values()].reduce((sum, value) => sum + value, 0),
-    [...prevExpenseMap.values()].reduce((sum, value) => sum + value, 0),
+    BUSINESS_UNITS.reduce(
+      (sum, unit) => sum + sampleAmount(unit.code, "REVENUE", previous.from, previous.to),
+      0,
+    ),
+    BUSINESS_UNITS.reduce(
+      (sum, unit) => sum + sampleAmount(unit.code, "EXPENSE", previous.from, previous.to),
+      0,
+    ),
   );
-
-  const computed: FinanceDelta = {
-    revenue: percentChange(totals.revenue, previousTotals.revenue) ?? DEMO_DELTA.revenue,
-    expenses: percentChange(totals.expenses, previousTotals.expenses) ?? DEMO_DELTA.expenses,
-    operatingPosition:
-      percentChange(totals.operatingPosition, previousTotals.operatingPosition) ??
-      DEMO_DELTA.operatingPosition,
-    margin:
-      previousTotals.revenue === 0
-        ? DEMO_DELTA.margin
-        : totals.margin - previousTotals.margin,
-  };
 
   return {
     rows,
     totals,
-    comparison: computed,
+    comparison: {
+      revenue: percentChange(totals.revenue, previousTotals.revenue) ?? DEMO_DELTA.revenue,
+      expenses: percentChange(totals.expenses, previousTotals.expenses) ?? DEMO_DELTA.expenses,
+      operatingPosition:
+        percentChange(totals.operatingPosition, previousTotals.operatingPosition) ??
+        DEMO_DELTA.operatingPosition,
+      margin:
+        previousTotals.revenue === 0
+          ? DEMO_DELTA.margin
+          : totals.margin - previousTotals.margin,
+    } satisfies FinanceDelta,
     comparisonLabel: previous.label,
     label: range.label,
     from: range.from,
     to: range.to,
   };
+}
+
+export async function getConsolidatedFinance(input: {
+  period: RevenuePeriod;
+  from?: string;
+  to?: string;
+  now?: Date;
+}) {
+  const now = input.now ?? new Date();
+  const range = periodRange(input.period, now, {
+    from: input.from,
+    to: input.to,
+  });
+  const previous = previousPeriodRange(input.period, now, {
+    from: input.from,
+    to: input.to,
+  });
+
+  try {
+    const units = await prisma.businessUnit.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: "asc" },
+    });
+
+    const [revenueMap, expenseMap, prevRevenueMap, prevExpenseMap] = await Promise.all([
+      totalsByUnit(range.from, range.to, "REVENUE"),
+      totalsByUnit(range.from, range.to, "EXPENSE"),
+      totalsByUnit(previous.from, previous.to, "REVENUE"),
+      totalsByUnit(previous.from, previous.to, "EXPENSE"),
+    ]);
+
+    const rows: UnitFinanceRow[] = units.map((unit) => {
+      const meta = BUSINESS_UNITS.find((item) => item.code === unit.code);
+      const revenue = revenueMap.get(unit.id) ?? 0;
+      const expenses = expenseMap.get(unit.id) ?? 0;
+      const operatingPosition = revenue - expenses;
+      const margin = ratioPercent(operatingPosition, revenue);
+      const prevRevenue = prevRevenueMap.get(unit.id) ?? 0;
+      const prevExpenses = prevExpenseMap.get(unit.id) ?? 0;
+      const prevMargin = ratioPercent(prevRevenue - prevExpenses, prevRevenue);
+      return {
+        code: unit.code,
+        name: unit.name,
+        location: meta?.location ?? "",
+        subtitle: meta?.subtitle,
+        accent: meta?.accent ?? unit.accent,
+        tint: meta?.tint ?? "rgba(90, 122, 160, 0.12)",
+        revenue,
+        expenses,
+        operatingPosition,
+        margin,
+        status: unitStatus(margin),
+        href: FINANCE_DETAIL_HREF[unit.code] ?? homePathForModule(unit.code),
+        moduleHref: homePathForModule(unit.code),
+        revenueChange: percentChange(revenue, prevRevenue) ?? SNAPSHOT_DELTA.revenue,
+        marginChange: prevRevenue === 0 ? SNAPSHOT_DELTA.margin : margin - prevMargin,
+      };
+    });
+
+    const totals = snapshot(
+      rows.reduce((sum, row) => sum + row.revenue, 0),
+      rows.reduce((sum, row) => sum + row.expenses, 0),
+    );
+
+    const previousTotals = snapshot(
+      [...prevRevenueMap.values()].reduce((sum, value) => sum + value, 0),
+      [...prevExpenseMap.values()].reduce((sum, value) => sum + value, 0),
+    );
+
+    const computed: FinanceDelta = {
+      revenue: percentChange(totals.revenue, previousTotals.revenue) ?? DEMO_DELTA.revenue,
+      expenses: percentChange(totals.expenses, previousTotals.expenses) ?? DEMO_DELTA.expenses,
+      operatingPosition:
+        percentChange(totals.operatingPosition, previousTotals.operatingPosition) ??
+        DEMO_DELTA.operatingPosition,
+      margin:
+        previousTotals.revenue === 0
+          ? DEMO_DELTA.margin
+          : totals.margin - previousTotals.margin,
+    };
+
+    return {
+      rows,
+      totals,
+      comparison: computed,
+      comparisonLabel: previous.label,
+      label: range.label,
+      from: range.from,
+      to: range.to,
+    };
+  } catch {
+    return sampleConsolidatedFinance(range, previous);
+  }
 }

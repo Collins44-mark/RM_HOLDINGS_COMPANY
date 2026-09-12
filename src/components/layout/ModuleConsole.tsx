@@ -17,11 +17,13 @@ export async function ModuleConsole({
 }) {
   const user = await requireModuleAccess(moduleCode);
   const { nav, workspace } = consoleNavigation(user, moduleCode);
-  const notifications = await prisma.notification.findMany({
-    where: { userId: user.id, isRead: false },
-    orderBy: { createdAt: "desc" },
-    take: 8,
-  });
+  const notifications = await prisma.notification
+    .findMany({
+      where: { userId: user.id, isRead: false },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+    })
+    .catch(() => []);
 
   return (
     <AuthProvider user={user}>

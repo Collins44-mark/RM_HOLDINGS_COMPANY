@@ -34,16 +34,20 @@ async function findProfile(input: { authUid?: string | null; email?: string | nu
   const email = input.email?.toLowerCase().trim() || null;
   if (!authUid && !email) return null;
 
-  return prisma.user.findFirst({
-    where: {
-      isActive: true,
-      OR: [
-        ...(authUid ? [{ authUid }, { id: authUid }] : []),
-        ...(email ? [{ email }] : []),
-      ],
-    },
-    include: profileInclude,
-  });
+  try {
+    return await prisma.user.findFirst({
+      where: {
+        isActive: true,
+        OR: [
+          ...(authUid ? [{ authUid }, { id: authUid }] : []),
+          ...(email ? [{ email }] : []),
+        ],
+      },
+      include: profileInclude,
+    });
+  } catch {
+    return null;
+  }
 }
 
 function authUserFromSupabase(user: User): AuthUser {
