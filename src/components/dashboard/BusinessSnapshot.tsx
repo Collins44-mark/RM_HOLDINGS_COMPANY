@@ -21,7 +21,7 @@ export function BusinessSnapshot({
     <section className="rounded-[20px] border border-white/90 bg-white/92 px-5 py-5 shadow-[0_8px_28px_rgba(20,40,70,0.045)] sm:px-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-[20px] font-bold tracking-[-0.03em] text-navy">
+          <h2 className="text-[18px] font-bold tracking-[-0.03em] text-navy sm:text-[20px]">
             Business Snapshot
           </h2>
           <p className="mt-1 text-[13.5px] leading-5 text-slate-500">
@@ -79,23 +79,23 @@ function SnapshotCard({
   trend?: number;
 }) {
   return (
-    <article className="flex min-w-0 flex-1 items-start gap-3.5 rounded-[16px] border border-black/[0.04] bg-white px-4 py-4 shadow-[0_4px_16px_rgba(20,40,70,0.03)]">
-      <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[#f3f5f8] text-navy">
-        <Icon className="h-5 w-5" strokeWidth={1.65} />
+    <article className="flex min-w-0 flex-1 items-start gap-3 rounded-[16px] border border-black/[0.04] bg-white px-3 py-3 shadow-[0_4px_16px_rgba(20,40,70,0.03)] sm:gap-3.5 sm:px-4 sm:py-4">
+      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-[#f3f5f8] text-navy sm:h-11 sm:w-11 sm:rounded-[14px]">
+        <Icon className="h-4 w-4 sm:h-5 sm:w-5" strokeWidth={1.65} />
       </span>
       <div className="min-w-0 pt-0.5">
-        <p className="text-[11px] font-medium tracking-[0.08em] text-slate-400 uppercase">
+        <p className="text-[10px] font-medium tracking-[0.08em] text-slate-400 uppercase sm:text-[11px]">
           {label}
         </p>
         {title ? (
-          <p className="mt-1 text-[15px] font-semibold tracking-[-0.02em] text-navy">
+          <p className="mt-1 break-words text-[14px] font-semibold tracking-[-0.02em] text-navy sm:text-[15px]">
             {title}
           </p>
         ) : null}
-        <p className="mt-0.5 text-[20px] font-bold tracking-[-0.03em] text-navy">{value}</p>
+        <p className="mt-0.5 break-words text-[17px] font-bold tracking-[-0.03em] text-navy sm:text-[20px]">{value}</p>
         {detail ? <p className="mt-0.5 text-[13px] text-slate-500">{detail}</p> : null}
         {typeof trend === "number" ? (
-          <p className="mt-1.5 flex items-center gap-1 text-[12.5px] font-medium text-[#1f8a4c]">
+          <p className="mt-1.5 flex flex-wrap items-center gap-1 text-[12.5px] font-medium text-[#1f8a4c]">
             <span aria-hidden>{trend >= 0 ? "↑" : "↓"}</span>
             <span>{formatSignedPercent(trend)}</span>
             <span>vs last period</span>

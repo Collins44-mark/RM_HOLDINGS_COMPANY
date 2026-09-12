@@ -35,7 +35,7 @@ export function AppShell({
   const showFooter = pathname !== "/owner" && pathname !== "/dashboard";
 
   return (
-    <div className="relative min-h-screen">
+    <div className="relative min-h-screen overflow-x-clip">
       <div
         className="hidden overflow-visible lg:fixed lg:inset-y-0 lg:z-20 lg:flex transition-[width] duration-300 ease-out"
         style={{ width: sidebarWidth }}
@@ -51,7 +51,7 @@ export function AppShell({
             aria-label="Close navigation"
             onClick={() => setMobileOpen(false)}
           />
-          <div className="relative h-full shadow-2xl" style={{ width: SIDEBAR_WIDTH.expanded }}>
+          <div className="relative h-full max-w-[85vw] shadow-2xl" style={{ width: SIDEBAR_WIDTH.expanded }}>
             <Sidebar
               items={nav}
               workspace={workspace}
@@ -75,7 +75,7 @@ export function AppShell({
           onMenuClick={() => setMobileOpen(true)}
           onToggleSidebar={toggle}
         />
-        <main className="relative z-10 flex-1 px-4 py-5 lg:px-7 lg:py-6">
+        <main className="relative z-10 min-w-0 flex-1 px-3 py-4 sm:px-4 sm:py-5 lg:px-7 lg:py-6">
           {moduleCode && moduleCode !== "owner" ? (
             <ModuleContextBar
               moduleCode={moduleCode}

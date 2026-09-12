@@ -23,14 +23,14 @@ export function GroupOverviewSection({
     <section>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-[20px] font-bold tracking-[-0.03em] text-navy">Group Overview</h2>
+          <h2 className="text-[18px] font-bold tracking-[-0.03em] text-navy sm:text-[20px]">Group Overview</h2>
           <p className="mt-1 text-[13.5px] leading-5 text-slate-500">
             Consolidated performance across all RM Holdings business units.
           </p>
         </div>
         <OverviewPeriodSelector period={period} label={label} />
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
         <OverviewSummaryCard
           label="Total Revenue"
           value={formatTzs(totals.revenue)}

@@ -22,7 +22,7 @@ export function ComparisonIndicator({
   return (
     <p
       className={cn(
-        "mt-1.5 flex items-center gap-1 text-[12px] font-medium",
+        "mt-1.5 flex min-w-0 flex-wrap items-center gap-1 text-[11px] font-medium sm:text-[12px]",
         positive ? "text-[#1f8a4c]" : "text-[#c24646]",
       )}
     >

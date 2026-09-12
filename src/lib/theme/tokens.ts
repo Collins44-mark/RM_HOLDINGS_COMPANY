@@ -1,10 +1,10 @@
 export const TYPE = {
-  sectionTitle: "text-[23px] font-bold tracking-[-0.03em] text-navy",
-  sectionSubtitle: "text-[13.5px] font-normal text-slate-500",
-  cardTitle: "text-[15.5px] font-bold leading-5 tracking-[-0.02em] text-navy",
-  cardMeta: "text-[12.5px] font-normal leading-[18px] text-slate-500",
-  revenueValue: "text-[18px] font-bold tracking-[-0.02em] text-navy",
-  revenueTotal: "text-[19px] font-bold tracking-[-0.02em] text-navy",
+  sectionTitle: "text-[19px] font-bold tracking-[-0.03em] text-navy sm:text-[23px]",
+  sectionSubtitle: "text-[13px] font-normal text-slate-500 sm:text-[13.5px]",
+  cardTitle: "text-[13px] font-bold leading-snug tracking-[-0.02em] break-words text-navy sm:text-[15.5px] sm:leading-5",
+  cardMeta: "text-[11.5px] font-normal leading-[16px] break-words text-slate-500 sm:text-[12.5px] sm:leading-[18px]",
+  revenueValue: "text-[14px] font-bold tracking-[-0.02em] break-words text-navy sm:text-[18px]",
+  revenueTotal: "text-[15px] font-bold tracking-[-0.02em] break-words text-navy sm:text-[19px]",
 } as const;
 
 export const ICON_SIZE = {

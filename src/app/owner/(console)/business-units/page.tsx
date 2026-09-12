@@ -18,7 +18,7 @@ export default async function BusinessUnitsPage() {
         title="Business Units"
         description="RM Holdings operates these business units as one group. Open a unit to manage its operations."
       />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-3">
         {BUSINESS_UNITS.map((unit) => {
           const record = units.find((item) => item.code === unit.code);
           return (

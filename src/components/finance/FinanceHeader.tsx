@@ -16,7 +16,7 @@ export function FinanceHeader({
 }) {
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-      <h1 className="text-[30px] font-bold leading-tight tracking-[-0.03em] text-navy">
+      <h1 className="text-[24px] font-bold leading-tight tracking-[-0.03em] text-navy sm:text-[30px]">
         Finance (Consolidated)
       </h1>
       <div className="flex flex-wrap items-center gap-2">

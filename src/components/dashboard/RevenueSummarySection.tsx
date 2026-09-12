@@ -22,7 +22,7 @@ export function RevenueSummarySection({
         description="Revenue by Business Unit"
         action={<PeriodFilter period={period} label={label} />}
       />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-4 xl:grid-cols-3">
         {items.map((item) => (
           <RevenueCard
             key={item.code}

@@ -10,7 +10,7 @@ export function BusinessPerformanceSection({ rows }: { rows: UnitFinanceRow[] })
   return (
     <section>
       <div className="mb-4">
-        <h2 className="text-[20px] font-bold tracking-[-0.03em] text-navy">Business Performance</h2>
+        <h2 className="text-[18px] font-bold tracking-[-0.03em] text-navy sm:text-[20px]">Business Performance</h2>
         <p className="mt-1 text-[13.5px] leading-5 text-slate-500">
           Revenue, expenses and operating position across all business units.
         </p>

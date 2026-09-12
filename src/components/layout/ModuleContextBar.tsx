@@ -63,7 +63,7 @@ export function ModuleContextBar({
   const crumbs = trail(moduleCode, pathname, showDashboardCrumb);
 
   return (
-    <div className="mb-4">
+    <div className="mb-4 min-w-0">
       {isRoot ? null : (
         <button
           type="button"
@@ -76,7 +76,7 @@ export function ModuleContextBar({
       )}
       <nav
         aria-label="Breadcrumb"
-        className={isRoot ? "text-[12.5px] leading-5 text-slate-400" : "mt-2 text-[12.5px] leading-5 text-slate-400"}
+        className={isRoot ? "break-words text-[12.5px] leading-5 text-slate-400" : "mt-2 break-words text-[12.5px] leading-5 text-slate-400"}
       >
         {crumbs.map((crumb, index) => {
           const last = index === crumbs.length - 1;

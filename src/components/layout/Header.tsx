@@ -98,7 +98,7 @@ export function Header({
   }, []);
 
   return (
-    <header className="sticky top-0 z-30 flex h-[72px] items-center gap-3 border-b border-white/60 bg-white/70 px-4 backdrop-blur-xl lg:px-7">
+    <header className="sticky top-0 z-30 flex h-16 min-w-0 items-center gap-2 border-b border-white/60 bg-white/70 px-3 backdrop-blur-xl sm:h-[72px] sm:gap-3 sm:px-4 lg:px-7">
       <button
         type="button"
         onClick={onMenuClick}
@@ -178,7 +178,7 @@ export function Header({
             ) : null}
           </button>
           {alertsOpen ? (
-            <div className="absolute right-0 top-[calc(100%+8px)] w-[320px] overflow-hidden rounded-2xl border border-black/6 bg-white shadow-[0_16px_40px_rgba(16,24,40,0.12)]">
+            <div className="absolute right-0 top-[calc(100%+8px)] w-[320px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-black/6 bg-white shadow-[0_16px_40px_rgba(16,24,40,0.12)]">
               <div className="border-b border-black/5 px-4 py-3 text-sm font-semibold text-navy">
                 Notifications
               </div>

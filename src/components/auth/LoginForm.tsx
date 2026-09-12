@@ -38,7 +38,7 @@ export function LoginForm({
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,28,18,0.12)_0%,rgba(12,20,16,0.22)_100%)]" />
       </div>
 
-      <div className="relative w-full max-w-[min(520px,calc(100vw-32px))] rounded-[32px] border border-white/65 bg-white/38 px-5 py-9 shadow-[0_30px_80px_rgba(20,36,20,0.18),inset_0_1px_0_rgba(255,255,255,0.78)] backdrop-blur-[28px] sm:px-12 sm:py-12">
+      <div className="relative w-full max-w-[min(520px,calc(100vw-32px))] rounded-[32px] border border-white/65 bg-white/38 px-4 py-8 shadow-[0_30px_80px_rgba(20,36,20,0.18),inset_0_1px_0_rgba(255,255,255,0.78)] backdrop-blur-[28px] sm:px-12 sm:py-12">
         <div className="flex flex-col items-center text-center">
           <Logo markOnly size="lg" />
           <p className="mt-3 text-[13px] font-medium tracking-[0.18em] text-navy/80 uppercase">

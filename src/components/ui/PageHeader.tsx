@@ -15,7 +15,7 @@ export function PageHeader({
   return (
     <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-navy">{title}</h1>
+        <h1 className="text-[20px] font-semibold tracking-[-0.02em] text-navy sm:text-[22px]">{title}</h1>
         {description ? <p className="mt-1 max-w-2xl text-[13.5px] leading-6 text-slate-500">{description}</p> : null}
       </div>
       {action}
@@ -69,19 +69,19 @@ export function ModuleDashboard({
         title={title}
         description={`${location}. ${description}`}
       />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-3">
         {links.map((item) => {
           return (
             <Link
               key={item.href}
               href={item.href}
-              className="group flex items-center gap-3 rounded-[16px] border border-black/[0.04] bg-white px-4 py-3.5 shadow-card transition hover:-translate-y-0.5 hover:shadow-card-hover"
+              className="group flex min-w-0 items-center gap-2 rounded-[16px] border border-black/[0.04] bg-white px-3 py-3 shadow-card transition hover:-translate-y-0.5 hover:shadow-card-hover sm:gap-3 sm:px-4 sm:py-3.5"
             >
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-[12px] bg-[#f3f5f8] text-navy">
-                <NavGlyph name={item.icon} className="h-[18px] w-[18px]" />
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-[#f3f5f8] text-navy sm:h-10 sm:w-10 sm:rounded-[12px]">
+                <NavGlyph name={item.icon} className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
               </span>
-              <span className="flex-1 text-sm font-semibold text-navy">{item.label}</span>
-              <ArrowUpRight className="h-4 w-4 text-slate-400 group-hover:text-navy" />
+              <span className="min-w-0 flex-1 break-words text-[13px] font-semibold text-navy sm:text-sm">{item.label}</span>
+              <ArrowUpRight className="hidden h-4 w-4 shrink-0 text-slate-400 group-hover:text-navy sm:block" />
             </Link>
           );
         })}
