@@ -5,5 +5,6 @@ export const metadata = { title: "Profile Settings" };
 
 export default async function ProfileSettingsPage() {
   const user = await requireAuth();
+
   return <ProfileSettingsForm user={user} />;
 }
