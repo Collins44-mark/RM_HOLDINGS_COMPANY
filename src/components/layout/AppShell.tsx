@@ -33,7 +33,6 @@ export function AppShell({
   const pathname = usePathname();
   const sidebarWidth = collapsed ? SIDEBAR_WIDTH.collapsed : SIDEBAR_WIDTH.expanded;
   const showFooter = pathname !== "/owner" && pathname !== "/dashboard";
-  const inBusinessModule = Boolean(moduleCode && moduleCode !== "owner");
 
   return (
     <div className="relative min-h-screen">
@@ -77,7 +76,7 @@ export function AppShell({
           onToggleSidebar={toggle}
         />
         <main className="relative z-10 flex-1 px-4 py-5 lg:px-7 lg:py-6">
-          {inBusinessModule && moduleCode !== "owner" ? (
+          {moduleCode && moduleCode !== "owner" ? (
             <ModuleContextBar
               moduleCode={moduleCode}
               showDashboardCrumb={showGroupCrumb}
