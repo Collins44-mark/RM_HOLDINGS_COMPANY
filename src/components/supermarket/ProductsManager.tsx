@@ -62,7 +62,9 @@ const inputClass =
 
 function canManageProducts(user: AuthUser | null, permission: string) {
   if (!user) return false;
-  if (isOwnerRole(user.roleCode) || user.permissions.includes("*")) return true;
+  if (isOwnerRole(user.roleCode) || user.permissions.includes("*") || user.modules.includes("*")) {
+    return true;
+  }
   return user.permissions.some((matcher) => matchPermission(permission, matcher));
 }
 
@@ -627,24 +629,29 @@ function RowActions({
   const menuRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState({ top: 0, right: 0 });
 
-  useEffect(() => {
-    if (!open || !buttonRef.current) return;
-    const rect = buttonRef.current.getBoundingClientRect();
+  function placeMenu() {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
     setCoords({
       top: rect.bottom + 6,
-      right: window.innerWidth - rect.right,
+      right: Math.max(8, window.innerWidth - rect.right),
     });
-  }, [open]);
+  }
 
   useEffect(() => {
     if (!open) return;
+    placeMenu();
     function handle(event: MouseEvent) {
       const target = event.target as Node;
       if (buttonRef.current?.contains(target) || menuRef.current?.contains(target)) return;
       onClose();
     }
     document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
+    window.addEventListener("resize", placeMenu);
+    return () => {
+      document.removeEventListener("mousedown", handle);
+      window.removeEventListener("resize", placeMenu);
+    };
   }, [open, onClose]);
 
   const menu = open
@@ -674,7 +681,10 @@ function RowActions({
       <button
         ref={buttonRef}
         type="button"
-        onClick={onToggle}
+        onClick={() => {
+          if (!open) placeMenu();
+          onToggle();
+        }}
         className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-slate-500 transition hover:bg-[#f3f5f8] hover:text-navy"
         aria-label={`Actions for ${product.name}`}
         aria-expanded={open}
@@ -1009,7 +1019,7 @@ function ProductDetails({
         <DetailRow label="Unit" value={product.unit} />
         <DetailRow label="Buying price" value={formatTzs(product.buyingPrice)} />
         <DetailRow label="Selling price" value={formatTzs(product.sellingPrice)} />
-        <DetailRow label="Current stock" value={String(product.stock)} />
+        <DetailRow label="Opening / current stock" value={String(product.stock)} />
         <DetailRow label="Reorder level" value={String(product.reorderLevel)} />
         <DetailRow label="Expiry tracking" value={product.trackExpiry ? "On" : "Off"} />
         <DetailRow label="Expiry date" value={product.trackExpiry ? formatExpiry(product.expiryDate) : "—"} />
