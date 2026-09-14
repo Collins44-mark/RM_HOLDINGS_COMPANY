@@ -32,6 +32,7 @@ export type SupermarketProduct = {
   stock: number;
   reorderLevel: number;
   trackExpiry: boolean;
+  expiryDate: string | null;
   isActive: boolean;
   createdAt: string;
 };
@@ -41,6 +42,7 @@ export type SupermarketStockMovement = {
   date: string;
   type: "Purchase" | "Sale" | "Adjustment";
   quantity: number;
+  balance: number;
   note: string;
 };
 
@@ -57,6 +59,7 @@ export const SUPERMARKET_SAMPLE_PRODUCTS: SupermarketProduct[] = [
     stock: 76,
     reorderLevel: 20,
     trackExpiry: false,
+    expiryDate: null,
     isActive: true,
     createdAt: "2026-08-12T08:00:00.000Z",
   },
@@ -72,6 +75,7 @@ export const SUPERMARKET_SAMPLE_PRODUCTS: SupermarketProduct[] = [
     stock: 124,
     reorderLevel: 30,
     trackExpiry: false,
+    expiryDate: null,
     isActive: true,
     createdAt: "2026-08-18T08:00:00.000Z",
   },
@@ -87,6 +91,7 @@ export const SUPERMARKET_SAMPLE_PRODUCTS: SupermarketProduct[] = [
     stock: 32,
     reorderLevel: 10,
     trackExpiry: true,
+    expiryDate: "2027-03-15",
     isActive: true,
     createdAt: "2026-08-22T08:00:00.000Z",
   },
@@ -102,6 +107,7 @@ export const SUPERMARKET_SAMPLE_PRODUCTS: SupermarketProduct[] = [
     stock: 8,
     reorderLevel: 20,
     trackExpiry: true,
+    expiryDate: "2026-09-28",
     isActive: true,
     createdAt: "2026-09-01T08:00:00.000Z",
   },
@@ -117,6 +123,7 @@ export const SUPERMARKET_SAMPLE_PRODUCTS: SupermarketProduct[] = [
     stock: 0,
     reorderLevel: 24,
     trackExpiry: true,
+    expiryDate: "2027-01-10",
     isActive: true,
     createdAt: "2026-09-04T08:00:00.000Z",
   },
@@ -132,6 +139,7 @@ export const SUPERMARKET_SAMPLE_PRODUCTS: SupermarketProduct[] = [
     stock: 42,
     reorderLevel: 15,
     trackExpiry: false,
+    expiryDate: null,
     isActive: true,
     createdAt: "2026-09-06T08:00:00.000Z",
   },
@@ -147,6 +155,7 @@ export const SUPERMARKET_SAMPLE_PRODUCTS: SupermarketProduct[] = [
     stock: 58,
     reorderLevel: 18,
     trackExpiry: false,
+    expiryDate: null,
     isActive: true,
     createdAt: "2026-09-08T08:00:00.000Z",
   },
@@ -162,6 +171,7 @@ export const SUPERMARKET_SAMPLE_PRODUCTS: SupermarketProduct[] = [
     stock: 19,
     reorderLevel: 12,
     trackExpiry: false,
+    expiryDate: null,
     isActive: true,
     createdAt: "2026-09-10T08:00:00.000Z",
   },
@@ -177,6 +187,7 @@ export const SUPERMARKET_SAMPLE_PRODUCTS: SupermarketProduct[] = [
     stock: 6,
     reorderLevel: 10,
     trackExpiry: true,
+    expiryDate: "2027-06-01",
     isActive: false,
     createdAt: "2026-07-21T08:00:00.000Z",
   },
@@ -189,17 +200,22 @@ export function stockLabel(product: Pick<SupermarketProduct, "stock" | "reorderL
 }
 
 export function mockStockHistory(product: SupermarketProduct): SupermarketStockMovement[] {
-  if (product.stock <= 0) {
-    return [
-      { id: `${product.id}-h1`, date: "08 Sep 2026", type: "Purchase", quantity: 24, note: "PO-2208" },
-      { id: `${product.id}-h2`, date: "12 Sep 2026", type: "Sale", quantity: -18, note: "POS floor" },
-      { id: `${product.id}-h3`, date: "14 Sep 2026", type: "Sale", quantity: -6, note: "POS floor" },
-    ];
-  }
+  const raw =
+    product.stock <= 0
+      ? [
+          { id: `${product.id}-h1`, date: "08 Sep 2026", type: "Purchase" as const, quantity: 24, note: "PO-2208" },
+          { id: `${product.id}-h2`, date: "12 Sep 2026", type: "Sale" as const, quantity: -18, note: "POS floor" },
+          { id: `${product.id}-h3`, date: "14 Sep 2026", type: "Sale" as const, quantity: -6, note: "POS floor" },
+        ]
+      : [
+          { id: `${product.id}-h1`, date: "10 Sep 2026", type: "Purchase" as const, quantity: Math.max(12, product.reorderLevel), note: "PO-2214" },
+          { id: `${product.id}-h2`, date: "12 Sep 2026", type: "Sale" as const, quantity: -4, note: "POS floor" },
+          { id: `${product.id}-h3`, date: "13 Sep 2026", type: "Adjustment" as const, quantity: 2, note: "Count correction" },
+        ];
 
-  return [
-    { id: `${product.id}-h1`, date: "10 Sep 2026", type: "Purchase", quantity: Math.max(12, product.reorderLevel), note: "PO-2214" },
-    { id: `${product.id}-h2`, date: "12 Sep 2026", type: "Sale", quantity: -4, note: "POS floor" },
-    { id: `${product.id}-h3`, date: "13 Sep 2026", type: "Adjustment", quantity: 2, note: "Count correction" },
-  ];
+  let running = product.stock - raw.reduce((sum, item) => sum + item.quantity, 0);
+  return raw.map((item) => {
+    running += item.quantity;
+    return { ...item, balance: running };
+  });
 }

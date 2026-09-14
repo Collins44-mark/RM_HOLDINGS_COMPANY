@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MoreHorizontal, Plus, Search, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { MoreHorizontal, Plus, ScanLine, Search, X } from "lucide-react";
 import { PageHeader, Surface } from "@/components/ui/PageHeader";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { isOwnerRole } from "@/lib/auth/rbac";
@@ -35,6 +36,7 @@ type ProductFormState = {
   stock: string;
   reorderLevel: string;
   trackExpiry: boolean;
+  expiryDate: string;
   isActive: boolean;
 };
 
@@ -49,6 +51,7 @@ const EMPTY_FORM: ProductFormState = {
   stock: "0",
   reorderLevel: "0",
   trackExpiry: false,
+  expiryDate: "",
   isActive: true,
 };
 
@@ -57,7 +60,7 @@ const selectClass =
 const inputClass =
   "h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy outline-none transition placeholder:text-slate-400 focus:border-[#9bb6e0] focus:ring-4 focus:ring-[#5b82c4]/10";
 
-function hasProductPermission(user: AuthUser | null, permission: string) {
+function canManageProducts(user: AuthUser | null, permission: string) {
   if (!user) return false;
   if (isOwnerRole(user.roleCode) || user.permissions.includes("*")) return true;
   return user.permissions.some((matcher) => matchPermission(permission, matcher));
@@ -75,14 +78,36 @@ function formFromProduct(product: SupermarketProduct): ProductFormState {
     stock: String(product.stock),
     reorderLevel: String(product.reorderLevel),
     trackExpiry: product.trackExpiry,
+    expiryDate: product.expiryDate ?? "",
     isActive: product.isActive,
   };
 }
 
+function formatExpiry(value: string | null | undefined) {
+  if (!value) return "—";
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+function findByBarcode(products: SupermarketProduct[], barcode: string, excludeId?: string | null) {
+  const code = barcode.trim();
+  if (!code) return null;
+  return (
+    products.find(
+      (item) => item.barcode && item.barcode === code && item.id !== excludeId,
+    ) ?? null
+  );
+}
+
 export function ProductsManager() {
-  const { user } = useAuth();
-  const canCreate = hasProductPermission(user, "supermarket.products.create");
-  const canEdit = hasProductPermission(user, "supermarket.products.edit");
+  const { user, isSuperAdmin } = useAuth();
+  const canCreate = isSuperAdmin() || canManageProducts(user, "supermarket.products.create");
+  const canEdit = isSuperAdmin() || canManageProducts(user, "supermarket.products.edit");
 
   const [products, setProducts] = useState(SUPERMARKET_SAMPLE_PRODUCTS);
   const [query, setQuery] = useState("");
@@ -94,6 +119,7 @@ export function ProductsManager() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState<ProductFormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [barcodeNotice, setBarcodeNotice] = useState<string | null>(null);
 
   const selected = products.find((item) => item.id === selectedId) ?? null;
   const filtersActive = Boolean(query.trim()) || category !== "all" || status !== "all";
@@ -120,10 +146,11 @@ export function ProductsManager() {
     });
   }, [products, query, category, status, sort]);
 
-  function openAdd() {
+  function openAdd(prefill?: Partial<ProductFormState>) {
     setSelectedId(null);
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, ...prefill });
     setErrors({});
+    setBarcodeNotice(null);
     setMenuId(null);
     setDrawer("add");
   }
@@ -138,6 +165,7 @@ export function ProductsManager() {
     setSelectedId(product.id);
     setForm(formFromProduct(product));
     setErrors({});
+    setBarcodeNotice(null);
     setMenuId(null);
     setDrawer("edit");
   }
@@ -152,6 +180,7 @@ export function ProductsManager() {
     setDrawer(null);
     setSelectedId(null);
     setErrors({});
+    setBarcodeNotice(null);
   }
 
   function clearFilters() {
@@ -168,6 +197,26 @@ export function ProductsManager() {
       ),
     );
     setMenuId(null);
+    if (selectedId === product.id && drawer === "view") {
+      setSelectedId(product.id);
+    }
+  }
+
+  function lookupBarcode(code: string) {
+    const match = findByBarcode(products, code, selectedId);
+    if (match) {
+      setBarcodeNotice(null);
+      openView(match);
+      return;
+    }
+    if (code.trim()) {
+      setBarcodeNotice("No matching product. You can create a new product with this barcode.");
+      if (drawer !== "add" && drawer !== "edit") {
+        openAdd({ barcode: code.trim() });
+        return;
+      }
+    }
+    setForm((current) => ({ ...current, barcode: code.trim() }));
   }
 
   function saveProduct() {
@@ -179,6 +228,7 @@ export function ProductsManager() {
     const sellingPrice = Number(form.sellingPrice);
     const stock = form.stock.trim() === "" ? 0 : Number(form.stock);
     const reorderLevel = form.reorderLevel.trim() === "" ? 0 : Number(form.reorderLevel);
+    const expiryDate = form.trackExpiry ? form.expiryDate.trim() : "";
 
     if (!name) nextErrors.name = "Enter a product name.";
     if (!sku) nextErrors.sku = "Enter a SKU.";
@@ -194,11 +244,19 @@ export function ProductsManager() {
     if (!Number.isFinite(reorderLevel) || reorderLevel < 0) {
       nextErrors.reorderLevel = "Enter a valid reorder level.";
     }
+    if (form.trackExpiry && !expiryDate) {
+      nextErrors.expiryDate = "Enter an expiry date.";
+    }
 
     const skuTaken = products.some(
       (item) => item.sku.toLowerCase() === sku.toLowerCase() && item.id !== selectedId,
     );
     if (sku && skuTaken) nextErrors.sku = "This SKU is already in use.";
+
+    const barcodeTaken = findByBarcode(products, barcode, selectedId);
+    if (barcode && barcodeTaken) {
+      nextErrors.barcode = `This barcode already belongs to ${barcodeTaken.name}.`;
+    }
 
     if (Object.keys(nextErrors).length) {
       setErrors(nextErrors);
@@ -217,6 +275,7 @@ export function ProductsManager() {
       stock,
       reorderLevel,
       trackExpiry: form.trackExpiry,
+      expiryDate: form.trackExpiry ? expiryDate : null,
       isActive: form.isActive,
       createdAt: selected?.createdAt ?? new Date().toISOString(),
     };
@@ -239,7 +298,7 @@ export function ProductsManager() {
           canCreate ? (
             <button
               type="button"
-              onClick={openAdd}
+              onClick={() => openAdd()}
               className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-[14px] bg-navy px-4 text-[14px] font-semibold text-white transition hover:bg-[#132844] sm:w-auto"
             >
               <Plus className="h-4 w-4" strokeWidth={2.2} />
@@ -295,7 +354,7 @@ export function ProductsManager() {
         <EmptyProducts filtersActive={filtersActive} onClear={clearFilters} />
       ) : (
         <>
-          <Surface className="hidden overflow-hidden xl:block">
+          <Surface className="hidden xl:block">
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-[13px]">
                 <thead className="bg-[#f8fafc] text-[11px] font-medium uppercase tracking-wide text-slate-400">
@@ -353,7 +412,7 @@ export function ProductsManager() {
             </div>
           </Surface>
 
-          <Surface className="hidden overflow-hidden md:block xl:hidden">
+          <Surface className="hidden md:block xl:hidden">
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-[13px]">
                 <thead className="bg-[#f8fafc] text-[11px] font-medium uppercase tracking-wide text-slate-400">
@@ -450,9 +509,14 @@ export function ProductsManager() {
           <ProductForm
             form={form}
             errors={errors}
+            barcodeNotice={barcodeNotice}
             submitLabel={drawer === "add" ? "Add Product" : "Save Changes"}
             stockLabel={drawer === "add" ? "Opening Stock" : "Current Stock"}
-            onChange={setForm}
+            onChange={(next) => {
+              setForm(next);
+              setBarcodeNotice(null);
+            }}
+            onLookupBarcode={lookupBarcode}
             onCancel={closePanel}
             onSubmit={saveProduct}
           />
@@ -461,7 +525,11 @@ export function ProductsManager() {
 
       {drawer === "view" && selected ? (
         <ProductDrawer title="Product details" onClose={closePanel}>
-          <ProductDetails product={selected} canEdit={canEdit} onEdit={() => openEdit(selected)} />
+          <ProductDetails
+            product={selected}
+            canEdit={canEdit}
+            onEdit={() => openEdit(selected)}
+          />
         </ProductDrawer>
       ) : null}
 
@@ -555,30 +623,37 @@ function RowActions({
   onHistory: () => void;
   onToggleActive: () => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState({ top: 0, right: 0 });
+
+  useEffect(() => {
+    if (!open || !buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    setCoords({
+      top: rect.bottom + 6,
+      right: window.innerWidth - rect.right,
+    });
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     function handle(event: MouseEvent) {
-      if (!ref.current?.contains(event.target as Node)) onClose();
+      const target = event.target as Node;
+      if (buttonRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      onClose();
     }
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
   }, [open, onClose]);
 
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={onToggle}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-slate-500 transition hover:bg-[#f3f5f8] hover:text-navy"
-        aria-label={`Actions for ${product.name}`}
-        aria-expanded={open}
-      >
-        <MoreHorizontal className="h-4 w-4" />
-      </button>
-      {open ? (
-        <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-[14px] border border-black/6 bg-white py-1 shadow-[0_16px_40px_rgba(16,24,40,0.12)]">
+  const menu = open
+    ? createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-[80] w-44 overflow-hidden rounded-[14px] border border-black/6 bg-white py-1 shadow-[0_16px_40px_rgba(16,24,40,0.12)]"
+          style={{ top: coords.top, right: coords.right }}
+        >
           <ActionItem label="View" onClick={onView} />
           {canEdit ? <ActionItem label="Edit" onClick={onEdit} /> : null}
           <ActionItem label="Stock History" onClick={onHistory} />
@@ -589,8 +664,24 @@ function RowActions({
               tone={product.isActive ? "danger" : "default"}
             />
           ) : null}
-        </div>
-      ) : null}
+        </div>,
+        document.body,
+      )
+    : null;
+
+  return (
+    <div className="relative">
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={onToggle}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-slate-500 transition hover:bg-[#f3f5f8] hover:text-navy"
+        aria-label={`Actions for ${product.name}`}
+        aria-expanded={open}
+      >
+        <MoreHorizontal className="h-4 w-4" />
+      </button>
+      {menu}
     </div>
   );
 }
@@ -641,7 +732,7 @@ function ProductDrawer({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div className="fixed inset-0 z-[70] flex justify-end">
       <button type="button" className="absolute inset-0 bg-navy/30" aria-label="Close" onClick={onClose} />
       <aside className="relative flex h-full w-full max-w-[520px] flex-col bg-white shadow-[-18px_0_40px_rgba(16,24,40,0.12)]">
         <div className="flex items-center justify-between border-b border-black/5 px-5 py-4">
@@ -664,20 +755,26 @@ function ProductDrawer({
 function ProductForm({
   form,
   errors,
+  barcodeNotice,
   submitLabel,
   stockLabel: stockFieldLabel,
   onChange,
+  onLookupBarcode,
   onCancel,
   onSubmit,
 }: {
   form: ProductFormState;
   errors: Record<string, string>;
+  barcodeNotice: string | null;
   submitLabel: string;
   stockLabel: string;
   onChange: (form: ProductFormState) => void;
+  onLookupBarcode: (code: string) => void;
   onCancel: () => void;
   onSubmit: () => void;
 }) {
+  const barcodeRef = useRef<HTMLInputElement>(null);
+
   function patch<K extends keyof ProductFormState>(key: K, value: ProductFormState[K]) {
     onChange({ ...form, [key]: value });
   }
@@ -702,21 +799,55 @@ function ProductForm({
               className={inputClass}
             />
           </Field>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="SKU" required error={errors.sku}>
+          <Field
+            label="SKU"
+            required
+            hint="Internal unique product identifier. This is not the barcode."
+            error={errors.sku}
+          >
+            <input
+              value={form.sku}
+              onChange={(event) => patch("sku", event.target.value)}
+              className={inputClass}
+            />
+          </Field>
+          <div>
+            <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Barcode</span>
+            <div className="flex gap-2">
               <input
-                value={form.sku}
-                onChange={(event) => patch("sku", event.target.value)}
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Barcode" error={errors.barcode}>
-              <input
+                ref={barcodeRef}
                 value={form.barcode}
                 onChange={(event) => patch("barcode", event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    onLookupBarcode(form.barcode);
+                  }
+                }}
+                placeholder="Optional"
                 className={inputClass}
               />
-            </Field>
+              <button
+                type="button"
+                onClick={() => {
+                  barcodeRef.current?.focus();
+                  if (form.barcode.trim()) onLookupBarcode(form.barcode);
+                }}
+                className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13px] font-semibold text-navy transition hover:bg-[#f8fafc]"
+              >
+                <ScanLine className="h-4 w-4" strokeWidth={1.8} />
+                Scan
+              </button>
+            </div>
+            <p className="mt-1.5 text-[12px] text-slate-400">
+              Optional scanner field. Scanning focuses this input and looks up an existing product.
+            </p>
+            {errors.barcode ? (
+              <p className="mt-1.5 text-[12px] text-[#8a5a5a]">{errors.barcode}</p>
+            ) : null}
+            {barcodeNotice ? (
+              <p className="mt-1.5 text-[12px] text-slate-500">{barcodeNotice}</p>
+            ) : null}
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Category" required error={errors.category}>
@@ -797,10 +928,20 @@ function ProductForm({
         </div>
         <div className="mt-4 space-y-3">
           <Toggle
-            label="Track Expiry"
+            label="Expiry Tracking"
             checked={form.trackExpiry}
             onChange={(value) => patch("trackExpiry", value)}
           />
+          {form.trackExpiry ? (
+            <Field label="Expiry Date" required error={errors.expiryDate}>
+              <input
+                type="date"
+                value={form.expiryDate}
+                onChange={(event) => patch("expiryDate", event.target.value)}
+                className={inputClass}
+              />
+            </Field>
+          ) : null}
           <Toggle
             label="Active"
             checked={form.isActive}
@@ -870,8 +1011,9 @@ function ProductDetails({
         <DetailRow label="Selling price" value={formatTzs(product.sellingPrice)} />
         <DetailRow label="Current stock" value={String(product.stock)} />
         <DetailRow label="Reorder level" value={String(product.reorderLevel)} />
+        <DetailRow label="Expiry tracking" value={product.trackExpiry ? "On" : "Off"} />
+        <DetailRow label="Expiry date" value={product.trackExpiry ? formatExpiry(product.expiryDate) : "—"} />
         <DetailRow label="Status" value={product.isActive ? "Active" : "Inactive"} />
-        <DetailRow label="Track expiry" value={product.trackExpiry ? "Yes" : "No"} />
       </dl>
 
       {canEdit ? (
@@ -896,24 +1038,36 @@ function StockHistoryPanel({ product }: { product: SupermarketProduct }) {
       <div>
         <p className="text-[15px] font-semibold text-navy">{product.name}</p>
         <p className="mt-1 text-[13px] text-slate-500">
-          Mock stock movements for this product. Live history will connect in a later phase.
+          Mock stock movements for this product. Live history will connect later in Stock.
         </p>
       </div>
-      <ul className="divide-y divide-black/4 rounded-[16px] border border-black/[0.04]">
-        {movements.map((item) => (
-          <li key={item.id} className="flex items-start justify-between gap-3 px-4 py-3">
-            <div>
-              <p className="text-[13.5px] font-semibold text-navy">{item.type}</p>
-              <p className="mt-0.5 text-[12px] text-slate-500">
-                {item.date} · {item.note}
-              </p>
-            </div>
-            <p className={cn("text-[13.5px] font-semibold", item.quantity < 0 ? "text-[#8a5a5a]" : "text-[#5a7a64]")}>
-              {item.quantity > 0 ? `+${item.quantity}` : item.quantity}
-            </p>
-          </li>
-        ))}
-      </ul>
+      <div className="overflow-hidden rounded-[16px] border border-black/[0.04]">
+        <table className="min-w-full text-left text-[13px]">
+          <thead className="bg-[#f8fafc] text-[11px] font-medium uppercase tracking-wide text-slate-400">
+            <tr>
+              <th className="px-4 py-2.5 font-medium">Date</th>
+              <th className="px-4 py-2.5 font-medium">Type</th>
+              <th className="px-4 py-2.5 font-medium">Qty</th>
+              <th className="px-4 py-2.5 font-medium">Balance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {movements.map((item) => (
+              <tr key={item.id} className="border-t border-black/4">
+                <td className="px-4 py-3 text-slate-500">
+                  <p>{item.date}</p>
+                  <p className="mt-0.5 text-[11px]">{item.note}</p>
+                </td>
+                <td className="px-4 py-3 font-medium text-navy">{item.type}</td>
+                <td className={cn("px-4 py-3 font-semibold", item.quantity < 0 ? "text-[#8a5a5a]" : "text-[#5a7a64]")}>
+                  {item.quantity > 0 ? `+${item.quantity}` : item.quantity}
+                </td>
+                <td className="px-4 py-3 font-semibold text-navy">{item.balance}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -921,11 +1075,13 @@ function StockHistoryPanel({ product }: { product: SupermarketProduct }) {
 function Field({
   label,
   required,
+  hint,
   error,
   children,
 }: {
   label: string;
   required?: boolean;
+  hint?: string;
   error?: string;
   children: React.ReactNode;
 }) {
@@ -936,6 +1092,7 @@ function Field({
         {required ? <span className="text-[#8a5a5a]"> *</span> : null}
       </span>
       {children}
+      {hint ? <span className="mt-1.5 block text-[12px] text-slate-400">{hint}</span> : null}
       {error ? <span className="mt-1.5 block text-[12px] text-[#8a5a5a]">{error}</span> : null}
     </label>
   );
