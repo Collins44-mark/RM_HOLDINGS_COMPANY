@@ -12,13 +12,22 @@ import { formatTzs } from "@/lib/format/currency";
 import {
   SUPERMARKET_PRODUCT_CATEGORIES,
   SUPERMARKET_PRODUCT_UNITS,
-  SUPERMARKET_SAMPLE_PRODUCTS,
-  mockStockHistory,
+  attachStock,
+  consumeNewProductBarcode,
+  findProductByBarcode,
+  formatDisplayDate,
+  movementTypeLabel,
+  movementsForProduct,
+  receiveStock,
   stockLabel,
+  toggleProductActive,
+  upsertProduct,
+  useSupermarketInventory,
+  type ProductStockRow,
   type SupermarketProduct,
   type SupermarketProductCategory,
   type SupermarketProductUnit,
-} from "@/lib/data/sample-supermarket-products";
+} from "@/lib/data/supermarket-inventory";
 import type { AuthUser } from "@/lib/auth/types";
 
 type ProductStatusFilter = "all" | "active" | "inactive";
@@ -68,7 +77,7 @@ function canManageProducts(user: AuthUser | null, permission: string) {
   return user.permissions.some((matcher) => matchPermission(permission, matcher));
 }
 
-function formFromProduct(product: SupermarketProduct): ProductFormState {
+function formFromProduct(product: ProductStockRow): ProductFormState {
   return {
     name: product.name,
     sku: product.sku,
@@ -80,38 +89,21 @@ function formFromProduct(product: SupermarketProduct): ProductFormState {
     stock: String(product.stock),
     reorderLevel: String(product.reorderLevel),
     trackExpiry: product.trackExpiry,
-    expiryDate: product.expiryDate ?? "",
+    expiryDate: "",
     isActive: product.isActive,
   };
-}
-
-function formatExpiry(value: string | null | undefined) {
-  if (!value) return "—";
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(date);
-}
-
-function findByBarcode(products: SupermarketProduct[], barcode: string, excludeId?: string | null) {
-  const code = barcode.trim();
-  if (!code) return null;
-  return (
-    products.find(
-      (item) => item.barcode && item.barcode === code && item.id !== excludeId,
-    ) ?? null
-  );
 }
 
 export function ProductsManager() {
   const { user, isSuperAdmin } = useAuth();
   const canCreate = isSuperAdmin() || canManageProducts(user, "supermarket.products.create");
   const canEdit = isSuperAdmin() || canManageProducts(user, "supermarket.products.edit");
+  const inventory = useSupermarketInventory();
+  const products = useMemo(
+    () => inventory.products.map((product) => attachStock(product, inventory.batches)),
+    [inventory.products, inventory.batches],
+  );
 
-  const [products, setProducts] = useState(SUPERMARKET_SAMPLE_PRODUCTS);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [status, setStatus] = useState<ProductStatusFilter>("all");
@@ -157,6 +149,11 @@ export function ProductsManager() {
     setDrawer("add");
   }
 
+  useEffect(() => {
+    const barcode = consumeNewProductBarcode();
+    if (barcode) openAdd({ barcode });
+  }, []);
+
   function openView(productId: string) {
     const product = products.find((item) => item.id === productId);
     if (!product) return;
@@ -200,15 +197,11 @@ export function ProductsManager() {
 
   function toggleActive(productId: string) {
     setMenuId(null);
-    setProducts((current) =>
-      current.map((item) =>
-        item.id === productId ? { ...item, isActive: !item.isActive } : item,
-      ),
-    );
+    toggleProductActive(productId);
   }
 
   function lookupBarcode(code: string) {
-    const match = findByBarcode(products, code, selectedId);
+    const match = findProductByBarcode(inventory.products, code, selectedId);
     if (match) {
       setBarcodeNotice(null);
       openView(match.id);
@@ -249,8 +242,8 @@ export function ProductsManager() {
     if (!Number.isFinite(reorderLevel) || reorderLevel < 0) {
       nextErrors.reorderLevel = "Enter a valid reorder level.";
     }
-    if (form.trackExpiry && !expiryDate) {
-      nextErrors.expiryDate = "Enter an expiry date.";
+    if (drawer === "add" && form.trackExpiry && stock > 0 && !expiryDate) {
+      nextErrors.expiryDate = "Enter an expiry date for the opening batch.";
     }
 
     const skuTaken = products.some(
@@ -258,7 +251,7 @@ export function ProductsManager() {
     );
     if (sku && skuTaken) nextErrors.sku = "This SKU is already in use.";
 
-    const barcodeTaken = findByBarcode(products, barcode, selectedId);
+    const barcodeTaken = findProductByBarcode(inventory.products, barcode, selectedId);
     if (barcode && barcodeTaken) {
       nextErrors.barcode = `This barcode already belongs to ${barcodeTaken.name}.`;
     }
@@ -277,20 +270,25 @@ export function ProductsManager() {
       unit: form.unit as SupermarketProductUnit,
       buyingPrice,
       sellingPrice,
-      stock,
       reorderLevel,
       trackExpiry: form.trackExpiry,
-      expiryDate: form.trackExpiry ? expiryDate : null,
       isActive: form.isActive,
       createdAt: selected?.createdAt ?? new Date().toISOString(),
     };
 
-    setProducts((current) => {
-      if (selected) {
-        return current.map((item) => (item.id === selected.id ? payload : item));
-      }
-      return [payload, ...current];
-    });
+    upsertProduct(payload);
+    if (!selected && stock > 0) {
+      receiveStock({
+        productId: payload.id,
+        quantity: stock,
+        batchNumber: "OPENING",
+        expiryDate: form.trackExpiry ? expiryDate : null,
+        buyingPrice,
+        type: "Opening Stock",
+        reference: "OPENING",
+        note: "Opening stock",
+      });
+    }
     closePanel();
   }
 
@@ -517,6 +515,8 @@ export function ProductsManager() {
             barcodeNotice={barcodeNotice}
             submitLabel={drawer === "add" ? "Add Product" : "Save Changes"}
             stockLabel={drawer === "add" ? "Opening Stock" : "Current Stock"}
+            stockReadOnly={drawer === "edit"}
+            showExpiryDate={drawer === "add"}
             onChange={(next) => {
               setForm(next);
               setBarcodeNotice(null);
@@ -540,7 +540,10 @@ export function ProductsManager() {
 
       {drawer === "history" && selected ? (
         <ProductDrawer title="Stock History" onClose={closePanel}>
-          <StockHistoryPanel product={selected} />
+          <StockHistoryPanel
+            product={selected}
+            movements={movementsForProduct(selected.id, inventory.movements)}
+          />
         </ProductDrawer>
       ) : null}
     </div>
@@ -575,7 +578,7 @@ function EmptyProducts({
   );
 }
 
-function StockCell({ product }: { product: SupermarketProduct }) {
+function StockCell({ product }: { product: ProductStockRow }) {
   const label = stockLabel(product);
   return (
     <div>
@@ -781,6 +784,8 @@ function ProductForm({
   barcodeNotice,
   submitLabel,
   stockLabel: stockFieldLabel,
+  stockReadOnly = false,
+  showExpiryDate = true,
   onChange,
   onLookupBarcode,
   onCancel,
@@ -791,6 +796,8 @@ function ProductForm({
   barcodeNotice: string | null;
   submitLabel: string;
   stockLabel: string;
+  stockReadOnly?: boolean;
+  showExpiryDate?: boolean;
   onChange: (form: ProductFormState) => void;
   onLookupBarcode: (code: string) => void;
   onCancel: () => void;
@@ -932,12 +939,20 @@ function ProductForm({
           Inventory Settings
         </h3>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label={stockFieldLabel} error={errors.stock}>
+          <Field
+            label={stockFieldLabel}
+            error={errors.stock}
+            hint={stockReadOnly ? "Current stock is calculated from inventory batches on Stock." : undefined}
+          >
             <input
               inputMode="numeric"
               value={form.stock}
-              onChange={(event) => patch("stock", event.target.value)}
-              className={inputClass}
+              readOnly={stockReadOnly}
+              onChange={(event) => {
+                if (stockReadOnly) return;
+                patch("stock", event.target.value);
+              }}
+              className={cn(inputClass, stockReadOnly && "bg-[#f8fafc] text-slate-500")}
             />
           </Field>
           <Field label="Reorder Level" error={errors.reorderLevel}>
@@ -955,8 +970,8 @@ function ProductForm({
             checked={form.trackExpiry}
             onChange={(value) => patch("trackExpiry", value)}
           />
-          {form.trackExpiry ? (
-            <Field label="Expiry Date" required error={errors.expiryDate}>
+          {form.trackExpiry && showExpiryDate ? (
+            <Field label="Expiry Date" required error={errors.expiryDate} hint="Applies to the opening stock batch.">
               <input
                 type="date"
                 value={form.expiryDate}
@@ -997,7 +1012,7 @@ function ProductDetails({
   canEdit,
   onEdit,
 }: {
-  product: SupermarketProduct;
+  product: ProductStockRow;
   canEdit: boolean;
   onEdit: () => void;
 }) {
@@ -1035,7 +1050,6 @@ function ProductDetails({
         <DetailRow label="Opening / current stock" value={String(product.stock)} />
         <DetailRow label="Reorder level" value={String(product.reorderLevel)} />
         <DetailRow label="Expiry tracking" value={product.trackExpiry ? "On" : "Off"} />
-        <DetailRow label="Expiry date" value={product.trackExpiry ? formatExpiry(product.expiryDate) : "—"} />
         <DetailRow label="Status" value={product.isActive ? "Active" : "Inactive"} />
       </dl>
 
@@ -1054,43 +1068,53 @@ function ProductDetails({
   );
 }
 
-function StockHistoryPanel({ product }: { product: SupermarketProduct }) {
-  const movements = mockStockHistory(product);
+function StockHistoryPanel({
+  product,
+  movements,
+}: {
+  product: SupermarketProduct;
+  movements: ReturnType<typeof movementsForProduct>;
+}) {
+  const rows = [...movements].reverse();
   return (
     <div className="space-y-4">
       <div>
         <p className="text-[15px] font-semibold text-navy">{product.name}</p>
         <p className="mt-1 text-[13px] text-slate-500">
-          Mock stock movements for this product. Live history will connect later in Stock.
+          Shared inventory movements for this product. The Stock page uses the same records.
         </p>
       </div>
-      <div className="overflow-hidden rounded-[16px] border border-black/[0.04]">
-        <table className="min-w-full text-left text-[13px]">
-          <thead className="bg-[#f8fafc] text-[11px] font-medium uppercase tracking-wide text-slate-400">
-            <tr>
-              <th className="px-4 py-2.5 font-medium">Date</th>
-              <th className="px-4 py-2.5 font-medium">Type</th>
-              <th className="px-4 py-2.5 font-medium">Qty</th>
-              <th className="px-4 py-2.5 font-medium">Balance</th>
-            </tr>
-          </thead>
-          <tbody>
-            {movements.map((item) => (
-              <tr key={item.id} className="border-t border-black/4">
-                <td className="px-4 py-3 text-slate-500">
-                  <p>{item.date}</p>
-                  <p className="mt-0.5 text-[11px]">{item.note}</p>
-                </td>
-                <td className="px-4 py-3 font-medium text-navy">{item.type}</td>
-                <td className={cn("px-4 py-3 font-semibold", item.quantity < 0 ? "text-[#8a5a5a]" : "text-[#5a7a64]")}>
-                  {item.quantity > 0 ? `+${item.quantity}` : item.quantity}
-                </td>
-                <td className="px-4 py-3 font-semibold text-navy">{item.balance}</td>
+      {rows.length === 0 ? (
+        <p className="text-[13px] text-slate-500">No movements recorded yet.</p>
+      ) : (
+        <div className="overflow-hidden rounded-[16px] border border-black/[0.04]">
+          <table className="min-w-full text-left text-[13px]">
+            <thead className="bg-[#f8fafc] text-[11px] font-medium uppercase tracking-wide text-slate-400">
+              <tr>
+                <th className="px-4 py-2.5 font-medium">Date</th>
+                <th className="px-4 py-2.5 font-medium">Type</th>
+                <th className="px-4 py-2.5 font-medium">Qty</th>
+                <th className="px-4 py-2.5 font-medium">Balance</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {rows.map((item) => (
+                <tr key={item.id} className="border-t border-black/4">
+                  <td className="px-4 py-3 text-slate-500">
+                    <p>{formatDisplayDate(item.date)}</p>
+                    <p className="mt-0.5 text-[11px]">{item.reference}</p>
+                  </td>
+                  <td className="px-4 py-3 font-medium text-navy">{movementTypeLabel(item.type)}</td>
+                  <td className={cn("px-4 py-3 font-semibold", item.quantity < 0 ? "text-[#8a5a5a]" : "text-[#5a7a64]")}>
+                    {item.quantity > 0 ? `+${item.quantity}` : item.quantity}
+                  </td>
+                  <td className="px-4 py-3 font-semibold text-navy">{item.balance}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

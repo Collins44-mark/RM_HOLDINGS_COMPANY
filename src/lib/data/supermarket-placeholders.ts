@@ -11,10 +11,6 @@ export const SUPERMARKET_PLACEHOLDERS: Record<string, { title: string; descripti
     title: "Returns",
     description: "Returns will appear here.",
   },
-  "/supermarket/stock": {
-    title: "Stock",
-    description: "Stock management will appear here.",
-  },
   "/supermarket/categories": {
     title: "Categories",
     description: "Category management will appear here.",
