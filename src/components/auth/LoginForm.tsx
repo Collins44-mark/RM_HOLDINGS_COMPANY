@@ -55,7 +55,7 @@ export function LoginForm({
 
           <div className="relative">
             <label htmlFor={emailId} className="sr-only">
-              Email
+              Email or phone
             </label>
             <Mail
               className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-400"
@@ -64,11 +64,11 @@ export function LoginForm({
             />
             <input
               id={emailId}
-              name="email"
-              type="email"
+              name="identifier"
+              type="text"
               required
               autoComplete="username"
-              placeholder="Email address"
+              placeholder="Email or phone"
               className={fieldClass}
             />
           </div>

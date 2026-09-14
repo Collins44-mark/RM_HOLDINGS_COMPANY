@@ -15,6 +15,8 @@ export type AuthUser = {
   permissions: string[];
   isActive: boolean;
   sessionId: string;
+  mustChangePassword: boolean;
+  isLocked: boolean;
 };
 
 export function identityFromUser(user: AuthUser) {

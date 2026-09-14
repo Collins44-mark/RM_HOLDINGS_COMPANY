@@ -21,6 +21,9 @@ export function canAccessPath(identity: AccessIdentity, pathname: string) {
   if (pathname === "/profile" || pathname.startsWith("/profile/")) {
     return true;
   }
+  if (pathname === "/change-password") {
+    return true;
+  }
   if (pathname === "/dashboard") {
     return canAccessOwnerPath(identity, "/owner");
   }

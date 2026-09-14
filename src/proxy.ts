@@ -2,16 +2,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   canAccessPath,
   isPublicPath,
+  landingPathFor,
 } from "@/lib/auth/access";
-import { DASHBOARD_PATH, LOGIN_PATH } from "@/lib/config/app";
+import { LOGIN_PATH } from "@/lib/config/app";
 import { refreshSupabaseSession } from "@/lib/supabase/proxy";
-import type { AccessIdentity } from "@/lib/auth/rbac";
-
-const SUPER_ADMIN_IDENTITY: AccessIdentity = {
-  role: "SUPER_ADMIN",
-  modules: ["*"],
-  permissions: ["*"],
-};
+import {
+  identityFromAppMetadata,
+  legacyOwnerIdentity,
+} from "@/lib/auth/identity-from-claims";
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -35,9 +33,11 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const { response: supabaseResponse, userId } =
+  const { response: supabaseResponse, userId, appMetadata } =
     await refreshSupabaseSession(request);
-  const identity = userId ? SUPER_ADMIN_IDENTITY : null;
+  const identity = userId
+    ? identityFromAppMetadata(appMetadata) ?? legacyOwnerIdentity()
+    : null;
 
   if (pathname !== LOGIN_PATH && pathname.endsWith("/login")) {
     const destination = new URL(LOGIN_PATH, request.url);
@@ -48,14 +48,14 @@ export async function proxy(request: NextRequest) {
 
   if (pathname === "/") {
     if (identity) {
-      return NextResponse.redirect(new URL(DASHBOARD_PATH, request.url));
+      return NextResponse.redirect(new URL(landingPathFor(identity), request.url));
     }
     return NextResponse.redirect(new URL(LOGIN_PATH, request.url));
   }
 
   if (isPublicPath(pathname)) {
     if (identity && pathname === LOGIN_PATH) {
-      return NextResponse.redirect(new URL(DASHBOARD_PATH, request.url));
+      return NextResponse.redirect(new URL(landingPathFor(identity), request.url));
     }
     return supabaseResponse;
   }

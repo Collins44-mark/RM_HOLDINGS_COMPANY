@@ -47,5 +47,7 @@ export function toAuthUser(user: ProfileRecord, sessionId: string): AuthUser {
     permissions: [...permissionSet],
     isActive: user.isActive,
     sessionId,
+    mustChangePassword: false,
+    isLocked: false,
   };
 }

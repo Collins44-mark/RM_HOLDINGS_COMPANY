@@ -14,6 +14,7 @@ export const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME ?? "rm_session";
 export const LOGIN_PATH = "/login";
 export const DASHBOARD_PATH = "/dashboard";
 export const WORKSPACE_PATH = "/workspace";
+export const CHANGE_PASSWORD_PATH = "/change-password";
 
 export type ModuleCode =
   | "owner"

@@ -9,7 +9,7 @@ import {
 export async function refreshSupabaseSession(request: NextRequest) {
   const response = NextResponse.next({ request });
   if (!isSupabaseConfigured()) {
-    return { userId: null as string | null, email: null as string | null, response };
+    return { userId: null as string | null, email: null as string | null, appMetadata: {} as Record<string, unknown>, response };
   }
 
   const supabase = createServerClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
@@ -43,6 +43,7 @@ export async function refreshSupabaseSession(request: NextRequest) {
       return {
         userId: session.user.id,
         email: session.user.email ?? null,
+        appMetadata: (session.user.app_metadata ?? {}) as Record<string, unknown>,
         response,
       };
     }
@@ -55,6 +56,7 @@ export async function refreshSupabaseSession(request: NextRequest) {
   return {
     userId: user?.id ?? null,
     email: user?.email ?? null,
+    appMetadata: (user?.app_metadata ?? {}) as Record<string, unknown>,
     response,
   };
 }

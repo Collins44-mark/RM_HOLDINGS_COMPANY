@@ -1,56 +1,26 @@
 import { cache } from "react";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
-import { isAppDatabaseAvailable, prisma } from "@/lib/db";
-import { LOGIN_PATH } from "@/lib/config/app";
+import {
+  CHANGE_PASSWORD_PATH,
+  LOGIN_PATH,
+  type ModuleCode,
+} from "@/lib/config/app";
 import { canAccessPath, defaultHomeFor } from "@/lib/auth/access";
 import { isOwnerRole } from "@/lib/auth/rbac";
-import { toAuthUser } from "@/lib/auth/profile";
 import { identityFromUser, type AuthUser } from "@/lib/auth/types";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { ModuleCode } from "@/lib/config/app";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  accessFromProfile,
+  countProfiles,
+  findProfileByAuthId,
+  type ProfileRecord,
+} from "@/lib/data/app-users";
 
 export type { AuthUser } from "@/lib/auth/types";
 export { identityFromUser } from "@/lib/auth/types";
-
-const SUPER_ADMIN_IDENTITY = {
-  roleCode: "SUPER_ADMIN",
-  roleName: "Super Admin",
-  modules: ["*"],
-  permissions: ["*"],
-} as const;
-
-const profileInclude = {
-  role: {
-    include: {
-      permissions: { include: { permission: true } },
-    },
-  },
-  businessUnits: { include: { businessUnit: true } },
-  permissions: { include: { permission: true } },
-} as const;
-
-async function findProfile(input: { authUid?: string | null; email?: string | null }) {
-  const authUid = input.authUid?.trim() || null;
-  const email = input.email?.toLowerCase().trim() || null;
-  if (!authUid && !email) return null;
-  if (!isAppDatabaseAvailable()) return null;
-
-  try {
-    return await prisma.user.findFirst({
-      where: {
-        isActive: true,
-        OR: [
-          ...(authUid ? [{ authUid }, { id: authUid }] : []),
-          ...(email ? [{ email }] : []),
-        ],
-      },
-      include: profileInclude,
-    });
-  } catch {
-    return null;
-  }
-}
 
 function displayNameFromAuth(user: User, fallback: string) {
   const metadata = user.user_metadata ?? {};
@@ -63,7 +33,29 @@ function displayNameFromAuth(user: User, fallback: string) {
   return fallback;
 }
 
-function authUserFromSupabase(user: User): AuthUser {
+function authUserFromProfile(user: User, profile: ProfileRecord): AuthUser {
+  const access = accessFromProfile(profile);
+  return {
+    id: profile.id,
+    authUid: user.id,
+    email: profile.email ?? user.email?.toLowerCase() ?? "",
+    name: displayNameFromAuth(user, profile.full_name),
+    title: access.roleName,
+    phone: profile.phone,
+    avatarUrl: profile.avatar_url,
+    roleCode: access.roleCode,
+    roleName: access.roleName,
+    modules: access.modules,
+    businessUnits: access.businessUnits,
+    permissions: access.permissions,
+    isActive: profile.is_active,
+    sessionId: user.id,
+    mustChangePassword: profile.must_change_password,
+    isLocked: Boolean(profile.locked_at),
+  };
+}
+
+function legacyOwnerFromAuth(user: User): AuthUser {
   const metadata = user.user_metadata ?? {};
   const fullName = displayNameFromAuth(
     user,
@@ -78,14 +70,60 @@ function authUserFromSupabase(user: User): AuthUser {
     title: typeof metadata.title === "string" ? metadata.title : "Super Admin",
     phone: typeof metadata.phone === "string" ? metadata.phone : null,
     avatarUrl: typeof metadata.avatar_url === "string" ? metadata.avatar_url : null,
-    roleCode: SUPER_ADMIN_IDENTITY.roleCode,
-    roleName: SUPER_ADMIN_IDENTITY.roleName,
-    modules: [...SUPER_ADMIN_IDENTITY.modules],
+    roleCode: "SUPER_ADMIN",
+    roleName: "Super Admin",
+    modules: ["*"],
     businessUnits: [],
-    permissions: [...SUPER_ADMIN_IDENTITY.permissions],
+    permissions: ["*"],
     isActive: true,
     sessionId: user.id,
+    mustChangePassword: false,
+    isLocked: false,
   };
+}
+
+async function bootstrapOwnerProfile(user: User) {
+  const admin = createSupabaseAdminClient();
+  if (!admin || !user.email) return null;
+  const existing = await countProfiles();
+  if (existing > 0) return null;
+
+  const { data: ownerRole } = await admin
+    .from("roles")
+    .select("id")
+    .eq("code", "SUPER_ADMIN")
+    .maybeSingle();
+  if (!ownerRole?.id) return null;
+
+  const fullName = displayNameFromAuth(user, user.email.split("@")[0] || "Owner");
+  await admin.from("profiles").upsert({
+    id: user.id,
+    full_name: fullName,
+    email: user.email.toLowerCase(),
+    phone: typeof user.user_metadata?.phone === "string" ? user.user_metadata.phone : null,
+    role_id: ownerRole.id,
+    is_active: true,
+    must_change_password: false,
+    failed_login_attempts: 0,
+    locked_at: null,
+    updated_at: new Date().toISOString(),
+  });
+
+  await admin.auth.admin.updateUserById(user.id, {
+    app_metadata: { role_code: "SUPER_ADMIN", modules: ["*"] },
+  });
+
+  return findProfileByAuthId(user.id);
+}
+
+async function enforcePasswordChangeGate(user: AuthUser) {
+  const pathname = (await headers()).get("x-pathname") ?? "";
+  if (user.mustChangePassword && pathname !== CHANGE_PASSWORD_PATH) {
+    redirect(CHANGE_PASSWORD_PATH);
+  }
+  if (!user.mustChangePassword && pathname === CHANGE_PASSWORD_PATH) {
+    redirect(defaultHomeFor(identityFromUser(user)));
+  }
 }
 
 export const getAuthUser = cache(async function getAuthUser(): Promise<AuthUser | null> {
@@ -96,53 +134,45 @@ export const getAuthUser = cache(async function getAuthUser(): Promise<AuthUser 
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user?.email) return null;
+  if (!user) return null;
 
-  const profile = await findProfile({
-    authUid: user.id,
-    email: user.email,
-  });
-
+  let profile = await findProfileByAuthId(user.id);
   if (!profile) {
-    return authUserFromSupabase(user);
+    profile = await bootstrapOwnerProfile(user);
   }
 
-  const hydrated = toAuthUser(profile, user.id);
-  return {
-    ...hydrated,
-    name: displayNameFromAuth(user, hydrated.name),
-    authUid: user.id,
-    sessionId: user.id,
-    roleCode: SUPER_ADMIN_IDENTITY.roleCode,
-    roleName: isOwnerRole(hydrated.roleCode)
-      ? hydrated.roleName
-      : SUPER_ADMIN_IDENTITY.roleName,
-    modules: [...SUPER_ADMIN_IDENTITY.modules],
-    permissions: [...SUPER_ADMIN_IDENTITY.permissions],
-  };
+  if (!profile) {
+    return user.email ? legacyOwnerFromAuth(user) : null;
+  }
+
+  if (!profile.is_active || profile.locked_at) {
+    return null;
+  }
+
+  return authUserFromProfile(user, profile);
 });
 
 export async function requireAuth() {
   const user = await getAuthUser();
   if (!user) redirect(LOGIN_PATH);
+  await enforcePasswordChangeGate(user);
   return user;
 }
 
 export async function requireModuleAccess(moduleCode: ModuleCode | string) {
-  const user = await getAuthUser();
-  if (!user) redirect(LOGIN_PATH);
-
+  const user = await requireAuth();
   const identity = identityFromUser(user);
   const path = moduleCode === "owner" ? "/owner" : `/${moduleCode}`;
   if (!canAccessPath(identity, path)) {
     redirect("/forbidden");
   }
-
   return user;
 }
 
 export async function requireOwner() {
-  return requireModuleAccess("owner");
+  const user = await requireAuth();
+  if (!isOwnerRole(user.roleCode)) redirect("/forbidden");
+  return user;
 }
 
 export async function requirePermission(permission: string) {
