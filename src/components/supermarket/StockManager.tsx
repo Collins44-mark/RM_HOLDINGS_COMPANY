@@ -35,7 +35,6 @@ import {
   movementTypeLabel,
   movementsForProduct,
   productExpiryFilterStatus,
-  productExpirySummary,
   rememberNewProductBarcode,
   stockStatusFor,
   useSupermarketInventory,
@@ -52,11 +51,12 @@ type DrawerMode = "add" | "view" | "history" | null;
 type MovementRow = ReturnType<typeof movementsForProduct>[number];
 
 const glass =
-  "rounded-[22px] border border-white/75 bg-white/72 shadow-[0_12px_40px_rgba(15,35,64,0.045)] backdrop-blur-xl";
+  "rounded-[20px] border border-white/80 bg-white/68 shadow-[0_8px_28px_rgba(15,35,64,0.04)] backdrop-blur-xl";
 const selectClass =
-  "h-11 w-full rounded-[16px] border border-black/[0.05] bg-white/65 px-3.5 text-[13.5px] text-navy outline-none backdrop-blur-sm transition focus:border-navy/15 focus:bg-white/90";
+  "h-10 w-full rounded-[12px] border border-black/[0.04] bg-white/60 px-3 text-[13px] text-navy outline-none backdrop-blur-sm transition focus:border-navy/12 focus:bg-white/85";
 const inputClass =
-  "h-11 w-full rounded-[16px] border border-black/[0.05] bg-white/65 px-3.5 text-[13.5px] text-navy outline-none backdrop-blur-sm transition placeholder:text-slate-400 focus:border-navy/15 focus:bg-white/90";
+  "h-10 w-full rounded-[12px] border border-black/[0.04] bg-white/60 px-3 text-[13px] text-navy outline-none backdrop-blur-sm transition placeholder:text-slate-400 focus:border-navy/12 focus:bg-white/85";
+const PAGE_SIZES = [10, 20, 50] as const;
 
 function canManageStock(user: AuthUser | null, permission: string) {
   if (!user) return false;
@@ -81,6 +81,8 @@ export function StockManager() {
   const [drawer, setDrawer] = useState<DrawerMode>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [prefillProductId, setPrefillProductId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(10);
 
   const rows = useMemo(
     () => inventory.products.map((product) => attachStock(product, inventory.batches)),
@@ -88,17 +90,6 @@ export function StockManager() {
   );
   const selected = rows.find((item) => item.id === selectedId) ?? null;
   const kpis = useMemo(() => inventoryKpis(inventory), [inventory]);
-  const attention = useMemo(
-    () => inventoryAttention(inventory.products, inventory.batches),
-    [inventory.products, inventory.batches],
-  );
-  const health = useMemo(() => {
-    const total = rows.length || 1;
-    const inStock = rows.filter((item) => item.stockStatus === "In Stock").length;
-    const lowStock = rows.filter((item) => item.stockStatus === "Low Stock").length;
-    const outOfStock = rows.filter((item) => item.stockStatus === "Out of Stock").length;
-    return { total, inStock, lowStock, outOfStock };
-  }, [rows]);
   const filtersActive =
     Boolean(query.trim()) || category !== "all" || status !== "all" || expiry !== "all";
 
@@ -133,6 +124,16 @@ export function StockManager() {
       return a.name.localeCompare(b.name);
     });
   }, [rows, inventory.batches, query, category, status, expiry, sort]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, category, status, expiry, sort, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(visible.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = visible.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const from = visible.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const to = Math.min(safePage * pageSize, visible.length);
 
   function openAdd(productId?: string) {
     setMenuId(null);
@@ -172,19 +173,19 @@ export function StockManager() {
   }
 
   return (
-    <div className="min-w-0 space-y-5 sm:space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="min-w-0 space-y-3 sm:space-y-3.5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Stock</h1>
-          <p className="mt-1.5 max-w-xl text-[13.5px] leading-6 text-slate-500">
-            Inventory control, stock levels, batches and expiry tracking.
+          <h1 className="text-[24px] font-semibold tracking-[-0.04em] text-navy sm:text-[28px]">Stock</h1>
+          <p className="mt-1 max-w-xl text-[13px] leading-5 text-slate-500">
+            Manage inventory levels, batches, expiry dates and stock movements.
           </p>
         </div>
         {canReceive ? (
           <button
             type="button"
             onClick={() => openAdd()}
-            className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-[16px] bg-navy px-5 text-[14px] font-semibold text-white shadow-[0_10px_24px_rgba(15,35,64,0.18)] transition hover:bg-[#132844] sm:w-auto"
+            className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-[14px] bg-navy px-4 text-[13.5px] font-semibold text-white shadow-[0_8px_18px_rgba(15,35,64,0.16)] transition hover:bg-[#132844] sm:w-auto"
           >
             <Plus className="h-4 w-4" strokeWidth={2.2} />
             Add Stock
@@ -192,11 +193,11 @@ export function StockManager() {
         ) : null}
       </div>
 
-      <section className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-3 xl:grid-cols-6">
+      <section className="grid grid-cols-2 gap-2 sm:gap-2.5 lg:grid-cols-3 xl:grid-cols-6">
         <KpiCard label="Total Products" value={String(kpis.totalProducts)} hint="Active catalogue" icon={Package} />
-        <KpiCard label="Total Stock Units" value={String(kpis.totalStockUnits)} hint="Current units" icon={Warehouse} />
+        <KpiCard label="Total Stock Units" value={String(kpis.totalStockUnits)} hint="Across all products" icon={Warehouse} />
         <KpiCard label="Low Stock" value={String(kpis.lowStock)} hint="Need attention" icon={AlertTriangle} />
-        <KpiCard label="Out of Stock" value={String(kpis.outOfStock)} hint="Zero available units" icon={Ban} />
+        <KpiCard label="Out of Stock" value={String(kpis.outOfStock)} hint="Zero available" icon={Ban} />
         <KpiCard
           label="Expiring Soon"
           value={String(kpis.expiringSoonUnits)}
@@ -206,72 +207,16 @@ export function StockManager() {
         <KpiCard label="Expired" value={String(kpis.expiredUnits)} hint="Require action" icon={TimerReset} />
       </section>
 
-      <section className="grid min-w-0 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
-        <article className={cn(glass, "px-4 py-4 sm:px-5 sm:py-5")}>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-            Inventory Attention
-          </p>
-          <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-navy">Expiring Soon</h2>
-          <p className="mt-1 text-[13.5px] leading-6 text-slate-500">
-            {kpis.expiringSoonUnits} units expiring within {EXPIRING_SOON_DAYS} days
-          </p>
-          <p className="text-[13px] text-slate-500">
-            {kpis.expiringSoonProducts} product{kpis.expiringSoonProducts === 1 ? "" : "s"} require attention
-          </p>
-
-          <div className="mt-4 divide-y divide-black/[0.04]">
-            {attention.soon.length === 0 ? (
-              <p className="py-3 text-[13px] text-slate-500">No batches are approaching expiry.</p>
-            ) : (
-              attention.soon.map((item) => (
-                <button
-                  key={`${item.productId}-${item.expiryDate}`}
-                  type="button"
-                  onClick={() => openView(item.productId)}
-                  className="flex w-full items-baseline justify-between gap-3 py-3 text-left transition hover:opacity-80"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-[14px] font-semibold tracking-[-0.02em] text-navy">
-                      {item.name}
-                    </span>
-                    <span className="mt-0.5 block text-[12.5px] text-slate-500">{item.units} units</span>
-                  </span>
-                  <span className="shrink-0 text-[13px] text-slate-500">{formatDisplayDate(item.expiryDate)}</span>
-                </button>
-              ))
-            )}
-          </div>
-
-          {kpis.expiredUnits > 0 ? (
-            <p className="mt-3 border-t border-black/[0.04] pt-3 text-[13.5px] font-medium text-navy">
-              {kpis.expiredUnits} units already expired
-            </p>
-          ) : null}
-        </article>
-
-        <article className={cn(glass, "px-4 py-4 sm:px-5 sm:py-5")}>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-            Inventory Overview
-          </p>
-          <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-navy">Health</h2>
-          <div className="mt-5 space-y-4">
-            <HealthRow label="In Stock" count={health.inStock} total={health.total} />
-            <HealthRow label="Low Stock" count={health.lowStock} total={health.total} />
-            <HealthRow label="Out of Stock" count={health.outOfStock} total={health.total} />
-          </div>
-        </article>
-      </section>
-
-      <section className={cn(glass, "p-3 sm:p-4")}>
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-5">
+      <section className={cn(glass, "overflow-hidden")}>
+        <div className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-2 xl:grid-cols-5">
           <label className="relative block sm:col-span-2 xl:col-span-1">
             <span className="sr-only">Search stock</span>
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search products..."
-              className={cn(inputClass, "pl-10")}
+              placeholder="Search products, SKU, barcode..."
+              className={cn(inputClass, "pl-9")}
             />
           </label>
           <select value={category} onChange={(event) => setCategory(event.target.value)} className={selectClass}>
@@ -297,7 +242,7 @@ export function StockManager() {
             onChange={(event) => setExpiry(event.target.value as ExpiryFilter)}
             className={selectClass}
           >
-            <option value="all">All Expiry</option>
+            <option value="all">All Expiry Status</option>
             <option value="No Expiry">No Expiry</option>
             <option value="Normal">Normal</option>
             <option value="Expiring Soon">Expiring Soon</option>
@@ -310,154 +255,148 @@ export function StockManager() {
             <option value="expiry">Earliest Expiry</option>
           </select>
         </div>
+
+        {visible.length === 0 ? (
+          <EmptyStock filtersActive={filtersActive} onClear={clearFilters} />
+        ) : (
+          <>
+            <div className="hidden overflow-x-auto xl:block">
+              <table className="min-w-full text-left text-[13px]">
+                <thead className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-slate-400">
+                  <tr>
+                    <th className="px-4 py-2.5 font-medium">Product</th>
+                    <th className="px-4 py-2.5 font-medium">SKU</th>
+                    <th className="px-4 py-2.5 font-medium">Category</th>
+                    <th className="px-4 py-2.5 font-medium">Current Stock</th>
+                    <th className="px-4 py-2.5 font-medium">Reorder Level</th>
+                    <th className="px-4 py-2.5 font-medium">Stock Status</th>
+                    <th className="px-4 py-2.5 font-medium">Expiry</th>
+                    <th className="px-4 py-2.5 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageRows.map((product) => (
+                    <tr key={product.id} className="border-t border-black/[0.035]">
+                      <td className="px-4 py-2.5">
+                        <ProductName
+                          product={product}
+                          onOpen={() => openView(product.id)}
+                        />
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-500">{product.sku}</td>
+                      <td className="px-4 py-2.5 text-slate-500">{product.category}</td>
+                      <td className="px-4 py-2.5 text-[14px] font-semibold tracking-[-0.03em] text-navy">{product.stock}</td>
+                      <td className="px-4 py-2.5 text-slate-500">{product.reorderLevel}</td>
+                      <td className="px-4 py-2.5">
+                        <StatusLabel value={product.stockStatus} />
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <ExpiryCell productId={product.id} batches={inventory.batches} />
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <RowActions
+                          product={product}
+                          open={menuId === product.id}
+                          canReceive={canReceive}
+                          onToggle={() => setMenuId((current) => (current === product.id ? null : product.id))}
+                          onClose={() => setMenuId(null)}
+                          onView={() => openView(product.id)}
+                          onAdd={() => openAdd(product.id)}
+                          onHistory={() => openHistory(product.id)}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="hidden overflow-x-auto md:block xl:hidden">
+              <table className="min-w-full text-left text-[13px]">
+                <thead className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-slate-400">
+                  <tr>
+                    <th className="px-3.5 py-2.5 font-medium">Product</th>
+                    <th className="px-3.5 py-2.5 font-medium">Stock</th>
+                    <th className="px-3.5 py-2.5 font-medium">Status</th>
+                    <th className="px-3.5 py-2.5 font-medium">Expiry</th>
+                    <th className="px-3.5 py-2.5 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageRows.map((product) => (
+                    <tr key={product.id} className="border-t border-black/[0.035]">
+                      <td className="px-3.5 py-2.5">
+                        <ProductName product={product} onOpen={() => openView(product.id)} />
+                      </td>
+                      <td className="px-3.5 py-2.5">
+                        <p className="text-[14px] font-semibold tracking-[-0.03em] text-navy">{product.stock}</p>
+                        <p className="text-[11px] text-slate-400">ROP {product.reorderLevel}</p>
+                      </td>
+                      <td className="px-3.5 py-2.5">
+                        <StatusLabel value={product.stockStatus} />
+                      </td>
+                      <td className="px-3.5 py-2.5">
+                        <ExpiryCell productId={product.id} batches={inventory.batches} />
+                      </td>
+                      <td className="px-3.5 py-2.5">
+                        <RowActions
+                          product={product}
+                          open={menuId === product.id}
+                          canReceive={canReceive}
+                          onToggle={() => setMenuId((current) => (current === product.id ? null : product.id))}
+                          onClose={() => setMenuId(null)}
+                          onView={() => openView(product.id)}
+                          onAdd={() => openAdd(product.id)}
+                          onHistory={() => openHistory(product.id)}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="space-y-2 px-3 pb-3 md:hidden">
+              {pageRows.map((product) => (
+                <article key={product.id} className="rounded-[16px] border border-white/70 bg-white/55 px-3 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <ProductName product={product} onOpen={() => openView(product.id)} />
+                    <RowActions
+                      product={product}
+                      open={menuId === product.id}
+                      canReceive={canReceive}
+                      onToggle={() => setMenuId((current) => (current === product.id ? null : product.id))}
+                      onClose={() => setMenuId(null)}
+                      onView={() => openView(product.id)}
+                      onAdd={() => openAdd(product.id)}
+                      onHistory={() => openHistory(product.id)}
+                    />
+                  </div>
+                  <div className="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span className="text-[14px] font-semibold tracking-[-0.03em] text-navy">{product.stock} units</span>
+                    <StatusLabel value={product.stockStatus} />
+                    {product.isActive ? null : <span className="text-[12px] text-slate-400">Inactive</span>}
+                  </div>
+                  <div className="mt-1.5">
+                    <ExpiryCell productId={product.id} batches={inventory.batches} />
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            <Pagination
+              from={from}
+              to={to}
+              total={visible.length}
+              page={safePage}
+              totalPages={totalPages}
+              pageSize={pageSize}
+              onPage={setPage}
+              onPageSize={(size) => setPageSize(size)}
+            />
+          </>
+        )}
       </section>
-
-      {visible.length === 0 ? (
-        <EmptyStock filtersActive={filtersActive} onClear={clearFilters} />
-      ) : (
-        <>
-          <section className={cn(glass, "hidden overflow-hidden xl:block")}>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-[13px]">
-                <thead className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-400">
-                  <tr>
-                    <th className="px-5 py-3.5 font-medium">Product</th>
-                    <th className="px-5 py-3.5 font-medium">SKU</th>
-                    <th className="px-5 py-3.5 font-medium">Category</th>
-                    <th className="px-5 py-3.5 font-medium">Current Stock</th>
-                    <th className="px-5 py-3.5 font-medium">Reorder Level</th>
-                    <th className="px-5 py-3.5 font-medium">Stock Status</th>
-                    <th className="px-5 py-3.5 font-medium">Expiry</th>
-                    <th className="px-5 py-3.5 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.map((product) => (
-                    <tr key={product.id} className="border-t border-black/[0.035]">
-                      <td className="px-5 py-4">
-                        <button type="button" onClick={() => openView(product.id)} className="text-left">
-                          <p className="font-semibold tracking-[-0.02em] text-navy">{product.name}</p>
-                          <p className="mt-0.5 text-[12px] text-slate-500">
-                            {product.unit}
-                            {product.isActive ? "" : " · Inactive"}
-                          </p>
-                        </button>
-                      </td>
-                      <td className="px-5 py-4 text-slate-500">{product.sku}</td>
-                      <td className="px-5 py-4 text-slate-500">{product.category}</td>
-                      <td className="px-5 py-4 text-[15px] font-semibold tracking-[-0.03em] text-navy">{product.stock}</td>
-                      <td className="px-5 py-4 text-slate-500">{product.reorderLevel}</td>
-                      <td className="px-5 py-4">
-                        <StatusLabel value={product.stockStatus} />
-                      </td>
-                      <td className="px-5 py-4 text-slate-500">
-                        {productExpirySummary(product.id, inventory.batches, product.stock)}
-                      </td>
-                      <td className="px-5 py-4">
-                        <RowActions
-                          product={product}
-                          open={menuId === product.id}
-                          canReceive={canReceive}
-                          onToggle={() => setMenuId((current) => (current === product.id ? null : product.id))}
-                          onClose={() => setMenuId(null)}
-                          onView={() => openView(product.id)}
-                          onAdd={() => openAdd(product.id)}
-                          onHistory={() => openHistory(product.id)}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className={cn(glass, "hidden overflow-hidden md:block xl:hidden")}>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-[13px]">
-                <thead className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-400">
-                  <tr>
-                    <th className="px-4 py-3.5 font-medium">Product</th>
-                    <th className="px-4 py-3.5 font-medium">Stock</th>
-                    <th className="px-4 py-3.5 font-medium">Status</th>
-                    <th className="px-4 py-3.5 font-medium">Expiry</th>
-                    <th className="px-4 py-3.5 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.map((product) => (
-                    <tr key={product.id} className="border-t border-black/[0.035]">
-                      <td className="px-4 py-4">
-                        <button type="button" onClick={() => openView(product.id)} className="text-left">
-                          <p className="font-semibold tracking-[-0.02em] text-navy">{product.name}</p>
-                          <p className="mt-0.5 text-[12px] text-slate-500">
-                            {product.sku} · {product.category}
-                          </p>
-                        </button>
-                      </td>
-                      <td className="px-4 py-4">
-                        <p className="text-[15px] font-semibold tracking-[-0.03em] text-navy">{product.stock}</p>
-                        <p className="mt-0.5 text-[11px] text-slate-400">ROP {product.reorderLevel}</p>
-                      </td>
-                      <td className="px-4 py-4">
-                        <StatusLabel value={product.stockStatus} />
-                      </td>
-                      <td className="px-4 py-4 text-slate-500">
-                        {productExpirySummary(product.id, inventory.batches, product.stock)}
-                      </td>
-                      <td className="px-4 py-4">
-                        <RowActions
-                          product={product}
-                          open={menuId === product.id}
-                          canReceive={canReceive}
-                          onToggle={() => setMenuId((current) => (current === product.id ? null : product.id))}
-                          onClose={() => setMenuId(null)}
-                          onView={() => openView(product.id)}
-                          onAdd={() => openAdd(product.id)}
-                          onHistory={() => openHistory(product.id)}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <div className="space-y-2.5 md:hidden">
-            {visible.map((product) => (
-              <article key={product.id} className={cn(glass, "px-4 py-4")}>
-                <div className="flex items-start justify-between gap-3">
-                  <button type="button" onClick={() => openView(product.id)} className="min-w-0 text-left">
-                    <p className="font-semibold tracking-[-0.02em] text-navy">{product.name}</p>
-                    <p className="mt-0.5 text-[12px] text-slate-500">
-                      {product.sku} · {product.category}
-                    </p>
-                  </button>
-                  <RowActions
-                    product={product}
-                    open={menuId === product.id}
-                    canReceive={canReceive}
-                    onToggle={() => setMenuId((current) => (current === product.id ? null : product.id))}
-                    onClose={() => setMenuId(null)}
-                    onView={() => openView(product.id)}
-                    onAdd={() => openAdd(product.id)}
-                    onHistory={() => openHistory(product.id)}
-                  />
-                </div>
-                <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <span className="text-[16px] font-semibold tracking-[-0.03em] text-navy">{product.stock} units</span>
-                  <StatusLabel value={product.stockStatus} />
-                  {product.isActive ? null : <span className="text-[12.5px] text-slate-400">Inactive</span>}
-                </div>
-                <p className="mt-2 text-[12.5px] text-slate-500">
-                  {productExpirySummary(product.id, inventory.batches, product.stock)}
-                </p>
-              </article>
-            ))}
-          </div>
-        </>
-      )}
 
       {drawer === "add" ? (
         <StockDrawer kicker="Inventory" title="Add Stock" onClose={closePanel}>
@@ -502,21 +441,6 @@ export function StockManager() {
   );
 }
 
-function inventoryAttention(products: SupermarketProduct[], batches: StockBatch[]) {
-  const soon = batches
-    .filter((batch) => batch.quantity > 0 && batchExpiryStatus(batch.expiryDate) === "Expiring Soon")
-    .slice()
-    .sort((a, b) => (a.expiryDate ?? "").localeCompare(b.expiryDate ?? ""))
-    .slice(0, 3)
-    .map((batch) => ({
-      productId: batch.productId,
-      name: products.find((item) => item.id === batch.productId)?.name ?? "Unknown product",
-      units: batch.quantity,
-      expiryDate: batch.expiryDate as string,
-    }));
-  return { soon };
-}
-
 function earliestSortDate(productId: string, batches: { productId: string; expiryDate: string | null }[]) {
   const dated = batches
     .filter((batch) => batch.productId === productId && batch.expiryDate)
@@ -533,7 +457,7 @@ function EmptyStock({
   onClear: () => void;
 }) {
   return (
-    <div className={cn(glass, "px-6 py-16 text-center")}>
+    <div className="px-6 py-10 text-center">
       <p className="text-[16px] font-semibold tracking-[-0.03em] text-navy">No inventory found</p>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
         {filtersActive
@@ -565,40 +489,153 @@ function KpiCard({
   icon: ComponentType<{ className?: string; strokeWidth?: number }>;
 }) {
   return (
-    <article className={cn(glass, "flex min-w-0 items-start gap-3 px-3.5 py-3.5 sm:min-h-[108px] sm:px-4 sm:py-4")}>
-      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-navy/[0.05] text-navy/70 sm:h-10 sm:w-10">
-        <Icon className="h-4 w-4" strokeWidth={1.55} />
+    <article className={cn(glass, "flex min-w-0 items-center gap-2.5 px-3 py-2.5 sm:px-3.5 sm:py-3")}>
+      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-navy/[0.045] text-navy/55">
+        <Icon className="h-3.5 w-3.5" strokeWidth={1.55} />
       </span>
       <div className="min-w-0">
-        <p className="text-[11px] font-medium tracking-[0.01em] text-slate-500 sm:text-[12px]">{label}</p>
-        <p className="mt-1 text-[22px] font-semibold tracking-[-0.05em] text-navy sm:text-[26px]">{value}</p>
-        <p className="mt-1 text-[11.5px] leading-4 text-slate-400">{hint}</p>
+        <p className="text-[11px] font-medium text-slate-500">{label}</p>
+        <p className="mt-0.5 text-[20px] font-semibold tracking-[-0.04em] text-navy sm:text-[22px]">{value}</p>
+        <p className="mt-0.5 text-[11px] leading-4 text-slate-400">{hint}</p>
       </div>
     </article>
   );
 }
 
-function HealthRow({ label, count, total }: { label: string; count: number; total: number }) {
-  const width = Math.round((count / Math.max(total, 1)) * 100);
+function ProductName({
+  product,
+  onOpen,
+}: {
+  product: SupermarketProduct;
+  onOpen: () => void;
+}) {
   return (
-    <div>
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="text-[13.5px] font-medium text-navy">{label}</p>
-        <p className="text-[15px] font-semibold tracking-[-0.03em] text-navy">{count}</p>
-      </div>
-      <div className="mt-2 h-1 overflow-hidden rounded-full bg-black/[0.05]">
-        <div className="h-full rounded-full bg-navy/35 transition-[width] duration-300" style={{ width: `${width}%` }} />
-      </div>
-    </div>
+    <button type="button" onClick={onOpen} className="flex min-w-0 items-start gap-2.5 text-left">
+      <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-navy/[0.045] text-navy/40">
+        <Package className="h-3.5 w-3.5" strokeWidth={1.6} />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-[13.5px] font-semibold tracking-[-0.02em] text-navy">
+          {product.name}
+        </span>
+        <span className="mt-0.5 block truncate text-[11.5px] text-slate-400">
+          {product.barcode || product.sku}
+          {product.isActive ? "" : " · Inactive"}
+        </span>
+      </span>
+    </button>
   );
 }
 
+function ExpiryCell({ productId, batches }: { productId: string; batches: StockBatch[] }) {
+  const rows = batchesForProduct(productId, batches);
+  const dated = rows.filter((batch) => batch.expiryDate);
+  const expired = dated
+    .filter((batch) => batch.quantity > 0 && batchExpiryStatus(batch.expiryDate) === "Expired")
+    .map((batch) => batch.expiryDate as string)
+    .sort();
+  const liveDated = dated.filter((batch) => batch.quantity > 0);
+  const next = liveDated.map((batch) => batch.expiryDate as string).sort()[0] ?? dated.map((batch) => batch.expiryDate as string).sort()[0];
+
+  if (expired.length) {
+    return (
+      <div>
+        <p className="text-[12.5px] font-semibold text-[#b42318]">Expired</p>
+        <p className="mt-0.5 text-[11.5px] text-[#b42318]/80">{formatDisplayDate(expired[0])}</p>
+      </div>
+    );
+  }
+  if (liveDated.length) {
+    return (
+      <div>
+        <p className="text-[12.5px] font-medium text-navy">
+          {liveDated.length} batch{liveDated.length === 1 ? "" : "es"}
+        </p>
+        <p className="mt-0.5 text-[11.5px] text-slate-400">Next: {formatDisplayDate(next)}</p>
+      </div>
+    );
+  }
+  return <p className="text-[12.5px] text-slate-400">No Expiry</p>;
+}
+
 function StatusLabel({ value }: { value: string }) {
-  const strong = value === "Low Stock" || value === "Out of Stock" || value === "Expiring Soon" || value === "Expired";
+  const expired = value === "Expired";
+  const soon = value === "Expiring Soon" || value === "Low Stock" || value === "Out of Stock";
   return (
-    <span className={cn("text-[12.5px] tracking-[-0.01em]", strong ? "font-semibold text-navy" : "font-medium text-slate-500")}>
+    <span
+      className={cn(
+        "text-[12px] tracking-[-0.01em]",
+        expired && "font-semibold text-[#b42318]",
+        !expired && soon && "font-medium text-navy",
+        !expired && !soon && "font-medium text-slate-500",
+      )}
+    >
       {value}
     </span>
+  );
+}
+
+function Pagination({
+  from,
+  to,
+  total,
+  page,
+  totalPages,
+  pageSize,
+  onPage,
+  onPageSize,
+}: {
+  from: number;
+  to: number;
+  total: number;
+  page: number;
+  totalPages: number;
+  pageSize: number;
+  onPage: (page: number) => void;
+  onPageSize: (size: (typeof PAGE_SIZES)[number]) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2.5 border-t border-black/[0.035] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-[12.5px] text-slate-500">
+        Showing {from} to {to} of {total} products
+      </p>
+      <div className="flex items-center justify-between gap-3 sm:justify-end">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => onPage(page - 1)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-slate-400 transition hover:bg-navy/[0.05] hover:text-navy disabled:opacity-30"
+            aria-label="Previous page"
+          >
+            ‹
+          </button>
+          <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-[10px] bg-navy px-2 text-[12.5px] font-semibold text-white">
+            {page}
+          </span>
+          <button
+            type="button"
+            disabled={page >= totalPages}
+            onClick={() => onPage(page + 1)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-slate-400 transition hover:bg-navy/[0.05] hover:text-navy disabled:opacity-30"
+            aria-label="Next page"
+          >
+            ›
+          </button>
+        </div>
+        <select
+          value={pageSize}
+          onChange={(event) => onPageSize(Number(event.target.value) as (typeof PAGE_SIZES)[number])}
+          className="h-8 rounded-[10px] border border-black/[0.04] bg-white/70 px-2 text-[12px] text-navy outline-none"
+        >
+          {PAGE_SIZES.map((size) => (
+            <option key={size} value={size}>
+              {size} per page
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
   );
 }
 
