@@ -157,24 +157,30 @@ export function ProductsManager() {
     setDrawer("add");
   }
 
-  function openView(product: SupermarketProduct) {
-    setSelectedId(product.id);
+  function openView(productId: string) {
+    const product = products.find((item) => item.id === productId);
+    if (!product) return;
     setMenuId(null);
+    setSelectedId(product.id);
     setDrawer("view");
   }
 
-  function openEdit(product: SupermarketProduct) {
+  function openEdit(productId: string) {
+    const product = products.find((item) => item.id === productId);
+    if (!product) return;
+    setMenuId(null);
     setSelectedId(product.id);
     setForm(formFromProduct(product));
     setErrors({});
     setBarcodeNotice(null);
-    setMenuId(null);
     setDrawer("edit");
   }
 
-  function openHistory(product: SupermarketProduct) {
-    setSelectedId(product.id);
+  function openHistory(productId: string) {
+    const product = products.find((item) => item.id === productId);
+    if (!product) return;
     setMenuId(null);
+    setSelectedId(product.id);
     setDrawer("history");
   }
 
@@ -192,23 +198,20 @@ export function ProductsManager() {
     setSort("name");
   }
 
-  function toggleActive(product: SupermarketProduct) {
+  function toggleActive(productId: string) {
+    setMenuId(null);
     setProducts((current) =>
       current.map((item) =>
-        item.id === product.id ? { ...item, isActive: !item.isActive } : item,
+        item.id === productId ? { ...item, isActive: !item.isActive } : item,
       ),
     );
-    setMenuId(null);
-    if (selectedId === product.id && drawer === "view") {
-      setSelectedId(product.id);
-    }
   }
 
   function lookupBarcode(code: string) {
     const match = findByBarcode(products, code, selectedId);
     if (match) {
       setBarcodeNotice(null);
-      openView(match);
+      openView(match.id);
       return;
     }
     if (code.trim()) {
@@ -401,10 +404,10 @@ export function ProductsManager() {
                           canEdit={canEdit}
                           onToggle={() => setMenuId((current) => (current === product.id ? null : product.id))}
                           onClose={() => setMenuId(null)}
-                          onView={() => openView(product)}
-                          onEdit={() => openEdit(product)}
-                          onHistory={() => openHistory(product)}
-                          onToggleActive={() => toggleActive(product)}
+                          onView={() => openView(product.id)}
+                          onEdit={() => openEdit(product.id)}
+                          onHistory={() => openHistory(product.id)}
+                          onToggleActive={() => toggleActive(product.id)}
                         />
                       </td>
                     </tr>
@@ -451,10 +454,10 @@ export function ProductsManager() {
                           canEdit={canEdit}
                           onToggle={() => setMenuId((current) => (current === product.id ? null : product.id))}
                           onClose={() => setMenuId(null)}
-                          onView={() => openView(product)}
-                          onEdit={() => openEdit(product)}
-                          onHistory={() => openHistory(product)}
-                          onToggleActive={() => toggleActive(product)}
+                          onView={() => openView(product.id)}
+                          onEdit={() => openEdit(product.id)}
+                          onHistory={() => openHistory(product.id)}
+                          onToggleActive={() => toggleActive(product.id)}
                         />
                       </td>
                     </tr>
@@ -483,10 +486,10 @@ export function ProductsManager() {
                     canEdit={canEdit}
                     onToggle={() => setMenuId((current) => (current === product.id ? null : product.id))}
                     onClose={() => setMenuId(null)}
-                    onView={() => openView(product)}
-                    onEdit={() => openEdit(product)}
-                    onHistory={() => openHistory(product)}
-                    onToggleActive={() => toggleActive(product)}
+                    onView={() => openView(product.id)}
+                    onEdit={() => openEdit(product.id)}
+                    onHistory={() => openHistory(product.id)}
+                    onToggleActive={() => toggleActive(product.id)}
                   />
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -530,7 +533,7 @@ export function ProductsManager() {
           <ProductDetails
             product={selected}
             canEdit={canEdit}
-            onEdit={() => openEdit(selected)}
+            onEdit={() => openEdit(selected.id)}
           />
         </ProductDrawer>
       ) : null}
@@ -626,7 +629,6 @@ function RowActions({
   onToggleActive: () => void;
 }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState({ top: 0, right: 0 });
 
   function placeMenu() {
@@ -641,37 +643,39 @@ function RowActions({
   useEffect(() => {
     if (!open) return;
     placeMenu();
-    function handle(event: MouseEvent) {
-      const target = event.target as Node;
-      if (buttonRef.current?.contains(target) || menuRef.current?.contains(target)) return;
-      onClose();
-    }
-    document.addEventListener("mousedown", handle);
     window.addEventListener("resize", placeMenu);
-    return () => {
-      document.removeEventListener("mousedown", handle);
-      window.removeEventListener("resize", placeMenu);
-    };
-  }, [open, onClose]);
+    return () => window.removeEventListener("resize", placeMenu);
+  }, [open]);
 
   const menu = open
     ? createPortal(
-        <div
-          ref={menuRef}
-          className="fixed z-[80] w-44 overflow-hidden rounded-[14px] border border-black/6 bg-white py-1 shadow-[0_16px_40px_rgba(16,24,40,0.12)]"
-          style={{ top: coords.top, right: coords.right }}
-        >
-          <ActionItem label="View" onClick={onView} />
-          {canEdit ? <ActionItem label="Edit" onClick={onEdit} /> : null}
-          <ActionItem label="Stock History" onClick={onHistory} />
-          {canEdit ? (
-            <ActionItem
-              label={product.isActive ? "Deactivate" : "Activate"}
-              onClick={onToggleActive}
-              tone={product.isActive ? "danger" : "default"}
-            />
-          ) : null}
-        </div>,
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-[79] cursor-default bg-transparent"
+            aria-label="Close actions"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              onClose();
+            }}
+          />
+          <div
+            className="fixed z-[80] w-44 overflow-hidden rounded-[14px] border border-black/6 bg-white py-1 shadow-[0_16px_40px_rgba(16,24,40,0.12)]"
+            style={{ top: coords.top, right: coords.right }}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <ActionItem label="View" onSelect={onView} />
+            {canEdit ? <ActionItem label="Edit" onSelect={onEdit} /> : null}
+            <ActionItem label="Stock History" onSelect={onHistory} />
+            {canEdit ? (
+              <ActionItem
+                label={product.isActive ? "Deactivate" : "Activate"}
+                onSelect={onToggleActive}
+                tone={product.isActive ? "danger" : "default"}
+              />
+            ) : null}
+          </div>
+        </>,
         document.body,
       )
     : null;
@@ -698,17 +702,26 @@ function RowActions({
 
 function ActionItem({
   label,
-  onClick,
+  onSelect,
   tone = "default",
 }: {
   label: string;
-  onClick: () => void;
+  onSelect: () => void;
   tone?: "default" | "danger";
 }) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onSelect();
+      }}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.detail === 0) onSelect();
+      }}
       className={cn(
         "flex w-full px-3 py-2 text-left text-[13px] hover:bg-slate-50",
         tone === "danger" ? "text-[#b42318]" : "text-navy",
