@@ -2,21 +2,28 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireOwner } from "@/lib/auth/session";
+import { requireVerifiedOwner } from "@/lib/auth/session";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import {
   ALL_MODULES_VALUE,
   isRoleAllowedForModules,
   modulesForAssignment,
+  roleDefinition,
 } from "@/lib/auth/role-options";
 import { generateTemporaryPassword } from "@/lib/auth/temp-password";
 import {
+  displayLoginIdentifier,
   normalizeEmail,
   normalizePhone,
   syntheticEmailForPhone,
 } from "@/lib/auth/identifiers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { listManagedUsers, type ManagedUser } from "@/lib/data/app-users";
+import {
+  getAccessCatalog,
+  listManagedUsers,
+  statusOf,
+  type ManagedUser,
+} from "@/lib/data/app-users";
 
 export type CredentialsPayload = {
   name: string;
@@ -29,6 +36,7 @@ export type CredentialsPayload = {
 export type UsersActionState = {
   error?: string;
   credentials?: CredentialsPayload;
+  createdUser?: ManagedUser;
 } | null;
 
 const createSchema = z.object({
@@ -74,12 +82,16 @@ async function setUserAccess(input: {
   if (!ready.ok) return { error: ready.error };
   const { admin } = ready;
 
-  const { data: role } = await admin.from("roles").select("id, name, code").eq("code", input.roleCode).maybeSingle();
-  if (!role) return { error: "Selected role was not found." };
-
-  const { data: units } = await admin.from("business_units").select("id, code, name");
   const assignedCodes = modulesForAssignment(input.moduleCodes);
-  const assignedUnits = (units ?? []).filter((unit) => assignedCodes.includes(unit.code));
+  const [roleResult, unitsResult] = await Promise.all([
+    admin.from("roles").select("id, name, code").eq("code", input.roleCode).maybeSingle(),
+    assignedCodes.length
+      ? admin.from("business_units").select("id, code, name").in("code", assignedCodes)
+      : Promise.resolve({ data: [] as { id: string; code: string; name: string }[] }),
+  ]);
+  const role = roleResult.data;
+  if (!role) return { error: "Selected role was not found." };
+  const assignedUnits = unitsResult.data ?? [];
 
   const profilePatch: Record<string, unknown> = {
     role_id: role.id,
@@ -118,7 +130,7 @@ export async function createUserAction(
   _prev: UsersActionState,
   formData: FormData,
 ): Promise<UsersActionState> {
-  await requireOwner();
+  await requireVerifiedOwner();
   const ready = adminOrError();
   if (!ready.ok) return { error: ready.error };
 
@@ -147,7 +159,26 @@ export async function createUserAction(
 
   const authEmail = emailValue || syntheticEmailForPhone(phoneValue!);
   const temporaryPassword = generateTemporaryPassword();
+  const assignedCodes = modulesForAssignment(parsed.data.modules);
+  const metadataModules = parsed.data.modules.includes(ALL_MODULES_VALUE) ? ["*"] : assignedCodes;
   const { admin } = ready;
+
+  const catalog = await getAccessCatalog();
+  const role =
+    catalog.roles.find((item) => item.code === parsed.data.roleCode) ??
+    (
+      await admin.from("roles").select("id, code, name").eq("code", parsed.data.roleCode).maybeSingle()
+    ).data;
+  if (!role) {
+    return { error: "Selected role was not found." };
+  }
+  let assignedUnits = catalog.units.filter((unit) =>
+    assignedCodes.includes(unit.code as (typeof assignedCodes)[number]),
+  );
+  if (assignedCodes.length && assignedUnits.length === 0) {
+    const { data } = await admin.from("business_units").select("id, code, name").in("code", assignedCodes);
+    assignedUnits = (data ?? []) as typeof catalog.units;
+  }
 
   const created = await admin.auth.admin.createUser({
     email: authEmail,
@@ -159,7 +190,7 @@ export async function createUserAction(
     },
     app_metadata: {
       role_code: parsed.data.roleCode,
-      modules: parsed.data.modules.includes(ALL_MODULES_VALUE) ? ["*"] : parsed.data.modules,
+      modules: metadataModules,
     },
   });
 
@@ -167,12 +198,7 @@ export async function createUserAction(
     return { error: created.error?.message || "Unable to create the user in Supabase Auth." };
   }
 
-  const { data: role } = await admin.from("roles").select("id, name").eq("code", parsed.data.roleCode).maybeSingle();
-  if (!role) {
-    await admin.auth.admin.deleteUser(created.data.user.id);
-    return { error: "Selected role was not found." };
-  }
-
+  const createdAt = new Date().toISOString();
   const { error: profileError } = await admin.from("profiles").insert({
     id: created.data.user.id,
     full_name: parsed.data.name,
@@ -190,27 +216,53 @@ export async function createUserAction(
     return { error: "Unable to save the user profile." };
   }
 
-  const assigned = await setUserAccess({
-    userId: created.data.user.id,
-    roleCode: parsed.data.roleCode,
-    moduleCodes: parsed.data.modules,
-  });
-  if ("error" in assigned) return { error: assigned.error };
+  if (assignedUnits.length) {
+    const { error: assignmentError } = await admin.from("user_business_units").insert(
+      assignedUnits.map((unit) => ({ user_id: created.data.user.id, business_unit_id: unit.id })),
+    );
+    if (assignmentError) {
+      await admin.auth.admin.deleteUser(created.data.user.id);
+      return { error: "Unable to assign modules." };
+    }
+  }
 
-  revalidatePath("/owner/users");
+  const roleName = role.name || roleDefinition(parsed.data.roleCode)?.name || parsed.data.roleCode;
+  const createdUser: ManagedUser = {
+    id: created.data.user.id,
+    name: parsed.data.name,
+    email: emailValue || authEmail,
+    phone: phoneValue,
+    loginIdentifier: displayLoginIdentifier({ email: emailValue || authEmail, phone: phoneValue }),
+    roleCode: parsed.data.roleCode,
+    roleName,
+    modules: metadataModules,
+    moduleNames: metadataModules.includes("*")
+      ? ["All modules"]
+      : assignedUnits.map((unit) => unit.name),
+    isActive: true,
+    mustChangePassword: true,
+    failedLoginAttempts: 0,
+    lockedAt: null,
+    lastLoginAt: null,
+    createdAt,
+    status: "pending_password",
+  };
+  createdUser.status = statusOf(createdUser);
+
   return {
     credentials: {
       name: parsed.data.name,
       loginIdentifier: emailValue || phoneValue || authEmail,
       temporaryPassword,
-      modules: assigned.modules,
-      roleName: assigned.roleName,
+      modules: metadataModules,
+      roleName,
     },
+    createdUser,
   };
 }
 
 export async function resetPasswordAction(userId: string): Promise<UsersActionState> {
-  const actor = await requireOwner();
+  const actor = await requireVerifiedOwner();
   if (userId === actor.id) {
     return { error: "You cannot reset your own password from this screen." };
   }
@@ -248,7 +300,7 @@ export async function resetPasswordAction(userId: string): Promise<UsersActionSt
 }
 
 export async function unlockUserAction(userId: string): Promise<{ error?: string }> {
-  const actor = await requireOwner();
+  const actor = await requireVerifiedOwner();
   if (userId === actor.id) return { error: "You cannot unlock your own account from this screen." };
   const ready = adminOrError();
   if (!ready.ok) return { error: ready.error };
@@ -267,7 +319,7 @@ export async function unlockUserAction(userId: string): Promise<{ error?: string
 }
 
 export async function disableUserAction(userId: string): Promise<{ error?: string }> {
-  const actor = await requireOwner();
+  const actor = await requireVerifiedOwner();
   if (userId === actor.id) return { error: "You cannot disable your own account." };
   const ready = adminOrError();
   if (!ready.ok) return { error: ready.error };
@@ -289,7 +341,7 @@ export async function disableUserAction(userId: string): Promise<{ error?: strin
 }
 
 export async function enableUserAction(userId: string): Promise<{ error?: string }> {
-  await requireOwner();
+  await requireVerifiedOwner();
   const ready = adminOrError();
   if (!ready.ok) return { error: ready.error };
   await ready.admin
@@ -304,7 +356,7 @@ export async function updateUserAction(
   _prev: UsersActionState,
   formData: FormData,
 ): Promise<UsersActionState> {
-  const actor = await requireOwner();
+  const actor = await requireVerifiedOwner();
   const userId = String(formData.get("userId") ?? "");
   if (!userId) return { error: "User was not found." };
   if (userId === actor.id) {

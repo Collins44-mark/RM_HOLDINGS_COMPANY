@@ -7,24 +7,17 @@ import { PageFooter } from "@/components/layout/PageFooter";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { ModuleContextBar } from "@/components/layout/ModuleContextBar";
 import { useSidebarCollapsed } from "@/lib/hooks/useSidebarCollapsed";
-import { SIDEBAR_WIDTH, type ModuleCode } from "@/lib/config/app";
+import { navigationForPath } from "@/lib/auth/nav";
+import { isOwnerRole } from "@/lib/auth/rbac";
+import { SIDEBAR_WIDTH } from "@/lib/config/app";
 import type { AuthUser } from "@/lib/auth/types";
-import type { NavItem } from "@/lib/config/navigation";
 
 export function AppShell({
   user,
-  nav,
-  workspace,
-  moduleCode,
-  showGroupCrumb = false,
   notifications,
   children,
 }: {
   user: AuthUser;
-  nav: NavItem[];
-  workspace?: { label: string; items: NavItem[] };
-  moduleCode?: ModuleCode;
-  showGroupCrumb?: boolean;
   notifications: { id: string; title: string; body: string; href: string | null; createdAt: string }[];
   children: React.ReactNode;
 }) {
@@ -33,6 +26,7 @@ export function AppShell({
   const pathname = usePathname();
   const sidebarWidth = collapsed ? SIDEBAR_WIDTH.collapsed : SIDEBAR_WIDTH.expanded;
   const showFooter = pathname !== "/owner" && pathname !== "/dashboard";
+  const { nav, workspace, moduleCode } = navigationForPath(user, pathname);
 
   return (
     <div className="relative min-h-screen overflow-x-clip">
@@ -79,7 +73,7 @@ export function AppShell({
           {moduleCode && moduleCode !== "owner" ? (
             <ModuleContextBar
               moduleCode={moduleCode}
-              showDashboardCrumb={showGroupCrumb}
+              showDashboardCrumb={isOwnerRole(user.roleCode)}
             />
           ) : null}
           {children}

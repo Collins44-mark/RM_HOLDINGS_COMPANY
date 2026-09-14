@@ -1,3 +1,5 @@
+import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isOwnerRole } from "@/lib/auth/rbac";
@@ -25,6 +27,34 @@ export type ManagedUser = {
   createdAt: string;
   status: ManagedUserStatus;
 };
+
+export type LightProfileRecord = {
+  id: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  avatar_url: string | null;
+  is_active: boolean;
+  must_change_password: boolean;
+  locked_at: string | null;
+};
+
+const LIGHT_PROFILE_SELECT = `
+  id,
+  full_name,
+  email,
+  phone,
+  avatar_url,
+  is_active,
+  must_change_password,
+  locked_at
+`;
+
+const LOGIN_PROFILE_SELECT = `
+  ${LIGHT_PROFILE_SELECT},
+  failed_login_attempts,
+  role:roles(code, name)
+`;
 
 export type ProfileRecord = {
   id: string;
@@ -143,7 +173,7 @@ export async function listManagedUsers() {
   return (data as unknown as ProfileRecord[]).map(toManagedUser);
 }
 
-export async function findProfileById(id: string) {
+export const findProfileById = cache(async function findProfileById(id: string) {
   const admin = createSupabaseAdminClient();
   const client = admin ?? (await createSupabaseServerClient());
   if (!client) return null;
@@ -154,11 +184,24 @@ export async function findProfileById(id: string) {
     .maybeSingle();
   if (error || !data) return null;
   return data as unknown as ProfileRecord;
-}
+});
 
 export async function findProfileByAuthId(id: string) {
   return findProfileById(id);
 }
+
+export const findLightProfileByAuthId = cache(async function findLightProfileByAuthId(id: string) {
+  const admin = createSupabaseAdminClient();
+  const client = admin ?? (await createSupabaseServerClient());
+  if (!client) return null;
+  const { data, error } = await client
+    .from("profiles")
+    .select(LIGHT_PROFILE_SELECT)
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as unknown as LightProfileRecord;
+});
 
 export async function findProfileByIdentifier(identifier: string) {
   const admin = createSupabaseAdminClient();
@@ -168,12 +211,12 @@ export async function findProfileByIdentifier(identifier: string) {
   const digits = value.replace(/\D/g, "");
 
   if (email.includes("@")) {
-    const { data } = await admin.from("profiles").select(PROFILE_SELECT).eq("email", email).maybeSingle();
+    const { data } = await admin.from("profiles").select(LOGIN_PROFILE_SELECT).eq("email", email).maybeSingle();
     return (data as unknown as ProfileRecord | null) ?? null;
   }
 
   if (digits.length >= 9) {
-    const { data } = await admin.from("profiles").select(PROFILE_SELECT).eq("phone", digits).maybeSingle();
+    const { data } = await admin.from("profiles").select(LOGIN_PROFILE_SELECT).eq("phone", digits).maybeSingle();
     return (data as unknown as ProfileRecord | null) ?? null;
   }
 
@@ -187,6 +230,29 @@ export async function countProfiles() {
   const { count } = await client.from("profiles").select("id", { count: "exact", head: true });
   return count ?? 0;
 }
+
+export type AccessCatalogRole = { id: string; code: string; name: string };
+export type AccessCatalogUnit = { id: string; code: string; name: string };
+
+async function loadAccessCatalog(): Promise<{
+  roles: AccessCatalogRole[];
+  units: AccessCatalogUnit[];
+}> {
+  const admin = createSupabaseAdminClient();
+  if (!admin) return { roles: [], units: [] };
+  const [roles, units] = await Promise.all([
+    admin.from("roles").select("id, code, name"),
+    admin.from("business_units").select("id, code, name"),
+  ]);
+  return {
+    roles: (roles.data ?? []) as AccessCatalogRole[],
+    units: (units.data ?? []) as AccessCatalogUnit[],
+  };
+}
+
+export const getAccessCatalog = unstable_cache(loadAccessCatalog, ["access-catalog"], {
+  revalidate: 300,
+});
 
 export function emptyModuleCounts() {
   return Object.fromEntries(BUSINESS_UNITS.map((unit) => [unit.code, 0])) as Record<string, number>;

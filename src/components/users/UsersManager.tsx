@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Plus, Search } from "lucide-react";
 import { PageHeader, Surface } from "@/components/ui/PageHeader";
 import { ModuleIcon } from "@/components/icons/ModuleIcon";
@@ -27,6 +26,13 @@ const STATUS_LABEL: Record<ManagedUserStatus, string> = {
   locked: "Locked",
   disabled: "Disabled",
 };
+
+function statusOf(user: Pick<ManagedUser, "isActive" | "mustChangePassword" | "lockedAt">): ManagedUserStatus {
+  if (!user.isActive) return "disabled";
+  if (user.lockedAt) return "locked";
+  if (user.mustChangePassword) return "pending_password";
+  return "active";
+}
 
 function initials(name: string) {
   const parts = name.split(/\s+/).filter(Boolean);
@@ -66,7 +72,7 @@ export function UsersManager({
   users: ManagedUser[];
   currentUserId: string;
 }) {
-  const router = useRouter();
+  const [rows, setRows] = useState(users);
   const [moduleFilter, setModuleFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -77,13 +83,13 @@ export function UsersManager({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const counts = moduleCountsFromUsers(users);
+  const counts = moduleCountsFromUsers(rows);
   const roles = useMemo(
-    () => Array.from(new Map(users.map((user) => [user.roleCode, user.roleName])).entries()),
-    [users],
+    () => Array.from(new Map(rows.map((user) => [user.roleCode, user.roleName])).entries()),
+    [rows],
   );
 
-  const filtered = users.filter((user) => {
+  const filtered = rows.filter((user) => {
     if (moduleFilter !== "all" && !user.modules.includes("*") && !user.modules.includes(moduleFilter)) {
       return false;
     }
@@ -95,10 +101,6 @@ export function UsersManager({
     }
     return true;
   });
-
-  function refresh() {
-    router.refresh();
-  }
 
   return (
     <div className="min-w-0 space-y-5 sm:space-y-6">
@@ -296,9 +298,18 @@ export function UsersManager({
           currentUserId={currentUserId}
           pending={pending}
           onClose={() => setSelected(null)}
-          onUnlock={() => runAction(() => unlockUserAction(selected.id), () => setSelected(null))}
-          onDisable={() => runAction(() => disableUserAction(selected.id), () => setSelected(null))}
-          onEnable={() => runAction(() => enableUserAction(selected.id), () => setSelected(null))}
+          onUnlock={() =>
+            runAction(() => unlockUserAction(selected.id), () => setSelected(null), {
+              lockedAt: null,
+              failedLoginAttempts: 0,
+            })
+          }
+          onDisable={() =>
+            runAction(() => disableUserAction(selected.id), () => setSelected(null), { isActive: false })
+          }
+          onEnable={() =>
+            runAction(() => enableUserAction(selected.id), () => setSelected(null), { isActive: true })
+          }
           onReset={() =>
             startTransition(async () => {
               const result = await resetPasswordAction(selected.id);
@@ -325,20 +336,39 @@ export function UsersManager({
       setError(result.error);
       return;
     }
+    if (result?.createdUser) {
+      setRows((current) =>
+        current.some((user) => user.id === result.createdUser!.id)
+          ? current
+          : [...current, result.createdUser!],
+      );
+    }
     if (result?.credentials) setCredentials(result.credentials);
     close();
-    refresh();
   }
 
-  function runAction(action: () => Promise<{ error?: string }>, close: () => void) {
+  function runAction(
+    action: () => Promise<{ error?: string }>,
+    close: () => void,
+    patch?: Partial<ManagedUser>,
+  ) {
     startTransition(async () => {
       const result = await action();
       if (result.error) {
         setError(result.error);
         return;
       }
+      if (patch && selected) {
+        setRows((current) =>
+          current.map((user) => {
+            if (user.id !== selected.id) return user;
+            const next = { ...user, ...patch };
+            next.status = statusOf(next);
+            return next;
+          }),
+        );
+      }
       close();
-      refresh();
     });
   }
 }

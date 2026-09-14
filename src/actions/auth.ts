@@ -3,10 +3,9 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { canAccessPath, landingPathFor } from "@/lib/auth/access";
-import { identityFromUser } from "@/lib/auth/types";
-import { getAuthUser } from "@/lib/auth/session";
 import { signInWithPassword, signOutFromAuthProvider } from "@/lib/auth/sign-in";
 import { CHANGE_PASSWORD_PATH, LOGIN_PATH } from "@/lib/config/app";
+import { permissionsForRoleCode } from "@/lib/auth/role-options";
 
 const loginSchema = z.object({
   identifier: z.string().trim().min(3),
@@ -36,18 +35,21 @@ export async function loginAction(
     return { error: signedIn.error };
   }
 
-  const user = await getAuthUser();
-  if (user?.mustChangePassword) {
+  if (signedIn.mustChangePassword) {
     redirect(CHANGE_PASSWORD_PATH);
   }
 
+  const identity = {
+    role: signedIn.roleCode,
+    modules: signedIn.modules,
+    permissions: permissionsForRoleCode(signedIn.roleCode),
+  };
+
   const requested = typeof next === "string" && next.startsWith("/") ? next : null;
   const destination =
-    user && requested && requested !== LOGIN_PATH && requested !== CHANGE_PASSWORD_PATH && canAccessPath(identityFromUser(user), requested)
+    requested && requested !== LOGIN_PATH && requested !== CHANGE_PASSWORD_PATH && canAccessPath(identity, requested)
       ? requested
-      : user
-        ? landingPathFor(identityFromUser(user))
-        : LOGIN_PATH;
+      : landingPathFor(identity);
 
   redirect(destination);
 }

@@ -4,7 +4,7 @@ import { MODULE_NAV, OWNER_NAV } from "@/lib/config/navigation";
 import { canAccessPath } from "@/lib/auth/access";
 import { identityFromUser } from "@/lib/auth/types";
 import { isOwnerRole } from "@/lib/auth/rbac";
-import { getBusinessUnit, type ModuleCode } from "@/lib/config/app";
+import { getBusinessUnit, getModuleFromPath, type ModuleCode } from "@/lib/config/app";
 
 export function filterNavForUser(items: NavItem[], user: AuthUser): NavItem[] {
   const identity = identityFromUser(user);
@@ -35,4 +35,35 @@ export function consoleNavigation(user: AuthUser, moduleCode: ModuleCode) {
     nav: filterNavForUser(MODULE_NAV[moduleCode] ?? [], user),
     workspace: undefined,
   };
+}
+
+const UNIT_ICONS: Record<string, string> = {
+  rice: "wheat",
+  farm: "tractor",
+  supermarket: "cart",
+  property: "building",
+  livestock: "paw",
+  school: "school",
+  beekeeping: "hexagon",
+};
+
+export function navigationForPath(user: AuthUser, pathname: string) {
+  if (pathname === "/workspace" || pathname.startsWith("/workspace/")) {
+    const nav: NavItem[] = [
+      { href: "/workspace", label: "Workspaces", icon: "dashboard", exact: true },
+      ...user.businessUnits.map((unit) => ({
+        href: `/${unit.code}`,
+        label: unit.name,
+        icon: UNIT_ICONS[unit.code] ?? "building",
+      })),
+    ];
+    return { nav, workspace: undefined, moduleCode: undefined as ModuleCode | undefined };
+  }
+
+  const fromPath = getModuleFromPath(pathname);
+  const assigned = user.modules.find((code) => code !== "*") as ModuleCode | undefined;
+  const moduleCode: ModuleCode =
+    fromPath ?? (isOwnerRole(user.roleCode) ? "owner" : assigned ?? "owner");
+  const { nav, workspace } = consoleNavigation(user, moduleCode);
+  return { nav, workspace, moduleCode };
 }

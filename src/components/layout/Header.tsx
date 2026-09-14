@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
 import { Bell, ChevronDown, LogOut, Search, UserRound } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
 import { SEARCH_INDEX } from "@/lib/config/navigation";
@@ -28,6 +29,20 @@ function profileImage(user: AuthUser) {
   if (user.avatarUrl) return user.avatarUrl;
   if (isOwnerRole(user.roleCode)) return "/images/owner-avatar.jpg";
   return null;
+}
+
+function SignOutButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-[#b42318] hover:bg-red-50 disabled:opacity-60"
+    >
+      <LogOut className="h-4 w-4" />
+      {pending ? "Signing out..." : "Sign out"}
+    </button>
+  );
 }
 
 function MenuLines({ className }: { className?: string }) {
@@ -237,13 +252,7 @@ export function Header({
                 Profile Settings
               </Link>
               <form action={logoutAction}>
-                <button
-                  type="submit"
-                  className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-[#b42318] hover:bg-red-50"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Sign out
-                </button>
+                <SignOutButton />
               </form>
             </div>
           ) : null}

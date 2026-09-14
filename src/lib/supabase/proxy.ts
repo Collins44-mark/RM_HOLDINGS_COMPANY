@@ -1,15 +1,29 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isPublicPath } from "@/lib/auth/access";
 import {
   isSupabaseConfigured,
   PUBLIC_SUPABASE_ANON_KEY,
   PUBLIC_SUPABASE_URL,
 } from "@/lib/supabase/env";
 
+function hasSupabaseAuthCookie(request: NextRequest) {
+  return request.cookies.getAll().some((cookie) => cookie.name.includes("-auth-token"));
+}
+
 export async function refreshSupabaseSession(request: NextRequest) {
   const response = NextResponse.next({ request });
   if (!isSupabaseConfigured()) {
     return { userId: null as string | null, email: null as string | null, appMetadata: {} as Record<string, unknown>, response };
+  }
+
+  if (!hasSupabaseAuthCookie(request)) {
+    return {
+      userId: null as string | null,
+      email: null as string | null,
+      appMetadata: {} as Record<string, unknown>,
+      response,
+    };
   }
 
   const supabase = createServerClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
@@ -32,10 +46,10 @@ export async function refreshSupabaseSession(request: NextRequest) {
     request.headers.has("next-url") ||
     request.headers.get("rsc") === "1" ||
     request.headers.get("next-router-prefetch") === "1";
+  const useCookieSession =
+    isClientNavigation || isPublicPath(request.nextUrl.pathname);
 
-  // Soft navigations already passed getUser() on the document request.
-  // Read the cookie session locally so each Link click is not a Supabase Auth round-trip.
-  if (isClientNavigation) {
+  if (useCookieSession) {
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -44,6 +58,14 @@ export async function refreshSupabaseSession(request: NextRequest) {
         userId: session.user.id,
         email: session.user.email ?? null,
         appMetadata: (session.user.app_metadata ?? {}) as Record<string, unknown>,
+        response,
+      };
+    }
+    if (isClientNavigation) {
+      return {
+        userId: null as string | null,
+        email: null as string | null,
+        appMetadata: {} as Record<string, unknown>,
         response,
       };
     }

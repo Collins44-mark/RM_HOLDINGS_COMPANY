@@ -1,6 +1,8 @@
+import { after } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isOwnerRole } from "@/lib/auth/rbac";
+import { identityFromAppMetadata } from "@/lib/auth/identity-from-claims";
 import {
   findProfileByIdentifier,
   type ProfileRecord,
@@ -13,7 +15,14 @@ import {
 } from "@/lib/auth/identifiers";
 
 export type PasswordSignInResult =
-  | { ok: true; authUid: string; email: string }
+  | {
+      ok: true;
+      authUid: string;
+      email: string;
+      mustChangePassword: boolean;
+      roleCode: string;
+      modules: string[];
+    }
   | { ok: false; error: string };
 
 const GENERIC_INVALID = "Invalid email or password.";
@@ -49,6 +58,22 @@ async function registerFailedAttempt(profile: ProfileRecord | null) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", profile.id);
+}
+
+function recordLastLogin(userId: string) {
+  after(async () => {
+    const admin = createSupabaseAdminClient();
+    if (!admin) return;
+    await admin
+      .from("profiles")
+      .update({
+        failed_login_attempts: 0,
+        locked_at: null,
+        last_login_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", userId);
+  });
 }
 
 export async function signInWithPassword(
@@ -87,28 +112,28 @@ export async function signInWithPassword(
     return { ok: false, error: GENERIC_INVALID };
   }
 
-  const admin = createSupabaseAdminClient();
-  if (admin) {
-    await admin
-      .from("profiles")
-      .update({
-        failed_login_attempts: 0,
-        locked_at: null,
-        last_login_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", data.user.id);
-  }
+  recordLastLogin(data.user.id);
+
+  const claims = identityFromAppMetadata(data.user.app_metadata);
+  const roleCode = claims?.role || roleCodeOf(profile as ProfileRecord) || "SUPER_ADMIN";
+  const modules = claims?.modules?.length
+    ? claims.modules
+    : isOwnerRole(roleCode)
+      ? ["*"]
+      : [];
 
   return {
     ok: true,
     authUid: data.user.id,
     email: data.user.email?.toLowerCase() ?? email,
+    mustChangePassword: Boolean(profile?.must_change_password),
+    roleCode,
+    modules,
   };
 }
 
 export async function signOutFromAuthProvider() {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return;
-  await supabase.auth.signOut();
+  await supabase.auth.signOut({ scope: "local" });
 }

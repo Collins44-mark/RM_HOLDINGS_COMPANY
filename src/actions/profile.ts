@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getAuthUser } from "@/lib/auth/session";
+import { getVerifiedAuthUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const profileSchema = z.object({
@@ -15,7 +15,7 @@ export async function updateProfileAction(
   _prev: ProfileState,
   formData: FormData,
 ): Promise<ProfileState> {
-  const actor = await getAuthUser();
+  const actor = await getVerifiedAuthUser();
   if (!actor) {
     return { error: "You must be signed in to update your profile." };
   }
@@ -41,9 +41,6 @@ export async function updateProfileAction(
     return { error: "Unable to save your name. Please try again." };
   }
 
-  revalidatePath("/", "layout");
-  revalidatePath("/dashboard");
   revalidatePath("/profile");
-  revalidatePath("/owner");
   return { success: true };
 }

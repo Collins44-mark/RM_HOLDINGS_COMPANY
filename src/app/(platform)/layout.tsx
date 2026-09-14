@@ -1,5 +1,5 @@
-import { ModuleConsole } from "@/components/layout/ModuleConsole";
+import { AuthenticatedShell } from "@/components/layout/AuthenticatedShell";
 
 export default function PlatformLayout({ children }: { children: React.ReactNode }) {
-  return <ModuleConsole module="owner">{children}</ModuleConsole>;
+  return <AuthenticatedShell>{children}</AuthenticatedShell>;
 }

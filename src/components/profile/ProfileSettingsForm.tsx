@@ -1,7 +1,6 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useActionState } from "react";
 import { Lock } from "lucide-react";
 import { updateProfileAction, type ProfileState } from "@/actions/profile";
 import { useAuth } from "@/components/auth/AuthProvider";
@@ -29,17 +28,10 @@ const readOnlyClass =
 export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
   const { user: authUser } = useAuth();
   const user = userProp ?? authUser;
-  const router = useRouter();
   const [state, action, pending] = useActionState<ProfileState, FormData>(
     updateProfileAction,
     null,
   );
-
-  useEffect(() => {
-    if (state?.success) {
-      router.refresh();
-    }
-  }, [state, router]);
 
   if (!user) return null;
 

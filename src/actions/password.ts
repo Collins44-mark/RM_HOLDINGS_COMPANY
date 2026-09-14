@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getAuthUser } from "@/lib/auth/session";
+import { getVerifiedAuthUser } from "@/lib/auth/session";
 import { identityFromUser } from "@/lib/auth/types";
 import { landingPathFor } from "@/lib/auth/access";
 import { LOGIN_PATH } from "@/lib/config/app";
@@ -25,7 +25,7 @@ export async function changePasswordAction(
   _prev: PasswordChangeState,
   formData: FormData,
 ): Promise<PasswordChangeState> {
-  const user = await getAuthUser();
+  const user = await getVerifiedAuthUser();
   if (!user) redirect(LOGIN_PATH);
 
   const parsed = schema.safeParse({
