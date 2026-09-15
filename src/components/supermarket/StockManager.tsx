@@ -51,12 +51,41 @@ type DrawerMode = "add" | "view" | "history" | null;
 type MovementRow = ReturnType<typeof movementsForProduct>[number];
 
 const glass =
-  "rounded-[20px] border border-white/80 bg-white/68 shadow-[0_8px_28px_rgba(15,35,64,0.04)] backdrop-blur-xl";
-const selectClass =
-  "h-10 w-full rounded-[12px] border border-black/[0.04] bg-white/60 px-3 text-[13px] text-navy outline-none backdrop-blur-sm transition focus:border-navy/12 focus:bg-white/85";
+  "rounded-[24px] border border-white/70 bg-white/74 shadow-[0_10px_32px_rgba(15,35,64,0.045)] backdrop-blur-xl";
+const filterClass =
+  "h-9 w-full rounded-full border border-white/80 bg-white/78 px-3.5 text-[13px] text-navy shadow-[0_1px_2px_rgba(15,35,64,0.04)] outline-none backdrop-blur-md transition focus:border-navy/10 focus:bg-white";
 const inputClass =
-  "h-10 w-full rounded-[12px] border border-black/[0.04] bg-white/60 px-3 text-[13px] text-navy outline-none backdrop-blur-sm transition placeholder:text-slate-400 focus:border-navy/12 focus:bg-white/85";
+  "h-10 w-full rounded-[14px] border border-white/80 bg-white/70 px-3 text-[13px] text-navy outline-none backdrop-blur-sm transition placeholder:text-slate-400 focus:border-navy/12 focus:bg-white/90";
 const PAGE_SIZES = [10, 20, 50] as const;
+
+type KpiTone = "blue" | "green" | "amber" | "rose" | "violet" | "pink";
+
+const KPI_TONES: Record<KpiTone, { card: string; icon: string }> = {
+  blue: {
+    card: "border-sky-200/35 bg-[#eef5ff]/78",
+    icon: "bg-sky-100/80 text-sky-700",
+  },
+  green: {
+    card: "border-emerald-200/35 bg-[#eefaf2]/78",
+    icon: "bg-emerald-100/80 text-emerald-700",
+  },
+  amber: {
+    card: "border-amber-200/40 bg-[#fff8eb]/82",
+    icon: "bg-amber-100/80 text-amber-600",
+  },
+  rose: {
+    card: "border-rose-200/40 bg-[#fff1f2]/80",
+    icon: "bg-rose-100/80 text-rose-600",
+  },
+  violet: {
+    card: "border-violet-200/40 bg-[#f4f1ff]/82",
+    icon: "bg-violet-100/80 text-violet-600",
+  },
+  pink: {
+    card: "border-rose-200/30 bg-[#fff4f1]/80",
+    icon: "bg-rose-100/70 text-rose-500",
+  },
+};
 
 function canManageStock(user: AuthUser | null, permission: string) {
   if (!user) return false;
@@ -173,11 +202,11 @@ export function StockManager() {
   }
 
   return (
-    <div className="min-w-0 space-y-3 sm:space-y-3.5">
+    <div className="min-w-0 space-y-3.5 sm:space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-[24px] font-semibold tracking-[-0.04em] text-navy sm:text-[28px]">Stock</h1>
-          <p className="mt-1 max-w-xl text-[13px] leading-5 text-slate-500">
+          <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Stock</h1>
+          <p className="mt-1.5 max-w-xl text-[13px] leading-5 text-slate-500">
             Manage inventory levels, batches, expiry dates and stock movements.
           </p>
         </div>
@@ -185,7 +214,7 @@ export function StockManager() {
           <button
             type="button"
             onClick={() => openAdd()}
-            className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-[14px] bg-navy px-4 text-[13.5px] font-semibold text-white shadow-[0_8px_18px_rgba(15,35,64,0.16)] transition hover:bg-[#132844] sm:w-auto"
+            className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_8px_18px_rgba(11,34,68,0.18)] transition hover:bg-[#102a52] sm:w-auto"
           >
             <Plus className="h-4 w-4" strokeWidth={2.2} />
             Add Stock
@@ -193,33 +222,34 @@ export function StockManager() {
         ) : null}
       </div>
 
-      <section className="grid grid-cols-2 gap-2 sm:gap-2.5 lg:grid-cols-3 xl:grid-cols-6">
-        <KpiCard label="Total Products" value={String(kpis.totalProducts)} hint="Active catalogue" icon={Package} />
-        <KpiCard label="Total Stock Units" value={String(kpis.totalStockUnits)} hint="Across all products" icon={Warehouse} />
-        <KpiCard label="Low Stock" value={String(kpis.lowStock)} hint="Need attention" icon={AlertTriangle} />
-        <KpiCard label="Out of Stock" value={String(kpis.outOfStock)} hint="Zero available" icon={Ban} />
+      <section className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-3 xl:grid-cols-6">
+        <KpiCard label="Total Products" value={String(kpis.totalProducts)} hint="Active catalogue" icon={Package} tone="blue" />
+        <KpiCard label="Total Stock Units" value={String(kpis.totalStockUnits)} hint="Across all products" icon={Warehouse} tone="green" />
+        <KpiCard label="Low Stock" value={String(kpis.lowStock)} hint="Need attention" icon={AlertTriangle} tone="amber" />
+        <KpiCard label="Out of Stock" value={String(kpis.outOfStock)} hint="Zero available" icon={Ban} tone="rose" />
         <KpiCard
           label="Expiring Soon"
           value={String(kpis.expiringSoonUnits)}
           hint={`Units within ${EXPIRING_SOON_DAYS} days`}
           icon={Clock3}
+          tone="violet"
         />
-        <KpiCard label="Expired" value={String(kpis.expiredUnits)} hint="Require action" icon={TimerReset} />
+        <KpiCard label="Expired" value={String(kpis.expiredUnits)} hint="Require action" icon={TimerReset} tone="pink" />
       </section>
 
       <section className={cn(glass, "overflow-hidden")}>
-        <div className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-2 xl:grid-cols-5">
-          <label className="relative block sm:col-span-2 xl:col-span-1">
+        <div className="flex flex-col gap-2 p-3 lg:flex-row lg:flex-wrap lg:items-center">
+          <label className="relative block min-w-0 flex-1 lg:min-w-[220px]">
             <span className="sr-only">Search stock</span>
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search products, SKU, barcode..."
-              className={cn(inputClass, "pl-9")}
+              className={cn(filterClass, "pl-9")}
             />
           </label>
-          <select value={category} onChange={(event) => setCategory(event.target.value)} className={selectClass}>
+          <select value={category} onChange={(event) => setCategory(event.target.value)} className={cn(filterClass, "lg:w-auto lg:min-w-[148px]")}>
             <option value="all">All Categories</option>
             {SUPERMARKET_PRODUCT_CATEGORIES.map((item) => (
               <option key={item} value={item}>
@@ -230,7 +260,7 @@ export function StockManager() {
           <select
             value={status}
             onChange={(event) => setStatus(event.target.value as StockStatusFilter)}
-            className={selectClass}
+            className={cn(filterClass, "lg:w-auto lg:min-w-[148px]")}
           >
             <option value="all">All Stock Status</option>
             <option value="In Stock">In Stock</option>
@@ -240,7 +270,7 @@ export function StockManager() {
           <select
             value={expiry}
             onChange={(event) => setExpiry(event.target.value as ExpiryFilter)}
-            className={selectClass}
+            className={cn(filterClass, "lg:w-auto lg:min-w-[148px]")}
           >
             <option value="all">All Expiry Status</option>
             <option value="No Expiry">No Expiry</option>
@@ -248,7 +278,7 @@ export function StockManager() {
             <option value="Expiring Soon">Expiring Soon</option>
             <option value="Expired">Expired</option>
           </select>
-          <select value={sort} onChange={(event) => setSort(event.target.value as StockSort)} className={selectClass}>
+          <select value={sort} onChange={(event) => setSort(event.target.value as StockSort)} className={cn(filterClass, "lg:w-auto lg:min-w-[136px]")}>
             <option value="name">Product A-Z</option>
             <option value="stock-low">Lowest Stock</option>
             <option value="stock-high">Highest Stock</option>
@@ -276,24 +306,24 @@ export function StockManager() {
                 </thead>
                 <tbody>
                   {pageRows.map((product) => (
-                    <tr key={product.id} className="border-t border-black/[0.035]">
-                      <td className="px-4 py-2.5">
+                    <tr key={product.id} className="border-t border-black/[0.04]">
+                      <td className="px-4 py-3">
                         <ProductName
                           product={product}
                           onOpen={() => openView(product.id)}
                         />
                       </td>
-                      <td className="px-4 py-2.5 text-slate-500">{product.sku}</td>
-                      <td className="px-4 py-2.5 text-slate-500">{product.category}</td>
-                      <td className="px-4 py-2.5 text-[14px] font-semibold tracking-[-0.03em] text-navy">{product.stock}</td>
-                      <td className="px-4 py-2.5 text-slate-500">{product.reorderLevel}</td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-3 text-[13px] text-slate-400">{product.sku}</td>
+                      <td className="px-4 py-3 text-[13px] text-slate-500">{product.category}</td>
+                      <td className="px-4 py-3 text-[14px] font-semibold tracking-[-0.03em] text-navy">{product.stock}</td>
+                      <td className="px-4 py-3 text-[13px] text-slate-500">{product.reorderLevel}</td>
+                      <td className="px-4 py-3">
                         <StatusLabel value={product.stockStatus} />
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-3">
                         <ExpiryCell productId={product.id} batches={inventory.batches} />
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-3">
                         <RowActions
                           product={product}
                           open={menuId === product.id}
@@ -324,21 +354,21 @@ export function StockManager() {
                 </thead>
                 <tbody>
                   {pageRows.map((product) => (
-                    <tr key={product.id} className="border-t border-black/[0.035]">
-                      <td className="px-3.5 py-2.5">
+                    <tr key={product.id} className="border-t border-black/[0.04]">
+                      <td className="px-3.5 py-3">
                         <ProductName product={product} onOpen={() => openView(product.id)} />
                       </td>
-                      <td className="px-3.5 py-2.5">
+                      <td className="px-3.5 py-3">
                         <p className="text-[14px] font-semibold tracking-[-0.03em] text-navy">{product.stock}</p>
                         <p className="text-[11px] text-slate-400">ROP {product.reorderLevel}</p>
                       </td>
-                      <td className="px-3.5 py-2.5">
+                      <td className="px-3.5 py-3">
                         <StatusLabel value={product.stockStatus} />
                       </td>
-                      <td className="px-3.5 py-2.5">
+                      <td className="px-3.5 py-3">
                         <ExpiryCell productId={product.id} batches={inventory.batches} />
                       </td>
-                      <td className="px-3.5 py-2.5">
+                      <td className="px-3.5 py-3">
                         <RowActions
                           product={product}
                           open={menuId === product.id}
@@ -482,20 +512,28 @@ function KpiCard({
   value,
   hint,
   icon: Icon,
+  tone,
 }: {
   label: string;
   value: string;
   hint: string;
   icon: ComponentType<{ className?: string; strokeWidth?: number }>;
+  tone: KpiTone;
 }) {
+  const accent = KPI_TONES[tone];
   return (
-    <article className={cn(glass, "flex min-w-0 items-center gap-2.5 px-3 py-2.5 sm:px-3.5 sm:py-3")}>
-      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-navy/[0.045] text-navy/55">
-        <Icon className="h-3.5 w-3.5" strokeWidth={1.55} />
+    <article
+      className={cn(
+        "flex min-w-0 items-center gap-2.5 rounded-[22px] border px-3.5 py-3 shadow-[0_8px_24px_rgba(15,35,64,0.04)] backdrop-blur-xl sm:px-4 sm:py-3.5",
+        accent.card,
+      )}
+    >
+      <span className={cn("inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px]", accent.icon)}>
+        <Icon className="h-3.5 w-3.5" strokeWidth={1.7} />
       </span>
       <div className="min-w-0">
         <p className="text-[11px] font-medium text-slate-500">{label}</p>
-        <p className="mt-0.5 text-[20px] font-semibold tracking-[-0.04em] text-navy sm:text-[22px]">{value}</p>
+        <p className="mt-0.5 text-[22px] font-semibold tracking-[-0.045em] text-navy sm:text-[24px]">{value}</p>
         <p className="mt-0.5 text-[11px] leading-4 text-slate-400">{hint}</p>
       </div>
     </article>
@@ -510,18 +548,13 @@ function ProductName({
   onOpen: () => void;
 }) {
   return (
-    <button type="button" onClick={onOpen} className="flex min-w-0 items-start gap-2.5 text-left">
-      <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-navy/[0.045] text-navy/40">
-        <Package className="h-3.5 w-3.5" strokeWidth={1.6} />
+    <button type="button" onClick={onOpen} className="min-w-0 text-left">
+      <span className="block truncate text-[13.5px] font-semibold tracking-[-0.02em] text-navy">
+        {product.name}
       </span>
-      <span className="min-w-0">
-        <span className="block truncate text-[13.5px] font-semibold tracking-[-0.02em] text-navy">
-          {product.name}
-        </span>
-        <span className="mt-0.5 block truncate text-[11.5px] text-slate-400">
-          {product.barcode || product.sku}
-          {product.isActive ? "" : " · Inactive"}
-        </span>
+      <span className="mt-0.5 block truncate text-[11.5px] text-slate-400">
+        {product.barcode || product.sku}
+        {product.isActive ? "" : " · Inactive"}
       </span>
     </button>
   );
@@ -559,17 +592,30 @@ function ExpiryCell({ productId, batches }: { productId: string; batches: StockB
 }
 
 function StatusLabel({ value }: { value: string }) {
-  const expired = value === "Expired";
-  const soon = value === "Expiring Soon" || value === "Low Stock" || value === "Out of Stock";
+  const tone =
+    value === "In Stock"
+      ? "bg-emerald-50/90 text-emerald-800"
+      : value === "Low Stock"
+        ? "bg-amber-50/90 text-amber-800"
+        : value === "Out of Stock" || value === "Expired"
+          ? "bg-rose-50/90 text-rose-800"
+          : value === "Expiring Soon"
+            ? "bg-violet-50/90 text-violet-800"
+            : "bg-slate-50/90 text-slate-600";
+  const dot =
+    value === "In Stock"
+      ? "bg-emerald-500"
+      : value === "Low Stock"
+        ? "bg-amber-400"
+        : value === "Out of Stock" || value === "Expired"
+          ? "bg-rose-500"
+          : value === "Expiring Soon"
+            ? "bg-violet-500"
+            : "bg-slate-400";
+
   return (
-    <span
-      className={cn(
-        "text-[12px] tracking-[-0.01em]",
-        expired && "font-semibold text-[#b42318]",
-        !expired && soon && "font-medium text-navy",
-        !expired && !soon && "font-medium text-slate-500",
-      )}
-    >
+    <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] font-medium tracking-[-0.01em]", tone)}>
+      <span className={cn("h-1.5 w-1.5 rounded-full", dot)} />
       {value}
     </span>
   );
@@ -595,7 +641,7 @@ function Pagination({
   onPageSize: (size: (typeof PAGE_SIZES)[number]) => void;
 }) {
   return (
-    <div className="flex flex-col gap-2.5 border-t border-black/[0.035] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-2.5 border-t border-black/[0.04] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-[12.5px] text-slate-500">
         Showing {from} to {to} of {total} products
       </p>
@@ -605,19 +651,19 @@ function Pagination({
             type="button"
             disabled={page <= 1}
             onClick={() => onPage(page - 1)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-slate-400 transition hover:bg-navy/[0.05] hover:text-navy disabled:opacity-30"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/80 bg-white/70 text-slate-400 shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition hover:bg-white hover:text-navy disabled:opacity-30"
             aria-label="Previous page"
           >
             ‹
           </button>
-          <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-[10px] bg-navy px-2 text-[12.5px] font-semibold text-white">
+          <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-[#0b2244] px-2 text-[12.5px] font-semibold text-white shadow-[0_4px_10px_rgba(11,34,68,0.16)]">
             {page}
           </span>
           <button
             type="button"
             disabled={page >= totalPages}
             onClick={() => onPage(page + 1)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-slate-400 transition hover:bg-navy/[0.05] hover:text-navy disabled:opacity-30"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/80 bg-white/70 text-slate-400 shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition hover:bg-white hover:text-navy disabled:opacity-30"
             aria-label="Next page"
           >
             ›
@@ -626,7 +672,7 @@ function Pagination({
         <select
           value={pageSize}
           onChange={(event) => onPageSize(Number(event.target.value) as (typeof PAGE_SIZES)[number])}
-          className="h-8 rounded-[10px] border border-black/[0.04] bg-white/70 px-2 text-[12px] text-navy outline-none"
+          className="h-8 rounded-full border border-white/80 bg-white/75 px-2.5 text-[12px] text-navy shadow-[0_1px_2px_rgba(15,35,64,0.04)] outline-none"
         >
           {PAGE_SIZES.map((size) => (
             <option key={size} value={size}>
@@ -712,7 +758,7 @@ function RowActions({
           if (!open) placeMenu();
           onToggle();
         }}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-slate-400 transition hover:bg-navy/[0.05] hover:text-navy"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/80 bg-white/70 text-slate-400 shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition hover:bg-white hover:text-navy"
         aria-label={`Actions for ${product.name}`}
         aria-expanded={open}
       >

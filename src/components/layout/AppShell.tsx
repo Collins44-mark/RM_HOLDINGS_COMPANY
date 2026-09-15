@@ -29,9 +29,9 @@ export function AppShell({
   const { nav, workspace, moduleCode } = navigationForPath(user, pathname);
 
   return (
-    <div className="relative min-h-screen overflow-x-clip">
+    <div className="relative min-h-screen overflow-x-clip bg-[#eef3f8]">
       <div
-        className="hidden overflow-visible lg:fixed lg:inset-y-0 lg:z-20 lg:flex transition-[width] duration-300 ease-out"
+        className="hidden overflow-visible lg:fixed lg:bottom-3 lg:left-3 lg:top-3 lg:z-20 lg:flex transition-[width] duration-300 ease-out"
         style={{ width: sidebarWidth }}
       >
         <Sidebar items={nav} workspace={workspace} collapsed={collapsed} />
@@ -45,7 +45,7 @@ export function AppShell({
             aria-label="Close navigation"
             onClick={() => setMobileOpen(false)}
           />
-          <div className="relative h-full max-w-[85vw] shadow-2xl" style={{ width: SIDEBAR_WIDTH.expanded }}>
+          <div className="relative h-full max-w-[85vw] overflow-hidden rounded-r-[28px] shadow-2xl" style={{ width: SIDEBAR_WIDTH.expanded }}>
             <Sidebar
               items={nav}
               workspace={workspace}
@@ -57,11 +57,8 @@ export function AppShell({
 
       <div
         className="relative flex min-h-screen flex-col overflow-x-hidden transition-[padding-left] duration-300 ease-out lg:pl-[var(--sidebar-width)]"
-        style={{ ["--sidebar-width" as string]: `${sidebarWidth}px` }}
+        style={{ ["--sidebar-width" as string]: `${sidebarWidth + 12}px` }}
       >
-        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div className="absolute -right-24 -top-24 h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.9),transparent_64%)]" />
-        </div>
         <Header
           user={user}
           notifications={notifications}

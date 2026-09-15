@@ -112,7 +112,7 @@ export function Header({
   }, []);
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 min-w-0 items-center gap-2 border-b border-white/60 bg-white/70 px-3 backdrop-blur-xl sm:h-[72px] sm:gap-3 sm:px-4 lg:px-7">
+    <header className="sticky top-0 z-30 flex h-16 min-w-0 items-center gap-2 bg-transparent px-3 sm:h-[72px] sm:gap-3 sm:px-4 lg:px-7">
       <button
         type="button"
         onClick={onMenuClick}
@@ -183,7 +183,7 @@ export function Header({
           <button
             type="button"
             onClick={() => setAlertsOpen((value) => !value)}
-            className="relative inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-navy"
+            className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/80 bg-white/75 text-slate-500 shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition hover:bg-white hover:text-navy"
             aria-label="Notifications"
           >
             <Bell className="h-5 w-5" strokeWidth={1.75} />
@@ -222,7 +222,7 @@ export function Header({
           <button
             type="button"
             onClick={() => setProfileOpen((value) => !value)}
-            className="flex items-center gap-3 rounded-full py-1 pl-1 pr-2 transition hover:bg-white/70"
+            className="flex items-center gap-3 rounded-full border border-white/70 bg-white/75 py-1 pl-1 pr-2.5 shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition hover:bg-white"
           >
             {avatar ? (
               <img

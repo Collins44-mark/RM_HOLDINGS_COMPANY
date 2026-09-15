@@ -130,9 +130,13 @@ export function Sidebar({
 
   return (
     <aside
-      className="relative z-20 flex h-full flex-col bg-[#0b2244] text-white transition-[width] duration-300 ease-out"
+      className="relative z-20 flex h-full flex-col overflow-hidden rounded-[28px] border border-white/[0.10] bg-[#0b2244]/95 text-white shadow-[8px_16px_40px_rgba(8,20,40,0.22),inset_0_1px_0_rgba(255,255,255,0.10)] backdrop-blur-2xl transition-[width] duration-300 ease-out"
       style={{ width }}
     >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 rounded-[28px] shadow-[inset_1px_0_0_rgba(255,255,255,0.08),inset_-1px_0_0_rgba(255,255,255,0.04)]"
+      />
       <div className={cn("relative px-5 pt-8 pb-6", collapsed && "px-3")}>
         <Logo stacked markOnly={collapsed} />
       </div>
