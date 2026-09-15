@@ -1,11 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { createPortal } from "react-dom";
-import { MoreHorizontal, Plus, ScanLine, Search, X } from "lucide-react";
-import { PageHeader, Surface } from "@/components/ui/PageHeader";
+import {
+  ArrowUpDown,
+  ChevronDown,
+  LayoutGrid,
+  List,
+  MoreHorizontal,
+  Plus,
+  ScanLine,
+  Search,
+  X,
+} from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { isOwnerRole } from "@/lib/auth/rbac";
+import { APP_TIMEZONE } from "@/lib/config/app";
 import { matchPermission } from "@/lib/config/permissions";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
@@ -32,7 +43,9 @@ import type { AuthUser } from "@/lib/auth/types";
 
 type ProductStatusFilter = "all" | "active" | "inactive";
 type ProductSort = "name" | "recent" | "stock-high" | "stock-low";
+type ProductView = "list" | "grid";
 type DrawerMode = "add" | "edit" | "view" | "history" | null;
+const PAGE_SIZES = [10, 20, 50] as const;
 
 type ProductFormState = {
   name: string;
@@ -64,10 +77,18 @@ const EMPTY_FORM: ProductFormState = {
   isActive: true,
 };
 
+const glass =
+  "rounded-[28px] border border-white/70 bg-white/78 shadow-[0_18px_50px_rgba(15,35,64,0.06),inset_0_1px_0_rgba(255,255,255,0.92)] backdrop-blur-2xl";
+const filterClass =
+  "h-11 w-full appearance-none rounded-[18px] border border-white/80 bg-white/82 px-3.5 text-[13px] text-navy shadow-[0_8px_20px_rgba(15,35,64,0.055),inset_0_1px_0_rgba(255,255,255,0.96)] outline-none backdrop-blur-xl transition focus:border-white focus:bg-white";
+const iconControl =
+  "inline-flex h-11 w-11 items-center justify-center rounded-[18px] border border-white/80 bg-white/82 text-slate-400 shadow-[0_8px_20px_rgba(15,35,64,0.055),inset_0_1px_0_rgba(255,255,255,0.96)] backdrop-blur-xl transition hover:bg-white hover:text-navy";
 const selectClass =
-  "h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy outline-none transition focus:border-[#9bb6e0] focus:ring-4 focus:ring-[#5b82c4]/10";
+  "h-11 w-full rounded-[14px] border border-white/80 bg-white/70 px-3 text-[13.5px] text-navy outline-none backdrop-blur-sm transition focus:border-navy/12 focus:bg-white/90";
 const inputClass =
-  "h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy outline-none transition placeholder:text-slate-400 focus:border-[#9bb6e0] focus:ring-4 focus:ring-[#5b82c4]/10";
+  "h-11 w-full rounded-[14px] border border-white/80 bg-white/70 px-3 text-[13.5px] text-navy outline-none backdrop-blur-sm transition placeholder:text-slate-400 focus:border-navy/12 focus:bg-white/90";
+const thClass =
+  "bg-[#e8eef5]/80 px-3.5 py-2.5 text-left text-[10.5px] font-medium uppercase tracking-[0.14em] text-slate-400 first:rounded-l-[16px] last:rounded-r-[16px]";
 
 function canManageProducts(user: AuthUser | null, permission: string) {
   if (!user) return false;
@@ -75,6 +96,23 @@ function canManageProducts(user: AuthUser | null, permission: string) {
     return true;
   }
   return user.permissions.some((matcher) => matchPermission(permission, matcher));
+}
+
+function formatProductsStamp(date: Date) {
+  const weekday = new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: APP_TIMEZONE }).format(date);
+  const day = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: APP_TIMEZONE,
+  }).format(date);
+  const time = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: APP_TIMEZONE,
+  }).format(date);
+  return `${weekday}, ${day}  |  ${time}`;
 }
 
 function formFromProduct(product: ProductStockRow): ProductFormState {
@@ -108,7 +146,12 @@ export function ProductsManager() {
   const [category, setCategory] = useState("all");
   const [status, setStatus] = useState<ProductStatusFilter>("all");
   const [sort, setSort] = useState<ProductSort>("name");
+  const [view, setView] = useState<ProductView>("list");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(10);
   const [menuId, setMenuId] = useState<string | null>(null);
+  const [toolbarMore, setToolbarMore] = useState(false);
+  const [now, setNow] = useState<Date | null>(null);
   const [drawer, setDrawer] = useState<DrawerMode>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState<ProductFormState>(EMPTY_FORM);
@@ -139,6 +182,31 @@ export function ProductsManager() {
       return a.name.localeCompare(b.name);
     });
   }, [products, query, category, status, sort]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, category, status, sort, pageSize]);
+
+  useEffect(() => {
+    const tick = () => setNow(new Date());
+    tick();
+    const id = window.setInterval(tick, 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const bar = document.querySelector("main [aria-label='Breadcrumb']")?.parentElement;
+    if (!bar) return;
+    bar.classList.add("hidden");
+    return () => bar.classList.remove("hidden");
+  }, []);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const from = rows.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const to = Math.min(safePage * pageSize, rows.length);
+  const showDashboardCrumb = Boolean(user && isOwnerRole(user.roleCode));
 
   function openAdd(prefill?: Partial<ProductFormState>) {
     setSelectedId(null);
@@ -292,217 +360,276 @@ export function ProductsManager() {
     closePanel();
   }
 
+  function rowActions(product: ProductStockRow) {
+    return (
+      <RowActions
+        product={product}
+        open={menuId === product.id}
+        canEdit={canEdit}
+        onToggle={() => setMenuId((current) => (current === product.id ? null : product.id))}
+        onClose={() => setMenuId(null)}
+        onView={() => openView(product.id)}
+        onEdit={() => openEdit(product.id)}
+        onHistory={() => openHistory(product.id)}
+        onToggleActive={() => toggleActive(product.id)}
+      />
+    );
+  }
+
   return (
-    <div className="min-w-0 space-y-4 sm:space-y-5">
-      <PageHeader
-        title="Products"
-        description="Manage supermarket products, pricing, stock settings and product information."
-        action={
-          canCreate ? (
+    <div className="min-w-0 space-y-3.5 sm:space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-[28px] font-semibold tracking-[-0.05em] text-navy sm:text-[32px]">Products</h1>
+          <p className="mt-1.5 max-w-xl text-[13.5px] leading-5 text-slate-500">
+            Manage supermarket products, pricing, stock settings and product information.
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-col items-stretch gap-3 sm:items-end">
+          <div className="hidden items-center gap-3 text-[12.5px] text-slate-400 lg:flex">
+            <nav aria-label="Products breadcrumb" className="whitespace-nowrap">
+              {showDashboardCrumb ? (
+                <>
+                  <Link href="/dashboard" className="transition hover:text-navy">
+                    Dashboard
+                  </Link>
+                  <span className="mx-1.5 text-slate-300">&gt;</span>
+                </>
+              ) : null}
+              <Link href="/supermarket" className="transition hover:text-navy">
+                Supermarket
+              </Link>
+              <span className="mx-1.5 text-slate-300">&gt;</span>
+              <span className="text-slate-500">Products</span>
+            </nav>
+            <span className="text-slate-300">|</span>
+            <span className="whitespace-nowrap tabular-nums">{now ? formatProductsStamp(now) : "\u00a0"}</span>
+          </div>
+          {canCreate ? (
             <button
               type="button"
               onClick={() => openAdd()}
-              className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-[14px] bg-navy px-4 text-[14px] font-semibold text-white transition hover:bg-[#132844] sm:w-auto"
+              className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_10px_22px_rgba(11,34,68,0.22),inset_0_1px_0_rgba(255,255,255,0.12)] transition hover:bg-[#102a52] sm:w-auto"
             >
-              <Plus className="h-4 w-4" strokeWidth={2.2} />
+              <Plus className="h-4 w-4 text-white" strokeWidth={2.25} />
               Add Product
             </button>
-          ) : null
-        }
-      />
-
-      <Surface className="p-3 sm:p-4">
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-          <label className="relative block sm:col-span-2 xl:col-span-1">
-            <span className="sr-only">Search products</span>
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search products..."
-              className={cn(inputClass, "pl-10")}
-            />
-          </label>
-          <select value={category} onChange={(event) => setCategory(event.target.value)} className={selectClass}>
-            <option value="all">All Categories</option>
-            {SUPERMARKET_PRODUCT_CATEGORIES.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value as ProductStatusFilter)}
-            className={selectClass}
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-          <select
-            value={sort}
-            onChange={(event) => setSort(event.target.value as ProductSort)}
-            className={selectClass}
-          >
-            <option value="name">Product Name</option>
-            <option value="recent">Recently Added</option>
-            <option value="stock-high">Highest Stock</option>
-            <option value="stock-low">Lowest Stock</option>
-          </select>
+          ) : null}
         </div>
-      </Surface>
+      </div>
 
-      {rows.length === 0 ? (
-        <EmptyProducts filtersActive={filtersActive} onClear={clearFilters} />
-      ) : (
-        <>
-          <Surface className="hidden xl:block">
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-[13px]">
-                <thead className="bg-[#f8fafc] text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                  <tr>
-                    <th className="px-5 py-3 font-medium">Product</th>
-                    <th className="px-5 py-3 font-medium">SKU</th>
-                    <th className="px-5 py-3 font-medium">Barcode</th>
-                    <th className="px-5 py-3 font-medium">Category</th>
-                    <th className="px-5 py-3 font-medium">Unit</th>
-                    <th className="px-5 py-3 font-medium">Buying Price</th>
-                    <th className="px-5 py-3 font-medium">Selling Price</th>
-                    <th className="px-5 py-3 font-medium">Stock</th>
-                    <th className="px-5 py-3 font-medium">Reorder Level</th>
-                    <th className="px-5 py-3 font-medium">Status</th>
-                    <th className="px-5 py-3 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((product) => (
-                    <tr key={product.id} className="border-t border-black/4 hover:bg-[#fbfcfe]">
-                      <td className="px-5 py-3.5">
-                        <p className="font-semibold text-navy">{product.name}</p>
-                        <p className="mt-0.5 text-[12px] text-slate-500">{product.category}</p>
-                      </td>
-                      <td className="px-5 py-3.5 text-slate-600">{product.sku}</td>
-                      <td className="px-5 py-3.5 text-slate-600">{product.barcode || "—"}</td>
-                      <td className="px-5 py-3.5 text-slate-600">{product.category}</td>
-                      <td className="px-5 py-3.5 text-slate-600">{product.unit}</td>
-                      <td className="px-5 py-3.5 text-slate-600">{formatTzs(product.buyingPrice)}</td>
-                      <td className="px-5 py-3.5 font-medium text-navy">{formatTzs(product.sellingPrice)}</td>
-                      <td className="px-5 py-3.5">
-                        <StockCell product={product} />
-                      </td>
-                      <td className="px-5 py-3.5 text-slate-600">{product.reorderLevel}</td>
-                      <td className="px-5 py-3.5">
-                        <ActiveBadge active={product.isActive} />
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <RowActions
-                          product={product}
-                          open={menuId === product.id}
-                          canEdit={canEdit}
-                          onToggle={() => setMenuId((current) => (current === product.id ? null : product.id))}
-                          onClose={() => setMenuId(null)}
-                          onView={() => openView(product.id)}
-                          onEdit={() => openEdit(product.id)}
-                          onHistory={() => openHistory(product.id)}
-                          onToggleActive={() => toggleActive(product.id)}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Surface>
-
-          <Surface className="hidden md:block xl:hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-[13px]">
-                <thead className="bg-[#f8fafc] text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Product</th>
-                    <th className="px-4 py-3 font-medium">SKU</th>
-                    <th className="px-4 py-3 font-medium">Category</th>
-                    <th className="px-4 py-3 font-medium">Selling Price</th>
-                    <th className="px-4 py-3 font-medium">Stock</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((product) => (
-                    <tr key={product.id} className="border-t border-black/4 hover:bg-[#fbfcfe]">
-                      <td className="px-4 py-3.5">
-                        <p className="font-semibold text-navy">{product.name}</p>
-                        <p className="mt-0.5 text-[12px] text-slate-500">{product.sku}</p>
-                      </td>
-                      <td className="px-4 py-3.5 text-slate-600">{product.sku}</td>
-                      <td className="px-4 py-3.5 text-slate-600">{product.category}</td>
-                      <td className="px-4 py-3.5 font-medium text-navy">{formatTzs(product.sellingPrice)}</td>
-                      <td className="px-4 py-3.5">
-                        <StockCell product={product} />
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <ActiveBadge active={product.isActive} />
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <RowActions
-                          product={product}
-                          open={menuId === product.id}
-                          canEdit={canEdit}
-                          onToggle={() => setMenuId((current) => (current === product.id ? null : product.id))}
-                          onClose={() => setMenuId(null)}
-                          onView={() => openView(product.id)}
-                          onEdit={() => openEdit(product.id)}
-                          onHistory={() => openHistory(product.id)}
-                          onToggleActive={() => toggleActive(product.id)}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Surface>
-
-          <div className="space-y-2.5 md:hidden">
-            {rows.map((product) => (
-              <article
-                key={product.id}
-                className="rounded-[16px] border border-white/90 bg-white px-3.5 py-3.5 shadow-[0_6px_20px_rgba(20,40,70,0.04)]"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-navy">{product.name}</p>
-                    <p className="mt-0.5 text-[12px] text-slate-500">
-                      {product.sku} · {product.category}
-                    </p>
-                  </div>
-                  <RowActions
-                    product={product}
-                    open={menuId === product.id}
-                    canEdit={canEdit}
-                    onToggle={() => setMenuId((current) => (current === product.id ? null : product.id))}
-                    onClose={() => setMenuId(null)}
-                    onView={() => openView(product.id)}
-                    onEdit={() => openEdit(product.id)}
-                    onHistory={() => openHistory(product.id)}
-                    onToggleActive={() => toggleActive(product.id)}
-                  />
+      <div className="flex flex-col gap-2.5 lg:flex-row lg:flex-wrap lg:items-center">
+        <label className="relative block min-w-0 flex-1 lg:min-w-[240px] lg:max-w-[340px]">
+          <span className="sr-only">Search products</span>
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search products, SKU, barcode..."
+            className={cn(filterClass, "pl-10")}
+          />
+        </label>
+        <FilterSelect
+          value={category}
+          onChange={setCategory}
+          icon={<LayoutGrid className="h-3.5 w-3.5 text-slate-400" strokeWidth={1.8} />}
+          className="lg:w-[168px]"
+        >
+          <option value="all">All Categories</option>
+          {SUPERMARKET_PRODUCT_CATEGORIES.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+        </FilterSelect>
+        <FilterSelect
+          value={status}
+          onChange={(value) => setStatus(value as ProductStatusFilter)}
+          icon={<span className="h-2 w-2 rounded-full bg-emerald-400" />}
+          className="lg:w-[148px]"
+        >
+          <option value="all">All Status</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </FilterSelect>
+        <FilterSelect
+          value={sort}
+          onChange={(value) => setSort(value as ProductSort)}
+          icon={<ArrowUpDown className="h-3.5 w-3.5 text-slate-400" strokeWidth={1.8} />}
+          className="lg:w-[188px]"
+        >
+          <option value="name">Product Name (A - Z)</option>
+          <option value="recent">Recently Added</option>
+          <option value="stock-high">Highest Stock</option>
+          <option value="stock-low">Lowest Stock</option>
+        </FilterSelect>
+        <div className="flex items-center gap-2 lg:ml-auto">
+          <button
+            type="button"
+            onClick={() => setView("list")}
+            className={cn(iconControl, view === "list" && "bg-white text-navy")}
+            aria-label="List view"
+            aria-pressed={view === "list"}
+          >
+            <List className="h-4 w-4" strokeWidth={1.8} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("grid")}
+            className={cn(iconControl, view === "grid" && "bg-white text-navy")}
+            aria-label="Grid view"
+            aria-pressed={view === "grid"}
+          >
+            <LayoutGrid className="h-4 w-4" strokeWidth={1.8} />
+          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setToolbarMore((current) => !current)}
+              className={iconControl}
+              aria-label="More actions"
+              aria-expanded={toolbarMore}
+            >
+              <MoreHorizontal className="h-4 w-4" strokeWidth={1.8} />
+            </button>
+            {toolbarMore ? (
+              <>
+                <button
+                  type="button"
+                  className="fixed inset-0 z-20 cursor-default"
+                  aria-label="Close more actions"
+                  onClick={() => setToolbarMore(false)}
+                />
+                <div className="absolute right-0 z-30 mt-2 w-44 overflow-hidden rounded-[16px] border border-white/80 bg-white/92 py-1 shadow-[0_18px_50px_rgba(16,24,40,0.14)] backdrop-blur-xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearFilters();
+                      setToolbarMore(false);
+                    }}
+                    className="flex w-full px-3 py-2 text-left text-[13px] text-navy hover:bg-slate-50"
+                  >
+                    Clear filters
+                  </button>
                 </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <StockCell product={product} />
-                  <ActiveBadge active={product.isActive} />
-                </div>
-                <div className="mt-3 flex items-center justify-between text-[12.5px]">
-                  <span className="text-slate-500">{product.unit}</span>
-                  <span className="font-semibold text-navy">{formatTzs(product.sellingPrice)}</span>
-                </div>
-              </article>
-            ))}
+              </>
+            ) : null}
           </div>
-        </>
-      )}
+        </div>
+      </div>
+
+      <section className={cn(glass, "overflow-hidden")}>
+        {rows.length === 0 ? (
+          <EmptyProducts filtersActive={filtersActive} onClear={clearFilters} />
+        ) : (
+          <>
+            {view === "grid" ? (
+              <div className="grid gap-2.5 p-3 sm:grid-cols-2 xl:grid-cols-3">
+                {pageRows.map((product) => (
+                  <ProductCard key={product.id} product={product} actions={rowActions(product)} />
+                ))}
+              </div>
+            ) : (
+              <>
+                <div className="hidden px-3 pt-3 xl:block">
+                  <table className="min-w-full border-separate border-spacing-0 text-left text-[13px]">
+                    <thead>
+                      <tr>
+                        <th className={thClass}>Product</th>
+                        <th className={thClass}>SKU</th>
+                        <th className={thClass}>Barcode</th>
+                        <th className={thClass}>Category</th>
+                        <th className={thClass}>Unit</th>
+                        <th className={thClass}>Buying Price</th>
+                        <th className={thClass}>Selling Price</th>
+                        <th className={thClass}>Stock</th>
+                        <th className={thClass}>Reorder Level</th>
+                        <th className={thClass}>Status</th>
+                        <th className={thClass}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="[&_td]:border-t [&_td]:border-[#dce5ee]/85">
+                      {pageRows.map((product) => (
+                        <tr key={product.id}>
+                          <td className="px-3.5 py-3.5">
+                            <p className="font-semibold tracking-[-0.02em] text-navy">{product.name}</p>
+                          </td>
+                          <td className="whitespace-nowrap px-3.5 py-3.5 text-slate-400">{product.sku}</td>
+                          <td className="whitespace-nowrap px-3.5 py-3.5 text-slate-400">{product.barcode || "—"}</td>
+                          <td className="whitespace-nowrap px-3.5 py-3.5 text-slate-500">{product.category}</td>
+                          <td className="whitespace-nowrap px-3.5 py-3.5 text-slate-500">{product.unit}</td>
+                          <td className="whitespace-nowrap px-3.5 py-3.5 text-slate-500">{formatTzs(product.buyingPrice)}</td>
+                          <td className="whitespace-nowrap px-3.5 py-3.5 text-slate-500">{formatTzs(product.sellingPrice)}</td>
+                          <td className="px-3.5 py-3.5">
+                            <StockCell product={product} />
+                          </td>
+                          <td className="px-3.5 py-3.5 text-slate-500">{product.reorderLevel}</td>
+                          <td className="px-3.5 py-3.5">
+                            <StatusPill product={product} />
+                          </td>
+                          <td className="px-3.5 py-3.5">{rowActions(product)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="hidden px-3 pt-3 md:block xl:hidden">
+                  <table className="min-w-full border-separate border-spacing-0 text-left text-[13px]">
+                    <thead>
+                      <tr>
+                        <th className={thClass}>Product</th>
+                        <th className={thClass}>SKU</th>
+                        <th className={thClass}>Category</th>
+                        <th className={thClass}>Selling Price</th>
+                        <th className={thClass}>Stock</th>
+                        <th className={thClass}>Status</th>
+                        <th className={thClass}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="[&_td]:border-t [&_td]:border-[#dce5ee]/85">
+                      {pageRows.map((product) => (
+                        <tr key={product.id}>
+                          <td className="px-3.5 py-3.5">
+                            <p className="font-semibold tracking-[-0.02em] text-navy">{product.name}</p>
+                          </td>
+                          <td className="px-3.5 py-3.5 text-slate-400">{product.sku}</td>
+                          <td className="px-3.5 py-3.5 text-slate-500">{product.category}</td>
+                          <td className="px-3.5 py-3.5 text-slate-500">{formatTzs(product.sellingPrice)}</td>
+                          <td className="px-3.5 py-3.5">
+                            <StockCell product={product} />
+                          </td>
+                          <td className="px-3.5 py-3.5">
+                            <StatusPill product={product} />
+                          </td>
+                          <td className="px-3.5 py-3.5">{rowActions(product)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="space-y-2 px-3 py-3 md:hidden">
+                  {pageRows.map((product) => (
+                    <ProductCard key={product.id} product={product} actions={rowActions(product)} />
+                  ))}
+                </div>
+              </>
+            )}
+
+            <Pagination
+              from={from}
+              to={to}
+              total={rows.length}
+              page={safePage}
+              totalPages={totalPages}
+              pageSize={pageSize}
+              onPage={setPage}
+              onPageSize={setPageSize}
+            />
+          </>
+        )}
+      </section>
 
       {drawer === "add" || drawer === "edit" ? (
         <ProductDrawer
@@ -558,8 +685,8 @@ function EmptyProducts({
   onClear: () => void;
 }) {
   return (
-    <div className="rounded-[18px] border border-dashed border-black/10 bg-white px-6 py-14 text-center shadow-card">
-      <p className="text-[15px] font-semibold text-navy">No products found</p>
+    <div className="px-6 py-10 text-center">
+      <p className="text-[16px] font-semibold tracking-[-0.03em] text-navy">No products found</p>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
         {filtersActive
           ? "Nothing matches the current search or filters."
@@ -569,7 +696,7 @@ function EmptyProducts({
         <button
           type="button"
           onClick={onClear}
-          className="mt-5 inline-flex h-11 items-center justify-center rounded-[14px] bg-navy px-4 text-[14px] font-semibold text-white"
+          className="mt-5 inline-flex h-10 items-center justify-center rounded-full bg-[#0b2244] px-4 text-[14px] font-semibold text-white"
         >
           Clear filters
         </button>
@@ -578,22 +705,155 @@ function EmptyProducts({
   );
 }
 
-function StockCell({ product }: { product: ProductStockRow }) {
-  const label = stockLabel(product);
+function FilterSelect({
+  value,
+  onChange,
+  icon,
+  className,
+  children,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  icon: ReactNode;
+  className?: string;
+  children: ReactNode;
+}) {
   return (
-    <div>
-      <p className="font-medium text-navy">{product.stock}</p>
-      <p
-        className={cn(
-          "mt-0.5 text-[11px] font-medium",
-          label === "Out of Stock" && "text-[#8a5a5a]",
-          label === "Low Stock" && "text-[#8a7340]",
-          label === "In Stock" && "text-[#5a7a64]",
-        )}
+    <label className={cn("relative block min-w-0", className)}>
+      <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2">{icon}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={cn(filterClass, "cursor-pointer pl-9 pr-9")}
       >
-        {label}
+        {children}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" strokeWidth={1.8} />
+    </label>
+  );
+}
+
+function Pagination({
+  from,
+  to,
+  total,
+  page,
+  totalPages,
+  pageSize,
+  onPage,
+  onPageSize,
+}: {
+  from: number;
+  to: number;
+  total: number;
+  page: number;
+  totalPages: number;
+  pageSize: number;
+  onPage: (page: number) => void;
+  onPageSize: (size: (typeof PAGE_SIZES)[number]) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2.5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-[12.5px] text-slate-500">
+        Showing {from} to {to} of {total} products
       </p>
+      <div className="flex items-center justify-between gap-3 sm:justify-end">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => onPage(page - 1)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/75 bg-white/85 text-slate-400 shadow-[0_6px_14px_rgba(15,35,64,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md transition hover:bg-white hover:text-navy disabled:opacity-30"
+            aria-label="Previous page"
+          >
+            ‹
+          </button>
+          <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-[#0b2244] px-2 text-[12.5px] font-semibold text-white shadow-[0_4px_10px_rgba(11,34,68,0.16)]">
+            {page}
+          </span>
+          <button
+            type="button"
+            disabled={page >= totalPages}
+            onClick={() => onPage(page + 1)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/75 bg-white/85 text-slate-400 shadow-[0_6px_14px_rgba(15,35,64,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md transition hover:bg-white hover:text-navy disabled:opacity-30"
+            aria-label="Next page"
+          >
+            ›
+          </button>
+        </div>
+        <select
+          value={pageSize}
+          onChange={(event) => onPageSize(Number(event.target.value) as (typeof PAGE_SIZES)[number])}
+          className="h-8 rounded-full border border-white/75 bg-white/85 px-2.5 text-[12px] text-navy shadow-[0_6px_14px_rgba(15,35,64,0.06),inset_0_1px_0_rgba(255,255,255,0.95)] outline-none backdrop-blur-md"
+        >
+          {PAGE_SIZES.map((size) => (
+            <option key={size} value={size}>
+              {size} per page
+            </option>
+          ))}
+        </select>
+      </div>
     </div>
+  );
+}
+
+function ProductCard({
+  product,
+  actions,
+}: {
+  product: ProductStockRow;
+  actions: ReactNode;
+}) {
+  return (
+    <article className="rounded-[16px] border border-white/70 bg-white/55 px-3 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold tracking-[-0.02em] text-navy">{product.name}</p>
+          <p className="mt-0.5 text-[12px] text-slate-400">
+            {product.sku} · {product.category}
+          </p>
+        </div>
+        {actions}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <StockCell product={product} />
+        <StatusPill product={product} />
+      </div>
+      <div className="mt-3 flex items-center justify-between text-[12.5px]">
+        <span className="text-slate-500">{product.unit}</span>
+        <span className="font-semibold text-navy">{formatTzs(product.sellingPrice)}</span>
+      </div>
+    </article>
+  );
+}
+
+function StockCell({ product }: { product: ProductStockRow }) {
+  return <p className="text-[14px] font-semibold tracking-[-0.03em] text-navy">{product.stock}</p>;
+}
+
+function StatusPill({ product }: { product: ProductStockRow }) {
+  if (!product.isActive) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100/80 px-2 py-[3px] text-[12px] font-medium text-slate-600">
+        <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+        Inactive
+      </span>
+    );
+  }
+  const label = stockLabel(product);
+  const tone =
+    label === "In Stock"
+      ? "bg-emerald-50/70 text-emerald-700"
+      : label === "Low Stock"
+        ? "bg-amber-50/70 text-amber-700"
+        : "bg-rose-50/70 text-rose-700";
+  const dot =
+    label === "In Stock" ? "bg-emerald-500" : label === "Low Stock" ? "bg-amber-400" : "bg-rose-500";
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-[3px] text-[12px] font-medium", tone)}>
+      <span className={cn("h-1.5 w-1.5 rounded-full", dot)} />
+      {label}
+    </span>
   );
 }
 
@@ -663,7 +923,7 @@ function RowActions({
             }}
           />
           <div
-            className="fixed z-[80] w-44 overflow-hidden rounded-[14px] border border-black/6 bg-white py-1 shadow-[0_16px_40px_rgba(16,24,40,0.12)]"
+            className="fixed z-[80] w-44 overflow-hidden rounded-[16px] border border-white/80 bg-white/90 py-1 shadow-[0_18px_50px_rgba(16,24,40,0.14)] backdrop-blur-xl"
             style={{ top: coords.top, right: coords.right }}
             onPointerDown={(event) => event.stopPropagation()}
           >
@@ -692,7 +952,7 @@ function RowActions({
           if (!open) placeMenu();
           onToggle();
         }}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-slate-500 transition hover:bg-[#f3f5f8] hover:text-navy"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/75 bg-white/85 text-navy/70 shadow-[0_6px_14px_rgba(15,35,64,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md transition hover:bg-white hover:text-navy"
         aria-label={`Actions for ${product.name}`}
         aria-expanded={open}
       >
@@ -759,14 +1019,14 @@ function ProductDrawer({
 
   return (
     <div className="fixed inset-0 z-[70] flex justify-end">
-      <button type="button" className="absolute inset-0 bg-navy/30" aria-label="Close" onClick={onClose} />
-      <aside className="relative flex h-full w-full max-w-[520px] flex-col bg-white shadow-[-18px_0_40px_rgba(16,24,40,0.12)]">
-        <div className="flex items-center justify-between border-b border-black/5 px-5 py-4">
-          <h2 className="text-[18px] font-bold tracking-[-0.03em] text-navy">{title}</h2>
+      <button type="button" className="absolute inset-0 bg-navy/20 backdrop-blur-sm" aria-label="Close" onClick={onClose} />
+      <aside className="relative flex h-full w-full max-w-[520px] flex-col border-l border-white/70 bg-white/82 shadow-[-24px_0_60px_rgba(15,35,64,0.12)] backdrop-blur-[28px]">
+        <div className="flex items-center justify-between px-5 py-5">
+          <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">{title}</h2>
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-slate-500 hover:bg-[#f3f5f8]"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-navy/[0.04] text-slate-500 hover:text-navy"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
