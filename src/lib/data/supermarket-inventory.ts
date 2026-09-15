@@ -75,8 +75,10 @@ export type InventorySnapshot = {
 };
 
 export type SupermarketCategory = {
+  id: string;
   name: string;
   description: string;
+  isActive: boolean;
 };
 
 export type ReceiveStockInput = {
@@ -657,7 +659,12 @@ function createSeed(): InventorySnapshot {
     products,
     batches,
     movements,
-    categories: SUPERMARKET_PRODUCT_CATEGORIES.map((name) => ({ name, description: "" })),
+    categories: SUPERMARKET_PRODUCT_CATEGORIES.map((name) => ({
+      id: `cat-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+      name,
+      description: "",
+      isActive: true,
+    })),
   };
 }
 
@@ -687,8 +694,16 @@ function getServerSnapshot() {
   return INITIAL;
 }
 
+export function categoryProductCount(name: string, products = snapshot.products) {
+  return products.filter((item) => item.category === name).length;
+}
+
+function normalizeCategoryName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
 export function addProductCategory(input: { name: string; description?: string }) {
-  const name = input.name.trim().replace(/\s+/g, " ");
+  const name = normalizeCategoryName(input.name);
   const description = input.description?.trim() ?? "";
   if (!name) {
     return { error: "Enter a category name.", category: null as SupermarketCategory | null };
@@ -697,12 +712,72 @@ export function addProductCategory(input: { name: string; description?: string }
   if (exists) {
     return { error: "This category already exists.", category: null as SupermarketCategory | null };
   }
-  const category: SupermarketCategory = { name, description };
+  const category: SupermarketCategory = {
+    id: `cat-${Date.now()}`,
+    name,
+    description,
+    isActive: true,
+  };
   setSnapshot({
     ...snapshot,
     categories: [...snapshot.categories, category],
   });
   return { error: null, category };
+}
+
+export function updateProductCategory(
+  id: string,
+  input: { name: string; description?: string },
+) {
+  const current = snapshot.categories.find((item) => item.id === id);
+  if (!current) {
+    return { error: "Category not found.", category: null as SupermarketCategory | null, previousName: null as string | null };
+  }
+  const name = normalizeCategoryName(input.name);
+  const description = input.description?.trim() ?? "";
+  if (!name) {
+    return { error: "Enter a category name.", category: null, previousName: current.name };
+  }
+  const duplicate = snapshot.categories.some(
+    (item) => item.id !== id && item.name.toLowerCase() === name.toLowerCase(),
+  );
+  if (duplicate) {
+    return { error: "This category already exists.", category: null, previousName: current.name };
+  }
+  const previousName = current.name;
+  const category: SupermarketCategory = { ...current, name, description };
+  setSnapshot({
+    ...snapshot,
+    categories: snapshot.categories.map((item) => (item.id === id ? category : item)),
+    products:
+      previousName === name
+        ? snapshot.products
+        : snapshot.products.map((item) => (item.category === previousName ? { ...item, category: name } : item)),
+  });
+  return { error: null, category, previousName };
+}
+
+export function deleteProductCategory(id: string) {
+  const current = snapshot.categories.find((item) => item.id === id);
+  if (!current) return { error: "Category not found.", inUse: false };
+  if (categoryProductCount(current.name) > 0) {
+    return { error: "Category is in use", inUse: true };
+  }
+  setSnapshot({
+    ...snapshot,
+    categories: snapshot.categories.filter((item) => item.id !== id),
+  });
+  return { error: null, inUse: false, name: current.name };
+}
+
+export function setProductCategoryActive(id: string, isActive: boolean) {
+  const current = snapshot.categories.find((item) => item.id === id);
+  if (!current) return { error: "Category not found." };
+  setSnapshot({
+    ...snapshot,
+    categories: snapshot.categories.map((item) => (item.id === id ? { ...item, isActive } : item)),
+  });
+  return { error: null };
 }
 
 export function upsertProduct(product: SupermarketProduct) {

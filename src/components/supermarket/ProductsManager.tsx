@@ -16,7 +16,8 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { CategoryCreateModal, ADD_CATEGORY_OPTION, canCreateSupermarketCategory } from "@/components/supermarket/CategoryCreateModal";
+import { CategoryCreateModal, CategoryDropdownActions, ADD_CATEGORY_OPTION, MANAGE_CATEGORIES_OPTION, canCreateSupermarketCategory, canManageSupermarketCategories } from "@/components/supermarket/CategoryCreateModal";
+import { CategoryManageModal } from "@/components/supermarket/CategoryManageModal";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { APP_TIMEZONE } from "@/lib/config/app";
 import { matchPermission } from "@/lib/config/permissions";
@@ -139,6 +140,7 @@ export function ProductsManager() {
   const canCreate = isSuperAdmin() || canManageProducts(user, "supermarket.products.create");
   const canEdit = isSuperAdmin() || canManageProducts(user, "supermarket.products.edit");
   const canAddCategory = canCreateSupermarketCategory(user, isSuperAdmin());
+  const canManageCategories = canManageSupermarketCategories(user, isSuperAdmin());
   const inventory = useSupermarketInventory();
   const categories = inventory.categories.map((item) => item.name);
   const products = useMemo(
@@ -162,7 +164,11 @@ export function ProductsManager() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [barcodeNotice, setBarcodeNotice] = useState<string | null>(null);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
   const categoryTargetRef = useRef<"filter" | "form">("filter");
+  const formCategories = inventory.categories
+    .filter((item) => item.isActive || item.name === form.category)
+    .map((item) => item.name);
 
   const selected = products.find((item) => item.id === selectedId) ?? null;
   const filtersActive = Boolean(query.trim()) || category !== "all" || status !== "all";
@@ -445,6 +451,10 @@ export function ProductsManager() {
               setCategoryModalOpen(true);
               return;
             }
+            if (value === MANAGE_CATEGORIES_OPTION) {
+              setManageCategoriesOpen(true);
+              return;
+            }
             setCategory(value);
           }}
           icon={<LayoutGrid className="h-3.5 w-3.5 text-slate-400" strokeWidth={1.8} />}
@@ -456,7 +466,7 @@ export function ProductsManager() {
               {item}
             </option>
           ))}
-          {canAddCategory ? <option value={ADD_CATEGORY_OPTION}>+ Add Category</option> : null}
+          <CategoryDropdownActions canAdd={canAddCategory} canManage={canManageCategories} />
         </FilterSelect>
         <FilterSelect
           value={status}
@@ -656,7 +666,7 @@ export function ProductsManager() {
             form={form}
             errors={errors}
             barcodeNotice={barcodeNotice}
-            categories={categories}
+            categories={formCategories}
             canAddCategory={canAddCategory}
             submitLabel="Save Changes"
             stockLabel="Current Stock"
@@ -708,6 +718,20 @@ export function ProductsManager() {
               return next;
             });
           }
+        }}
+      />
+      <CategoryManageModal
+        open={manageCategoriesOpen}
+        onClose={() => setManageCategoriesOpen(false)}
+        onRenamed={(previousName, nextName) => {
+          setCategory((current) => (current === previousName ? nextName : current));
+          setForm((current) =>
+            current.category === previousName ? { ...current, category: nextName } : current,
+          );
+        }}
+        onDeleted={(name) => {
+          setCategory((current) => (current === name ? "all" : current));
+          setForm((current) => (current.category === name ? { ...current, category: "" } : current));
         }}
       />
     </div>

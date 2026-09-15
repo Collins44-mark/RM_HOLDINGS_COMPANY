@@ -17,7 +17,8 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { CategoryCreateModal, ADD_CATEGORY_OPTION, canCreateSupermarketCategory } from "@/components/supermarket/CategoryCreateModal";
+import { CategoryCreateModal, CategoryDropdownActions, ADD_CATEGORY_OPTION, MANAGE_CATEGORIES_OPTION, canCreateSupermarketCategory, canManageSupermarketCategories } from "@/components/supermarket/CategoryCreateModal";
+import { CategoryManageModal } from "@/components/supermarket/CategoryManageModal";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { matchPermission } from "@/lib/config/permissions";
 import { cn } from "@/lib/cn";
@@ -103,6 +104,7 @@ export function StockManager() {
   const { user, isSuperAdmin } = useAuth();
   const canReceive = isSuperAdmin() || canManageStock(user, "supermarket.stock.edit");
   const canAddCategory = canCreateSupermarketCategory(user, isSuperAdmin());
+  const canManageCategories = canManageSupermarketCategories(user, isSuperAdmin());
   const inventory = useSupermarketInventory();
   const categories = inventory.categories.map((item) => item.name);
 
@@ -118,6 +120,7 @@ export function StockManager() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(10);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
 
   const rows = useMemo(
     () => inventory.products.map((product) => attachStock(product, inventory.batches)),
@@ -262,6 +265,10 @@ export function StockManager() {
                 setCategoryModalOpen(true);
                 return;
               }
+              if (event.target.value === MANAGE_CATEGORIES_OPTION) {
+                setManageCategoriesOpen(true);
+                return;
+              }
               setCategory(event.target.value);
             }}
             className={cn(filterClass, "lg:w-auto lg:min-w-[148px]")}
@@ -272,7 +279,7 @@ export function StockManager() {
                 {item}
               </option>
             ))}
-            {canAddCategory ? <option value={ADD_CATEGORY_OPTION}>+ Add Category</option> : null}
+            <CategoryDropdownActions canAdd={canAddCategory} canManage={canManageCategories} />
           </select>
           <select
             value={status}
@@ -488,6 +495,16 @@ export function StockManager() {
       <CategoryCreateModal
         open={categoryModalOpen}
         onClose={() => setCategoryModalOpen(false)}
+      />
+      <CategoryManageModal
+        open={manageCategoriesOpen}
+        onClose={() => setManageCategoriesOpen(false)}
+        onRenamed={(previousName, nextName) => {
+          setCategory((current) => (current === previousName ? nextName : current));
+        }}
+        onDeleted={(name) => {
+          setCategory((current) => (current === name ? "all" : current));
+        }}
       />
     </div>
   );

@@ -83,7 +83,6 @@ export function AddProductPage() {
   const allowed = canCreateProduct(user, isSuperAdmin());
   const canAddCategory = canCreateSupermarketCategory(user, isSuperAdmin());
   const inventory = useSupermarketInventory();
-  const categories = inventory.categories.map((item) => item.name);
   const barcodeRef = useRef<HTMLInputElement>(null);
   const savingRef = useRef(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -93,6 +92,9 @@ export function AddProductPage() {
   const [isPending, startTransition] = useTransition();
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const busy = saving || isPending;
+  const categories = inventory.categories
+    .filter((item) => item.isActive || item.name === form.category)
+    .map((item) => item.name);
 
   const suppliers = useMemo(() => {
     return [...new Set(inventory.batches.map((batch) => batch.supplier).filter(Boolean))].sort();
