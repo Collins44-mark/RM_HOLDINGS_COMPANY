@@ -292,7 +292,7 @@ function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
   const delta = period === "today" ? data.kpis.todaySalesDelta : null;
 
   return (
-    <article className={cn(glass, "w-full min-w-0 self-start px-4 py-3 sm:px-5 sm:py-3.5")}>
+    <article className={cn(glass, "flex h-full min-w-0 flex-col px-4 pb-3 pt-3.5 sm:px-5 sm:pb-3 sm:pt-4")}>
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy sm:text-[17px]">
           Sales Overview
@@ -323,44 +323,46 @@ function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
         </div>
       </div>
 
-      <div className="mt-1.5 flex items-end gap-1.5">
-        <div className="hidden h-[84px] w-6 shrink-0 flex-col justify-between pb-[14px] text-right sm:flex sm:h-[88px]" aria-hidden>
-          {ticks.map((tick) => (
-            <span key={tick} className="text-[10px] font-medium text-slate-400">
-              {tick === 0 ? "0" : `${tick / 1_000_000}M`}
-            </span>
-          ))}
-        </div>
-        <div className="relative min-w-0 flex-1">
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 top-0 h-[68px] sm:h-[72px]"
-            style={{
-              backgroundImage:
-                "repeating-linear-gradient(to bottom, rgba(15,35,64,0.07) 0, rgba(15,35,64,0.07) 1px, transparent 1px, transparent 25%)",
-            }}
-          />
-          <div className="relative flex h-[84px] items-end sm:h-[88px]" aria-hidden>
-            {data.salesOverview.trend.map((day, index) => {
-              const height = Math.max(22, (day.amount / peak) * 100);
-              const latest = index === data.salesOverview.trend.length - 1;
-              return (
-                <div key={day.label} className="flex min-w-0 flex-1 flex-col items-center gap-0.5">
-                  <div className="flex h-[68px] w-full items-end justify-center sm:h-[72px]">
-                    <div
-                      className="w-[46%] max-w-[22px] min-w-[12px] rounded-t-[6px]"
-                      style={{
-                        height: `${height}%`,
-                        backgroundImage: latest
-                          ? "linear-gradient(to bottom, #3f7bd6 0%, #c9def8 100%)"
-                          : "linear-gradient(to bottom, #6ea4e8 0%, #d7e7fb 100%)",
-                      }}
-                    />
+      <div className="mt-2 flex min-h-0 flex-1 flex-col justify-end">
+        <div className="flex items-end gap-1.5">
+          <div className="hidden h-[90px] w-6 shrink-0 flex-col justify-between pb-[14px] text-right sm:flex sm:h-[94px]" aria-hidden>
+            {ticks.map((tick) => (
+              <span key={tick} className="text-[10px] font-medium text-slate-400">
+                {tick === 0 ? "0" : `${tick / 1_000_000}M`}
+              </span>
+            ))}
+          </div>
+          <div className="relative min-w-0 flex-1">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 top-0 h-[74px] sm:h-[78px]"
+              style={{
+                backgroundImage:
+                  "repeating-linear-gradient(to bottom, rgba(15,35,64,0.07) 0, rgba(15,35,64,0.07) 1px, transparent 1px, transparent 25%)",
+              }}
+            />
+            <div className="relative flex h-[90px] items-end sm:h-[94px]" aria-hidden>
+              {data.salesOverview.trend.map((day, index) => {
+                const height = Math.max(18, (day.amount / peak) * 92);
+                const latest = index === data.salesOverview.trend.length - 1;
+                return (
+                  <div key={day.label} className="flex min-w-0 flex-1 flex-col items-center gap-0.5">
+                    <div className="flex h-[74px] w-full items-end justify-center sm:h-[78px]">
+                      <div
+                        className="w-[46%] max-w-[22px] min-w-[12px] rounded-t-[6px]"
+                        style={{
+                          height: `${height}%`,
+                          backgroundImage: latest
+                            ? "linear-gradient(to bottom, #3f7bd6 0%, #c9def8 100%)"
+                            : "linear-gradient(to bottom, #6ea4e8 0%, #d7e7fb 100%)",
+                        }}
+                      />
+                    </div>
+                    <span className="text-[10px] font-medium text-slate-400">{day.label}</span>
                   </div>
-                  <span className="text-[10px] font-medium text-slate-400">{day.label}</span>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
