@@ -45,25 +45,33 @@ const periodClass =
 
 type KpiTone = "blue" | "violet" | "green" | "amber";
 
-const KPI_TONES: Record<KpiTone, { card: string; icon: string; bar: string }> = {
+const KPI_TONES: Record<KpiTone, { card: string; orb: string; tint: string; icon: string; bar: string }> = {
   blue: {
     card: "border-sky-200/35 bg-[#eef5ff]/78",
-    icon: "bg-sky-100/80 text-sky-700",
+    orb: "border-sky-200/40 bg-white/46 shadow-[0_8px_16px_rgba(70,130,200,0.10)]",
+    tint: "bg-sky-400/[0.12]",
+    icon: "text-sky-600",
     bar: "bg-sky-400/65",
   },
   violet: {
     card: "border-violet-200/40 bg-[#f4f1ff]/82",
-    icon: "bg-violet-100/80 text-violet-600",
+    orb: "border-violet-200/45 bg-white/46 shadow-[0_8px_16px_rgba(120,90,190,0.10)]",
+    tint: "bg-violet-400/[0.12]",
+    icon: "text-violet-600",
     bar: "bg-violet-400/65",
   },
   green: {
     card: "border-emerald-200/35 bg-[#eefaf2]/78",
-    icon: "bg-emerald-100/80 text-emerald-700",
+    orb: "border-emerald-200/40 bg-white/46 shadow-[0_8px_16px_rgba(50,140,90,0.10)]",
+    tint: "bg-emerald-400/[0.12]",
+    icon: "text-emerald-600",
     bar: "bg-emerald-400/65",
   },
   amber: {
     card: "border-amber-200/40 bg-[#fff8eb]/82",
-    icon: "bg-amber-100/80 text-amber-600",
+    orb: "border-amber-200/50 bg-white/46 shadow-[0_8px_16px_rgba(190,130,50,0.10)]",
+    tint: "bg-amber-400/[0.13]",
+    icon: "text-amber-600",
     bar: "bg-amber-400/70",
   },
 };
@@ -248,11 +256,16 @@ function KpiCard({
     >
       <span
         className={cn(
-          "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full sm:h-10 sm:w-10",
-          accent.icon,
+          "relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border backdrop-blur-md sm:h-[52px] sm:w-[52px]",
+          accent.orb,
         )}
       >
-        <Icon className="h-4 w-4 sm:h-[18px] sm:w-[18px]" strokeWidth={1.6} />
+        <span className={cn("pointer-events-none absolute inset-[1px] rounded-full", accent.tint)} aria-hidden />
+        <span
+          className="pointer-events-none absolute inset-0 rounded-full bg-[linear-gradient(180deg,rgba(255,255,255,0.78)_0%,rgba(255,255,255,0.16)_38%,rgba(255,255,255,0)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.92),inset_0_-1px_1px_rgba(15,35,64,0.04)]"
+          aria-hidden
+        />
+        <Icon className={cn("relative h-[18px] w-[18px] sm:h-5 sm:w-5", accent.icon)} strokeWidth={1.75} />
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-[11px] font-medium text-slate-500 sm:text-[12px]">{label}</p>
