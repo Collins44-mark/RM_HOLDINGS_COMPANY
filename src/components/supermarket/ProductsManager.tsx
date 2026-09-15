@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import {
@@ -195,11 +196,18 @@ export function ProductsManager() {
     return () => window.clearInterval(id);
   }, []);
 
+  const [isNavigating, startNavTransition] = useTransition();
+  const [addPressed, setAddPressed] = useState(false);
+  const addBusy = isNavigating || addPressed;
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const pageRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
   const from = rows.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
   const to = Math.min(safePage * pageSize, rows.length);
+
+  useEffect(() => {
+    router.prefetch("/supermarket/products/new");
+  }, [router]);
 
   function openAdd(prefill?: Partial<ProductFormState>) {
     if (prefill?.barcode) {
@@ -209,7 +217,9 @@ export function ProductsManager() {
         // Ignore storage errors in private browsing.
       }
     }
-    router.push("/supermarket/products/new");
+    startNavTransition(() => {
+      router.push("/supermarket/products/new");
+    });
   }
 
   useEffect(() => {
@@ -390,14 +400,24 @@ export function ProductsManager() {
             {now ? formatProductsStamp(now) : "\u00a0"}
           </p>
           {canCreate ? (
-            <button
-              type="button"
-              onClick={() => openAdd()}
-              className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_10px_22px_rgba(11,34,68,0.22),inset_0_1px_0_rgba(255,255,255,0.12)] transition hover:bg-[#102a52] sm:w-auto"
+            <Link
+              href="/supermarket/products/new"
+              prefetch
+              aria-busy={addBusy}
+              onClick={(event) => {
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+                  return;
+                }
+                setAddPressed(true);
+              }}
+              className={cn(
+                "inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_10px_22px_rgba(11,34,68,0.22),inset_0_1px_0_rgba(255,255,255,0.12)] transition duration-150 hover:bg-[#102a52] active:scale-[0.985] sm:w-auto",
+                addBusy && "pointer-events-none opacity-80",
+              )}
             >
               <Plus className="h-4 w-4 text-white" strokeWidth={2.25} />
               Add Product
-            </button>
+            </Link>
           ) : null}
         </div>
       </div>
@@ -417,7 +437,7 @@ export function ProductsManager() {
           value={category}
           onChange={setCategory}
           icon={<LayoutGrid className="h-3.5 w-3.5 text-slate-400" strokeWidth={1.8} />}
-          className="lg:w-[168px]"
+          className="lg:w-[168px] lg:shrink-0"
         >
           <option value="all">All Categories</option>
           {SUPERMARKET_PRODUCT_CATEGORIES.map((item) => (
@@ -430,7 +450,7 @@ export function ProductsManager() {
           value={status}
           onChange={(value) => setStatus(value as ProductStatusFilter)}
           icon={<span className="h-2 w-2 rounded-full bg-emerald-400" />}
-          className="lg:w-[148px]"
+          className="lg:w-[148px] lg:shrink-0"
         >
           <option value="all">All Status</option>
           <option value="active">Active</option>
@@ -440,7 +460,7 @@ export function ProductsManager() {
           value={sort}
           onChange={(value) => setSort(value as ProductSort)}
           icon={<ArrowUpDown className="h-3.5 w-3.5 text-slate-400" strokeWidth={1.8} />}
-          className="lg:w-[188px]"
+          className="lg:w-[15rem] lg:min-w-[15rem] lg:shrink-0"
         >
           <option value="name">Product Name (A - Z)</option>
           <option value="recent">Recently Added</option>
@@ -708,7 +728,7 @@ function FilterSelect({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={cn(filterClass, "cursor-pointer pl-9 pr-9")}
+        className={cn(filterClass, "cursor-pointer pl-9 pr-10")}
       >
         {children}
       </select>

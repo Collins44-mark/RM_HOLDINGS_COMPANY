@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, ScanLine } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
@@ -82,13 +83,21 @@ export function AddProductPage() {
   const allowed = canCreateProduct(user, isSuperAdmin());
   const inventory = useSupermarketInventory();
   const barcodeRef = useRef<HTMLInputElement>(null);
+  const savingRef = useRef(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [barcodeNotice, setBarcodeNotice] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const busy = saving || isPending;
 
   const suppliers = useMemo(() => {
     return [...new Set(inventory.batches.map((batch) => batch.supplier).filter(Boolean))].sort();
   }, [inventory.batches]);
+
+  useEffect(() => {
+    router.prefetch("/supermarket/products");
+  }, [router]);
 
   useEffect(() => {
     if (!allowed) router.replace("/supermarket/products");
@@ -106,10 +115,6 @@ export function AddProductPage() {
     setBarcodeNotice(null);
   }
 
-  function goBack() {
-    router.push("/supermarket/products");
-  }
-
   function lookupBarcode(code: string) {
     const match = findProductByBarcode(inventory.products, code);
     if (match) {
@@ -123,6 +128,8 @@ export function AddProductPage() {
   }
 
   function saveProduct() {
+    if (busy || savingRef.current) return;
+
     const nextErrors: Record<string, string> = {};
     const name = form.name.trim();
     const sku = form.sku.trim().toUpperCase();
@@ -164,6 +171,10 @@ export function AddProductPage() {
       return;
     }
 
+    savingRef.current = true;
+    setSaving(true);
+    setErrors({});
+
     const payload: SupermarketProduct = {
       id: `prd-${Date.now()}`,
       name,
@@ -179,57 +190,73 @@ export function AddProductPage() {
       createdAt: new Date().toISOString(),
     };
 
-    upsertProduct(payload);
-    if (stock > 0) {
-      receiveStock({
-        productId: payload.id,
-        quantity: stock,
-        batchNumber: "OPENING",
-        expiryDate: form.trackExpiry ? expiryDate : null,
-        buyingPrice,
-        type: "Opening Stock",
-        reference: "OPENING",
-        note: form.notes.trim() || "Opening stock",
-        supplier: form.supplier.trim() || undefined,
+    try {
+      upsertProduct(payload);
+      if (stock > 0) {
+        receiveStock({
+          productId: payload.id,
+          quantity: stock,
+          batchNumber: "OPENING",
+          expiryDate: form.trackExpiry ? expiryDate : null,
+          buyingPrice,
+          type: "Opening Stock",
+          reference: "OPENING",
+          note: form.notes.trim() || "Opening stock",
+          supplier: form.supplier.trim() || undefined,
+        });
+      }
+      startTransition(() => {
+        router.push("/supermarket/products");
       });
+    } catch {
+      savingRef.current = false;
+      setSaving(false);
+      setErrors({ form: "Couldn't save this product. Please try again." });
     }
-    router.push("/supermarket/products");
   }
 
   if (!allowed) return null;
 
   return (
-    <div className="min-w-0 pb-8">
+    <div className="page-enter min-w-0 pb-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <button
-            type="button"
-            onClick={goBack}
-            className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/80 bg-white/85 text-navy shadow-[0_6px_16px_rgba(15,35,64,0.06)] backdrop-blur-md transition hover:bg-white"
+          <Link
+            href="/supermarket/products"
+            prefetch
+            onClick={(event) => {
+              if (busy) event.preventDefault();
+            }}
+            className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/80 bg-white/85 text-navy shadow-[0_6px_16px_rgba(15,35,64,0.06)] backdrop-blur-md transition duration-150 hover:bg-white active:scale-[0.98]"
             aria-label="Back to products"
           >
             <ArrowLeft className="h-4 w-4" strokeWidth={1.9} />
-          </button>
+          </Link>
           <div className="min-w-0">
             <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Add Product</h1>
             <p className="mt-1 text-[13.5px] text-slate-500">Create a new product in your supermarket inventory.</p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 sm:pt-0.5">
-          <button
-            type="button"
-            onClick={goBack}
-            className="inline-flex h-10 flex-1 items-center justify-center rounded-full border border-white/80 bg-white/90 px-4 text-[13.5px] font-semibold text-navy shadow-[0_4px_12px_rgba(15,35,64,0.05)] sm:flex-none"
+          <Link
+            href="/supermarket/products"
+            prefetch
+            onClick={(event) => {
+              if (busy) event.preventDefault();
+            }}
+            className="inline-flex h-10 flex-1 items-center justify-center rounded-full border border-white/80 bg-white/90 px-4 text-[13.5px] font-semibold text-navy shadow-[0_4px_12px_rgba(15,35,64,0.05)] transition duration-150 active:scale-[0.985] sm:flex-none"
           >
             Cancel
-          </button>
+          </Link>
           <button
             type="submit"
             form="add-product-form"
-            className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_10px_22px_rgba(11,34,68,0.22)] transition hover:bg-[#102a52] sm:flex-none"
+            disabled={busy}
+            aria-busy={busy}
+            className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_10px_22px_rgba(11,34,68,0.22)] transition duration-150 hover:bg-[#102a52] active:scale-[0.985] disabled:pointer-events-none disabled:opacity-70 sm:flex-none"
           >
             <Save className="h-4 w-4" strokeWidth={2} />
-            Save Product
+            {busy ? "Saving..." : "Save Product"}
           </button>
         </div>
       </div>
@@ -242,6 +269,11 @@ export function AddProductPage() {
           saveProduct();
         }}
       >
+        {errors.form ? (
+          <p className="rounded-[16px] border border-[#ead4d4] bg-[#fbf4f4] px-4 py-3 text-[13px] text-[#8a5a5a]">
+            {errors.form}
+          </p>
+        ) : null}
         <section className={card}>
           <h2 className="text-[17px] font-semibold tracking-[-0.03em] text-navy">Product Information</h2>
           <p className="mt-1 text-[13px] text-slate-500">Basic details about the product</p>

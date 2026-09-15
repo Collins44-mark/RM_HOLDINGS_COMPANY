@@ -440,7 +440,7 @@ export function StockManager() {
             onCancel={closePanel}
             onCreateProduct={(barcode) => {
               rememberNewProductBarcode(barcode);
-              router.push("/supermarket/products");
+              router.push("/supermarket/products/new");
             }}
             onSubmit={(input) => {
               inventory.receiveStock(input);

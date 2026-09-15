@@ -86,7 +86,7 @@ function NavLink({
       onClick={onNavigate}
       title={collapsed ? item.label : undefined}
       className={cn(
-        "group relative flex items-center rounded-[14px] text-[14px] font-medium transition-colors duration-200",
+        "group relative flex items-center rounded-[14px] text-[14px] font-medium transition-colors duration-200 active:opacity-85",
         collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5",
         nested && !collapsed && "py-2 text-[13px]",
         nested
