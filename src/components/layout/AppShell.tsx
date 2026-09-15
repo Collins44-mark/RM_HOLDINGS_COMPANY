@@ -25,7 +25,8 @@ export function AppShell({
   const { collapsed, toggle } = useSidebarCollapsed();
   const pathname = usePathname();
   const sidebarWidth = collapsed ? SIDEBAR_WIDTH.collapsed : SIDEBAR_WIDTH.expanded;
-  const showFooter = pathname !== "/owner" && pathname !== "/dashboard";
+  const isAddProductPage = pathname === "/supermarket/products/new";
+  const showFooter = pathname !== "/owner" && pathname !== "/dashboard" && !isAddProductPage;
   const { nav, workspace, moduleCode } = navigationForPath(user, pathname);
 
   return (
@@ -63,6 +64,7 @@ export function AppShell({
           user={user}
           notifications={notifications}
           sidebarCollapsed={collapsed}
+          hideUtilities={isAddProductPage}
           onMenuClick={() => setMobileOpen(true)}
           onToggleSidebar={toggle}
         />

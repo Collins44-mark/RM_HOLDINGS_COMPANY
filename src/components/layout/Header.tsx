@@ -78,12 +78,14 @@ export function Header({
   onToggleSidebar,
   sidebarCollapsed = false,
   notifications,
+  hideUtilities = false,
 }: {
   user: AuthUser;
   onMenuClick: () => void;
   onToggleSidebar?: () => void;
   sidebarCollapsed?: boolean;
   notifications: { id: string; title: string; body: string; href: string | null; createdAt: string }[];
+  hideUtilities?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -110,6 +112,22 @@ export function Header({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  if (hideUtilities) {
+    return (
+      <header className="sticky top-0 z-30 flex h-14 items-center bg-transparent px-3 lg:hidden">
+        <button
+          type="button"
+          onClick={onMenuClick}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-[12px] border border-white/80 bg-white/90 text-navy shadow-[0_1px_2px_rgba(15,35,64,0.04)]"
+          aria-label="Open navigation"
+        >
+          <span className="sr-only">Open menu</span>
+          <MenuLines className="h-3.5 w-4" />
+        </button>
+      </header>
+    );
+  }
 
   return (
     <header className="sticky top-0 z-30 flex h-16 min-w-0 items-center gap-2 bg-transparent px-3 sm:h-[72px] sm:gap-3 sm:px-4 lg:px-7">

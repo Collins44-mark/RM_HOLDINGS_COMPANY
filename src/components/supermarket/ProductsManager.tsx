@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import {
   ArrowUpDown,
@@ -22,8 +23,8 @@ import { formatTzs } from "@/lib/format/currency";
 import {
   SUPERMARKET_PRODUCT_CATEGORIES,
   SUPERMARKET_PRODUCT_UNITS,
+  NEW_PRODUCT_BARCODE_KEY,
   attachStock,
-  consumeNewProductBarcode,
   findProductByBarcode,
   formatDisplayDate,
   movementTypeLabel,
@@ -132,6 +133,7 @@ function formFromProduct(product: ProductStockRow): ProductFormState {
 }
 
 export function ProductsManager() {
+  const router = useRouter();
   const { user, isSuperAdmin } = useAuth();
   const canCreate = isSuperAdmin() || canManageProducts(user, "supermarket.products.create");
   const canEdit = isSuperAdmin() || canManageProducts(user, "supermarket.products.edit");
@@ -200,18 +202,25 @@ export function ProductsManager() {
   const to = Math.min(safePage * pageSize, rows.length);
 
   function openAdd(prefill?: Partial<ProductFormState>) {
-    setSelectedId(null);
-    setForm({ ...EMPTY_FORM, ...prefill });
-    setErrors({});
-    setBarcodeNotice(null);
-    setMenuId(null);
-    setDrawer("add");
+    if (prefill?.barcode) {
+      try {
+        sessionStorage.setItem(NEW_PRODUCT_BARCODE_KEY, prefill.barcode);
+      } catch {
+        // Ignore storage errors in private browsing.
+      }
+    }
+    router.push("/supermarket/products/new");
   }
 
   useEffect(() => {
-    const barcode = consumeNewProductBarcode();
-    if (barcode) openAdd({ barcode });
-  }, []);
+    try {
+      if (sessionStorage.getItem(NEW_PRODUCT_BARCODE_KEY)) {
+        router.replace("/supermarket/products/new");
+      }
+    } catch {
+      // Ignore storage errors in private browsing.
+    }
+  }, [router]);
 
   function openView(productId: string) {
     const product = products.find((item) => item.id === productId);
@@ -606,19 +615,19 @@ export function ProductsManager() {
         )}
       </section>
 
-      {drawer === "add" || drawer === "edit" ? (
+      {drawer === "edit" ? (
         <ProductDrawer
-          title={drawer === "add" ? "Add Product" : "Edit Product"}
+          title="Edit Product"
           onClose={closePanel}
         >
           <ProductForm
             form={form}
             errors={errors}
             barcodeNotice={barcodeNotice}
-            submitLabel={drawer === "add" ? "Add Product" : "Save Changes"}
-            stockLabel={drawer === "add" ? "Opening Stock" : "Current Stock"}
-            stockReadOnly={drawer === "edit"}
-            showExpiryDate={drawer === "add"}
+            submitLabel="Save Changes"
+            stockLabel="Current Stock"
+            stockReadOnly
+            showExpiryDate={false}
             onChange={(next) => {
               setForm(next);
               setBarcodeNotice(null);
