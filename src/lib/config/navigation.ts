@@ -110,8 +110,6 @@ export const SUPERMARKET_NAV: NavItem[] = [
     children: [
       { href: "/supermarket/products", label: "Products", icon: "package" },
       { href: "/supermarket/stock", label: "Stock", icon: "warehouse", exact: true },
-      { href: "/supermarket/stock-adjustments", label: "Stock Adjustments", icon: "wrench" },
-      { href: "/supermarket/low-stock", label: "Low Stock", icon: "warehouse" },
     ],
   },
   {

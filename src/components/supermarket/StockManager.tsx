@@ -26,6 +26,8 @@ import { formatTzs } from "@/lib/format/currency";
 import type { AuthUser } from "@/lib/auth/types";
 import {
   EXPIRING_SOON_DAYS,
+  STOCK_ADJUSTMENT_KINDS,
+  adjustmentDelta,
   attachStock,
   batchExpiryStatus,
   batchesForProduct,
@@ -36,10 +38,14 @@ import {
   movementTypeLabel,
   movementsForProduct,
   productExpiryFilterStatus,
+  productMatchesKpiFocus,
   rememberNewProductBarcode,
   stockStatusFor,
   useSupermarketInventory,
+  type AdjustStockInput,
   type ExpiryStatus,
+  type InventoryKpiFocus,
+  type StockAdjustmentKind,
   type StockBatch,
   type StockStatus,
   type SupermarketProduct,
@@ -48,8 +54,15 @@ import {
 type StockStatusFilter = "all" | StockStatus;
 type ExpiryFilter = "all" | ExpiryStatus;
 type StockSort = "name" | "stock-low" | "stock-high" | "expiry";
-type DrawerMode = "add" | "view" | "history" | null;
+type DrawerMode = "add" | "adjust" | "view" | "history" | null;
 type MovementRow = ReturnType<typeof movementsForProduct>[number];
+
+const KPI_CHIP_LABEL: Record<Exclude<InventoryKpiFocus, "all" | "units">, string> = {
+  low: "Low Stock",
+  out: "Out of Stock",
+  soon: "Expiring Soon",
+  expired: "Expired",
+};
 
 const glass =
   "rounded-[28px] border border-white/55 bg-white/58 shadow-[0_18px_50px_rgba(15,35,64,0.07),inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-2xl";
@@ -112,6 +125,7 @@ export function StockManager() {
   const [category, setCategory] = useState("all");
   const [status, setStatus] = useState<StockStatusFilter>("all");
   const [expiry, setExpiry] = useState<ExpiryFilter>("all");
+  const [kpiFocus, setKpiFocus] = useState<InventoryKpiFocus>("all");
   const [sort, setSort] = useState<StockSort>("name");
   const [menuId, setMenuId] = useState<string | null>(null);
   const [drawer, setDrawer] = useState<DrawerMode>(null);
@@ -128,12 +142,18 @@ export function StockManager() {
   );
   const selected = rows.find((item) => item.id === selectedId) ?? null;
   const kpis = useMemo(() => inventoryKpis(inventory), [inventory]);
+  const kpiChip = kpiFocus === "all" || kpiFocus === "units" ? null : KPI_CHIP_LABEL[kpiFocus];
   const filtersActive =
-    Boolean(query.trim()) || category !== "all" || status !== "all" || expiry !== "all";
+    Boolean(query.trim()) ||
+    category !== "all" ||
+    status !== "all" ||
+    expiry !== "all" ||
+    Boolean(kpiChip);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const filtered = rows.filter((product) => {
+      if (!productMatchesKpiFocus(product, inventory.batches, kpiFocus)) return false;
       if (category !== "all" && product.category !== category) return false;
       if (status !== "all" && product.stockStatus !== status) return false;
       if (expiry !== "all") {
@@ -161,11 +181,32 @@ export function StockManager() {
       }
       return a.name.localeCompare(b.name);
     });
-  }, [rows, inventory.batches, query, category, status, expiry, sort]);
+  }, [rows, inventory.batches, query, category, status, expiry, sort, kpiFocus]);
 
   useEffect(() => {
     setPage(1);
-  }, [query, category, status, expiry, sort, pageSize]);
+  }, [query, category, status, expiry, sort, pageSize, kpiFocus]);
+
+  const recentMovements = useMemo(() => {
+    return [...inventory.movements]
+      .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
+      .slice(0, 8)
+      .map((item) => ({
+        ...item,
+        productName: inventory.products.find((product) => product.id === item.productId)?.name ?? "Unknown product",
+      }));
+  }, [inventory.movements, inventory.products]);
+
+  const tableStateLabel =
+    kpiFocus === "low"
+      ? `Low Stock • ${visible.length} product${visible.length === 1 ? "" : "s"}`
+      : kpiFocus === "out"
+        ? `Out of Stock • ${visible.length} product${visible.length === 1 ? "" : "s"}`
+        : kpiFocus === "soon"
+          ? `Expiring Soon • ${visible.length} product${visible.length === 1 ? "" : "s"}/batches`
+          : kpiFocus === "expired"
+            ? `Expired • ${visible.length} product${visible.length === 1 ? "" : "s"}/batches`
+            : `All Stock • ${visible.length} product${visible.length === 1 ? "" : "s"}`;
 
   const totalPages = Math.max(1, Math.ceil(visible.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -202,11 +243,33 @@ export function StockManager() {
     setPrefillProductId(null);
   }
 
+  function openAdjust(productId?: string) {
+    setMenuId(null);
+    setSelectedId(productId ?? null);
+    setPrefillProductId(productId ?? null);
+    setDrawer("adjust");
+  }
+
+  function selectKpi(focus: InventoryKpiFocus) {
+    setKpiFocus(focus);
+    if (focus === "all" || focus === "units") {
+      setStatus("all");
+      setExpiry("all");
+      return;
+    }
+    if (focus === "low" || focus === "out") {
+      setStatus("all");
+      return;
+    }
+    setExpiry("all");
+  }
+
   function clearFilters() {
     setQuery("");
     setCategory("all");
     setStatus("all");
     setExpiry("all");
+    setKpiFocus("all");
     setSort("name");
   }
 
@@ -222,28 +285,70 @@ export function StockManager() {
         {canReceive ? (
           <button
             type="button"
-            onClick={() => openAdd()}
-            className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_10px_22px_rgba(11,34,68,0.22),inset_0_1px_0_rgba(255,255,255,0.12)] transition hover:bg-[#102a52] sm:w-auto"
+            onClick={() => openAdjust()}
+            className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_10px_22px_rgba(11,34,68,0.22),inset_0_1px_0_rgba(255,255,255,0.12)] transition duration-200 hover:bg-[#102a52] sm:w-auto"
           >
             <Plus className="h-4 w-4" strokeWidth={2.2} />
-            Add Stock
+            Adjust Stock
           </button>
         ) : null}
       </div>
 
       <section className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-3 xl:grid-cols-6">
-        <KpiCard label="Total Products" value={String(kpis.totalProducts)} hint="Active catalogue" icon={Package} tone="blue" />
-        <KpiCard label="Total Stock Units" value={String(kpis.totalStockUnits)} hint="Across all products" icon={Warehouse} tone="green" />
-        <KpiCard label="Low Stock" value={String(kpis.lowStock)} hint="Need attention" icon={AlertTriangle} tone="amber" />
-        <KpiCard label="Out of Stock" value={String(kpis.outOfStock)} hint="Zero available" icon={Ban} tone="rose" />
+        <KpiCard
+          label="Total Products"
+          value={String(kpis.totalProducts)}
+          hint="Full catalogue"
+          icon={Package}
+          tone="blue"
+          active={kpiFocus === "all"}
+          onClick={() => selectKpi("all")}
+        />
+        <KpiCard
+          label="Total Stock Units"
+          value={String(kpis.totalStockUnits)}
+          hint="Across all products"
+          icon={Warehouse}
+          tone="green"
+          active={kpiFocus === "units"}
+          onClick={() => selectKpi("units")}
+        />
+        <KpiCard
+          label="Low Stock"
+          value={String(kpis.lowStock)}
+          hint="Need attention"
+          icon={AlertTriangle}
+          tone="amber"
+          active={kpiFocus === "low"}
+          onClick={() => selectKpi("low")}
+        />
+        <KpiCard
+          label="Out of Stock"
+          value={String(kpis.outOfStock)}
+          hint="Zero available"
+          icon={Ban}
+          tone="rose"
+          active={kpiFocus === "out"}
+          onClick={() => selectKpi("out")}
+        />
         <KpiCard
           label="Expiring Soon"
-          value={String(kpis.expiringSoonUnits)}
-          hint={`Units within ${EXPIRING_SOON_DAYS} days`}
+          value={String(kpis.expiringSoonProducts)}
+          hint={`Within ${EXPIRING_SOON_DAYS} days`}
           icon={Clock3}
           tone="violet"
+          active={kpiFocus === "soon"}
+          onClick={() => selectKpi("soon")}
         />
-        <KpiCard label="Expired" value={String(kpis.expiredUnits)} hint="Require action" icon={TimerReset} tone="pink" />
+        <KpiCard
+          label="Expired"
+          value={String(kpis.expiredProducts)}
+          hint="Past expiry date"
+          icon={TimerReset}
+          tone="pink"
+          active={kpiFocus === "expired"}
+          onClick={() => selectKpi("expired")}
+        />
       </section>
 
       <section className={cn(glass, "overflow-hidden")}>
@@ -310,6 +415,20 @@ export function StockManager() {
           </select>
         </div>
 
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 pb-3">
+          <p className="text-[13px] font-medium tracking-[-0.01em] text-navy">{tableStateLabel}</p>
+          {kpiChip ? (
+            <button
+              type="button"
+              onClick={() => setKpiFocus("all")}
+              className="inline-flex h-7 items-center gap-1 rounded-full border border-white/80 bg-white/80 px-2.5 text-[12px] font-medium text-navy shadow-[0_4px_12px_rgba(15,35,64,0.06)] transition duration-200 hover:bg-white"
+            >
+              {kpiChip}
+              <X className="h-3 w-3 text-slate-400" strokeWidth={2.2} />
+            </button>
+          ) : null}
+        </div>
+
         {visible.length === 0 ? (
           <EmptyStock filtersActive={filtersActive} onClear={clearFilters} />
         ) : (
@@ -356,6 +475,7 @@ export function StockManager() {
                           onClose={() => setMenuId(null)}
                           onView={() => openView(product.id)}
                           onAdd={() => openAdd(product.id)}
+                          onAdjust={() => openAdjust(product.id)}
                           onHistory={() => openHistory(product.id)}
                         />
                       </td>
@@ -401,6 +521,7 @@ export function StockManager() {
                           onClose={() => setMenuId(null)}
                           onView={() => openView(product.id)}
                           onAdd={() => openAdd(product.id)}
+                          onAdjust={() => openAdjust(product.id)}
                           onHistory={() => openHistory(product.id)}
                         />
                       </td>
@@ -423,6 +544,7 @@ export function StockManager() {
                       onClose={() => setMenuId(null)}
                       onView={() => openView(product.id)}
                       onAdd={() => openAdd(product.id)}
+                      onAdjust={() => openAdjust(product.id)}
                       onHistory={() => openHistory(product.id)}
                     />
                   </div>
@@ -452,6 +574,45 @@ export function StockManager() {
         )}
       </section>
 
+      <section className={cn(glass, "overflow-hidden px-4 py-4")}>
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">History</p>
+            <h2 className="mt-1 text-[16px] font-semibold tracking-[-0.03em] text-navy">Recent Stock Movements</h2>
+          </div>
+        </div>
+        {recentMovements.length === 0 ? (
+          <p className="mt-4 text-[13px] text-slate-500">No stock movements recorded yet.</p>
+        ) : (
+          <div className="mt-3 divide-y divide-[#d5dee8]/80">
+            {recentMovements.map((item) => (
+              <div key={item.id} className="grid grid-cols-[1fr_auto] gap-3 py-3 sm:grid-cols-[108px_1fr_88px_1fr_92px]">
+                <p className="text-[12.5px] text-slate-500">{formatDisplayDate(item.date)}</p>
+                <div className="min-w-0">
+                  <p className="truncate text-[13px] font-medium text-navy">{item.productName}</p>
+                  <p className="mt-0.5 truncate text-[12px] text-slate-400 sm:hidden">
+                    {movementTypeLabel(item.type, item.adjustmentKind)}
+                    {item.reason ? ` · ${item.reason}` : ""}
+                  </p>
+                </div>
+                <p className="hidden text-[13px] text-slate-500 sm:block">
+                  {movementTypeLabel(item.type, item.adjustmentKind)}
+                </p>
+                <p className="hidden truncate text-[12.5px] text-slate-400 sm:block">
+                  {item.reason || item.note}
+                </p>
+                <div className="text-right">
+                  <p className="text-[13px] font-semibold text-navy">
+                    {item.quantity > 0 ? `+${item.quantity}` : item.quantity}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">{item.user || "Storekeeper"}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {drawer === "add" ? (
         <StockDrawer kicker="Inventory" title="Add Stock" onClose={closePanel}>
           <AddStockForm
@@ -466,6 +627,24 @@ export function StockManager() {
             onSubmit={(input) => {
               inventory.receiveStock(input);
               closePanel();
+            }}
+          />
+        </StockDrawer>
+      ) : null}
+
+      {drawer === "adjust" ? (
+        <StockDrawer kicker="Inventory" title="Adjust Stock" onClose={closePanel}>
+          <AdjustStockForm
+            products={inventory.products}
+            batches={inventory.batches}
+            prefillProductId={prefillProductId}
+            actorName={user?.name || "Storekeeper"}
+            onCancel={closePanel}
+            onSubmit={(input) => {
+              const result = inventory.adjustStock(input);
+              if (result.error) return result.error;
+              closePanel();
+              return null;
             }}
           />
         </StockDrawer>
@@ -527,10 +706,10 @@ function EmptyStock({
 }) {
   return (
     <div className="px-6 py-10 text-center">
-      <p className="text-[16px] font-semibold tracking-[-0.03em] text-navy">No inventory found</p>
+      <p className="text-[16px] font-semibold tracking-[-0.03em] text-navy">No products found</p>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
         {filtersActive
-          ? "Nothing matches the current search or filters."
+          ? "No products match the current inventory filter."
           : "Receive stock against a product from the catalogue to start inventory."}
       </p>
       {filtersActive ? (
@@ -539,7 +718,7 @@ function EmptyStock({
           onClick={onClear}
           className="mt-5 inline-flex h-11 items-center justify-center rounded-[16px] bg-navy px-4 text-[14px] font-semibold text-white"
         >
-          Clear filters
+          Clear Filter
         </button>
       ) : null}
     </div>
@@ -552,24 +731,32 @@ function KpiCard({
   hint,
   icon: Icon,
   tone,
+  active,
+  onClick,
 }: {
   label: string;
   value: string;
   hint: string;
   icon: ComponentType<{ className?: string; strokeWidth?: number }>;
   tone: KpiTone;
+  active: boolean;
+  onClick: () => void;
 }) {
   const accent = KPI_TONES[tone];
   return (
-    <article
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
       className={cn(
-        "relative flex min-w-0 items-center gap-3 overflow-hidden rounded-[24px] border px-3.5 py-3.5 shadow-[0_14px_36px_rgba(15,35,64,0.08),inset_0_1px_0_rgba(255,255,255,0.92)] backdrop-blur-2xl sm:px-4 sm:py-4",
+        "relative flex min-w-0 items-center gap-3 overflow-hidden rounded-[24px] border px-3.5 py-3.5 text-left shadow-[0_14px_36px_rgba(15,35,64,0.08),inset_0_1px_0_rgba(255,255,255,0.92)] backdrop-blur-2xl transition duration-200 ease-out hover:-translate-y-px hover:shadow-[0_16px_38px_rgba(15,35,64,0.1)] sm:px-4 sm:py-4",
         accent.card,
+        active && "border-navy/18 bg-white/82 shadow-[0_16px_40px_rgba(15,35,64,0.12),inset_0_1px_0_rgba(255,255,255,0.95)] ring-1 ring-navy/8",
       )}
     >
       <span
         className={cn(
-          "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border shadow-[0_6px_14px_rgba(15,35,64,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md",
+          "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border shadow-[0_6px_14px_rgba(15,35,64,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md transition duration-200",
           accent.icon,
         )}
       >
@@ -580,7 +767,7 @@ function KpiCard({
         <p className="mt-0.5 text-[24px] font-semibold leading-none tracking-[-0.05em] text-navy sm:text-[26px]">{value}</p>
         <p className="mt-1.5 text-[11px] leading-4 text-slate-400">{hint}</p>
       </div>
-    </article>
+    </button>
   );
 }
 
@@ -737,6 +924,7 @@ function RowActions({
   onClose,
   onView,
   onAdd,
+  onAdjust,
   onHistory,
 }: {
   product: SupermarketProduct;
@@ -746,6 +934,7 @@ function RowActions({
   onClose: () => void;
   onView: () => void;
   onAdd: () => void;
+  onAdjust: () => void;
   onHistory: () => void;
 }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -785,6 +974,7 @@ function RowActions({
             onPointerDown={(event) => event.stopPropagation()}
           >
             <ActionItem label="View Stock" onSelect={onView} />
+            {canReceive ? <ActionItem label="Adjust Stock" onSelect={onAdjust} /> : null}
             {canReceive ? <ActionItem label="Add Stock" onSelect={onAdd} /> : null}
             <ActionItem label="Stock History" onSelect={onHistory} />
           </div>
@@ -1132,6 +1322,197 @@ function AddStockForm({
   );
 }
 
+const REASON_REQUIRED_KINDS: StockAdjustmentKind[] = ["Damage", "Expired", "Lost", "Correction"];
+
+function AdjustStockForm({
+  products,
+  batches,
+  prefillProductId,
+  actorName,
+  onCancel,
+  onSubmit,
+}: {
+  products: SupermarketProduct[];
+  batches: StockBatch[];
+  prefillProductId: string | null;
+  actorName: string;
+  onCancel: () => void;
+  onSubmit: (input: AdjustStockInput) => string | null;
+}) {
+  const prefilled = products.find((item) => item.id === prefillProductId) ?? null;
+  const [productQuery, setProductQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(prefilled?.id ?? null);
+  const [kind, setKind] = useState<StockAdjustmentKind>("Decrease");
+  const [correctionDirection, setCorrectionDirection] = useState<"increase" | "decrease">("increase");
+  const [quantity, setQuantity] = useState("");
+  const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const selected = products.find((item) => item.id === selectedId) ?? null;
+  const currentStock = selected ? currentStockFor(selected.id, batches) : 0;
+  const qty = Number(quantity);
+  const validQty = Number.isInteger(qty) && qty > 0;
+  const delta = selected && validQty ? adjustmentDelta(kind, qty, correctionDirection) : 0;
+  const nextStock = selected && validQty ? currentStock + delta : currentStock;
+  const reasonRequired = REASON_REQUIRED_KINDS.includes(kind);
+
+  const matches = useMemo(() => {
+    const needle = productQuery.trim().toLowerCase();
+    if (!needle) return products.slice(0, 8);
+    return products
+      .filter(
+        (item) =>
+          item.name.toLowerCase().includes(needle) ||
+          item.sku.toLowerCase().includes(needle) ||
+          item.barcode.toLowerCase().includes(needle),
+      )
+      .slice(0, 8);
+  }, [productQuery, products]);
+
+  function submit() {
+    const nextErrors: Record<string, string> = {};
+    if (!selected) nextErrors.product = "Select a product.";
+    if (!kind) nextErrors.kind = "Select an adjustment type.";
+    if (!validQty) nextErrors.quantity = "Enter a valid quantity.";
+    if (reasonRequired && !reason.trim()) nextErrors.reason = "Enter a reason for this adjustment.";
+    if (selected && validQty && nextStock < 0) {
+      nextErrors.quantity = "Decrease cannot make stock negative.";
+    }
+    if (Object.keys(nextErrors).length) {
+      setErrors(nextErrors);
+      return;
+    }
+    const submitError = onSubmit({
+      productId: selected!.id,
+      kind,
+      quantity: qty,
+      reason: reason.trim(),
+      note: note.trim(),
+      correctionDirection,
+      user: actorName,
+    });
+    if (submitError) setErrors({ quantity: submitError });
+  }
+
+  return (
+    <form
+      className="space-y-6"
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+    >
+      <section>
+        <p className="text-[12px] font-medium text-slate-500">Product</p>
+        <input
+          value={productQuery}
+          onChange={(event) => setProductQuery(event.target.value)}
+          placeholder="Search product..."
+          className={cn(inputClass, "mt-2")}
+        />
+        <div className="mt-2 max-h-48 overflow-y-auto rounded-[16px] border border-black/[0.04] bg-white/50">
+          {matches.length === 0 ? (
+            <p className="px-3 py-3 text-[13px] text-slate-500">No matching products.</p>
+          ) : (
+            matches.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  setSelectedId(item.id);
+                  setProductQuery("");
+                  setErrors((current) => {
+                    const next = { ...current };
+                    delete next.product;
+                    return next;
+                  });
+                }}
+                className={cn(
+                  "flex w-full flex-col px-3.5 py-2.5 text-left transition duration-200 hover:bg-white/80",
+                  selectedId === item.id && "bg-white/90",
+                )}
+              >
+                <span className="text-[13px] font-semibold text-navy">{item.name}</span>
+                <span className="text-[12px] text-slate-500">
+                  {item.sku} · {currentStockFor(item.id, batches)} units
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+        {errors.product ? <p className="mt-1.5 text-[12px] text-slate-500">{errors.product}</p> : null}
+      </section>
+
+      {selected ? (
+        <section className="rounded-[18px] border border-white/80 bg-white/55 px-4 py-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Stock preview</p>
+          <h3 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-navy">{selected.name}</h3>
+          <dl className="mt-3 grid grid-cols-3 gap-3 text-[13px]">
+            <ReadOnlyField label="Current Stock" value={String(currentStock)} />
+            <ReadOnlyField
+              label="Adjustment"
+              value={validQty ? (delta > 0 ? `+${delta}` : String(delta)) : "—"}
+            />
+            <ReadOnlyField label="New Stock" value={validQty ? String(nextStock) : "—"} />
+          </dl>
+        </section>
+      ) : null}
+
+      <section className="space-y-3">
+        <Field label="Adjustment Type" required error={errors.kind}>
+          <select
+            value={kind}
+            onChange={(event) => setKind(event.target.value as StockAdjustmentKind)}
+            className={inputClass}
+          >
+            {STOCK_ADJUSTMENT_KINDS.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {kind === "Correction" ? (
+          <Field label="Correction Direction" required>
+            <select
+              value={correctionDirection}
+              onChange={(event) => setCorrectionDirection(event.target.value as "increase" | "decrease")}
+              className={inputClass}
+            >
+              <option value="increase">Increase</option>
+              <option value="decrease">Decrease</option>
+            </select>
+          </Field>
+        ) : null}
+        <Field label="Quantity" required error={errors.quantity}>
+          <input inputMode="numeric" value={quantity} onChange={(event) => setQuantity(event.target.value)} className={inputClass} />
+        </Field>
+        <Field label="Reason" required={reasonRequired} error={errors.reason}>
+          <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="e.g. Damaged" className={inputClass} />
+        </Field>
+        <Field label="Notes">
+          <textarea
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            rows={3}
+            className="w-full rounded-[14px] border border-white/80 bg-white/70 px-3 py-2.5 text-[13px] text-navy outline-none backdrop-blur-sm transition placeholder:text-slate-400 focus:border-navy/12 focus:bg-white/90"
+          />
+        </Field>
+      </section>
+
+      <div className="flex justify-end gap-2 pt-1">
+        <button type="button" onClick={onCancel} className="h-11 rounded-[16px] px-4 text-[14px] font-medium text-slate-500">
+          Cancel
+        </button>
+        <button type="submit" className="h-11 rounded-[16px] bg-navy px-5 text-[14px] font-semibold text-white">
+          Save Adjustment
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function StockDetails({
   product,
   batches,
@@ -1196,7 +1577,7 @@ function StockDetails({
             {recent.map((item) => (
               <div key={item.id} className="flex items-baseline justify-between gap-3 py-2.5">
                 <div className="min-w-0">
-                  <p className="text-[13px] font-medium text-navy">{movementTypeLabel(item.type)}</p>
+                  <p className="text-[13px] font-medium text-navy">{movementTypeLabel(item.type, item.adjustmentKind)}</p>
                   <p className="mt-0.5 text-[12px] text-slate-400">
                     {formatDisplayDate(item.date)} · {item.reference}
                   </p>
@@ -1247,7 +1628,7 @@ function StockHistoryPanel({
             <div key={item.id} className="grid grid-cols-[1fr_auto] gap-3 py-3 sm:grid-cols-[140px_1fr_70px_70px]">
               <p className="text-[13px] text-slate-500">{formatDisplayDate(item.date)}</p>
               <div>
-                <p className="text-[13px] font-medium text-navy">{movementTypeLabel(item.type)}</p>
+                <p className="text-[13px] font-medium text-navy">{movementTypeLabel(item.type, item.adjustmentKind)}</p>
                 <p className="mt-0.5 text-[12px] text-slate-400">{item.reference}</p>
               </div>
               <p className="text-[13px] font-semibold text-navy">

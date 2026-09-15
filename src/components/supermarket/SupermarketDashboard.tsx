@@ -29,7 +29,7 @@ const QUICK_ACTIONS = [
   { href: "/supermarket/pos", label: "New Sale", icon: ShoppingBag },
   { href: "/supermarket/products", label: "Add Product", icon: PackagePlus },
   { href: "/supermarket/purchases", label: "Record Purchase", icon: Wallet },
-  { href: "/supermarket/stock-adjustments", label: "Stock Adjustment", icon: SlidersHorizontal },
+  { href: "/supermarket/stock", label: "Stock Adjustment", icon: SlidersHorizontal },
 ] as const;
 
 const glass =

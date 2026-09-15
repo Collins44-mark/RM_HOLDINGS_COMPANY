@@ -29,6 +29,16 @@ export type SupermarketProductUnit = (typeof SUPERMARKET_PRODUCT_UNITS)[number];
 export type StockStatus = "In Stock" | "Low Stock" | "Out of Stock";
 export type ExpiryStatus = "Expired" | "Expiring Soon" | "Normal" | "No Expiry";
 export type StockMovementType = "Opening Stock" | "Received" | "Sale" | "Adjustment";
+export const STOCK_ADJUSTMENT_KINDS = [
+  "Increase",
+  "Decrease",
+  "Opening Balance",
+  "Damage",
+  "Expired",
+  "Lost",
+  "Correction",
+] as const;
+export type StockAdjustmentKind = (typeof STOCK_ADJUSTMENT_KINDS)[number];
 
 export type SupermarketProduct = {
   id: string;
@@ -65,6 +75,9 @@ export type StockMovement = {
   date: string;
   reference: string;
   note: string;
+  reason?: string;
+  user?: string;
+  adjustmentKind?: StockAdjustmentKind;
 };
 
 export type InventorySnapshot = {
@@ -93,6 +106,18 @@ export type ReceiveStockInput = {
   reference?: string;
   note?: string;
 };
+
+export type AdjustStockInput = {
+  productId: string;
+  kind: StockAdjustmentKind;
+  quantity: number;
+  reason?: string;
+  note?: string;
+  correctionDirection?: "increase" | "decrease";
+  user?: string;
+};
+
+export type InventoryKpiFocus = "all" | "units" | "low" | "out" | "soon" | "expired";
 
 export type ProductStockRow = SupermarketProduct & {
   stock: number;
@@ -124,8 +149,8 @@ export function currentStockFor(productId: string, batches: StockBatch[]) {
 }
 
 export function stockStatusFor(stock: number, reorderLevel: number): StockStatus {
-  if (stock <= 0) return "Out of Stock";
-  if (stock <= reorderLevel) return "Low Stock";
+  if (stock === 0 || stock < 0) return "Out of Stock";
+  if (stock > 0 && stock <= reorderLevel) return "Low Stock";
   return "In Stock";
 }
 
@@ -199,6 +224,24 @@ export function attachStock(product: SupermarketProduct, batches: StockBatch[]):
   };
 }
 
+export function productHasExpiryStatus(productId: string, batches: StockBatch[], status: Extract<ExpiryStatus, "Expiring Soon" | "Expired">) {
+  return batchesForProduct(productId, batches).some(
+    (batch) => batch.quantity > 0 && batchExpiryStatus(batch.expiryDate) === status,
+  );
+}
+
+export function productMatchesKpiFocus(
+  product: ProductStockRow,
+  batches: StockBatch[],
+  focus: InventoryKpiFocus,
+) {
+  if (focus === "all" || focus === "units") return true;
+  if (focus === "low") return product.stockStatus === "Low Stock";
+  if (focus === "out") return product.stockStatus === "Out of Stock";
+  if (focus === "soon") return productHasExpiryStatus(product.id, batches, "Expiring Soon");
+  return productHasExpiryStatus(product.id, batches, "Expired");
+}
+
 export function findProductByBarcode(
   products: SupermarketProduct[],
   barcode: string,
@@ -225,9 +268,17 @@ export function movementsForProduct(productId: string, movements: StockMovement[
   });
 }
 
-export function movementTypeLabel(type: StockMovementType) {
+export function movementTypeLabel(type: StockMovementType, adjustmentKind?: StockAdjustmentKind) {
+  if (adjustmentKind) return adjustmentKind;
   if (type === "Received") return "Purchase / Received";
   return type;
+}
+
+export function adjustmentDelta(kind: StockAdjustmentKind, quantity: number, correctionDirection: "increase" | "decrease" = "increase") {
+  const amount = Math.abs(quantity);
+  if (kind === "Decrease" || kind === "Damage" || kind === "Expired" || kind === "Lost") return -amount;
+  if (kind === "Correction" && correctionDirection === "decrease") return -amount;
+  return amount;
 }
 
 function nextBatchNumber(productId: string, batches: StockBatch[]) {
@@ -831,6 +882,86 @@ export function receiveStock(input: ReceiveStockInput) {
   return batch;
 }
 
+export function adjustStock(input: AdjustStockInput) {
+  const product = snapshot.products.find((item) => item.id === input.productId);
+  if (!product) return { error: "Select a product." };
+
+  const quantity = Math.abs(input.quantity);
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    return { error: "Enter a valid quantity." };
+  }
+
+  const delta = adjustmentDelta(input.kind, quantity, input.correctionDirection);
+  const current = currentStockFor(input.productId, snapshot.batches);
+  if (delta < 0 && current + delta < 0) {
+    return { error: "Decrease cannot make stock negative." };
+  }
+
+  const stamp = Date.now();
+  const date = new Date().toISOString().slice(0, 10);
+  const batches = snapshot.batches.map((batch) => ({ ...batch }));
+  let batchId: string | null = null;
+
+  if (delta > 0) {
+    const batch: StockBatch = {
+      id: `bat-${stamp}`,
+      productId: input.productId,
+      batchNumber: nextBatchNumber(input.productId, batches),
+      quantity: delta,
+      expiryDate: null,
+      buyingPrice: product.buyingPrice,
+      supplier: "",
+      receivedAt: date,
+    };
+    batches.push(batch);
+    batchId = batch.id;
+  } else {
+    let remaining = -delta;
+    const ordered = batches
+      .map((batch, index) => ({ batch, index }))
+      .filter(({ batch }) => batch.productId === input.productId && batch.quantity > 0)
+      .sort((a, b) => {
+        const aKey = `${a.batch.expiryDate ?? "9999-12-31"}|${a.batch.receivedAt}`;
+        const bKey = `${b.batch.expiryDate ?? "9999-12-31"}|${b.batch.receivedAt}`;
+        return aKey.localeCompare(bKey);
+      });
+
+    for (const { batch, index } of ordered) {
+      if (remaining <= 0) break;
+      const take = Math.min(batch.quantity, remaining);
+      batches[index] = { ...batch, quantity: batch.quantity - take };
+      remaining -= take;
+      batchId = batch.id;
+    }
+
+    if (remaining > 0) {
+      return { error: "Decrease cannot make stock negative." };
+    }
+  }
+
+  const reason = input.reason?.trim() || "";
+  const movement: StockMovement = {
+    id: `mov-${stamp}`,
+    productId: input.productId,
+    batchId,
+    type: "Adjustment",
+    quantity: delta,
+    date,
+    reference: `ADJ-${stamp.toString(36).toUpperCase()}`,
+    note: input.note?.trim() || reason || input.kind,
+    reason: reason || input.kind,
+    user: input.user?.trim() || "Storekeeper",
+    adjustmentKind: input.kind,
+  };
+
+  setSnapshot({
+    ...snapshot,
+    batches,
+    movements: [...snapshot.movements, movement],
+  });
+  return { error: null };
+}
+
 export function rememberNewProductBarcode(barcode: string) {
   try {
     sessionStorage.setItem(NEW_PRODUCT_BARCODE_KEY, barcode);
@@ -851,25 +982,22 @@ export function consumeNewProductBarcode() {
 
 export function inventoryKpis(state: InventorySnapshot) {
   const rows = state.products.map((product) => attachStock(product, state.batches));
-  const active = rows.filter((item) => item.isActive);
   const expiredBatches = state.batches.filter(
     (batch) => batch.quantity > 0 && batchExpiryStatus(batch.expiryDate) === "Expired",
   );
   const soonBatches = state.batches.filter(
     (batch) => batch.quantity > 0 && batchExpiryStatus(batch.expiryDate) === "Expiring Soon",
   );
-  const expiredProductIds = new Set(expiredBatches.map((batch) => batch.productId));
-  const soonProductIds = new Set(soonBatches.map((batch) => batch.productId));
 
   return {
-    totalProducts: active.length,
-    totalStockUnits: state.batches.reduce((sum, batch) => sum + batch.quantity, 0),
-    lowStock: rows.filter((item) => item.stockStatus === "Low Stock").length,
-    outOfStock: rows.filter((item) => item.stockStatus === "Out of Stock").length,
+    totalProducts: rows.length,
+    totalStockUnits: rows.reduce((sum, item) => sum + item.stock, 0),
+    lowStock: rows.filter((item) => productMatchesKpiFocus(item, state.batches, "low")).length,
+    outOfStock: rows.filter((item) => productMatchesKpiFocus(item, state.batches, "out")).length,
     expiringSoonUnits: soonBatches.reduce((sum, batch) => sum + batch.quantity, 0),
-    expiringSoonProducts: soonProductIds.size,
+    expiringSoonProducts: rows.filter((item) => productMatchesKpiFocus(item, state.batches, "soon")).length,
     expiredUnits: expiredBatches.reduce((sum, batch) => sum + batch.quantity, 0),
-    expiredProducts: expiredProductIds.size,
+    expiredProducts: rows.filter((item) => productMatchesKpiFocus(item, state.batches, "expired")).length,
   };
 }
 
@@ -879,6 +1007,7 @@ export function useSupermarketInventory() {
     ...state,
     upsertProduct,
     receiveStock,
+    adjustStock,
     toggleProductActive,
   };
 }
