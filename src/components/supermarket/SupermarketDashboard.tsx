@@ -1,6 +1,10 @@
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
 import {
   AlertTriangle,
+  ArrowUpRight,
   Clock3,
   Package,
   PackagePlus,
@@ -29,7 +33,11 @@ const QUICK_ACTIONS = [
 ] as const;
 
 const glass =
-  "rounded-[24px] border border-white/70 bg-white/74 shadow-[0_10px_32px_rgba(15,35,64,0.045)] backdrop-blur-xl";
+  "rounded-[24px] border border-white/65 bg-white/72 shadow-[0_12px_36px_rgba(15,35,64,0.055),inset_0_1px_0_rgba(255,255,255,0.86)] backdrop-blur-xl";
+const tableHead =
+  "bg-[#e8eef5]/75 text-[10.5px] font-medium uppercase tracking-[0.14em] text-slate-400 backdrop-blur-md";
+const periodClass =
+  "h-8 shrink-0 rounded-full border border-white/75 bg-white/85 px-3 text-[12.5px] font-medium text-slate-500 shadow-[0_4px_12px_rgba(15,35,64,0.06),inset_0_1px_0_rgba(255,255,255,0.95)] outline-none backdrop-blur-md";
 
 type KpiTone = "blue" | "violet" | "green" | "amber";
 
@@ -113,66 +121,60 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
         />
       </section>
 
-      <section className="grid min-w-0 grid-cols-1 gap-2.5 sm:gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+      <section className="grid min-w-0 grid-cols-1 items-stretch gap-2.5 sm:gap-3 xl:grid-cols-[minmax(0,1.22fr)_minmax(0,1fr)]">
         <SalesOverviewCard data={data} />
         <RecentSalesCard sales={data.recentSales} />
       </section>
 
-      <section className="grid min-w-0 grid-cols-1 gap-2.5 sm:gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1.2fr)_minmax(0,0.85fr)]">
-        <article className={cn(glass, "min-w-0 px-4 py-4 sm:px-5 sm:py-5")}>
+      <section className="grid min-w-0 grid-cols-1 items-stretch gap-2.5 sm:gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1.2fr)_minmax(0,0.82fr)]">
+        <article className={cn(glass, "flex h-full min-w-0 flex-col px-4 py-3.5 sm:px-5 sm:py-4")}>
           <CardTitle title="Top Selling Products" href="/supermarket/products" />
-          <ol className="mt-4 space-y-3">
+          <ol className="mt-3 space-y-2.5">
             {data.topProducts.map((product, index) => (
               <li key={product.name} className="min-w-0">
                 <div className="flex items-center gap-2.5">
-                  <span className="w-4 shrink-0 text-[12px] font-semibold text-slate-400">
+                  <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#eef2f6] text-[11px] font-semibold text-slate-500">
                     {index + 1}
                   </span>
-                  <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-navy sm:text-[13.5px]">
+                  <p className="min-w-[96px] shrink-0 truncate text-[13px] font-medium text-navy sm:min-w-[110px] sm:text-[13.5px]">
                     {product.name}
                   </p>
-                  <div className="hidden h-1.5 w-[72px] overflow-hidden rounded-full bg-[#eef2f6] sm:block sm:w-[88px]">
+                  <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[#eef2f6]">
                     <div
                       className="h-full rounded-full bg-[#5b8fd4]"
                       style={{ width: `${Math.max(12, (product.sold / peakSold) * 100)}%` }}
                     />
                   </div>
-                  <p className="w-[58px] shrink-0 text-right text-[12px] text-slate-500">
+                  <p className="w-[62px] shrink-0 text-right text-[12px] tabular-nums text-slate-500">
                     {product.sold} sold
                   </p>
-                </div>
-                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[#eef2f6] sm:hidden">
-                  <div
-                    className="h-full rounded-full bg-[#5b8fd4]"
-                    style={{ width: `${Math.max(12, (product.sold / peakSold) * 100)}%` }}
-                  />
                 </div>
               </li>
             ))}
           </ol>
         </article>
 
-        <article className={cn(glass, "min-w-0 px-4 py-4 sm:px-5 sm:py-5")}>
+        <article className={cn(glass, "flex h-full min-w-0 flex-col overflow-hidden px-4 py-3.5 sm:px-5 sm:py-4")}>
           <CardTitle title="Recent Purchases" href="/supermarket/purchases" />
-          <div className="mt-3 hidden overflow-x-auto md:block">
+          <div className="mt-3 hidden min-w-0 overflow-x-auto md:block">
             <table className="min-w-full text-left text-[12.5px]">
-              <thead className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-slate-400">
-                <tr>
-                  <th className="pb-2.5 pr-3 font-medium">Supplier</th>
-                  <th className="pb-2.5 pr-3 font-medium">PO Number</th>
-                  <th className="pb-2.5 pr-3 font-medium">Date</th>
-                  <th className="pb-2.5 pr-3 font-medium">Amount</th>
-                  <th className="pb-2.5 font-medium">Status</th>
+              <thead className={tableHead}>
+                <tr className="border-b border-[#d5dee8]/80">
+                  <th className="px-2.5 py-2 font-medium">Supplier</th>
+                  <th className="px-2.5 py-2 font-medium">PO Number</th>
+                  <th className="px-2.5 py-2 font-medium">Date</th>
+                  <th className="px-2.5 py-2 font-medium">Amount</th>
+                  <th className="px-2.5 py-2 font-medium">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {data.recentPurchases.map((purchase) => (
-                  <tr key={purchase.reference} className="border-t border-black/[0.04]">
-                    <td className="py-2.5 pr-3 font-medium text-navy">{purchase.supplier}</td>
-                    <td className="py-2.5 pr-3 text-slate-500">{purchase.reference}</td>
-                    <td className="py-2.5 pr-3 text-slate-500">{purchase.date}</td>
-                    <td className="py-2.5 pr-3 font-semibold text-navy">{formatTzs(purchase.amount)}</td>
-                    <td className="py-2.5">
+                  <tr key={purchase.reference} className="border-t border-[#d5dee8]/70">
+                    <td className="whitespace-nowrap px-2.5 py-2 font-medium text-navy">{purchase.supplier}</td>
+                    <td className="whitespace-nowrap px-2.5 py-2 text-slate-500">{purchase.reference}</td>
+                    <td className="whitespace-nowrap px-2.5 py-2 text-slate-500">{purchase.date}</td>
+                    <td className="whitespace-nowrap px-2.5 py-2 font-semibold text-navy">{formatTzs(purchase.amount)}</td>
+                    <td className="whitespace-nowrap px-2.5 py-2">
                       <PurchaseStatus status={purchase.status} />
                     </td>
                   </tr>
@@ -187,21 +189,21 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
           </ul>
         </article>
 
-        <article className={cn(glass, "min-w-0 px-4 py-4 sm:px-5 sm:py-5")}>
+        <article className={cn(glass, "flex h-full min-w-0 flex-col px-4 py-3.5 sm:px-5 sm:py-4")}>
           <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy sm:text-[17px]">
             Quick Actions
           </h2>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-1 xl:gap-2.5">
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-1 xl:gap-2">
             {QUICK_ACTIONS.map((action) => (
               <Link
                 key={action.href + action.label}
                 href={action.href}
-                className="flex min-w-0 items-center gap-2.5 rounded-[16px] border border-white/80 bg-white/70 px-3 py-2.5 shadow-[0_1px_2px_rgba(15,35,64,0.04)] backdrop-blur-md transition hover:bg-white sm:px-3.5"
+                className="flex min-w-0 items-center gap-2.5 rounded-[14px] border border-white/80 bg-white/75 px-3 py-2 shadow-[0_4px_12px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-md transition hover:bg-white sm:px-3"
               >
-                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-[#f4f7fb] text-navy">
-                  <action.icon className="h-4 w-4" strokeWidth={1.7} />
+                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] bg-[#f4f7fb] text-navy">
+                  <action.icon className="h-3.5 w-3.5" strokeWidth={1.7} />
                 </span>
-                <span className="min-w-0 break-words text-[12.5px] font-semibold leading-4 text-navy sm:text-[13px]">
+                <span className="min-w-0 truncate text-[12.5px] font-semibold leading-4 text-navy sm:text-[13px]">
                   {action.label}
                 </span>
               </Link>
@@ -273,34 +275,41 @@ function KpiCard({
 }
 
 function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
+  const [period, setPeriod] = useState<"today" | "week" | "month">("week");
   const peak = Math.max(...data.salesOverview.trend.map((item) => item.amount), 1);
   const axisMax = Math.max(2_000_000, Math.ceil(peak / 2_000_000) * 2_000_000);
   const ticks = [axisMax, axisMax * 0.75, axisMax * 0.5, axisMax * 0.25, 0];
+  const amount =
+    period === "today"
+      ? data.salesOverview.today
+      : period === "month"
+        ? data.salesOverview.month
+        : data.salesOverview.week;
 
   return (
-    <article className={cn(glass, "min-w-0 px-4 py-4 sm:px-5 sm:py-5")}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy sm:text-[17px]">
-            Sales Overview
-          </h2>
-          <p className="mt-1 text-[13px] text-slate-500">This week compared with daily store trading.</p>
-        </div>
-        <div className="text-left sm:text-right">
-          <p className="text-[20px] font-semibold tracking-[-0.045em] text-navy sm:text-[22px]">
-            {formatTzs(data.salesOverview.week)}
-          </p>
-        </div>
+    <article className={cn(glass, "flex h-full min-w-0 flex-col px-4 py-3.5 sm:px-5 sm:py-4")}>
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy sm:text-[17px]">
+          Sales Overview
+        </h2>
+        <select
+          value={period}
+          onChange={(event) => setPeriod(event.target.value as "today" | "week" | "month")}
+          className={periodClass}
+          aria-label="Sales overview period"
+        >
+          <option value="today">Today</option>
+          <option value="week">This Week</option>
+          <option value="month">This Month</option>
+        </select>
       </div>
+      <p className="mt-1 text-[13px] text-slate-500">This week compared with daily store trading.</p>
+      <p className="mt-2 text-right text-[20px] font-semibold tracking-[-0.045em] text-navy sm:text-[22px]">
+        {formatTzs(amount)}
+      </p>
 
-      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-2.5">
-        <PeriodStat label="Today" value={formatTzs(data.salesOverview.today)} />
-        <PeriodStat label="This week" value={formatTzs(data.salesOverview.week)} />
-        <PeriodStat label="This month" value={formatTzs(data.salesOverview.month)} />
-      </div>
-
-      <div className="mt-5 flex gap-3">
-        <div className="hidden h-[148px] w-8 shrink-0 flex-col justify-between pb-6 pt-1 text-right sm:flex" aria-hidden>
+      <div className="mt-2 flex min-h-0 items-end gap-2">
+        <div className="hidden h-[108px] w-7 shrink-0 flex-col justify-between pb-5 text-right sm:flex" aria-hidden>
           {ticks.map((tick) => (
             <span key={tick} className="text-[10px] font-medium text-slate-400">
               {tick === 0 ? "0" : `${tick / 1_000_000}M`}
@@ -310,21 +319,20 @@ function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
         <div
           className="relative min-w-0 flex-1"
           style={{
-            backgroundImage:
-              "linear-gradient(to right, rgba(15,35,64,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(15,35,64,0.05) 1px, transparent 1px)",
+            backgroundImage: "linear-gradient(to bottom, rgba(15,35,64,0.05) 1px, transparent 1px)",
             backgroundSize: "100% 25%",
           }}
         >
-          <div className="flex h-[132px] items-end gap-1.5 sm:h-[148px] sm:gap-2.5" aria-hidden>
+          <div className="flex h-[108px] items-end gap-1.5 sm:gap-2" aria-hidden>
             {data.salesOverview.trend.map((day, index) => {
-              const height = Math.max(12, (day.amount / peak) * 100);
+              const height = Math.max(18, (day.amount / peak) * 100);
               const latest = index === data.salesOverview.trend.length - 1;
               return (
-                <div key={day.label} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-                  <div className="flex h-[108px] w-full items-end justify-center sm:h-[124px]">
+                <div key={day.label} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
+                  <div className="flex h-[86px] w-full items-end justify-center">
                     <div
                       className={cn(
-                        "w-full max-w-[28px] rounded-t-[8px] sm:max-w-[34px]",
+                        "w-full max-w-[26px] rounded-t-[7px] sm:max-w-[30px]",
                         latest ? "bg-[#4f86d8]" : "bg-[#8fb4ea]",
                       )}
                       style={{ height: `${height}%` }}
@@ -338,17 +346,6 @@ function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
         </div>
       </div>
     </article>
-  );
-}
-
-function PeriodStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0 rounded-[14px] border border-white/70 bg-white/55 px-2.5 py-2 sm:px-3">
-      <p className="text-[10.5px] font-medium text-slate-500 sm:text-[12px]">{label}</p>
-      <p className="mt-0.5 break-words text-[12px] font-semibold tracking-[-0.03em] text-navy sm:text-[14px]">
-        {value}
-      </p>
-    </div>
   );
 }
 
@@ -399,32 +396,32 @@ function StockAlertsCard({ alerts }: { alerts: SupermarketStockAlert[] }) {
 
 function RecentSalesCard({ sales }: { sales: SupermarketSaleRow[] }) {
   return (
-    <article className={cn(glass, "min-w-0 px-4 py-4 sm:px-5 sm:py-5")}>
+    <article className={cn(glass, "flex h-full min-w-0 flex-col overflow-hidden px-4 py-3.5 sm:px-5 sm:py-4")}>
       <CardTitle title="Recent Sales" href="/supermarket/sales" actionLabel="View All" />
 
-      <div className="mt-3 hidden overflow-x-auto md:block">
-        <table className="min-w-full text-left text-[12.5px]">
-          <thead className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-slate-400">
-            <tr>
-              <th className="pb-2.5 pr-3 font-medium">Invoice</th>
-              <th className="pb-2.5 pr-3 font-medium">Time</th>
-              <th className="pb-2.5 pr-3 font-medium">Items</th>
-              <th className="pb-2.5 pr-3 font-medium">Cashier</th>
-              <th className="pb-2.5 pr-3 font-medium">Payment</th>
-              <th className="pb-2.5 pr-3 font-medium">Amount</th>
-              <th className="pb-2.5 font-medium">Status</th>
+      <div className="mt-3 hidden min-w-0 overflow-x-auto md:block">
+        <table className="w-full min-w-[520px] table-fixed text-left text-[12.5px]">
+          <thead className={tableHead}>
+            <tr className="border-b border-[#d5dee8]/80">
+              <th className="w-[18%] px-2 py-2 font-medium">Invoice</th>
+              <th className="w-[14%] px-2 py-2 font-medium">Time</th>
+              <th className="w-[12%] px-2 py-2 font-medium">Items</th>
+              <th className="w-[12%] px-2 py-2 font-medium">Cashier</th>
+              <th className="w-[16%] px-2 py-2 font-medium">Payment</th>
+              <th className="w-[16%] px-2 py-2 font-medium">Amount</th>
+              <th className="w-[12%] px-2 py-2 font-medium">Status</th>
             </tr>
           </thead>
           <tbody>
             {sales.map((sale) => (
-              <tr key={sale.invoice} className="border-t border-black/[0.04]">
-                <td className="py-2.5 pr-3 font-semibold text-navy">#{sale.invoice}</td>
-                <td className="py-2.5 pr-3 text-slate-500">{sale.time}</td>
-                <td className="py-2.5 pr-3 text-slate-500">{sale.items} items</td>
-                <td className="py-2.5 pr-3 text-slate-500">{sale.cashier}</td>
-                <td className="py-2.5 pr-3 text-slate-500">{sale.payment}</td>
-                <td className="py-2.5 pr-3 font-semibold text-navy">{formatTzs(sale.amount)}</td>
-                <td className="py-2.5">
+              <tr key={sale.invoice} className="border-t border-[#d5dee8]/70">
+                <td className="whitespace-nowrap px-2 py-2 font-semibold text-navy">#{sale.invoice}</td>
+                <td className="whitespace-nowrap px-2 py-2 text-slate-500">{sale.time}</td>
+                <td className="whitespace-nowrap px-2 py-2 text-slate-500">{sale.items} items</td>
+                <td className="whitespace-nowrap px-2 py-2 text-slate-500">{sale.cashier}</td>
+                <td className="whitespace-nowrap px-2 py-2 text-slate-500">{sale.payment}</td>
+                <td className="whitespace-nowrap px-2 py-2 font-semibold text-navy">{formatTzs(sale.amount)}</td>
+                <td className="whitespace-nowrap px-2 py-2">
                   <SaleStatus status={sale.status} />
                 </td>
               </tr>
@@ -441,7 +438,7 @@ function RecentSalesCard({ sales }: { sales: SupermarketSaleRow[] }) {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="font-semibold text-navy">#{sale.invoice}</p>
+                <p className="whitespace-nowrap font-semibold text-navy">#{sale.invoice}</p>
                 <p className="mt-0.5 text-[12px] text-slate-500">
                   {sale.time} · {sale.items} items · {sale.cashier}
                 </p>
@@ -492,9 +489,10 @@ function CardTitle({
       <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy sm:text-[17px]">{title}</h2>
       <Link
         href={href}
-        className="inline-flex shrink-0 items-center text-[12.5px] font-medium text-slate-400 transition hover:text-navy"
+        className="inline-flex shrink-0 items-center gap-0.5 text-[12.5px] font-medium text-slate-400 transition hover:text-navy"
       >
         {actionLabel}
+        <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.8} />
       </Link>
     </div>
   );
