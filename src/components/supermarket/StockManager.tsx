@@ -51,39 +51,42 @@ type DrawerMode = "add" | "view" | "history" | null;
 type MovementRow = ReturnType<typeof movementsForProduct>[number];
 
 const glass =
-  "rounded-[24px] border border-white/70 bg-white/74 shadow-[0_10px_32px_rgba(15,35,64,0.045)] backdrop-blur-xl";
+  "rounded-[28px] border border-white/55 bg-white/58 shadow-[0_18px_50px_rgba(15,35,64,0.07),inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-2xl";
 const filterClass =
-  "h-9 w-full rounded-full border border-white/80 bg-white/78 px-3.5 text-[13px] text-navy shadow-[0_1px_2px_rgba(15,35,64,0.04)] outline-none backdrop-blur-md transition focus:border-navy/10 focus:bg-white";
+  "h-10 w-full rounded-full border border-white/70 bg-white/82 px-3.5 text-[13px] text-navy shadow-[0_6px_18px_rgba(15,35,64,0.06),inset_0_1px_0_rgba(255,255,255,0.95)] outline-none backdrop-blur-xl transition focus:border-white focus:bg-white";
 const inputClass =
   "h-10 w-full rounded-[14px] border border-white/80 bg-white/70 px-3 text-[13px] text-navy outline-none backdrop-blur-sm transition placeholder:text-slate-400 focus:border-navy/12 focus:bg-white/90";
 const PAGE_SIZES = [10, 20, 50] as const;
+const tableHead =
+  "bg-[#e8eef5]/72 text-[10.5px] font-medium uppercase tracking-[0.14em] text-slate-400 backdrop-blur-md";
+const tableRow = "border-t border-[#d5dee8]/80";
 
 type KpiTone = "blue" | "green" | "amber" | "rose" | "violet" | "pink";
 
 const KPI_TONES: Record<KpiTone, { card: string; icon: string }> = {
   blue: {
-    card: "border-sky-200/35 bg-[#eef5ff]/78",
-    icon: "bg-sky-100/80 text-sky-700",
+    card: "border-white/70 bg-[#f4f8ff]/72",
+    icon: "border-sky-100/80 bg-sky-50/90 text-sky-600",
   },
   green: {
-    card: "border-emerald-200/35 bg-[#eefaf2]/78",
-    icon: "bg-emerald-100/80 text-emerald-700",
+    card: "border-white/70 bg-[#eefaf3]/70",
+    icon: "border-emerald-100/80 bg-emerald-50/90 text-emerald-600",
   },
   amber: {
-    card: "border-amber-200/40 bg-[#fff8eb]/82",
-    icon: "bg-amber-100/80 text-amber-600",
+    card: "border-white/70 bg-[#fff8eb]/74",
+    icon: "border-amber-100/80 bg-amber-50/90 text-amber-500",
   },
   rose: {
-    card: "border-rose-200/40 bg-[#fff1f2]/80",
-    icon: "bg-rose-100/80 text-rose-600",
+    card: "border-white/70 bg-[#fff2f3]/72",
+    icon: "border-rose-100/80 bg-rose-50/90 text-rose-500",
   },
   violet: {
-    card: "border-violet-200/40 bg-[#f4f1ff]/82",
-    icon: "bg-violet-100/80 text-violet-600",
+    card: "border-white/70 bg-[#f5f2ff]/74",
+    icon: "border-violet-100/80 bg-violet-50/90 text-violet-500",
   },
   pink: {
-    card: "border-rose-200/30 bg-[#fff4f1]/80",
-    icon: "bg-rose-100/70 text-rose-500",
+    card: "border-white/70 bg-[#fff4f1]/72",
+    icon: "border-rose-100/70 bg-rose-50/85 text-rose-400",
   },
 };
 
@@ -214,7 +217,7 @@ export function StockManager() {
           <button
             type="button"
             onClick={() => openAdd()}
-            className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_8px_18px_rgba(11,34,68,0.18)] transition hover:bg-[#102a52] sm:w-auto"
+            className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_10px_22px_rgba(11,34,68,0.22),inset_0_1px_0_rgba(255,255,255,0.12)] transition hover:bg-[#102a52] sm:w-auto"
           >
             <Plus className="h-4 w-4" strokeWidth={2.2} />
             Add Stock
@@ -238,15 +241,15 @@ export function StockManager() {
       </section>
 
       <section className={cn(glass, "overflow-hidden")}>
-        <div className="flex flex-col gap-2 p-3 lg:flex-row lg:flex-wrap lg:items-center">
-          <label className="relative block min-w-0 flex-1 lg:min-w-[220px]">
+        <div className="flex flex-col gap-2.5 px-4 pb-3 pt-4 lg:flex-row lg:flex-wrap lg:items-center">
+          <label className="relative block min-w-0 flex-1 lg:min-w-[240px]">
             <span className="sr-only">Search stock</span>
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search products, SKU, barcode..."
-              className={cn(filterClass, "pl-9")}
+              className={cn(filterClass, "pl-10")}
             />
           </label>
           <select value={category} onChange={(event) => setCategory(event.target.value)} className={cn(filterClass, "lg:w-auto lg:min-w-[148px]")}>
@@ -292,21 +295,21 @@ export function StockManager() {
           <>
             <div className="hidden overflow-x-auto xl:block">
               <table className="min-w-full text-left text-[13px]">
-                <thead className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-slate-400">
-                  <tr>
-                    <th className="px-4 py-2.5 font-medium">Product</th>
-                    <th className="px-4 py-2.5 font-medium">SKU</th>
-                    <th className="px-4 py-2.5 font-medium">Category</th>
-                    <th className="px-4 py-2.5 font-medium">Current Stock</th>
-                    <th className="px-4 py-2.5 font-medium">Reorder Level</th>
-                    <th className="px-4 py-2.5 font-medium">Stock Status</th>
-                    <th className="px-4 py-2.5 font-medium">Expiry</th>
-                    <th className="px-4 py-2.5 font-medium">Actions</th>
+                <thead className={tableHead}>
+                  <tr className="border-b border-[#d5dee8]/80">
+                    <th className="px-4 py-3 font-medium">Product</th>
+                    <th className="px-4 py-3 font-medium">SKU</th>
+                    <th className="px-4 py-3 font-medium">Category</th>
+                    <th className="px-4 py-3 font-medium">Current Stock</th>
+                    <th className="px-4 py-3 font-medium">Reorder Level</th>
+                    <th className="px-4 py-3 font-medium">Stock Status</th>
+                    <th className="px-4 py-3 font-medium">Expiry</th>
+                    <th className="px-4 py-3 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pageRows.map((product) => (
-                    <tr key={product.id} className="border-t border-black/[0.04]">
+                    <tr key={product.id} className={tableRow}>
                       <td className="px-4 py-3">
                         <ProductName
                           product={product}
@@ -343,18 +346,18 @@ export function StockManager() {
 
             <div className="hidden overflow-x-auto md:block xl:hidden">
               <table className="min-w-full text-left text-[13px]">
-                <thead className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-slate-400">
-                  <tr>
-                    <th className="px-3.5 py-2.5 font-medium">Product</th>
-                    <th className="px-3.5 py-2.5 font-medium">Stock</th>
-                    <th className="px-3.5 py-2.5 font-medium">Status</th>
-                    <th className="px-3.5 py-2.5 font-medium">Expiry</th>
-                    <th className="px-3.5 py-2.5 font-medium">Actions</th>
+                <thead className={tableHead}>
+                  <tr className="border-b border-[#d5dee8]/80">
+                    <th className="px-3.5 py-3 font-medium">Product</th>
+                    <th className="px-3.5 py-3 font-medium">Stock</th>
+                    <th className="px-3.5 py-3 font-medium">Status</th>
+                    <th className="px-3.5 py-3 font-medium">Expiry</th>
+                    <th className="px-3.5 py-3 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pageRows.map((product) => (
-                    <tr key={product.id} className="border-t border-black/[0.04]">
+                    <tr key={product.id} className={tableRow}>
                       <td className="px-3.5 py-3">
                         <ProductName product={product} onOpen={() => openView(product.id)} />
                       </td>
@@ -524,17 +527,22 @@ function KpiCard({
   return (
     <article
       className={cn(
-        "flex min-w-0 items-center gap-2.5 rounded-[22px] border px-3.5 py-3 shadow-[0_8px_24px_rgba(15,35,64,0.04)] backdrop-blur-xl sm:px-4 sm:py-3.5",
+        "relative flex min-w-0 items-center gap-3 overflow-hidden rounded-[24px] border px-3.5 py-3.5 shadow-[0_14px_36px_rgba(15,35,64,0.08),inset_0_1px_0_rgba(255,255,255,0.92)] backdrop-blur-2xl sm:px-4 sm:py-4",
         accent.card,
       )}
     >
-      <span className={cn("inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px]", accent.icon)}>
-        <Icon className="h-3.5 w-3.5" strokeWidth={1.7} />
+      <span
+        className={cn(
+          "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border shadow-[0_6px_14px_rgba(15,35,64,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md",
+          accent.icon,
+        )}
+      >
+        <Icon className="h-4 w-4" strokeWidth={1.85} />
       </span>
       <div className="min-w-0">
-        <p className="text-[11px] font-medium text-slate-500">{label}</p>
-        <p className="mt-0.5 text-[22px] font-semibold tracking-[-0.045em] text-navy sm:text-[24px]">{value}</p>
-        <p className="mt-0.5 text-[11px] leading-4 text-slate-400">{hint}</p>
+        <p className="text-[11.5px] font-medium text-slate-500">{label}</p>
+        <p className="mt-0.5 text-[24px] font-semibold leading-none tracking-[-0.05em] text-navy sm:text-[26px]">{value}</p>
+        <p className="mt-1.5 text-[11px] leading-4 text-slate-400">{hint}</p>
       </div>
     </article>
   );
@@ -549,7 +557,7 @@ function ProductName({
 }) {
   return (
     <button type="button" onClick={onOpen} className="min-w-0 text-left">
-      <span className="block truncate text-[13.5px] font-semibold tracking-[-0.02em] text-navy">
+      <span className="block truncate text-[14px] font-semibold tracking-[-0.02em] text-navy">
         {product.name}
       </span>
       <span className="mt-0.5 block truncate text-[11.5px] text-slate-400">
@@ -594,14 +602,14 @@ function ExpiryCell({ productId, batches }: { productId: string; batches: StockB
 function StatusLabel({ value }: { value: string }) {
   const tone =
     value === "In Stock"
-      ? "bg-emerald-50/90 text-emerald-800"
+      ? "bg-emerald-50/70 text-emerald-700"
       : value === "Low Stock"
-        ? "bg-amber-50/90 text-amber-800"
+        ? "bg-amber-50/70 text-amber-700"
         : value === "Out of Stock" || value === "Expired"
-          ? "bg-rose-50/90 text-rose-800"
+          ? "bg-rose-50/70 text-rose-700"
           : value === "Expiring Soon"
-            ? "bg-violet-50/90 text-violet-800"
-            : "bg-slate-50/90 text-slate-600";
+            ? "bg-violet-50/70 text-violet-700"
+            : "bg-slate-50/70 text-slate-600";
   const dot =
     value === "In Stock"
       ? "bg-emerald-500"
@@ -614,7 +622,7 @@ function StatusLabel({ value }: { value: string }) {
             : "bg-slate-400";
 
   return (
-    <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] font-medium tracking-[-0.01em]", tone)}>
+    <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-[3px] text-[12px] font-medium tracking-[-0.01em]", tone)}>
       <span className={cn("h-1.5 w-1.5 rounded-full", dot)} />
       {value}
     </span>
@@ -641,7 +649,7 @@ function Pagination({
   onPageSize: (size: (typeof PAGE_SIZES)[number]) => void;
 }) {
   return (
-    <div className="flex flex-col gap-2.5 border-t border-black/[0.04] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-2.5 border-t border-[#d5dee8]/80 bg-white/25 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-[12.5px] text-slate-500">
         Showing {from} to {to} of {total} products
       </p>
@@ -651,7 +659,7 @@ function Pagination({
             type="button"
             disabled={page <= 1}
             onClick={() => onPage(page - 1)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/80 bg-white/70 text-slate-400 shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition hover:bg-white hover:text-navy disabled:opacity-30"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/75 bg-white/85 text-slate-400 shadow-[0_6px_14px_rgba(15,35,64,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md transition hover:bg-white hover:text-navy disabled:opacity-30"
             aria-label="Previous page"
           >
             ‹
@@ -663,7 +671,7 @@ function Pagination({
             type="button"
             disabled={page >= totalPages}
             onClick={() => onPage(page + 1)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/80 bg-white/70 text-slate-400 shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition hover:bg-white hover:text-navy disabled:opacity-30"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/75 bg-white/85 text-slate-400 shadow-[0_6px_14px_rgba(15,35,64,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md transition hover:bg-white hover:text-navy disabled:opacity-30"
             aria-label="Next page"
           >
             ›
@@ -672,7 +680,7 @@ function Pagination({
         <select
           value={pageSize}
           onChange={(event) => onPageSize(Number(event.target.value) as (typeof PAGE_SIZES)[number])}
-          className="h-8 rounded-full border border-white/80 bg-white/75 px-2.5 text-[12px] text-navy shadow-[0_1px_2px_rgba(15,35,64,0.04)] outline-none"
+          className="h-8 rounded-full border border-white/75 bg-white/85 px-2.5 text-[12px] text-navy shadow-[0_6px_14px_rgba(15,35,64,0.06),inset_0_1px_0_rgba(255,255,255,0.95)] outline-none backdrop-blur-md"
         >
           {PAGE_SIZES.map((size) => (
             <option key={size} value={size}>
@@ -758,7 +766,7 @@ function RowActions({
           if (!open) placeMenu();
           onToggle();
         }}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/80 bg-white/70 text-slate-400 shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition hover:bg-white hover:text-navy"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/75 bg-white/85 text-slate-400 shadow-[0_6px_14px_rgba(15,35,64,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md transition hover:bg-white hover:text-navy"
         aria-label={`Actions for ${product.name}`}
         aria-expanded={open}
       >
