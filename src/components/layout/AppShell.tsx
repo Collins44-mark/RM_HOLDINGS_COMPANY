@@ -67,7 +67,7 @@ export function AppShell({
           onToggleSidebar={toggle}
         />
         <main className="relative z-10 min-w-0 flex-1 px-3 py-4 sm:px-4 sm:py-5 lg:px-7 lg:py-6">
-          {moduleCode && moduleCode !== "owner" ? (
+          {moduleCode && moduleCode !== "owner" && moduleCode !== "supermarket" ? (
             <ModuleContextBar
               moduleCode={moduleCode}
               showDashboardCrumb={isOwnerRole(user.roleCode)}

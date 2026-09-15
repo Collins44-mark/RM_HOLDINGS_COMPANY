@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import Link from "next/link";
 import { createPortal } from "react-dom";
 import {
   ArrowUpDown,
@@ -194,19 +193,11 @@ export function ProductsManager() {
     return () => window.clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    const bar = document.querySelector("main [aria-label='Breadcrumb']")?.parentElement;
-    if (!bar) return;
-    bar.classList.add("hidden");
-    return () => bar.classList.remove("hidden");
-  }, []);
-
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const pageRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
   const from = rows.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
   const to = Math.min(safePage * pageSize, rows.length);
-  const showDashboardCrumb = Boolean(user && isOwnerRole(user.roleCode));
 
   function openAdd(prefill?: Partial<ProductFormState>) {
     setSelectedId(null);
@@ -386,25 +377,9 @@ export function ProductsManager() {
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-stretch gap-3 sm:items-end">
-          <div className="hidden items-center gap-3 text-[12.5px] text-slate-400 lg:flex">
-            <nav aria-label="Products breadcrumb" className="whitespace-nowrap">
-              {showDashboardCrumb ? (
-                <>
-                  <Link href="/dashboard" className="transition hover:text-navy">
-                    Dashboard
-                  </Link>
-                  <span className="mx-1.5 text-slate-300">&gt;</span>
-                </>
-              ) : null}
-              <Link href="/supermarket" className="transition hover:text-navy">
-                Supermarket
-              </Link>
-              <span className="mx-1.5 text-slate-300">&gt;</span>
-              <span className="text-slate-500">Products</span>
-            </nav>
-            <span className="text-slate-300">|</span>
-            <span className="whitespace-nowrap tabular-nums">{now ? formatProductsStamp(now) : "\u00a0"}</span>
-          </div>
+          <p className="hidden whitespace-nowrap text-[12.5px] tabular-nums text-slate-400 lg:block">
+            {now ? formatProductsStamp(now) : "\u00a0"}
+          </p>
           {canCreate ? (
             <button
               type="button"
