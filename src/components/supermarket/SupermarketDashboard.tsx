@@ -281,8 +281,9 @@ function KpiCard({
 function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
   const [period, setPeriod] = useState<"today" | "week" | "month">("week");
   const peak = Math.max(...data.salesOverview.trend.map((item) => item.amount), 1);
-  const axisMax = Math.max(2_000_000, Math.ceil(peak / 2_000_000) * 2_000_000);
-  const ticks = [axisMax, axisMax * 0.75, axisMax * 0.5, axisMax * 0.25, 0];
+  const axisStep = 2_000_000;
+  const axisMax = Math.max(axisStep * 4, Math.ceil(peak / axisStep) * axisStep);
+  const ticks = Array.from({ length: axisMax / axisStep + 1 }, (_, index) => axisMax - index * axisStep);
   const amount =
     period === "today"
       ? data.salesOverview.today
@@ -343,7 +344,7 @@ function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
             />
             <div className="relative flex h-[90px] items-end sm:h-[94px]" aria-hidden>
               {data.salesOverview.trend.map((day, index) => {
-                const height = Math.max(18, (day.amount / peak) * 92);
+                const height = (day.amount / axisMax) * 100;
                 const latest = index === data.salesOverview.trend.length - 1;
                 return (
                   <div key={day.label} className="flex min-w-0 flex-1 flex-col items-center gap-0.5">
