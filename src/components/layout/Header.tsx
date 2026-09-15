@@ -146,9 +146,9 @@ export function Header({
           }}
           onFocus={() => setSearchOpen(true)}
           placeholder="Search modules, reports, users..."
-          className="h-11 w-full rounded-full border border-white/80 bg-[#eef3fb] pl-10 pr-16 text-sm text-navy outline-none transition placeholder:text-slate-400 focus:border-[#c5d4ea] focus:bg-white focus:ring-4 focus:ring-[#5b82c4]/10"
+          className="h-11 w-full rounded-full border border-white/80 bg-white/75 pl-10 pr-16 text-sm text-navy shadow-[0_1px_2px_rgba(15,35,64,0.04)] outline-none backdrop-blur-xl transition placeholder:text-slate-400 focus:border-[#c5d4ea] focus:bg-white"
         />
-        <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 items-center rounded-md border border-black/8 bg-white/80 px-1.5 py-0.5 text-[11px] font-medium text-slate-400 sm:inline-flex">
+        <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 items-center rounded-full border border-white/80 bg-white/70 px-2 py-0.5 text-[11px] font-medium text-slate-400 sm:inline-flex">
           ⌘ K
         </kbd>
         {searchOpen ? (
