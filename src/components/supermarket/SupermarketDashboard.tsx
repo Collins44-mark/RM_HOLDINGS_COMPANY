@@ -292,7 +292,7 @@ function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
   const delta = period === "today" ? data.kpis.todaySalesDelta : null;
 
   return (
-    <article className={cn(glass, "flex h-full min-w-0 flex-col px-4 py-3 sm:px-5 sm:py-3.5")}>
+    <article className={cn(glass, "w-full min-w-0 self-start px-4 py-3 sm:px-5 sm:py-3.5")}>
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy sm:text-[17px]">
           Sales Overview
@@ -323,8 +323,8 @@ function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
         </div>
       </div>
 
-      <div className="mt-2 flex min-h-0 items-end gap-1.5">
-        <div className="hidden h-[96px] w-6 shrink-0 flex-col justify-between pb-4 text-right sm:flex" aria-hidden>
+      <div className="mt-1.5 flex items-end gap-1.5">
+        <div className="hidden h-[84px] w-6 shrink-0 flex-col justify-between pb-[14px] text-right sm:flex sm:h-[88px]" aria-hidden>
           {ticks.map((tick) => (
             <span key={tick} className="text-[10px] font-medium text-slate-400">
               {tick === 0 ? "0" : `${tick / 1_000_000}M`}
@@ -334,21 +334,21 @@ function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
         <div className="relative min-w-0 flex-1">
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-x-0 top-0 h-[78px]"
+            className="pointer-events-none absolute inset-x-0 top-0 h-[68px] sm:h-[72px]"
             style={{
               backgroundImage:
                 "repeating-linear-gradient(to bottom, rgba(15,35,64,0.07) 0, rgba(15,35,64,0.07) 1px, transparent 1px, transparent 25%)",
             }}
           />
-          <div className="relative flex h-[96px] items-end gap-[3px] sm:gap-1" aria-hidden>
+          <div className="relative flex h-[84px] items-end sm:h-[88px]" aria-hidden>
             {data.salesOverview.trend.map((day, index) => {
               const height = Math.max(22, (day.amount / peak) * 100);
               const latest = index === data.salesOverview.trend.length - 1;
               return (
-                <div key={day.label} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-                  <div className="flex h-[78px] w-full items-end justify-center">
+                <div key={day.label} className="flex min-w-0 flex-1 flex-col items-center gap-0.5">
+                  <div className="flex h-[68px] w-full items-end justify-center sm:h-[72px]">
                     <div
-                      className="w-full rounded-t-[6px]"
+                      className="w-[46%] max-w-[22px] min-w-[12px] rounded-t-[6px]"
                       style={{
                         height: `${height}%`,
                         backgroundImage: latest
