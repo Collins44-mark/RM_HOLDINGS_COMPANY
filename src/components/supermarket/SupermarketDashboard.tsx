@@ -324,46 +324,56 @@ function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
         </div>
       </div>
 
-      <div className="mt-2 flex min-h-0 flex-1 flex-col justify-end">
-        <div className="flex items-end gap-1.5">
-          <div className="hidden h-[90px] w-6 shrink-0 flex-col justify-between pb-[14px] text-right sm:flex sm:h-[94px]" aria-hidden>
+      <div className="mt-2 flex min-h-[148px] min-w-0 flex-1 flex-col sm:min-h-[168px]">
+        <div className="flex min-h-0 flex-1 items-stretch gap-1.5">
+          <div className="hidden w-6 shrink-0 flex-col justify-between pt-0.5 text-right sm:flex" aria-hidden>
             {ticks.map((tick) => (
-              <span key={tick} className="text-[10px] font-medium text-slate-400">
+              <span key={tick} className="text-[10px] font-medium leading-none text-slate-400">
                 {tick === 0 ? "0" : `${tick / 1_000_000}M`}
               </span>
             ))}
           </div>
-          <div className="relative min-w-0 flex-1">
+          <div className="relative min-h-0 min-w-0 flex-1">
             <div
               aria-hidden
-              className="pointer-events-none absolute inset-x-0 top-0 h-[74px] sm:h-[78px]"
+              className="pointer-events-none absolute inset-0"
               style={{
                 backgroundImage:
                   "repeating-linear-gradient(to bottom, rgba(15,35,64,0.07) 0, rgba(15,35,64,0.07) 1px, transparent 1px, transparent 25%)",
               }}
             />
-            <div className="relative flex h-[90px] items-end sm:h-[94px]" aria-hidden>
+            <div className="relative flex h-full items-end" aria-hidden>
               {data.salesOverview.trend.map((day, index) => {
                 const height = (day.amount / axisMax) * 100;
                 const latest = index === data.salesOverview.trend.length - 1;
                 return (
-                  <div key={day.label} className="flex min-w-0 flex-1 flex-col items-center gap-0.5">
-                    <div className="flex h-[74px] w-full items-end justify-center sm:h-[78px]">
-                      <div
-                        className="w-[46%] max-w-[22px] min-w-[12px] rounded-t-[6px]"
-                        style={{
-                          height: `${height}%`,
-                          backgroundImage: latest
-                            ? "linear-gradient(to bottom, #3f7bd6 0%, #c9def8 100%)"
-                            : "linear-gradient(to bottom, #6ea4e8 0%, #d7e7fb 100%)",
-                        }}
-                      />
-                    </div>
-                    <span className="text-[10px] font-medium text-slate-400">{day.label}</span>
+                  <div key={day.label} className="flex h-full min-w-0 flex-1 items-end justify-center">
+                    <div
+                      className="w-[46%] max-w-[22px] min-w-[12px] rounded-t-[6px]"
+                      style={{
+                        height: `${height}%`,
+                        backgroundImage: latest
+                          ? "linear-gradient(to bottom, #3f7bd6 0%, #c9def8 100%)"
+                          : "linear-gradient(to bottom, #6ea4e8 0%, #d7e7fb 100%)",
+                      }}
+                    />
                   </div>
                 );
               })}
             </div>
+          </div>
+        </div>
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <div className="hidden w-6 shrink-0 sm:block" aria-hidden />
+          <div className="flex min-w-0 flex-1">
+            {data.salesOverview.trend.map((day) => (
+              <span
+                key={day.label}
+                className="min-w-0 flex-1 text-center text-[10px] font-medium text-slate-400"
+              >
+                {day.label}
+              </span>
+            ))}
           </div>
         </div>
       </div>
