@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { CategoryCreateModal, ADD_CATEGORY_OPTION, canCreateSupermarketCategory } from "@/components/supermarket/CategoryCreateModal";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { matchPermission } from "@/lib/config/permissions";
 import { cn } from "@/lib/cn";
@@ -24,7 +25,6 @@ import { formatTzs } from "@/lib/format/currency";
 import type { AuthUser } from "@/lib/auth/types";
 import {
   EXPIRING_SOON_DAYS,
-  SUPERMARKET_PRODUCT_CATEGORIES,
   attachStock,
   batchExpiryStatus,
   batchesForProduct,
@@ -102,7 +102,9 @@ export function StockManager() {
   const router = useRouter();
   const { user, isSuperAdmin } = useAuth();
   const canReceive = isSuperAdmin() || canManageStock(user, "supermarket.stock.edit");
+  const canAddCategory = canCreateSupermarketCategory(user, isSuperAdmin());
   const inventory = useSupermarketInventory();
+  const categories = inventory.categories.map((item) => item.name);
 
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
@@ -115,6 +117,7 @@ export function StockManager() {
   const [prefillProductId, setPrefillProductId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(10);
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
 
   const rows = useMemo(
     () => inventory.products.map((product) => attachStock(product, inventory.batches)),
@@ -252,13 +255,24 @@ export function StockManager() {
               className={cn(filterClass, "pl-10")}
             />
           </label>
-          <select value={category} onChange={(event) => setCategory(event.target.value)} className={cn(filterClass, "lg:w-auto lg:min-w-[148px]")}>
+          <select
+            value={category}
+            onChange={(event) => {
+              if (event.target.value === ADD_CATEGORY_OPTION) {
+                setCategoryModalOpen(true);
+                return;
+              }
+              setCategory(event.target.value);
+            }}
+            className={cn(filterClass, "lg:w-auto lg:min-w-[148px]")}
+          >
             <option value="all">All Categories</option>
-            {SUPERMARKET_PRODUCT_CATEGORIES.map((item) => (
+            {categories.map((item) => (
               <option key={item} value={item}>
                 {item}
               </option>
             ))}
+            {canAddCategory ? <option value={ADD_CATEGORY_OPTION}>+ Add Category</option> : null}
           </select>
           <select
             value={status}
@@ -470,6 +484,11 @@ export function StockManager() {
           />
         </StockDrawer>
       ) : null}
+
+      <CategoryCreateModal
+        open={categoryModalOpen}
+        onClose={() => setCategoryModalOpen(false)}
+      />
     </div>
   );
 }

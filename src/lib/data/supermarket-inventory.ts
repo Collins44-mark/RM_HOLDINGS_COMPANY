@@ -24,7 +24,7 @@ export const SUPERMARKET_PRODUCT_UNITS = [
 export const EXPIRING_SOON_DAYS = 30;
 export const NEW_PRODUCT_BARCODE_KEY = "rm-supermarket-new-product-barcode";
 
-export type SupermarketProductCategory = (typeof SUPERMARKET_PRODUCT_CATEGORIES)[number];
+export type SupermarketProductCategory = string;
 export type SupermarketProductUnit = (typeof SUPERMARKET_PRODUCT_UNITS)[number];
 export type StockStatus = "In Stock" | "Low Stock" | "Out of Stock";
 export type ExpiryStatus = "Expired" | "Expiring Soon" | "Normal" | "No Expiry";
@@ -71,6 +71,12 @@ export type InventorySnapshot = {
   products: SupermarketProduct[];
   batches: StockBatch[];
   movements: StockMovement[];
+  categories: SupermarketCategory[];
+};
+
+export type SupermarketCategory = {
+  name: string;
+  description: string;
 };
 
 export type ReceiveStockInput = {
@@ -647,7 +653,12 @@ function createSeed(): InventorySnapshot {
     },
   ];
 
-  return { products, batches, movements };
+  return {
+    products,
+    batches,
+    movements,
+    categories: SUPERMARKET_PRODUCT_CATEGORIES.map((name) => ({ name, description: "" })),
+  };
 }
 
 const INITIAL = createSeed();
@@ -674,6 +685,24 @@ function getSnapshot() {
 
 function getServerSnapshot() {
   return INITIAL;
+}
+
+export function addProductCategory(input: { name: string; description?: string }) {
+  const name = input.name.trim().replace(/\s+/g, " ");
+  const description = input.description?.trim() ?? "";
+  if (!name) {
+    return { error: "Enter a category name.", category: null as SupermarketCategory | null };
+  }
+  const exists = snapshot.categories.some((item) => item.name.toLowerCase() === name.toLowerCase());
+  if (exists) {
+    return { error: "This category already exists.", category: null as SupermarketCategory | null };
+  }
+  const category: SupermarketCategory = { name, description };
+  setSnapshot({
+    ...snapshot,
+    categories: [...snapshot.categories, category],
+  });
+  return { error: null, category };
 }
 
 export function upsertProduct(product: SupermarketProduct) {

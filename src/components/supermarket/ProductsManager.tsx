@@ -16,13 +16,13 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { CategoryCreateModal, ADD_CATEGORY_OPTION, canCreateSupermarketCategory } from "@/components/supermarket/CategoryCreateModal";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { APP_TIMEZONE } from "@/lib/config/app";
 import { matchPermission } from "@/lib/config/permissions";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import {
-  SUPERMARKET_PRODUCT_CATEGORIES,
   SUPERMARKET_PRODUCT_UNITS,
   NEW_PRODUCT_BARCODE_KEY,
   attachStock,
@@ -138,7 +138,9 @@ export function ProductsManager() {
   const { user, isSuperAdmin } = useAuth();
   const canCreate = isSuperAdmin() || canManageProducts(user, "supermarket.products.create");
   const canEdit = isSuperAdmin() || canManageProducts(user, "supermarket.products.edit");
+  const canAddCategory = canCreateSupermarketCategory(user, isSuperAdmin());
   const inventory = useSupermarketInventory();
+  const categories = inventory.categories.map((item) => item.name);
   const products = useMemo(
     () => inventory.products.map((product) => attachStock(product, inventory.batches)),
     [inventory.products, inventory.batches],
@@ -159,6 +161,8 @@ export function ProductsManager() {
   const [form, setForm] = useState<ProductFormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [barcodeNotice, setBarcodeNotice] = useState<string | null>(null);
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const categoryTargetRef = useRef<"filter" | "form">("filter");
 
   const selected = products.find((item) => item.id === selectedId) ?? null;
   const filtersActive = Boolean(query.trim()) || category !== "all" || status !== "all";
@@ -435,16 +439,24 @@ export function ProductsManager() {
         </label>
         <FilterSelect
           value={category}
-          onChange={setCategory}
+          onChange={(value) => {
+            if (value === ADD_CATEGORY_OPTION) {
+              categoryTargetRef.current = "filter";
+              setCategoryModalOpen(true);
+              return;
+            }
+            setCategory(value);
+          }}
           icon={<LayoutGrid className="h-3.5 w-3.5 text-slate-400" strokeWidth={1.8} />}
           className="lg:w-[168px] lg:shrink-0"
         >
           <option value="all">All Categories</option>
-          {SUPERMARKET_PRODUCT_CATEGORIES.map((item) => (
+          {categories.map((item) => (
             <option key={item} value={item}>
               {item}
             </option>
           ))}
+          {canAddCategory ? <option value={ADD_CATEGORY_OPTION}>+ Add Category</option> : null}
         </FilterSelect>
         <FilterSelect
           value={status}
@@ -644,6 +656,8 @@ export function ProductsManager() {
             form={form}
             errors={errors}
             barcodeNotice={barcodeNotice}
+            categories={categories}
+            canAddCategory={canAddCategory}
             submitLabel="Save Changes"
             stockLabel="Current Stock"
             stockReadOnly
@@ -653,6 +667,10 @@ export function ProductsManager() {
               setBarcodeNotice(null);
             }}
             onLookupBarcode={lookupBarcode}
+            onAddCategory={() => {
+              categoryTargetRef.current = "form";
+              setCategoryModalOpen(true);
+            }}
             onCancel={closePanel}
             onSubmit={saveProduct}
           />
@@ -677,6 +695,21 @@ export function ProductsManager() {
           />
         </ProductDrawer>
       ) : null}
+
+      <CategoryCreateModal
+        open={categoryModalOpen}
+        onClose={() => setCategoryModalOpen(false)}
+        onCreated={(name) => {
+          if (categoryTargetRef.current === "form") {
+            setForm((current) => ({ ...current, category: name }));
+            setErrors((current) => {
+              const next = { ...current };
+              delete next.category;
+              return next;
+            });
+          }
+        }}
+      />
     </div>
   );
 }
@@ -1046,24 +1079,30 @@ function ProductForm({
   form,
   errors,
   barcodeNotice,
+  categories,
+  canAddCategory = false,
   submitLabel,
   stockLabel: stockFieldLabel,
   stockReadOnly = false,
   showExpiryDate = true,
   onChange,
   onLookupBarcode,
+  onAddCategory,
   onCancel,
   onSubmit,
 }: {
   form: ProductFormState;
   errors: Record<string, string>;
   barcodeNotice: string | null;
+  categories: string[];
+  canAddCategory?: boolean;
   submitLabel: string;
   stockLabel: string;
   stockReadOnly?: boolean;
   showExpiryDate?: boolean;
   onChange: (form: ProductFormState) => void;
   onLookupBarcode: (code: string) => void;
+  onAddCategory?: () => void;
   onCancel: () => void;
   onSubmit: () => void;
 }) {
@@ -1147,15 +1186,22 @@ function ProductForm({
             <Field label="Category" required error={errors.category}>
               <select
                 value={form.category}
-                onChange={(event) => patch("category", event.target.value)}
+                onChange={(event) => {
+                  if (event.target.value === ADD_CATEGORY_OPTION) {
+                    onAddCategory?.();
+                    return;
+                  }
+                  patch("category", event.target.value);
+                }}
                 className={selectClass}
               >
                 <option value="">Select category</option>
-                {SUPERMARKET_PRODUCT_CATEGORIES.map((item) => (
+                {categories.map((item) => (
                   <option key={item} value={item}>
                     {item}
                   </option>
                 ))}
+                {canAddCategory ? <option value={ADD_CATEGORY_OPTION}>+ Add Category</option> : null}
               </select>
             </Field>
             <Field label="Unit" required error={errors.unit}>

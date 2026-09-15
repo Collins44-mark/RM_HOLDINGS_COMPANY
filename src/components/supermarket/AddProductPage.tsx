@@ -5,11 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, ScanLine } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { CategoryCreateModal, ADD_CATEGORY_OPTION, canCreateSupermarketCategory } from "@/components/supermarket/CategoryCreateModal";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { matchPermission } from "@/lib/config/permissions";
 import { cn } from "@/lib/cn";
 import {
-  SUPERMARKET_PRODUCT_CATEGORIES,
   SUPERMARKET_PRODUCT_UNITS,
   consumeNewProductBarcode,
   findProductByBarcode,
@@ -81,7 +81,9 @@ export function AddProductPage() {
   const router = useRouter();
   const { user, isSuperAdmin } = useAuth();
   const allowed = canCreateProduct(user, isSuperAdmin());
+  const canAddCategory = canCreateSupermarketCategory(user, isSuperAdmin());
   const inventory = useSupermarketInventory();
+  const categories = inventory.categories.map((item) => item.name);
   const barcodeRef = useRef<HTMLInputElement>(null);
   const savingRef = useRef(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -89,6 +91,7 @@ export function AddProductPage() {
   const [barcodeNotice, setBarcodeNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const busy = saving || isPending;
 
   const suppliers = useMemo(() => {
@@ -333,15 +336,22 @@ export function AddProductPage() {
               <SelectWrap>
                 <select
                   value={form.category}
-                  onChange={(event) => patch("category", event.target.value)}
+                  onChange={(event) => {
+                    if (event.target.value === ADD_CATEGORY_OPTION) {
+                      setCategoryModalOpen(true);
+                      return;
+                    }
+                    patch("category", event.target.value);
+                  }}
                   className={selectClass}
                 >
                   <option value="">Select category</option>
-                  {SUPERMARKET_PRODUCT_CATEGORIES.map((item) => (
+                  {categories.map((item) => (
                     <option key={item} value={item}>
                       {item}
                     </option>
                   ))}
+                  {canAddCategory ? <option value={ADD_CATEGORY_OPTION}>+ Add Category</option> : null}
                 </select>
               </SelectWrap>
             </Field>
@@ -503,6 +513,18 @@ export function AddProductPage() {
           </div>
         </section>
       </form>
+      <CategoryCreateModal
+        open={categoryModalOpen}
+        onClose={() => setCategoryModalOpen(false)}
+        onCreated={(name) => {
+          patch("category", name);
+          setErrors((current) => {
+            const next = { ...current };
+            delete next.category;
+            return next;
+          });
+        }}
+      />
     </div>
   );
 }

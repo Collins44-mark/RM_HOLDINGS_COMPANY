@@ -78,8 +78,38 @@ a {
   animation: page-enter 160ms ease-out;
 }
 
+@keyframes modal-overlay-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-overlay-enter {
+  animation: modal-overlay-enter 140ms ease-out;
+}
+
+.modal-panel-enter {
+  animation: modal-panel-enter 160ms ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .page-enter {
+  .page-enter,
+  .modal-overlay-enter,
+  .modal-panel-enter {
     animation: none;
   }
 }
