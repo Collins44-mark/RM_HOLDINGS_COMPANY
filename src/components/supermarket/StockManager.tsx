@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
+  ArrowLeft,
   Ban,
   Clock3,
   MoreHorizontal,
@@ -26,7 +27,7 @@ import { formatTzs } from "@/lib/format/currency";
 import type { AuthUser } from "@/lib/auth/types";
 import {
   EXPIRING_SOON_DAYS,
-  STOCK_ADJUSTMENT_KINDS,
+  STOCK_MOVEMENT_FILTERS,
   adjustmentDelta,
   attachStock,
   batchExpiryStatus,
@@ -38,8 +39,10 @@ import {
   movementTypeLabel,
   movementsForProduct,
   productExpiryFilterStatus,
+  productHasExpiryStatus,
   productMatchesKpiFocus,
   rememberNewProductBarcode,
+  stockMovementKindLabel,
   stockStatusFor,
   useSupermarketInventory,
   type AdjustStockInput,
@@ -47,6 +50,8 @@ import {
   type InventoryKpiFocus,
   type StockAdjustmentKind,
   type StockBatch,
+  type StockMovement,
+  type StockMovementFilter,
   type StockStatus,
   type SupermarketProduct,
 } from "@/lib/data/supermarket-inventory";
@@ -67,7 +72,7 @@ const KPI_CHIP_LABEL: Record<Exclude<InventoryKpiFocus, "all" | "units">, string
 const glass =
   "rounded-[28px] border border-white/55 bg-white/58 shadow-[0_18px_50px_rgba(15,35,64,0.07),inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-2xl";
 const filterClass =
-  "h-10 w-full rounded-full border border-white/70 bg-white/82 px-3.5 text-[13px] text-navy shadow-[0_6px_18px_rgba(15,35,64,0.06),inset_0_1px_0_rgba(255,255,255,0.95)] outline-none backdrop-blur-xl transition focus:border-white focus:bg-white";
+  "h-10 w-full min-w-0 rounded-full border border-white/70 bg-white/82 px-3.5 text-[13px] text-navy shadow-[0_6px_18px_rgba(15,35,64,0.06),inset_0_1px_0_rgba(255,255,255,0.95)] outline-none backdrop-blur-xl transition duration-200 focus:border-white focus:bg-white";
 const inputClass =
   "h-10 w-full rounded-[14px] border border-white/80 bg-white/70 px-3 text-[13px] text-navy outline-none backdrop-blur-sm transition placeholder:text-slate-400 focus:border-navy/12 focus:bg-white/90";
 const PAGE_SIZES = [10, 20, 50] as const;
@@ -127,7 +132,9 @@ export function StockManager() {
   const [expiry, setExpiry] = useState<ExpiryFilter>("all");
   const [kpiFocus, setKpiFocus] = useState<InventoryKpiFocus>("all");
   const [sort, setSort] = useState<StockSort>("name");
-  const [menuId, setMenuId] = useState<string | null>(null);
+  const [workspace, setWorkspace] = useState<"inventory" | "movements">("inventory");
+  const [layout, setLayout] = useState<"cards" | "compact" | "table">("table");
+  const [menu, setMenu] = useState<{ id: string; top: number; right: number } | null>(null);
   const [drawer, setDrawer] = useState<DrawerMode>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [prefillProductId, setPrefillProductId] = useState<string | null>(null);
@@ -157,8 +164,12 @@ export function StockManager() {
       if (category !== "all" && product.category !== category) return false;
       if (status !== "all" && product.stockStatus !== status) return false;
       if (expiry !== "all") {
-        const expiryStatus = productExpiryFilterStatus(product.id, inventory.batches, product.stock);
-        if (expiryStatus !== expiry) return false;
+        if (expiry === "Expiring Soon" || expiry === "Expired") {
+          if (!productHasExpiryStatus(product.id, inventory.batches, expiry)) return false;
+        } else {
+          const expiryStatus = productExpiryFilterStatus(product.id, inventory.batches, product.stock);
+          if (expiryStatus !== expiry) return false;
+        }
       }
       if (!needle) return true;
       return (
@@ -187,10 +198,27 @@ export function StockManager() {
     setPage(1);
   }, [query, category, status, expiry, sort, pageSize, kpiFocus]);
 
+  useEffect(() => {
+    const xl = window.matchMedia("(min-width: 1280px)");
+    const md = window.matchMedia("(min-width: 768px)");
+    const apply = () => {
+      if (xl.matches) setLayout("table");
+      else if (md.matches) setLayout("compact");
+      else setLayout("cards");
+    };
+    apply();
+    xl.addEventListener("change", apply);
+    md.addEventListener("change", apply);
+    return () => {
+      xl.removeEventListener("change", apply);
+      md.removeEventListener("change", apply);
+    };
+  }, []);
+
   const recentMovements = useMemo(() => {
     return [...inventory.movements]
       .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
-      .slice(0, 8)
+      .slice(0, 5)
       .map((item) => ({
         ...item,
         productName: inventory.products.find((product) => product.id === item.productId)?.name ?? "Unknown product",
@@ -214,8 +242,27 @@ export function StockManager() {
   const from = visible.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
   const to = Math.min(safePage * pageSize, visible.length);
 
+  function closeMenu() {
+    setMenu(null);
+  }
+
+  function openMenu(productId: string, button: HTMLButtonElement) {
+    const rect = button.getBoundingClientRect();
+    const menuHeight = 148;
+    const fitsBelow = rect.bottom + 6 + menuHeight <= window.innerHeight - 8;
+    setMenu((current) =>
+      current?.id === productId
+        ? null
+        : {
+            id: productId,
+            top: fitsBelow ? rect.bottom + 6 : Math.max(8, rect.top - menuHeight - 6),
+            right: Math.max(8, window.innerWidth - rect.right),
+          },
+    );
+  }
+
   function openAdd(productId?: string) {
-    setMenuId(null);
+    setMenu(null);
     setSelectedId(productId ?? null);
     setPrefillProductId(productId ?? null);
     setDrawer("add");
@@ -224,7 +271,7 @@ export function StockManager() {
   function openView(productId: string) {
     const product = inventory.products.find((item) => item.id === productId);
     if (!product) return;
-    setMenuId(null);
+    setMenu(null);
     setSelectedId(product.id);
     setDrawer("view");
   }
@@ -232,7 +279,7 @@ export function StockManager() {
   function openHistory(productId: string) {
     const product = inventory.products.find((item) => item.id === productId);
     if (!product) return;
-    setMenuId(null);
+    setMenu(null);
     setSelectedId(product.id);
     setDrawer("history");
   }
@@ -244,7 +291,7 @@ export function StockManager() {
   }
 
   function openAdjust(productId?: string) {
-    setMenuId(null);
+    setMenu(null);
     setSelectedId(productId ?? null);
     setPrefillProductId(productId ?? null);
     setDrawer("adjust");
@@ -257,11 +304,18 @@ export function StockManager() {
       setExpiry("all");
       return;
     }
-    if (focus === "low" || focus === "out") {
-      setStatus("all");
+    if (focus === "low") {
+      setStatus("Low Stock");
+      setExpiry("all");
       return;
     }
-    setExpiry("all");
+    if (focus === "out") {
+      setStatus("Out of Stock");
+      setExpiry("all");
+      return;
+    }
+    setStatus("all");
+    setExpiry(focus === "soon" ? "Expiring Soon" : "Expired");
   }
 
   function clearFilters() {
@@ -271,6 +325,16 @@ export function StockManager() {
     setExpiry("all");
     setKpiFocus("all");
     setSort("name");
+  }
+
+  if (workspace === "movements") {
+    return (
+      <FullStockMovements
+        products={inventory.products}
+        movements={inventory.movements}
+        onBack={() => setWorkspace("inventory")}
+      />
+    );
   }
 
   return (
@@ -285,11 +349,11 @@ export function StockManager() {
         {canReceive ? (
           <button
             type="button"
-            onClick={() => openAdjust()}
+            onClick={() => openAdd()}
             className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_10px_22px_rgba(11,34,68,0.22),inset_0_1px_0_rgba(255,255,255,0.12)] transition duration-200 hover:bg-[#102a52] sm:w-auto"
           >
             <Plus className="h-4 w-4" strokeWidth={2.2} />
-            Adjust Stock
+            Add Stock
           </button>
         ) : null}
       </div>
@@ -351,76 +415,92 @@ export function StockManager() {
         />
       </section>
 
-      <section className={cn(glass, "overflow-hidden")}>
-        <div className="flex flex-col gap-2.5 px-4 pb-3 pt-4 lg:flex-row lg:flex-wrap lg:items-center">
-          <label className="relative block min-w-0 flex-1 lg:min-w-[240px]">
-            <span className="sr-only">Search stock</span>
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search products, SKU, barcode..."
-              className={cn(filterClass, "pl-10")}
-            />
-          </label>
-          <select
-            value={category}
-            onChange={(event) => {
-              if (event.target.value === ADD_CATEGORY_OPTION) {
-                setCategoryModalOpen(true);
-                return;
-              }
-              if (event.target.value === MANAGE_CATEGORIES_OPTION) {
-                setManageCategoriesOpen(true);
-                return;
-              }
-              setCategory(event.target.value);
-            }}
-            className={cn(filterClass, "lg:w-auto lg:min-w-[148px]")}
-          >
-            <option value="all">All Categories</option>
-            {categories.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-            <CategoryDropdownActions canAdd={canAddCategory} canManage={canManageCategories} />
-          </select>
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value as StockStatusFilter)}
-            className={cn(filterClass, "lg:w-auto lg:min-w-[148px]")}
-          >
-            <option value="all">All Stock Status</option>
-            <option value="In Stock">In Stock</option>
-            <option value="Low Stock">Low Stock</option>
-            <option value="Out of Stock">Out of Stock</option>
-          </select>
-          <select
-            value={expiry}
-            onChange={(event) => setExpiry(event.target.value as ExpiryFilter)}
-            className={cn(filterClass, "lg:w-auto lg:min-w-[148px]")}
-          >
-            <option value="all">All Expiry Status</option>
-            <option value="No Expiry">No Expiry</option>
-            <option value="Normal">Normal</option>
-            <option value="Expiring Soon">Expiring Soon</option>
-            <option value="Expired">Expired</option>
-          </select>
-          <select value={sort} onChange={(event) => setSort(event.target.value as StockSort)} className={cn(filterClass, "lg:w-auto lg:min-w-[136px]")}>
-            <option value="name">Product A-Z</option>
-            <option value="stock-low">Lowest Stock</option>
-            <option value="stock-high">Highest Stock</option>
-            <option value="expiry">Earliest Expiry</option>
-          </select>
-        </div>
+      <section className="flex flex-col gap-2.5 lg:flex-row lg:flex-wrap lg:items-center">
+        <label className="relative block min-w-0 flex-1 lg:min-w-[240px]">
+          <span className="sr-only">Search stock</span>
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search products, SKU, barcode..."
+            className={cn(filterClass, "pl-10")}
+          />
+        </label>
+        <select
+          value={category}
+          onChange={(event) => {
+            if (event.target.value === ADD_CATEGORY_OPTION) {
+              setCategoryModalOpen(true);
+              return;
+            }
+            if (event.target.value === MANAGE_CATEGORIES_OPTION) {
+              setManageCategoriesOpen(true);
+              return;
+            }
+            setCategory(event.target.value);
+          }}
+          className={cn(filterClass, "lg:w-auto lg:min-w-[11.5rem]")}
+        >
+          <option value="all">All Categories</option>
+          {categories.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+          <CategoryDropdownActions canAdd={canAddCategory} canManage={canManageCategories} />
+        </select>
+        <select
+          value={status}
+          onChange={(event) => {
+            const next = event.target.value as StockStatusFilter;
+            setStatus(next);
+            if (next === "Low Stock") setKpiFocus("low");
+            else if (next === "Out of Stock") setKpiFocus("out");
+            else if (kpiFocus === "low" || kpiFocus === "out") setKpiFocus("all");
+          }}
+          className={cn(filterClass, "lg:w-auto lg:min-w-[11.5rem]")}
+        >
+          <option value="all">All Stock Status</option>
+          <option value="In Stock">In Stock</option>
+          <option value="Low Stock">Low Stock</option>
+          <option value="Out of Stock">Out of Stock</option>
+        </select>
+        <select
+          value={expiry}
+          onChange={(event) => {
+            const next = event.target.value as ExpiryFilter;
+            setExpiry(next);
+            if (next === "Expiring Soon") setKpiFocus("soon");
+            else if (next === "Expired") setKpiFocus("expired");
+            else if (kpiFocus === "soon" || kpiFocus === "expired") setKpiFocus("all");
+          }}
+          className={cn(filterClass, "lg:w-auto lg:min-w-[11.5rem]")}
+        >
+          <option value="all">All Expiry Status</option>
+          <option value="No Expiry">No Expiry</option>
+          <option value="Normal">Normal</option>
+          <option value="Expiring Soon">Expiring Soon</option>
+          <option value="Expired">Expired</option>
+        </select>
+        <select value={sort} onChange={(event) => setSort(event.target.value as StockSort)} className={cn(filterClass, "lg:w-auto lg:min-w-[11rem]")}>
+          <option value="name">Product A-Z</option>
+          <option value="stock-low">Lowest Stock</option>
+          <option value="stock-high">Highest Stock</option>
+          <option value="expiry">Earliest Expiry</option>
+        </select>
+      </section>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 px-4 pb-3">
+      <section className={cn(glass, "overflow-hidden")}>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 pb-3 pt-4">
           <p className="text-[13px] font-medium tracking-[-0.01em] text-navy">{tableStateLabel}</p>
           {kpiChip ? (
             <button
               type="button"
-              onClick={() => setKpiFocus("all")}
+              onClick={() => {
+                setKpiFocus("all");
+                setStatus("all");
+                setExpiry("all");
+              }}
               className="inline-flex h-7 items-center gap-1 rounded-full border border-white/80 bg-white/80 px-2.5 text-[12px] font-medium text-navy shadow-[0_4px_12px_rgba(15,35,64,0.06)] transition duration-200 hover:bg-white"
             >
               {kpiChip}
@@ -433,7 +513,8 @@ export function StockManager() {
           <EmptyStock filtersActive={filtersActive} onClear={clearFilters} />
         ) : (
           <>
-            <div className="hidden overflow-x-auto xl:block">
+            {layout === "table" ? (
+            <div className="overflow-x-auto">
               <table className="min-w-full text-left text-[13px]">
                 <thead className={tableHead}>
                   <tr className="border-b border-[#d5dee8]/80">
@@ -469,14 +550,8 @@ export function StockManager() {
                       <td className="px-4 py-3">
                         <RowActions
                           product={product}
-                          open={menuId === product.id}
-                          canReceive={canReceive}
-                          onToggle={() => setMenuId((current) => (current === product.id ? null : product.id))}
-                          onClose={() => setMenuId(null)}
-                          onView={() => openView(product.id)}
-                          onAdd={() => openAdd(product.id)}
-                          onAdjust={() => openAdjust(product.id)}
-                          onHistory={() => openHistory(product.id)}
+                          open={menu?.id === product.id}
+                          onToggle={(button) => openMenu(product.id, button)}
                         />
                       </td>
                     </tr>
@@ -484,8 +559,10 @@ export function StockManager() {
                 </tbody>
               </table>
             </div>
+            ) : null}
 
-            <div className="hidden overflow-x-auto md:block xl:hidden">
+            {layout === "compact" ? (
+            <div className="overflow-x-auto">
               <table className="min-w-full text-left text-[13px]">
                 <thead className={tableHead}>
                   <tr className="border-b border-[#d5dee8]/80">
@@ -515,14 +592,8 @@ export function StockManager() {
                       <td className="px-3.5 py-3">
                         <RowActions
                           product={product}
-                          open={menuId === product.id}
-                          canReceive={canReceive}
-                          onToggle={() => setMenuId((current) => (current === product.id ? null : product.id))}
-                          onClose={() => setMenuId(null)}
-                          onView={() => openView(product.id)}
-                          onAdd={() => openAdd(product.id)}
-                          onAdjust={() => openAdjust(product.id)}
-                          onHistory={() => openHistory(product.id)}
+                          open={menu?.id === product.id}
+                          onToggle={(button) => openMenu(product.id, button)}
                         />
                       </td>
                     </tr>
@@ -530,22 +601,18 @@ export function StockManager() {
                 </tbody>
               </table>
             </div>
+            ) : null}
 
-            <div className="space-y-2 px-3 pb-3 md:hidden">
+            {layout === "cards" ? (
+            <div className="space-y-2 px-3 pb-3">
               {pageRows.map((product) => (
                 <article key={product.id} className="rounded-[16px] border border-white/70 bg-white/55 px-3 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <ProductName product={product} onOpen={() => openView(product.id)} />
                     <RowActions
                       product={product}
-                      open={menuId === product.id}
-                      canReceive={canReceive}
-                      onToggle={() => setMenuId((current) => (current === product.id ? null : product.id))}
-                      onClose={() => setMenuId(null)}
-                      onView={() => openView(product.id)}
-                      onAdd={() => openAdd(product.id)}
-                      onAdjust={() => openAdjust(product.id)}
-                      onHistory={() => openHistory(product.id)}
+                      open={menu?.id === product.id}
+                      onToggle={(button) => openMenu(product.id, button)}
                     />
                   </div>
                   <div className="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -559,6 +626,7 @@ export function StockManager() {
                 </article>
               ))}
             </div>
+            ) : null}
 
             <Pagination
               from={from}
@@ -574,44 +642,63 @@ export function StockManager() {
         )}
       </section>
 
-      <section className={cn(glass, "overflow-hidden px-4 py-4")}>
+      <section className={cn(glass, "overflow-hidden px-4 py-3.5")}>
         <div className="flex items-end justify-between gap-3">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">History</p>
-            <h2 className="mt-1 text-[16px] font-semibold tracking-[-0.03em] text-navy">Recent Stock Movements</h2>
+            <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Recent Stock Movements</h2>
+            <p className="mt-0.5 text-[12.5px] text-slate-400">Latest inventory activity</p>
           </div>
+          <button
+            type="button"
+            onClick={() => setWorkspace("movements")}
+            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full px-2.5 text-[12.5px] font-semibold text-navy transition duration-200 hover:bg-white/70"
+          >
+            View All
+            <span aria-hidden>→</span>
+          </button>
         </div>
         {recentMovements.length === 0 ? (
-          <p className="mt-4 text-[13px] text-slate-500">No stock movements recorded yet.</p>
+          <p className="mt-3 text-[13px] text-slate-500">No stock movements recorded yet.</p>
         ) : (
-          <div className="mt-3 divide-y divide-[#d5dee8]/80">
+          <div className="mt-2 divide-y divide-[#d5dee8]/70">
             {recentMovements.map((item) => (
-              <div key={item.id} className="grid grid-cols-[1fr_auto] gap-3 py-3 sm:grid-cols-[108px_1fr_88px_1fr_92px]">
-                <p className="text-[12.5px] text-slate-500">{formatDisplayDate(item.date)}</p>
-                <div className="min-w-0">
-                  <p className="truncate text-[13px] font-medium text-navy">{item.productName}</p>
-                  <p className="mt-0.5 truncate text-[12px] text-slate-400 sm:hidden">
-                    {movementTypeLabel(item.type, item.adjustmentKind)}
-                    {item.reason ? ` · ${item.reason}` : ""}
-                  </p>
-                </div>
-                <p className="hidden text-[13px] text-slate-500 sm:block">
-                  {movementTypeLabel(item.type, item.adjustmentKind)}
+              <div key={item.id} className="grid grid-cols-[1fr_auto] items-center gap-3 py-2 sm:grid-cols-[96px_minmax(0,1.2fr)_minmax(0,1fr)_64px_88px]">
+                <p className="text-[12.5px] text-slate-500">{formatStockDate(item.date)}</p>
+                <p className="min-w-0 truncate text-[13px] font-medium text-navy">{item.productName}</p>
+                <p className="hidden min-w-0 truncate text-[12.5px] text-slate-500 sm:block">
+                  {stockMovementKindLabel(item)}
                 </p>
-                <p className="hidden truncate text-[12.5px] text-slate-400 sm:block">
-                  {item.reason || item.note}
+                <p className="text-right text-[13px] font-semibold text-navy">
+                  {item.quantity > 0 ? `+${item.quantity}` : item.quantity}
                 </p>
-                <div className="text-right">
-                  <p className="text-[13px] font-semibold text-navy">
-                    {item.quantity > 0 ? `+${item.quantity}` : item.quantity}
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-slate-400">{item.user || "Storekeeper"}</p>
-                </div>
+                <p className="hidden truncate text-right text-[12px] text-slate-400 sm:block">{item.reference}</p>
               </div>
             ))}
           </div>
         )}
       </section>
+
+      {menu
+        ? createPortal(
+            <>
+              <button
+                type="button"
+                className="fixed inset-0 z-[79] cursor-default bg-transparent"
+                aria-label="Close actions"
+                onClick={closeMenu}
+              />
+              <div
+                className="fixed z-[80] w-44 overflow-hidden rounded-[16px] border border-white/80 bg-white/90 py-1 shadow-[0_18px_50px_rgba(16,24,40,0.14)] backdrop-blur-xl"
+                style={{ top: menu.top, right: menu.right }}
+              >
+                <ActionItem label="View Stock History" onSelect={() => openHistory(menu.id)} />
+                {canReceive ? <ActionItem label="Adjust Stock" onSelect={() => openAdjust(menu.id)} /> : null}
+                <ActionItem label="View Product" onSelect={() => openView(menu.id)} />
+              </div>
+            </>,
+            document.body,
+          )
+        : null}
 
       {drawer === "add" ? (
         <StockDrawer kicker="Inventory" title="Add Stock" onClose={closePanel}>
@@ -685,6 +772,223 @@ export function StockManager() {
           setCategory((current) => (current === name ? "all" : current));
         }}
       />
+    </div>
+  );
+}
+
+function formatStockDate(value: string | null | undefined) {
+  if (!value) return "—";
+  const iso = value.includes("T") ? value : `${value}T00:00:00`;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return value;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${String(date.getDate()).padStart(2, "0")} ${months[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+const MOVEMENT_PERIODS = [
+  { id: "all", label: "All Dates", start: "2000-01-01", end: "9999-12-31" },
+  { id: "01-16", label: "01 Sep 2026 - 16 Sep 2026", start: "2026-09-01", end: "2026-09-16" },
+  { id: "01-07", label: "01 Sep 2026 - 07 Sep 2026", start: "2026-09-01", end: "2026-09-07" },
+  { id: "13-16", label: "13 Sep 2026 - 16 Sep 2026", start: "2026-09-13", end: "2026-09-16" },
+] as const;
+
+function FullStockMovements({
+  products,
+  movements,
+  onBack,
+}: {
+  products: SupermarketProduct[];
+  movements: StockMovement[];
+  onBack: () => void;
+}) {
+  const [periodId, setPeriodId] = useState<(typeof MOVEMENT_PERIODS)[number]["id"]>("all");
+  const [productId, setProductId] = useState("all");
+  const [type, setType] = useState<"all" | StockMovementFilter>("all");
+  const [user, setUser] = useState("all");
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(10);
+
+  const users = useMemo(() => {
+    return [...new Set(movements.map((item) => item.user || "Storekeeper"))].sort();
+  }, [movements]);
+
+  const rows = useMemo(() => {
+    const period = MOVEMENT_PERIODS.find((item) => item.id === periodId) ?? MOVEMENT_PERIODS[0];
+    const needle = query.trim().toLowerCase();
+    return movements
+      .filter((item) => {
+        if (item.date < period.start || item.date > period.end) return false;
+        if (productId !== "all" && item.productId !== productId) return false;
+        if (type !== "all" && stockMovementKindLabel(item) !== type) return false;
+        if (user !== "all" && (item.user || "Storekeeper") !== user) return false;
+        if (!needle) return true;
+        const productName = products.find((product) => product.id === item.productId)?.name ?? "";
+        return `${productName} ${item.reference} ${stockMovementKindLabel(item)} ${item.user ?? ""}`.toLowerCase().includes(needle);
+      })
+      .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+  }, [movements, products, periodId, productId, type, user, query]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [periodId, productId, type, user, query, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const from = rows.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const to = Math.min(safePage * pageSize, rows.length);
+
+  return (
+    <div className="min-w-0 space-y-3.5 sm:space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-500 transition duration-200 hover:text-navy"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2.1} />
+            Stock
+          </button>
+          <h1 className="mt-2 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Stock Movements</h1>
+          <p className="mt-1.5 max-w-xl text-[13px] leading-5 text-slate-500">
+            Complete inventory activity across purchases, sales and adjustments.
+          </p>
+        </div>
+      </div>
+
+      <section className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
+        <select
+          value={periodId}
+          onChange={(event) => setPeriodId(event.target.value as (typeof MOVEMENT_PERIODS)[number]["id"])}
+          className={cn(filterClass, "lg:w-auto lg:min-w-[16.5rem]")}
+        >
+          {MOVEMENT_PERIODS.map((period) => (
+            <option key={period.id} value={period.id}>
+              {period.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={productId}
+          onChange={(event) => setProductId(event.target.value)}
+          className={cn(filterClass, "lg:w-auto lg:min-w-[12.5rem]")}
+        >
+          <option value="all">All Products</option>
+          {products.map((product) => (
+            <option key={product.id} value={product.id}>
+              {product.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={type}
+          onChange={(event) => setType(event.target.value as "all" | StockMovementFilter)}
+          className={cn(filterClass, "lg:w-auto lg:min-w-[12.5rem]")}
+        >
+          <option value="all">All Movement Types</option>
+          {STOCK_MOVEMENT_FILTERS.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+        </select>
+        <select
+          value={user}
+          onChange={(event) => setUser(event.target.value)}
+          className={cn(filterClass, "lg:w-auto lg:min-w-[9.5rem]")}
+        >
+          <option value="all">All Users</option>
+          {users.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+        </select>
+        <label className="relative block min-w-0 flex-1 lg:min-w-[16rem]">
+          <span className="sr-only">Search movements</span>
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search product, reference..."
+            className={cn(filterClass, "pl-10")}
+          />
+        </label>
+      </section>
+
+      <section className={cn(glass, "overflow-hidden")}>
+        {pageRows.length === 0 ? (
+          <div className="px-6 py-10 text-center">
+            <p className="text-[16px] font-semibold tracking-[-0.03em] text-navy">No movements found</p>
+            <p className="mt-2 text-sm text-slate-500">No stock movements match the current filters.</p>
+          </div>
+        ) : (
+          <>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="min-w-full text-left text-[13px]">
+                <thead className={tableHead}>
+                  <tr className="border-b border-[#d5dee8]/80">
+                    <th className="px-4 py-3 font-medium">Date</th>
+                    <th className="px-3 py-3 font-medium">Product</th>
+                    <th className="px-3 py-3 font-medium">Type</th>
+                    <th className="px-3 py-3 font-medium">Quantity</th>
+                    <th className="px-3 py-3 font-medium">Reference</th>
+                    <th className="px-4 py-3 font-medium">User</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageRows.map((item) => (
+                    <tr key={item.id} className={tableRow}>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-500">{formatStockDate(item.date)}</td>
+                      <td className="px-3 py-3 font-medium text-navy">
+                        {products.find((product) => product.id === item.productId)?.name ?? "Unknown product"}
+                      </td>
+                      <td className="px-3 py-3 text-slate-500">{stockMovementKindLabel(item)}</td>
+                      <td className="px-3 py-3 font-semibold text-navy">
+                        {item.quantity > 0 ? `+${item.quantity}` : item.quantity}
+                      </td>
+                      <td className="px-3 py-3 text-slate-500">{item.reference}</td>
+                      <td className="px-4 py-3 text-slate-500">{item.user || "Storekeeper"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="space-y-2 px-3 py-3 md:hidden">
+              {pageRows.map((item) => (
+                <article key={item.id} className="rounded-[16px] border border-white/70 bg-white/55 px-3 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-semibold text-navy">
+                        {products.find((product) => product.id === item.productId)?.name ?? "Unknown product"}
+                      </p>
+                      <p className="mt-0.5 text-[12px] text-slate-400">
+                        {formatStockDate(item.date)} · {stockMovementKindLabel(item)}
+                      </p>
+                    </div>
+                    <p className="font-semibold text-navy">{item.quantity > 0 ? `+${item.quantity}` : item.quantity}</p>
+                  </div>
+                  <p className="mt-1.5 text-[12px] text-slate-400">
+                    {item.reference} · {item.user || "Storekeeper"}
+                  </p>
+                </article>
+              ))}
+            </div>
+            <Pagination
+              from={from}
+              to={to}
+              total={rows.length}
+              page={safePage}
+              totalPages={totalPages}
+              pageSize={pageSize}
+              onPage={setPage}
+              onPageSize={(size) => setPageSize(size)}
+            />
+          </>
+        )}
+      </section>
     </div>
   );
 }
@@ -805,8 +1109,16 @@ function ExpiryCell({ productId, batches }: { productId: string; batches: StockB
     return (
       <div>
         <p className="text-[12.5px] font-semibold text-[#b42318]">Expired</p>
-        <p className="mt-0.5 text-[11.5px] text-[#b42318]/80">{formatDisplayDate(expired[0])}</p>
+        <p className="mt-0.5 text-[11.5px] text-[#b42318]/80">{formatStockDate(expired[0])}</p>
       </div>
+    );
+  }
+  if (liveDated.length === 1) {
+    const status = batchExpiryStatus(liveDated[0].expiryDate);
+    return (
+      <p className={cn("text-[12.5px] font-medium", status === "Expiring Soon" ? "text-violet-600" : "text-navy")}>
+        {formatStockDate(next)}
+      </p>
     );
   }
   if (liveDated.length) {
@@ -815,7 +1127,7 @@ function ExpiryCell({ productId, batches }: { productId: string; batches: StockB
         <p className="text-[12.5px] font-medium text-navy">
           {liveDated.length} batch{liveDated.length === 1 ? "" : "es"}
         </p>
-        <p className="mt-0.5 text-[11.5px] text-slate-400">Next: {formatDisplayDate(next)}</p>
+        <p className="mt-0.5 text-[11.5px] text-slate-400">Next: {formatStockDate(next)}</p>
       </div>
     );
   }
@@ -874,7 +1186,7 @@ function Pagination({
   return (
     <div className="flex flex-col gap-2.5 border-t border-[#d5dee8]/80 bg-white/25 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-[12.5px] text-slate-500">
-        Showing {from} to {to} of {total} products
+        Showing {from} to {to} of {total} {total === 1 ? "result" : "results"}
       </p>
       <div className="flex items-center justify-between gap-3 sm:justify-end">
         <div className="flex items-center gap-1">
@@ -919,87 +1231,22 @@ function Pagination({
 function RowActions({
   product,
   open,
-  canReceive,
   onToggle,
-  onClose,
-  onView,
-  onAdd,
-  onAdjust,
-  onHistory,
 }: {
   product: SupermarketProduct;
   open: boolean;
-  canReceive: boolean;
-  onToggle: () => void;
-  onClose: () => void;
-  onView: () => void;
-  onAdd: () => void;
-  onAdjust: () => void;
-  onHistory: () => void;
+  onToggle: (button: HTMLButtonElement) => void;
 }) {
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const [coords, setCoords] = useState({ top: 0, right: 0 });
-
-  function placeMenu() {
-    const rect = buttonRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    setCoords({
-      top: rect.bottom + 6,
-      right: Math.max(8, window.innerWidth - rect.right),
-    });
-  }
-
-  useEffect(() => {
-    if (!open) return;
-    placeMenu();
-    window.addEventListener("resize", placeMenu);
-    return () => window.removeEventListener("resize", placeMenu);
-  }, [open]);
-
-  const menu = open
-    ? createPortal(
-        <>
-          <button
-            type="button"
-            className="fixed inset-0 z-[79] cursor-default bg-transparent"
-            aria-label="Close actions"
-            onPointerDown={(event) => {
-              event.preventDefault();
-              onClose();
-            }}
-          />
-          <div
-            className="fixed z-[80] w-44 overflow-hidden rounded-[16px] border border-white/80 bg-white/90 py-1 shadow-[0_18px_50px_rgba(16,24,40,0.14)] backdrop-blur-xl"
-            style={{ top: coords.top, right: coords.right }}
-            onPointerDown={(event) => event.stopPropagation()}
-          >
-            <ActionItem label="View Stock" onSelect={onView} />
-            {canReceive ? <ActionItem label="Adjust Stock" onSelect={onAdjust} /> : null}
-            {canReceive ? <ActionItem label="Add Stock" onSelect={onAdd} /> : null}
-            <ActionItem label="Stock History" onSelect={onHistory} />
-          </div>
-        </>,
-        document.body,
-      )
-    : null;
-
   return (
-    <div className="relative">
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={() => {
-          if (!open) placeMenu();
-          onToggle();
-        }}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/75 bg-white/85 text-slate-400 shadow-[0_6px_14px_rgba(15,35,64,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md transition hover:bg-white hover:text-navy"
-        aria-label={`Actions for ${product.name}`}
-        aria-expanded={open}
-      >
-        <MoreHorizontal className="h-4 w-4" />
-      </button>
-      {menu}
-    </div>
+    <button
+      type="button"
+      onClick={(event) => onToggle(event.currentTarget)}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/75 bg-white/85 text-slate-400 shadow-[0_6px_14px_rgba(15,35,64,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md transition duration-200 hover:bg-white hover:text-navy"
+      aria-label={`Actions for ${product.name}`}
+      aria-expanded={open}
+    >
+      <MoreHorizontal className="h-4 w-4" />
+    </button>
   );
 }
 
@@ -1013,15 +1260,10 @@ function ActionItem({
   return (
     <button
       type="button"
-      onPointerDown={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onSelect();
-      }}
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        if (event.detail === 0) onSelect();
+        onSelect();
       }}
       className="flex w-full px-3 py-2.5 text-left text-[13px] text-navy hover:bg-navy/[0.04]"
     >
@@ -1322,7 +1564,21 @@ function AddStockForm({
   );
 }
 
-const REASON_REQUIRED_KINDS: StockAdjustmentKind[] = ["Damage", "Expired", "Lost", "Correction"];
+const ADJUST_REASONS = ["Physical Count", "Damage", "Expired", "Lost", "Correction", "Opening Balance"] as const;
+type AdjustDirection = "Increase" | "Decrease";
+
+function mapAdjustment(direction: AdjustDirection, reason: string): {
+  kind: StockAdjustmentKind;
+  correctionDirection: "increase" | "decrease";
+} {
+  const correctionDirection = direction === "Decrease" ? "decrease" : "increase";
+  if (reason === "Opening Balance") return { kind: "Opening Balance", correctionDirection };
+  if (reason === "Correction") return { kind: "Correction", correctionDirection };
+  if (direction === "Decrease" && reason === "Damage") return { kind: "Damage", correctionDirection };
+  if (direction === "Decrease" && reason === "Expired") return { kind: "Expired", correctionDirection };
+  if (direction === "Decrease" && reason === "Lost") return { kind: "Lost", correctionDirection };
+  return { kind: direction, correctionDirection };
+}
 
 function AdjustStockForm({
   products,
@@ -1342,10 +1598,9 @@ function AdjustStockForm({
   const prefilled = products.find((item) => item.id === prefillProductId) ?? null;
   const [productQuery, setProductQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(prefilled?.id ?? null);
-  const [kind, setKind] = useState<StockAdjustmentKind>("Decrease");
-  const [correctionDirection, setCorrectionDirection] = useState<"increase" | "decrease">("increase");
+  const [direction, setDirection] = useState<AdjustDirection>("Decrease");
   const [quantity, setQuantity] = useState("");
-  const [reason, setReason] = useState("");
+  const [reason, setReason] = useState<(typeof ADJUST_REASONS)[number]>("Physical Count");
   const [note, setNote] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -1353,9 +1608,9 @@ function AdjustStockForm({
   const currentStock = selected ? currentStockFor(selected.id, batches) : 0;
   const qty = Number(quantity);
   const validQty = Number.isInteger(qty) && qty > 0;
-  const delta = selected && validQty ? adjustmentDelta(kind, qty, correctionDirection) : 0;
+  const mapped = mapAdjustment(direction, reason);
+  const delta = selected && validQty ? adjustmentDelta(mapped.kind, qty, mapped.correctionDirection) : 0;
   const nextStock = selected && validQty ? currentStock + delta : currentStock;
-  const reasonRequired = REASON_REQUIRED_KINDS.includes(kind);
 
   const matches = useMemo(() => {
     const needle = productQuery.trim().toLowerCase();
@@ -1373,9 +1628,9 @@ function AdjustStockForm({
   function submit() {
     const nextErrors: Record<string, string> = {};
     if (!selected) nextErrors.product = "Select a product.";
-    if (!kind) nextErrors.kind = "Select an adjustment type.";
+    if (!direction) nextErrors.kind = "Select an adjustment type.";
     if (!validQty) nextErrors.quantity = "Enter a valid quantity.";
-    if (reasonRequired && !reason.trim()) nextErrors.reason = "Enter a reason for this adjustment.";
+    if (!reason) nextErrors.reason = "Select a reason for this adjustment.";
     if (selected && validQty && nextStock < 0) {
       nextErrors.quantity = "Decrease cannot make stock negative.";
     }
@@ -1385,11 +1640,11 @@ function AdjustStockForm({
     }
     const submitError = onSubmit({
       productId: selected!.id,
-      kind,
+      kind: mapped.kind,
       quantity: qty,
-      reason: reason.trim(),
+      reason,
       note: note.trim(),
-      correctionDirection,
+      correctionDirection: mapped.correctionDirection,
       user: actorName,
     });
     if (submitError) setErrors({ quantity: submitError });
@@ -1462,34 +1717,29 @@ function AdjustStockForm({
       <section className="space-y-3">
         <Field label="Adjustment Type" required error={errors.kind}>
           <select
-            value={kind}
-            onChange={(event) => setKind(event.target.value as StockAdjustmentKind)}
+            value={direction}
+            onChange={(event) => setDirection(event.target.value as AdjustDirection)}
             className={inputClass}
           >
-            {STOCK_ADJUSTMENT_KINDS.map((item) => (
+            <option value="Increase">Increase</option>
+            <option value="Decrease">Decrease</option>
+          </select>
+        </Field>
+        <Field label="Quantity" required error={errors.quantity}>
+          <input inputMode="numeric" value={quantity} onChange={(event) => setQuantity(event.target.value)} className={inputClass} />
+        </Field>
+        <Field label="Reason" required error={errors.reason}>
+          <select
+            value={reason}
+            onChange={(event) => setReason(event.target.value as (typeof ADJUST_REASONS)[number])}
+            className={inputClass}
+          >
+            {ADJUST_REASONS.map((item) => (
               <option key={item} value={item}>
                 {item}
               </option>
             ))}
           </select>
-        </Field>
-        {kind === "Correction" ? (
-          <Field label="Correction Direction" required>
-            <select
-              value={correctionDirection}
-              onChange={(event) => setCorrectionDirection(event.target.value as "increase" | "decrease")}
-              className={inputClass}
-            >
-              <option value="increase">Increase</option>
-              <option value="decrease">Decrease</option>
-            </select>
-          </Field>
-        ) : null}
-        <Field label="Quantity" required error={errors.quantity}>
-          <input inputMode="numeric" value={quantity} onChange={(event) => setQuantity(event.target.value)} className={inputClass} />
-        </Field>
-        <Field label="Reason" required={reasonRequired} error={errors.reason}>
-          <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="e.g. Damaged" className={inputClass} />
         </Field>
         <Field label="Notes">
           <textarea
@@ -1610,35 +1860,39 @@ function StockHistoryPanel({
   product,
   movements,
 }: {
-  product: SupermarketProduct;
+  product: SupermarketProduct & { stock: number };
   movements: MovementRow[];
 }) {
-  const rows = [...movements].reverse();
+  const rows = [...movements].reverse().slice(0, 8);
   return (
     <div className="space-y-5">
       <div>
-        <p className="text-[18px] font-semibold tracking-[-0.03em] text-navy">{product.name}</p>
-        <p className="mt-1 text-[13px] text-slate-500">Date, movement type, quantity, balance and reference.</p>
+        <p className="text-[22px] font-semibold tracking-[-0.04em] text-navy">{product.name}</p>
+        <p className="mt-1 text-[13px] text-slate-400">{product.sku}</p>
+        <p className="mt-4 text-[12px] text-slate-400">Current Stock</p>
+        <p className="text-[28px] font-semibold tracking-[-0.05em] text-navy">{product.stock}</p>
       </div>
-      {rows.length === 0 ? (
-        <p className="text-[13px] text-slate-500">No movements recorded yet.</p>
-      ) : (
-        <div className="divide-y divide-black/[0.04]">
-          {rows.map((item) => (
-            <div key={item.id} className="grid grid-cols-[1fr_auto] gap-3 py-3 sm:grid-cols-[140px_1fr_70px_70px]">
-              <p className="text-[13px] text-slate-500">{formatDisplayDate(item.date)}</p>
-              <div>
-                <p className="text-[13px] font-medium text-navy">{movementTypeLabel(item.type, item.adjustmentKind)}</p>
-                <p className="mt-0.5 text-[12px] text-slate-400">{item.reference}</p>
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Recent movements</p>
+        {rows.length === 0 ? (
+          <p className="mt-3 text-[13px] text-slate-500">No movements recorded yet.</p>
+        ) : (
+          <div className="mt-3 divide-y divide-black/[0.04]">
+            {rows.map((item) => (
+              <div key={item.id} className="flex items-baseline justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <p className="text-[13px] text-slate-500">{formatStockDate(item.date)}</p>
+                  <p className="mt-0.5 text-[13px] font-medium text-navy">{stockMovementKindLabel(item)}</p>
+                  <p className="mt-0.5 text-[12px] text-slate-400">{item.reference}</p>
+                </div>
+                <p className="shrink-0 text-[14px] font-semibold text-navy">
+                  {item.quantity > 0 ? `+${item.quantity}` : item.quantity}
+                </p>
               </div>
-              <p className="text-[13px] font-semibold text-navy">
-                {item.quantity > 0 ? `+${item.quantity}` : item.quantity}
-              </p>
-              <p className="text-[13px] font-semibold text-navy">{item.balance}</p>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

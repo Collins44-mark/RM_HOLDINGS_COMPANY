@@ -28,7 +28,7 @@ export type SupermarketProductCategory = string;
 export type SupermarketProductUnit = (typeof SUPERMARKET_PRODUCT_UNITS)[number];
 export type StockStatus = "In Stock" | "Low Stock" | "Out of Stock";
 export type ExpiryStatus = "Expired" | "Expiring Soon" | "Normal" | "No Expiry";
-export type StockMovementType = "Opening Stock" | "Received" | "Sale" | "Adjustment";
+export type StockMovementType = "Opening Stock" | "Received" | "Sale" | "Adjustment" | "Return" | "Transfer";
 export const STOCK_ADJUSTMENT_KINDS = [
   "Increase",
   "Decrease",
@@ -39,6 +39,18 @@ export const STOCK_ADJUSTMENT_KINDS = [
   "Correction",
 ] as const;
 export type StockAdjustmentKind = (typeof STOCK_ADJUSTMENT_KINDS)[number];
+export const STOCK_MOVEMENT_FILTERS = [
+  "Purchase Received",
+  "Sale",
+  "Return",
+  "Stock Adjustment",
+  "Opening Stock",
+  "Damaged",
+  "Expired",
+  "Lost",
+  "Transfer",
+] as const;
+export type StockMovementFilter = (typeof STOCK_MOVEMENT_FILTERS)[number];
 
 export type SupermarketProduct = {
   id: string;
@@ -272,6 +284,15 @@ export function movementTypeLabel(type: StockMovementType, adjustmentKind?: Stoc
   if (adjustmentKind) return adjustmentKind;
   if (type === "Received") return "Purchase / Received";
   return type;
+}
+
+export function stockMovementKindLabel(item: Pick<StockMovement, "type" | "adjustmentKind">): StockMovementFilter | string {
+  if (item.adjustmentKind === "Damage") return "Damaged";
+  if (item.adjustmentKind === "Expired") return "Expired";
+  if (item.adjustmentKind === "Lost") return "Lost";
+  if (item.type === "Received") return "Purchase Received";
+  if (item.type === "Adjustment") return "Stock Adjustment";
+  return item.type;
 }
 
 export function adjustmentDelta(kind: StockAdjustmentKind, quantity: number, correctionDirection: "increase" | "decrease" = "increase") {
@@ -555,6 +576,41 @@ function createSeed(): InventorySnapshot {
 
   const movements: StockMovement[] = [
     {
+      id: "mov-z16-oil-2244",
+      productId: "prd-oil-5",
+      batchId: "bat-oil-1",
+      type: "Received",
+      quantity: 20,
+      date: "2026-09-16",
+      reference: "PO-2244",
+      note: "Purchase Received",
+      user: "John",
+    },
+    {
+      id: "mov-y16-rice-1048",
+      productId: "prd-rice-25",
+      batchId: "bat-rice-1",
+      type: "Sale",
+      quantity: -4,
+      date: "2026-09-16",
+      reference: "INV-1048",
+      note: "POS sale",
+      user: "Mary",
+    },
+    {
+      id: "mov-x15-milk-adj-32",
+      productId: "prd-milk-500",
+      batchId: null,
+      type: "Adjustment",
+      quantity: -5,
+      date: "2026-09-15",
+      reference: "ADJ-0032",
+      note: "Physical count",
+      reason: "Physical Count",
+      user: "Collins",
+      adjustmentKind: "Decrease",
+    },
+    {
       id: "mov-cow-1",
       productId: "product-001",
       batchId: "bat-cow-2",
@@ -563,6 +619,7 @@ function createSeed(): InventorySnapshot {
       date: "2026-09-10",
       reference: "OPENING",
       note: "Opening stock",
+      user: "John",
     },
     {
       id: "mov-cow-2",
@@ -575,14 +632,15 @@ function createSeed(): InventorySnapshot {
       note: "Opening stock",
     },
     {
-      id: "mov-cow-3",
+      id: "mov-w14-cow-2241",
       productId: "product-001",
       batchId: "bat-cow-1",
       type: "Received",
       quantity: 100,
       date: "2026-09-14",
-      reference: "PO-001",
-      note: "Purchase / Received",
+      reference: "PO-2241",
+      note: "Purchase Received",
+      user: "John",
     },
     {
       id: "mov-rice-1",
@@ -605,6 +663,17 @@ function createSeed(): InventorySnapshot {
       note: "Opening stock",
     },
     {
+      id: "mov-oil-sale-1048",
+      productId: "prd-oil-5",
+      batchId: "bat-oil-1",
+      type: "Sale",
+      quantity: -3,
+      date: "2026-09-12",
+      reference: "INV-1048",
+      note: "POS sale",
+      user: "Mary",
+    },
+    {
       id: "mov-oil-1",
       productId: "prd-oil-5",
       batchId: "bat-oil-2",
@@ -623,6 +692,63 @@ function createSeed(): InventorySnapshot {
       date: "2026-08-22",
       reference: "PO-2210",
       note: "Purchase / Received",
+    },
+    {
+      id: "mov-v13-milk-1044",
+      productId: "prd-milk-500",
+      batchId: null,
+      type: "Sale",
+      quantity: -3,
+      date: "2026-09-13",
+      reference: "INV-1044",
+      note: "POS sale",
+      user: "Amina",
+    },
+    {
+      id: "mov-oil-open-13",
+      productId: "prd-oil-5",
+      batchId: "bat-oil-2",
+      type: "Opening Stock",
+      quantity: 30,
+      date: "2026-09-13",
+      reference: "OPENING",
+      note: "Opening stock",
+      user: "John",
+    },
+    {
+      id: "mov-sugar-return",
+      productId: "prd-sugar-1",
+      batchId: "bat-sugar-1",
+      type: "Return",
+      quantity: 2,
+      date: "2026-09-12",
+      reference: "RET-0018",
+      note: "Customer return",
+      user: "Amina",
+    },
+    {
+      id: "mov-unga-transfer",
+      productId: "prd-unga-2",
+      batchId: "bat-unga-1",
+      type: "Transfer",
+      quantity: -6,
+      date: "2026-09-11",
+      reference: "TR-009",
+      note: "Store transfer",
+      user: "Peter",
+    },
+    {
+      id: "mov-soap-damage",
+      productId: "prd-soap-800",
+      batchId: "bat-soap-1",
+      type: "Adjustment",
+      quantity: -1,
+      date: "2026-09-09",
+      reference: "ADJ-0028",
+      note: "Damaged pack",
+      reason: "Damage",
+      user: "Collins",
+      adjustmentKind: "Damage",
     },
     {
       id: "mov-milk-1",
