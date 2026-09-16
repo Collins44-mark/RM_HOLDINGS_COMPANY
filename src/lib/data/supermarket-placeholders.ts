@@ -3,10 +3,6 @@ export const SUPERMARKET_PLACEHOLDERS: Record<string, { title: string; descripti
     title: "POS / New Sale",
     description: "Point of sale will appear here.",
   },
-  "/supermarket/sales": {
-    title: "Sales",
-    description: "Sales history will appear here.",
-  },
   "/supermarket/returns": {
     title: "Returns",
     description: "Returns will appear here.",
