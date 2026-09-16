@@ -553,14 +553,14 @@ export function PosManager() {
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[22rem] border-separate border-spacing-x-0 border-spacing-y-0">
+                    <table className="w-full min-w-[26.5rem] border-separate border-spacing-x-0 border-spacing-y-0">
                       <thead>
                         <tr className="text-[10.5px] font-medium uppercase tracking-[0.14em] text-slate-400">
-                          <th className="pb-2.5 pr-4 text-left font-medium">Item</th>
-                          <th className="px-3 pb-2.5 text-left font-medium">Price</th>
-                          <th className="px-3 pb-2.5 text-center font-medium">Qty</th>
-                          <th className="px-3 pb-2.5 text-right font-medium">Total</th>
-                          <th className="w-9 pb-2.5" />
+                          <th className="pb-2.5 pr-6 text-left font-medium">Item</th>
+                          <th className="px-4 pb-2.5 text-left font-medium">Price</th>
+                          <th className="px-4 pb-2.5 text-center font-medium">Qty</th>
+                          <th className="px-4 pb-2.5 text-right font-medium">Total</th>
+                          <th className="w-10 pb-2.5" />
                         </tr>
                       </thead>
                       <tbody>
@@ -808,12 +808,11 @@ function CartRow({
   const atMax = item.quantity >= item.stock;
   return (
     <tr className="align-middle" style={{ animation: "pos-cart-in 180ms ease-out" }}>
-      <td className="py-3 pr-4">
-        <span className="block text-[13.5px] font-medium tracking-[-0.01em] text-navy">{item.name}</span>
-        <span className="mt-0.5 block text-[11px] text-slate-400">SKU: {item.sku}</span>
+      <td className="whitespace-nowrap py-3 pr-6">
+        <span className="text-[13.5px] font-medium tracking-[-0.01em] text-navy">{item.name}</span>
       </td>
-      <td className="whitespace-nowrap px-3 py-3 text-[13px] text-slate-500">{formatTzs(item.unitPrice)}</td>
-      <td className="px-3 py-3">
+      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-slate-500">{formatTzs(item.unitPrice)}</td>
+      <td className="px-4 py-3">
         <div className="mx-auto flex h-8 w-[6.1rem] items-center justify-between rounded-full border border-white/80 bg-white/90 px-1 shadow-[0_4px_10px_rgba(15,35,64,0.04)]">
           <button
             type="button"
@@ -836,10 +835,10 @@ function CartRow({
           </button>
         </div>
       </td>
-      <td className="whitespace-nowrap px-3 py-3 text-right text-[13.5px] font-semibold tracking-[-0.02em] text-navy">
+      <td className="whitespace-nowrap px-4 py-3 text-right text-[13.5px] font-semibold tracking-[-0.02em] text-navy">
         {formatTzs(item.unitPrice * item.quantity)}
       </td>
-      <td className="py-3 pl-2 text-right">
+      <td className="py-3 pl-3 text-right">
         <button
           type="button"
           aria-label={`Remove ${item.name}`}
