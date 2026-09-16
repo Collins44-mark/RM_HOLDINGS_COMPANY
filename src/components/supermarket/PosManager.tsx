@@ -16,7 +16,7 @@ import {
   Plus,
   Printer,
   ScanLine,
-  ShoppingCart,
+  Search,
   Smartphone,
   Trash2,
   UserRound,
@@ -50,11 +50,15 @@ import {
 } from "@/lib/data/sample-supermarket-pos";
 
 const glass =
-  "rounded-[22px] border border-white/80 bg-white/90 shadow-[0_10px_30px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.94)] backdrop-blur-xl";
+  "rounded-[26px] border border-white/75 bg-white/78 shadow-[0_12px_32px_rgba(15,35,64,0.045),inset_0_1px_0_rgba(255,255,255,0.92)] backdrop-blur-xl";
 const control =
-  "h-10 w-full rounded-[14px] border border-[#d8e1eb]/90 bg-white px-3.5 text-[13px] text-navy outline-none transition duration-200 placeholder:text-slate-400 focus:border-navy/20 focus:bg-white";
+  "h-11 w-full rounded-full border border-white/80 bg-white/88 px-4 text-[13px] text-navy shadow-[0_6px_16px_rgba(15,35,64,0.04),inset_0_1px_0_rgba(255,255,255,0.95)] outline-none backdrop-blur-xl transition duration-200 placeholder:text-slate-400 focus:border-white focus:bg-white";
 const chip =
-  "inline-flex h-8 shrink-0 items-center rounded-full px-3.5 text-[12.5px] font-medium transition duration-200";
+  "inline-flex h-[30px] shrink-0 items-center rounded-full px-3.5 text-[12.5px] font-medium transition duration-200";
+const glassBtn =
+  "inline-flex items-center justify-center rounded-full border border-white/80 bg-white/82 text-navy shadow-[0_6px_16px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-xl transition duration-200 hover:-translate-y-px hover:bg-white hover:shadow-[0_10px_20px_rgba(15,35,64,0.08)] active:translate-y-0 active:scale-[0.98]";
+const addBtn =
+  "mt-auto inline-flex h-9 w-full items-center justify-center gap-1 rounded-full border border-white/80 bg-[#e8eef6]/78 text-[12.5px] font-medium text-navy shadow-[0_5px_14px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.92)] backdrop-blur-md transition duration-200 hover:-translate-y-px hover:bg-[#dfe8f2]/90 hover:shadow-[0_10px_18px_rgba(15,35,64,0.08)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-38 disabled:hover:translate-y-0 disabled:hover:shadow-[0_5px_14px_rgba(15,35,64,0.05)]";
 
 const PAYMENT_META: Record<
   PosPaymentMethod,
@@ -70,7 +74,7 @@ export function PosManager() {
   const searchRef = useRef<HTMLInputElement>(null);
   const [products, setProducts] = useState(POS_PRODUCTS);
   const [invoiceNumber, setInvoiceNumber] = useState(POS_STARTING_INVOICE);
-  const [invoiceStamp, setInvoiceStamp] = useState(() => new Date());
+  const [invoiceStamp, setInvoiceStamp] = useState<Date | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<"all" | PosCategory>("all");
   const [items, setItems] = useState<PosCartItem[]>([]);
@@ -100,6 +104,11 @@ export function PosManager() {
   const mixedTotal = parseMoneyInput(mixedCash) + parseMoneyInput(mixedMobile);
   const cashChange = cashValue - totals.totalDue;
   const invoiceLabel = completed?.invoice ?? formatInvoiceNumber(invoiceNumber);
+  const stamp = completed?.soldAt ?? invoiceStamp;
+
+  useEffect(() => {
+    setInvoiceStamp((current) => current ?? new Date());
+  }, []);
 
   const validation = useMemo(() => {
     if (items.length === 0) return "Add a product to complete this sale.";
@@ -141,7 +150,7 @@ export function PosManager() {
     return {
       id: `held-${invoiceNumber}-${Date.now()}`,
       invoiceNumber,
-      invoiceStamp,
+      invoiceStamp: invoiceStamp ?? new Date(),
       customer,
       items,
       discountPercent,
@@ -322,27 +331,27 @@ export function PosManager() {
     <div className="min-w-0 space-y-4">
       <style>{`
         @keyframes pos-added {
-          0% { transform: scale(0.985); box-shadow: 0 0 0 0 rgba(11,34,68,0.16); }
-          55% { transform: scale(1.015); box-shadow: 0 0 0 5px rgba(11,34,68,0.08); }
-          100% { transform: scale(1); box-shadow: 0 8px 22px rgba(15,35,64,0.04); }
+          0% { transform: translateY(0); }
+          40% { transform: translateY(-2px); }
+          100% { transform: translateY(0); }
+        }
+        @keyframes pos-cart-in {
+          from { opacity: 0; transform: translateY(6px); }
+          to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
 
-      <header className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+      <header className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="min-w-0">
           <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">
             New Sale (POS)
           </h1>
-          <p className="mt-1.5 max-w-xl text-[13px] leading-5 text-slate-500">
+          <p className="mt-1 max-w-xl text-[13px] leading-5 text-slate-500">
             Scan or search products to add to cart and complete the sale.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-          <button
-            type="button"
-            onClick={holdSale}
-            className="inline-flex h-10 items-center gap-2 rounded-[14px] border border-white/80 bg-white/90 px-3.5 text-[13px] font-medium text-navy shadow-[0_6px_16px_rgba(15,35,64,0.05)] transition duration-200 hover:bg-white"
-          >
+          <button type="button" onClick={holdSale} className={cn(glassBtn, "h-10 gap-2 px-4 text-[13px] font-medium")}>
             <Pause className="h-3.5 w-3.5" strokeWidth={2.1} />
             Hold Sale
           </button>
@@ -353,30 +362,31 @@ export function PosManager() {
             heldSales={heldSales}
             onRestore={restoreHeld}
           />
-          <div className={cn(glass, "min-w-[13.5rem] px-4 py-2.5")}>
-            <div className="flex items-start justify-between gap-4">
+          <div className={cn(glass, "min-w-[16.5rem] rounded-[20px] px-4 py-2.5")}>
+            <div className="flex items-start justify-between gap-5">
               <div>
-                <p className="text-[10.5px] font-medium uppercase tracking-[0.14em] text-slate-400">Invoice #</p>
-                <p className="mt-0.5 text-[18px] font-semibold tracking-[-0.03em] text-navy">#{invoiceLabel}</p>
+                <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-slate-400">Invoice #</p>
+                <p className="mt-0.5 text-[18px] font-semibold tracking-[-0.04em] text-navy">#{invoiceLabel}</p>
               </div>
-              <div className="text-right">
-                <p className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#1f8a4c]">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#1f8a4c]" />
+              <div className="pt-0.5 text-right">
+                <p className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-[#1f8a4c]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#22a45a]" />
                   {completed ? "Completed" : "New Sale"}
                 </p>
-                <p className="mt-1 text-[11.5px] text-slate-400">{formatPosStamp(completed?.soldAt ?? invoiceStamp)}</p>
+                <p className="mt-1 text-[11.5px] text-slate-400">{stamp ? formatPosStamp(stamp) : "\u00a0"}</p>
               </div>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(21rem,0.92fr)] xl:grid-cols-[minmax(0,1.7fr)_minmax(23.5rem,0.88fr)]">
+      <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-[minmax(0,1.62fr)_minmax(22rem,0.9fr)] xl:grid-cols-[minmax(0,1.78fr)_minmax(24rem,0.82fr)]">
         <section className={cn(glass, "min-w-0 p-4 sm:p-5")}>
           <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">Products</h2>
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
             <label className="relative min-w-0 flex-1">
               <span className="sr-only">Search products, SKU, barcode</span>
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={1.9} />
               <input
                 ref={searchRef}
                 value={query}
@@ -388,12 +398,19 @@ export function PosManager() {
                   }
                 }}
                 placeholder="Search products, SKU, barcode..."
-                className={cn(control, "pr-10")}
+                className={cn(control, "pl-10")}
                 autoComplete="off"
               />
-              <ScanLine className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={1.9} />
             </label>
-            <label className="sm:w-[12.5rem]">
+            <button
+              type="button"
+              aria-label="Scan barcode"
+              onClick={() => searchRef.current?.focus()}
+              className={cn(glassBtn, "h-11 w-11 shrink-0 rounded-[16px]")}
+            >
+              <ScanLine className="h-4 w-4 text-slate-500" strokeWidth={1.9} />
+            </button>
+            <label className="sm:w-[11.5rem]">
               <span className="sr-only">All Categories</span>
               <span className="relative block">
                 <select
@@ -408,18 +425,20 @@ export function PosManager() {
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={2} />
+                <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={2} />
               </span>
             </label>
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-1.5">
+          <div className="mt-3.5 flex flex-wrap gap-1.5">
             <button
               type="button"
               onClick={() => setCategory("all")}
               className={cn(
                 chip,
-                category === "all" ? "bg-[#0b2244] text-white" : "bg-white text-navy ring-1 ring-[#d8e1eb]/90 hover:bg-[#f7f9fc]",
+                category === "all"
+                  ? "bg-[#0b2244] text-white shadow-[0_6px_14px_rgba(11,34,68,0.18)]"
+                  : "border border-white/80 bg-white/70 text-slate-500 hover:bg-white hover:text-navy",
               )}
             >
               All
@@ -431,7 +450,9 @@ export function PosManager() {
                 onClick={() => setCategory(item)}
                 className={cn(
                   chip,
-                  category === item ? "bg-[#0b2244] text-white" : "bg-white text-navy ring-1 ring-[#d8e1eb]/90 hover:bg-[#f7f9fc]",
+                  category === item
+                    ? "bg-[#0b2244] text-white shadow-[0_6px_14px_rgba(11,34,68,0.18)]"
+                    : "border border-white/80 bg-white/70 text-slate-500 hover:bg-white hover:text-navy",
                 )}
               >
                 {item}
@@ -447,8 +468,12 @@ export function PosManager() {
               return (
                 <article
                   key={flashing ? `${product.id}-${flashKey}` : product.id}
-                  className="flex min-w-0 flex-col rounded-[18px] border border-[#e6edf4] bg-white p-3.5 shadow-[0_8px_18px_rgba(15,35,64,0.035)]"
-                  style={flashing ? { animation: "pos-added 280ms ease-out" } : undefined}
+                  className={cn(
+                    "flex min-w-0 flex-col rounded-[20px] border border-white/80 bg-white/72 p-3.5 shadow-[0_8px_20px_rgba(15,35,64,0.035),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md transition duration-200",
+                    !out && "hover:-translate-y-0.5 hover:bg-white/90 hover:shadow-[0_14px_28px_rgba(15,35,64,0.07)]",
+                    out && "opacity-80",
+                  )}
+                  style={flashing ? { animation: "pos-added 260ms ease-out" } : undefined}
                 >
                   <h3 className="truncate text-[14px] font-semibold tracking-[-0.02em] text-navy">{product.name}</h3>
                   <p className="mt-0.5 text-[11.5px] text-slate-400">SKU: {product.sku}</p>
@@ -460,9 +485,9 @@ export function PosManager() {
                     type="button"
                     disabled={out || Boolean(completed)}
                     onClick={() => addProduct(product)}
-                    className="mt-3 inline-flex h-9 items-center justify-center gap-1.5 rounded-[12px] bg-[#f4f6f9] text-[12.5px] font-medium text-navy transition duration-200 hover:bg-[#eef2f6] disabled:cursor-not-allowed disabled:opacity-40"
+                    className={cn(addBtn, "mt-3.5")}
                   >
-                    <ShoppingCart className="h-3.5 w-3.5" strokeWidth={2} />
+                    <Plus className="h-3.5 w-3.5" strokeWidth={2.2} />
                     Add
                   </button>
                 </article>
@@ -484,8 +509,9 @@ export function PosManager() {
                 <button
                   type="button"
                   onClick={() => setItems([])}
-                  className="text-[12.5px] font-medium text-slate-400 transition duration-200 hover:text-navy"
+                  className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-slate-400 transition duration-200 hover:text-navy"
                 >
+                  <Trash2 className="h-3.5 w-3.5" strokeWidth={1.9} />
                   Clear Cart
                 </button>
               </div>
@@ -493,11 +519,11 @@ export function PosManager() {
               <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                 <label className="relative min-w-0 flex-1">
                   <span className="sr-only">Customer</span>
-                  <UserRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={1.9} />
+                  <UserRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={1.9} />
                   <select
                     value={customer}
                     onChange={(event) => setCustomer(event.target.value)}
-                    className={cn(control, "appearance-none pl-9 pr-9")}
+                    className={cn(control, "appearance-none pl-10 pr-9")}
                   >
                     {customers.map((item) => (
                       <option key={item} value={item}>
@@ -505,13 +531,9 @@ export function PosManager() {
                       </option>
                     ))}
                   </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={2} />
+                  <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={2} />
                 </label>
-                <button
-                  type="button"
-                  onClick={() => setAddCustomerOpen(true)}
-                  className="inline-flex h-10 shrink-0 items-center justify-center gap-1 rounded-[14px] border border-[#d8e1eb]/90 bg-white px-3 text-[12.5px] font-medium text-navy transition duration-200 hover:bg-[#f7f9fc]"
-                >
+                <button type="button" onClick={() => setAddCustomerOpen(true)} className={cn(glassBtn, "h-11 shrink-0 gap-1 px-3.5 text-[12.5px] font-medium")}>
                   <Plus className="h-3.5 w-3.5" strokeWidth={2.2} />
                   Add Customer
                 </button>
@@ -521,25 +543,24 @@ export function PosManager() {
                 <AddCustomerForm onAdd={addCustomer} onCancel={() => setAddCustomerOpen(false)} />
               ) : null}
 
-              <div className="mt-4 min-h-[13rem]">
+              <div className="mt-4 min-h-[12.5rem]">
                 {items.length === 0 ? (
-                  <div className="flex h-[13rem] flex-col items-center justify-center rounded-[18px] border border-dashed border-[#d8e1eb] bg-[#f8fafc]/70 px-4 text-center">
-                    <ShoppingCart className="h-5 w-5 text-slate-300" strokeWidth={1.8} />
-                    <p className="mt-3 text-[14px] font-semibold text-navy">No items added yet</p>
-                    <p className="mt-1 max-w-[16rem] text-[12.5px] leading-5 text-slate-400">
+                  <div className="flex h-[12.5rem] flex-col items-center justify-center px-4 text-center">
+                    <p className="text-[14px] font-semibold tracking-[-0.02em] text-navy">No items added yet</p>
+                    <p className="mt-1.5 max-w-[16rem] text-[12.5px] leading-5 text-slate-400">
                       Search or select a product to start this sale.
                     </p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[18rem] border-separate border-spacing-0">
+                    <table className="w-full min-w-[22rem] border-separate border-spacing-x-0 border-spacing-y-0">
                       <thead>
                         <tr className="text-[10.5px] font-medium uppercase tracking-[0.14em] text-slate-400">
-                          <th className="pb-2 text-left font-medium">Item</th>
-                          <th className="pb-2 text-right font-medium">Price</th>
-                          <th className="pb-2 text-center font-medium">Qty</th>
-                          <th className="pb-2 text-right font-medium">Total</th>
-                          <th className="w-8 pb-2" />
+                          <th className="pb-2.5 pr-4 text-left font-medium">Item</th>
+                          <th className="px-3 pb-2.5 text-left font-medium">Price</th>
+                          <th className="px-3 pb-2.5 text-center font-medium">Qty</th>
+                          <th className="px-3 pb-2.5 text-right font-medium">Total</th>
+                          <th className="w-9 pb-2.5" />
                         </tr>
                       </thead>
                       <tbody>
@@ -558,34 +579,36 @@ export function PosManager() {
                 )}
               </div>
 
-              <dl className="mt-4 space-y-2.5 border-t border-[#e8eef4] pt-4 text-[13px]">
+              <dl className="mt-2 space-y-3 border-t border-[#e8eef4]/90 pt-4 text-[13px]">
                 <div className="flex items-center justify-between">
                   <dt className="text-slate-500">Subtotal</dt>
                   <dd className="font-medium text-navy">{formatTzs(totals.subtotal)}</dd>
                 </div>
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-slate-500">Discount</dt>
-                  <dd className="flex items-center gap-1.5">
-                    <input
-                      aria-label="Discount percent"
-                      inputMode="numeric"
-                      value={discountPercent || ""}
-                      placeholder="0"
-                      onChange={(event) => {
-                        const next = Number(event.target.value.replace(/[^\d]/g, "") || 0);
-                        setDiscountPercent(Math.min(100, Math.max(0, next)));
-                      }}
-                      className="h-8 w-14 rounded-[10px] border border-[#d8e1eb] bg-white text-center text-[13px] text-navy outline-none focus:border-navy/20"
-                    />
-                    <span className="text-[12.5px] font-medium text-slate-400">%</span>
-                    <span className="min-w-[4.5rem] text-right font-medium text-navy">{formatTzs(totals.discount)}</span>
-                  </dd>
+                <div className="flex items-end justify-between gap-3">
+                  <dt className="text-slate-500">
+                    <span className="block">Discount</span>
+                    <span className="mt-1.5 flex items-center gap-1">
+                      <input
+                        aria-label="Discount percent"
+                        inputMode="numeric"
+                        value={discountPercent || ""}
+                        placeholder="0"
+                        onChange={(event) => {
+                          const next = Number(event.target.value.replace(/[^\d]/g, "") || 0);
+                          setDiscountPercent(Math.min(100, Math.max(0, next)));
+                        }}
+                        className="h-8 w-12 rounded-[10px] border border-white/80 bg-white/90 text-center text-[13px] text-navy outline-none focus:border-navy/15"
+                      />
+                      <span className="text-[12.5px] font-medium text-slate-400">%</span>
+                    </span>
+                  </dt>
+                  <dd className="pb-1 font-medium text-navy">{formatTzs(totals.discount)}</dd>
                 </div>
                 <div className="flex items-center justify-between">
                   <dt className="text-slate-500">Tax (VAT 0%)</dt>
                   <dd className="font-medium text-navy">{formatTzs(totals.tax)}</dd>
                 </div>
-                <div className="flex items-center justify-between pt-1">
+                <div className="flex items-center justify-between rounded-[16px] border border-white/80 bg-[#eef3f8]/80 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
                   <dt className="text-[15px] font-semibold tracking-[-0.02em] text-navy">Total Due</dt>
                   <dd className="text-[18px] font-semibold tracking-[-0.03em] text-navy">{formatTzs(totals.totalDue)}</dd>
                 </div>
@@ -606,10 +629,10 @@ export function PosManager() {
                           setCardConfirmed(false);
                         }}
                         className={cn(
-                          "inline-flex h-11 items-center justify-center gap-1.5 rounded-[12px] border text-[12px] font-medium transition duration-200",
+                          "inline-flex h-11 items-center justify-center gap-1.5 rounded-[14px] border text-[12px] font-medium transition duration-200",
                           active
-                            ? "border-[#0b2244] bg-[#0b2244] text-white"
-                            : "border-[#d8e1eb] bg-white text-navy hover:bg-[#f7f9fc]",
+                            ? "border-[#0b2244] bg-[#0b2244] text-white shadow-[0_8px_16px_rgba(11,34,68,0.18)]"
+                            : "border-white/80 bg-white/75 text-navy shadow-[0_4px_12px_rgba(15,35,64,0.04)] hover:bg-white",
                         )}
                       >
                         <Icon className="h-3.5 w-3.5" strokeWidth={2} />
@@ -621,27 +644,27 @@ export function PosManager() {
               </div>
 
               {payment === "Cash" ? (
-                <div className="mt-4 space-y-2 rounded-[16px] bg-[#f6f8fb] p-3.5">
+                <div className="mt-4 grid grid-cols-2 gap-4">
                   <MoneyField
                     id="cash-received"
                     label="Cash Received"
                     value={cashReceived}
                     onChange={setCashReceived}
                   />
-                  <div className="flex items-center justify-between text-[13px]">
-                    <span className="text-slate-500">Change</span>
-                    <span className={cn("font-semibold", cashChange < 0 ? "text-[#c24646]" : "text-navy")}>
+                  <div>
+                    <p className="mb-1.5 text-[12px] font-medium text-slate-500">Change</p>
+                    <p className={cn("pt-2 text-[15px] font-semibold", cashChange < 0 ? "text-[#c24646]" : "text-[#1f8a4c]")}>
                       {formatTzs(Math.max(0, cashChange))}
-                    </span>
+                    </p>
                   </div>
                   {cashValue > 0 && cashValue < totals.totalDue ? (
-                    <p className="text-[12px] text-[#c24646]">Cash received is below Total Due.</p>
+                    <p className="col-span-2 text-[12px] text-[#c24646]">Cash received is below Total Due.</p>
                   ) : null}
                 </div>
               ) : null}
 
               {payment === "Mobile Money" ? (
-                <div className="mt-4 space-y-3 rounded-[16px] bg-[#f6f8fb] p-3.5">
+                <div className="mt-4 space-y-3 rounded-[16px] border border-white/80 bg-[#eef3f8]/70 p-3.5">
                   <p className="text-[12px] font-medium text-slate-500">Provider</p>
                   <div className="grid grid-cols-2 gap-2">
                     {POS_MOBILE_PROVIDERS.map((provider) => (
@@ -670,7 +693,7 @@ export function PosManager() {
               ) : null}
 
               {payment === "Card" ? (
-                <div className="mt-4 space-y-3 rounded-[16px] bg-[#f6f8fb] p-3.5">
+                <div className="mt-4 space-y-3 rounded-[16px] border border-white/80 bg-[#eef3f8]/70 p-3.5">
                   <MoneyField
                     id="card-amount"
                     label="Amount"
@@ -695,7 +718,7 @@ export function PosManager() {
               ) : null}
 
               {payment === "Mixed" ? (
-                <div className="mt-4 space-y-3 rounded-[16px] bg-[#f6f8fb] p-3.5">
+                <div className="mt-4 space-y-3 rounded-[16px] border border-white/80 bg-[#eef3f8]/70 p-3.5">
                   <MoneyField id="mixed-cash" label="Cash" value={mixedCash} onChange={setMixedCash} />
                   <MoneyField id="mixed-mobile" label="Mobile Money" value={mixedMobile} onChange={setMixedMobile} />
                   <div className="flex items-center justify-between text-[13px]">
@@ -707,7 +730,7 @@ export function PosManager() {
                 </div>
               ) : null}
 
-              {validation && items.length > 0 ? (
+              {validation && items.length > 0 && (payment !== "Cash" || cashValue > 0) ? (
                 <p className="mt-3 text-[12px] text-[#c24646]">{validation}</p>
               ) : null}
 
@@ -715,7 +738,7 @@ export function PosManager() {
                 type="button"
                 disabled={!canComplete}
                 onClick={completeSale}
-                className="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-[16px] bg-[#0b2244] text-[14.5px] font-semibold text-white shadow-[0_10px_22px_rgba(11,34,68,0.18)] transition duration-200 hover:bg-[#102a52] disabled:cursor-not-allowed disabled:opacity-45"
+                className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-[16px] bg-[#0b2244] text-[14.5px] font-semibold text-white shadow-[0_12px_24px_rgba(11,34,68,0.2),inset_0_1px_0_rgba(255,255,255,0.12)] transition duration-200 hover:bg-[#102a52] hover:shadow-[0_14px_28px_rgba(11,34,68,0.24)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:shadow-[0_12px_24px_rgba(11,34,68,0.2)]"
               >
                 Complete Sale
                 <ArrowRight className="h-4 w-4" strokeWidth={2.2} />
@@ -756,13 +779,14 @@ function MoneyField({
   return (
     <label htmlFor={id} className="block">
       <span className="mb-1.5 block text-[12px] font-medium text-slate-500">{label}</span>
-      <span className="flex h-10 items-center rounded-[12px] border border-[#d8e1eb] bg-white px-3">
+      <span className="flex h-10 items-center rounded-full border border-white/80 bg-white/90 px-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">
         <span className="pr-2 text-[12.5px] text-slate-400">TZS</span>
         <input
           id={id}
           inputMode="numeric"
           value={moneyInputValue(value)}
           onChange={(event) => onChange(event.target.value.replace(/[^\d]/g, ""))}
+          placeholder="0"
           className="h-full w-full bg-transparent text-[13.5px] text-navy outline-none"
         />
       </span>
@@ -783,30 +807,20 @@ function CartRow({
 }) {
   const atMax = item.quantity >= item.stock;
   return (
-    <tr className="align-middle">
-      <td className="py-2.5 pr-2">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-[10px] font-semibold text-navy/70"
-            style={{ background: item.accent }}
-          >
-            {item.name.slice(0, 2).toUpperCase()}
-          </span>
-          <span className="min-w-0">
-            <span className="block truncate text-[13px] font-medium text-navy">{item.name}</span>
-            <span className="block text-[11px] text-slate-400">{item.sku}</span>
-          </span>
-        </div>
+    <tr className="align-middle" style={{ animation: "pos-cart-in 180ms ease-out" }}>
+      <td className="py-3 pr-4">
+        <span className="block text-[13.5px] font-medium tracking-[-0.01em] text-navy">{item.name}</span>
+        <span className="mt-0.5 block text-[11px] text-slate-400">SKU: {item.sku}</span>
       </td>
-      <td className="whitespace-nowrap py-2.5 text-right text-[12.5px] text-slate-500">{formatTzs(item.unitPrice)}</td>
-      <td className="py-2.5">
-        <div className="mx-auto flex h-8 w-[5.6rem] items-center justify-between rounded-full border border-[#d8e1eb] bg-white px-1">
+      <td className="whitespace-nowrap px-3 py-3 text-[13px] text-slate-500">{formatTzs(item.unitPrice)}</td>
+      <td className="px-3 py-3">
+        <div className="mx-auto flex h-8 w-[6.1rem] items-center justify-between rounded-full border border-white/80 bg-white/90 px-1 shadow-[0_4px_10px_rgba(15,35,64,0.04)]">
           <button
             type="button"
             aria-label={`Decrease ${item.name}`}
             onClick={onDecrease}
             disabled={item.quantity <= 1}
-            className="inline-flex h-6 w-6 items-center justify-center rounded-full text-navy transition hover:bg-[#f4f6f9] disabled:opacity-30"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-full text-navy transition duration-150 hover:bg-[#eef3f8] active:scale-95 disabled:opacity-30"
           >
             <Minus className="h-3 w-3" strokeWidth={2.2} />
           </button>
@@ -816,21 +830,21 @@ function CartRow({
             aria-label={`Increase ${item.name}`}
             onClick={onIncrease}
             disabled={atMax}
-            className="inline-flex h-6 w-6 items-center justify-center rounded-full text-navy transition hover:bg-[#f4f6f9] disabled:opacity-30"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-full text-navy transition duration-150 hover:bg-[#eef3f8] active:scale-95 disabled:opacity-30"
           >
             <Plus className="h-3 w-3" strokeWidth={2.2} />
           </button>
         </div>
       </td>
-      <td className="whitespace-nowrap py-2.5 text-right text-[13px] font-semibold text-navy">
+      <td className="whitespace-nowrap px-3 py-3 text-right text-[13.5px] font-semibold tracking-[-0.02em] text-navy">
         {formatTzs(item.unitPrice * item.quantity)}
       </td>
-      <td className="py-2.5 pl-2 text-right">
+      <td className="py-3 pl-2 text-right">
         <button
           type="button"
           aria-label={`Remove ${item.name}`}
           onClick={onRemove}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-400 transition hover:bg-[#f4f6f9] hover:text-[#c24646]"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition duration-150 hover:bg-[#f4f6f9] hover:text-[#c24646] active:scale-95"
         >
           <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
         </button>
@@ -959,7 +973,7 @@ function MoreMenu({
         aria-expanded={open}
         aria-label="More sale actions"
         onClick={onOpen}
-        className="inline-flex h-10 w-10 items-center justify-center rounded-[14px] border border-white/80 bg-white/90 text-navy shadow-[0_6px_16px_rgba(15,35,64,0.05)] transition duration-200 hover:bg-white"
+        className={cn(glassBtn, "h-10 w-10 rounded-[16px]")}
       >
         <MoreHorizontal className="h-4 w-4" strokeWidth={2.1} />
       </button>
