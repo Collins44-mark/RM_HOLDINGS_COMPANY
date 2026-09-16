@@ -87,9 +87,6 @@ export const SUPERMARKET_NAV: NavItem[] = [
     label: "Overview",
     icon: "dashboard",
     exact: true,
-    children: [
-      { href: "/supermarket", label: "Dashboard", icon: "dashboard", exact: true },
-    ],
   },
   {
     href: "/supermarket/sales",
