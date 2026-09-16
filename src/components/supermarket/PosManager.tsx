@@ -31,13 +31,13 @@ import {
   POS_PRODUCTS,
   POS_STARTING_INVOICE,
   applyCompletedSaleStock,
+  createCompletedSaleSnapshot,
   exactBarcodeMatch,
   filterPosProducts,
   formatInvoiceNumber,
   formatPosStamp,
   moneyInputValue,
   parseMoneyInput,
-  posReceiptMarkup,
   posTotals,
   remainingStock,
   type PosCartItem,
@@ -48,6 +48,13 @@ import {
   type PosPaymentMethod,
   type PosProduct,
 } from "@/lib/data/sample-supermarket-pos";
+import {
+  connectEscPosPrinter,
+  hasGrantedEscPosPrinter,
+  isEscPosSupported,
+  printCompletedSale,
+  printReceiptViaEscPos,
+} from "@/lib/pos/pos-receipt-print";
 
 const glass =
   "rounded-[26px] border border-white/75 bg-white/78 shadow-[0_12px_32px_rgba(15,35,64,0.045),inset_0_1px_0_rgba(255,255,255,0.92)] backdrop-blur-xl";
@@ -95,6 +102,9 @@ export function PosManager() {
   const [flashKey, setFlashKey] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
+  const [printBusy, setPrintBusy] = useState(false);
+  const [printerNotice, setPrinterNotice] = useState<"none" | "no-printer" | "need-permission">("none");
+  const [escPosReady, setEscPosReady] = useState(false);
 
   const catalog = useMemo(() => filterPosProducts(products, query, category), [products, query, category]);
   const totals = useMemo(() => posTotals(items, discountPercent), [items, discountPercent]);
@@ -108,6 +118,16 @@ export function PosManager() {
 
   useEffect(() => {
     setInvoiceStamp((current) => current ?? new Date());
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void hasGrantedEscPosPrinter().then((ready) => {
+      if (active) setEscPosReady(ready);
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const validation = useMemo(() => {
@@ -201,6 +221,8 @@ export function PosManager() {
     setCategory("all");
     setAddCustomerOpen(false);
     setMoreOpen(false);
+    setPrintBusy(false);
+    setPrinterNotice("none");
   }
 
   function startNewSale() {
@@ -291,32 +313,83 @@ export function PosManager() {
 
   function completeSale() {
     if (!canComplete) return;
-    const sale: PosCompletedSale = {
-      invoice: formatInvoiceNumber(invoiceNumber),
+    const snapshotItems = items.map((item) => ({ ...item }));
+    const sale = createCompletedSaleSnapshot({
+      invoiceNumber,
       soldAt: new Date(),
       customer,
-      items,
+      items: snapshotItems,
       subtotal: totals.subtotal,
       discount: totals.discount,
       tax: totals.tax,
       totalDue: totals.totalDue,
       payment,
-      mobileProvider: payment === "Mobile Money" || payment === "Mixed" ? mobileProvider : undefined,
-      cashReceived: payment === "Cash" ? cashValue : undefined,
-      change: payment === "Cash" ? cashChange : undefined,
-    };
-    setProducts((current) => applyCompletedSaleStock(current, items));
+      mobileProvider,
+      cashReceived: cashValue,
+      change: cashChange,
+      mobileAmount: mobilePaid,
+      cardAmount: cardPaid,
+      mixedCash: parseMoneyInput(mixedCash),
+      mixedMobile: parseMoneyInput(mixedMobile),
+    });
+    setProducts((current) => applyCompletedSaleStock(current, snapshotItems));
     setCompleted(sale);
+    setPrinterNotice("none");
   }
 
-  function printReceipt() {
-    if (!completed) return;
-    const popup = window.open("", "_blank", "noopener,noreferrer,width=480,height=720");
-    if (!popup) return;
-    popup.document.write(posReceiptMarkup(completed));
-    popup.document.close();
-    popup.focus();
-    popup.print();
+  async function printReceipt(mode: "auto" | "system" | "escpos" = "auto") {
+    const sale = completed;
+    if (!sale || printBusy) return;
+    setPrintBusy(true);
+    try {
+      const result = await printCompletedSale(sale, mode);
+      if (result.status === "printed") {
+        setPrinterNotice("none");
+        if (result.method === "escpos") setEscPosReady(true);
+        return;
+      }
+      if (result.status === "need-permission") {
+        setPrinterNotice("need-permission");
+        setEscPosReady(false);
+        return;
+      }
+      setPrinterNotice("no-printer");
+      setEscPosReady(false);
+    } catch {
+      setPrinterNotice("no-printer");
+    } finally {
+      setPrintBusy(false);
+    }
+  }
+
+  async function connectPrinter() {
+    const sale = completed;
+    if (!sale || printBusy) return;
+    setPrintBusy(true);
+    try {
+      const port = await connectEscPosPrinter();
+      if (!port) {
+        setPrinterNotice(isEscPosSupported() ? "need-permission" : "no-printer");
+        return;
+      }
+      const result = await printReceiptViaEscPos(sale);
+      if (result.status === "printed") {
+        setEscPosReady(true);
+        setPrinterNotice("none");
+        return;
+      }
+      setEscPosReady(false);
+      setPrinterNotice(result.status === "need-permission" ? "need-permission" : "no-printer");
+    } catch (error) {
+      const name = error instanceof DOMException ? error.name : "";
+      if (name === "NotFoundError") {
+        setPrinterNotice("need-permission");
+        return;
+      }
+      setPrinterNotice("no-printer");
+    } finally {
+      setPrintBusy(false);
+    }
   }
 
   function addCustomer(name: string) {
@@ -501,7 +574,17 @@ export function PosManager() {
 
         <section className={cn(glass, "relative min-w-0 p-4 sm:p-5 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6.5rem)] lg:self-start lg:overflow-y-auto")}>
           {completed ? (
-            <SuccessState sale={completed} onPrint={printReceipt} onNewSale={startNewSale} />
+            <SuccessState
+              sale={completed}
+              printBusy={printBusy}
+              printerNotice={printerNotice}
+              serialSupported={isEscPosSupported()}
+              escPosReady={escPosReady}
+              onPrint={() => void printReceipt("auto")}
+              onSystemPrint={() => void printReceipt("system")}
+              onConnectPrinter={() => void connectPrinter()}
+              onNewSale={startNewSale}
+            />
           ) : (
             <>
               <div className="flex items-center justify-between gap-3">
@@ -887,13 +970,26 @@ function AddCustomerForm({ onAdd, onCancel }: { onAdd: (name: string) => void; o
 
 function SuccessState({
   sale,
+  printBusy,
+  printerNotice,
+  serialSupported,
+  escPosReady,
   onPrint,
+  onSystemPrint,
+  onConnectPrinter,
   onNewSale,
 }: {
   sale: PosCompletedSale;
+  printBusy: boolean;
+  printerNotice: "none" | "no-printer" | "need-permission";
+  serialSupported: boolean;
+  escPosReady: boolean;
   onPrint: () => void;
+  onSystemPrint: () => void;
+  onConnectPrinter: () => void;
   onNewSale: () => void;
 }) {
+  const showNotice = printerNotice !== "none" && !escPosReady;
   return (
     <div className="flex min-h-[32rem] flex-col items-center justify-center px-2 py-8 text-center">
       <span className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#e8f6ee] text-[#1f8a4c]">
@@ -908,11 +1004,39 @@ function SuccessState({
         <button
           type="button"
           onClick={onPrint}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-[14px] border border-[#d8e1eb] bg-white text-[13.5px] font-medium text-navy transition hover:bg-[#f7f9fc]"
+          disabled={printBusy}
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-[14px] border border-[#d8e1eb] bg-white text-[13.5px] font-medium text-navy transition hover:bg-[#f7f9fc] disabled:cursor-progress disabled:opacity-70"
         >
           <Printer className="h-4 w-4" strokeWidth={2} />
-          Print Receipt
+          {printBusy ? "Preparing receipt…" : "Print Receipt"}
         </button>
+        {showNotice ? (
+          <div className="rounded-[14px] border border-[#d8e1eb] bg-[#f7f9fc] px-3.5 py-3 text-left">
+            <p className="text-[12.5px] font-medium text-navy">
+              {printerNotice === "need-permission" ? "Select / Connect Printer" : "No printer connected"}
+            </p>
+            <div className="mt-2.5 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={onSystemPrint}
+                disabled={printBusy}
+                className="inline-flex h-9 items-center justify-center rounded-[12px] border border-[#d8e1eb] bg-white text-[12.5px] font-medium text-navy transition hover:bg-white disabled:opacity-70"
+              >
+                Print using system printer
+              </button>
+              {serialSupported ? (
+                <button
+                  type="button"
+                  onClick={onConnectPrinter}
+                  disabled={printBusy}
+                  className="inline-flex h-9 items-center justify-center rounded-[12px] bg-[#0b2244] text-[12.5px] font-medium text-white transition hover:bg-[#102a52] disabled:opacity-70"
+                >
+                  {printerNotice === "need-permission" ? "Select Printer" : "Connect Printer"}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
         <button
           type="button"
           onClick={onNewSale}

@@ -1,7 +1,8 @@
-import { APP_CURRENCY, APP_NAME, APP_TAGLINE, APP_TIMEZONE } from "@/lib/config/app";
-import { formatTzs } from "@/lib/format/currency";
+import { APP_TIMEZONE } from "@/lib/config/app";
 
 export const POS_STARTING_INVOICE = 1049;
+export const POS_STORE = "Main Store";
+export const POS_CASHIER = "John";
 
 export const POS_CATEGORIES = [
   "Rice & Grains",
@@ -60,6 +61,8 @@ export type PosCartItem = {
 export type PosCompletedSale = {
   invoice: string;
   soldAt: Date;
+  store: string;
+  cashier: string;
   customer: string;
   items: PosCartItem[];
   subtotal: number;
@@ -70,6 +73,10 @@ export type PosCompletedSale = {
   mobileProvider?: PosMobileProvider;
   cashReceived?: number;
   change?: number;
+  mobileAmount?: number;
+  cardAmount?: number;
+  mixedCash?: number;
+  mixedMobile?: number;
 };
 
 export type PosHeldSale = {
@@ -189,35 +196,55 @@ export function applyCompletedSaleStock(products: PosProduct[], items: PosCartIt
   });
 }
 
-export function posReceiptMarkup(sale: PosCompletedSale) {
-  const rows = sale.items
-    .map(
-      (item) =>
-        `<tr><td>${item.name}</td><td>${item.quantity} × ${item.unitPrice.toLocaleString("en-US")}</td><td>${formatTzs(item.unitPrice * item.quantity)}</td></tr>`,
-    )
-    .join("");
+export function createCompletedSaleSnapshot(input: {
+  invoiceNumber: number;
+  soldAt: Date;
+  customer: string;
+  items: PosCartItem[];
+  subtotal: number;
+  discount: number;
+  tax: number;
+  totalDue: number;
+  payment: PosPaymentMethod;
+  mobileProvider: PosMobileProvider;
+  cashReceived: number;
+  change: number;
+  mobileAmount: number;
+  cardAmount: number;
+  mixedCash: number;
+  mixedMobile: number;
+}): PosCompletedSale {
+  const items = input.items.map((item) => ({ ...item }));
+  const sale: PosCompletedSale = {
+    invoice: formatInvoiceNumber(input.invoiceNumber),
+    soldAt: input.soldAt,
+    store: POS_STORE,
+    cashier: POS_CASHIER,
+    customer: input.customer,
+    items,
+    subtotal: input.subtotal,
+    discount: input.discount,
+    tax: input.tax,
+    totalDue: input.totalDue,
+    payment: input.payment,
+  };
 
-  return `<!doctype html><html><head><title>${sale.invoice}</title>
-    <style>
-      body{font-family:ui-sans-serif,system-ui,sans-serif;padding:28px;color:#0b2244;max-width:420px;margin:0 auto}
-      h1{font-size:18px;letter-spacing:.12em;margin:0}
-      h2{font-size:15px;margin:8px 0 0}
-      p,td{font-size:13px;line-height:1.45}
-      table{width:100%;border-collapse:collapse;margin:16px 0}
-      td{padding:6px 0;border-bottom:1px solid #edf1f6}
-      td:last-child{text-align:right}
-      .muted{color:#667085}
-      .total{font-size:16px;font-weight:700}
-    </style>
-  </head><body>
-    <h1>${APP_NAME.toUpperCase()}</h1>
-    <p class="muted">${APP_TAGLINE}</p>
-    <h2>Sales Receipt</h2>
-    <p>${sale.invoice}<br>${formatPosStamp(sale.soldAt)}<br>Customer: ${sale.customer}<br>Payment: ${sale.payment}</p>
-    <table>${rows}</table>
-    <p>Subtotal ${formatTzs(sale.subtotal)}<br>Discount ${formatTzs(sale.discount)}<br>Tax (VAT 0%) ${formatTzs(sale.tax)}</p>
-    <p class="total">Total ${formatTzs(sale.totalDue)}</p>
-    ${sale.payment === "Cash" && sale.cashReceived != null ? `<p>Cash received ${formatTzs(sale.cashReceived)}<br>Change ${formatTzs(sale.change ?? 0)}</p>` : ""}
-    <p class="muted">${APP_CURRENCY} · Thank you for shopping with us.</p>
-  </body></html>`;
+  if (input.payment === "Cash") {
+    sale.cashReceived = input.cashReceived;
+    sale.change = input.change;
+  }
+  if (input.payment === "Mobile Money") {
+    sale.mobileProvider = input.mobileProvider;
+    sale.mobileAmount = input.mobileAmount;
+  }
+  if (input.payment === "Card") {
+    sale.cardAmount = input.cardAmount;
+  }
+  if (input.payment === "Mixed") {
+    sale.mobileProvider = input.mobileProvider;
+    sale.mixedCash = input.mixedCash;
+    sale.mixedMobile = input.mixedMobile;
+  }
+
+  return sale;
 }
