@@ -1,6 +1,12 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { SupermarketPlaceholder } from "@/components/supermarket/SupermarketPlaceholder";
 import { SUPERMARKET_PLACEHOLDERS } from "@/lib/data/supermarket-placeholders";
+
+const PURCHASING_REDIRECTS: Record<string, string> = {
+  "/supermarket/purchases": "/supermarket/purchasing?tab=purchases",
+  "/supermarket/purchase-orders": "/supermarket/purchasing",
+  "/supermarket/suppliers": "/supermarket/purchasing?tab=suppliers",
+};
 
 export async function generateMetadata({
   params,
@@ -8,7 +14,10 @@ export async function generateMetadata({
   params: Promise<{ section: string[] }>;
 }) {
   const { section } = await params;
-  const page = SUPERMARKET_PLACEHOLDERS[`/supermarket/${section.join("/")}`];
+  const href = `/supermarket/${section.join("/")}`;
+  const redirected = PURCHASING_REDIRECTS[href];
+  if (redirected) redirect(redirected);
+  const page = SUPERMARKET_PLACEHOLDERS[href];
   return { title: page?.title ?? "Supermarket" };
 }
 
@@ -19,6 +28,8 @@ export default async function SupermarketSectionRoute({
 }) {
   const { section } = await params;
   const href = `/supermarket/${section.join("/")}`;
+  const redirected = PURCHASING_REDIRECTS[href];
+  if (redirected) redirect(redirected);
   const page = SUPERMARKET_PLACEHOLDERS[href];
   if (!page) notFound();
 

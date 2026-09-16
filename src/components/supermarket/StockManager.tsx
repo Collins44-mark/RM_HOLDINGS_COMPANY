@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Ban,
+  ChevronDown,
   Clock3,
   MoreHorizontal,
   Package,
@@ -50,6 +51,7 @@ import {
   type StockBatch,
   type StockMovement,
   type StockMovementFilter,
+  type ProductStockRow,
   type StockStatus,
   type SupermarketProduct,
 } from "@/lib/data/supermarket-inventory";
@@ -140,6 +142,7 @@ export function StockManager() {
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(10);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
 
   const rows = useMemo(
     () => inventory.products.map((product) => attachStock(product, inventory.batches)),
@@ -338,13 +341,36 @@ export function StockManager() {
           </p>
         </div>
         {canReceive ? (
-          <Link
-            href="/supermarket/stock/add"
-            className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_10px_22px_rgba(11,34,68,0.22),inset_0_1px_0_rgba(255,255,255,0.12)] transition duration-200 hover:bg-[#102a52] sm:w-auto"
-          >
-            <Plus className="h-4 w-4" strokeWidth={2.2} />
-            Add Stock
-          </Link>
+          <div className="relative w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => setActionsOpen((open) => !open)}
+              className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_10px_22px_rgba(11,34,68,0.22),inset_0_1px_0_rgba(255,255,255,0.12)] transition duration-200 hover:bg-[#102a52] sm:w-auto"
+            >
+              <Plus className="h-4 w-4" strokeWidth={2.2} />
+              Stock Actions
+              <ChevronDown className="h-4 w-4 opacity-80" strokeWidth={2.2} />
+            </button>
+            {actionsOpen ? (
+              <>
+                <button type="button" className="fixed inset-0 z-[79] cursor-default" aria-label="Close stock actions" onClick={() => setActionsOpen(false)} />
+                <div className="absolute right-0 z-[80] mt-2 w-56 overflow-hidden rounded-[16px] border border-white/80 bg-white/95 py-1 shadow-[0_18px_50px_rgba(16,24,40,0.14)] backdrop-blur-xl">
+                  <Link href="/supermarket/stock/receive-purchase" className="block px-3.5 py-2.5 text-[13px] font-medium text-navy hover:bg-[#f5f8fc]" onClick={() => setActionsOpen(false)}>
+                    Receive Purchase
+                  </Link>
+                  <Link href="/supermarket/stock/transfer" className="block px-3.5 py-2.5 text-[13px] font-medium text-navy hover:bg-[#f5f8fc]" onClick={() => setActionsOpen(false)}>
+                    Transfer Stock
+                  </Link>
+                  <Link href="/supermarket/stock/adjust" className="block px-3.5 py-2.5 text-[13px] font-medium text-navy hover:bg-[#f5f8fc]" onClick={() => setActionsOpen(false)}>
+                    Stock Adjustment
+                  </Link>
+                  <Link href="/supermarket/stock/opening" className="block px-3.5 py-2.5 text-[13px] font-medium text-navy hover:bg-[#f5f8fc]" onClick={() => setActionsOpen(false)}>
+                    Opening Stock
+                  </Link>
+                </div>
+              </>
+            ) : null}
+          </div>
         ) : null}
       </div>
 
@@ -511,7 +537,9 @@ export function StockManager() {
                     <th className="px-4 py-3 font-medium">Product</th>
                     <th className="px-4 py-3 font-medium">SKU</th>
                     <th className="px-4 py-3 font-medium">Category</th>
-                    <th className="px-4 py-3 font-medium">Current Stock</th>
+                    <th className="px-4 py-3 font-medium">Main Store</th>
+                    <th className="px-4 py-3 font-medium">Sales Floor</th>
+                    <th className="px-4 py-3 font-medium">Total Stock</th>
                     <th className="px-4 py-3 font-medium">Reorder Level</th>
                     <th className="px-4 py-3 font-medium">Stock Status</th>
                     <th className="px-4 py-3 font-medium">Expiry</th>
@@ -529,6 +557,8 @@ export function StockManager() {
                       </td>
                       <td className="px-4 py-3 text-[13px] text-slate-400">{product.sku}</td>
                       <td className="px-4 py-3 text-[13px] text-slate-500">{product.category}</td>
+                      <td className="px-4 py-3 text-[13px] text-navy">{product.mainStore}</td>
+                      <td className="px-4 py-3 text-[13px] text-navy">{product.salesFloor}</td>
                       <td className="px-4 py-3 text-[14px] font-semibold tracking-[-0.03em] text-navy">{product.stock}</td>
                       <td className="px-4 py-3 text-[13px] text-slate-500">{product.reorderLevel}</td>
                       <td className="px-4 py-3">
@@ -571,7 +601,7 @@ export function StockManager() {
                       </td>
                       <td className="px-3.5 py-3">
                         <p className="text-[14px] font-semibold tracking-[-0.03em] text-navy">{product.stock}</p>
-                        <p className="text-[11px] text-slate-400">ROP {product.reorderLevel}</p>
+                        <p className="text-[11px] text-slate-400">MS {product.mainStore} · SF {product.salesFloor}</p>
                       </td>
                       <td className="px-3.5 py-3">
                         <StatusLabel value={product.stockStatus} />
@@ -607,6 +637,7 @@ export function StockManager() {
                   </div>
                   <div className="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className="text-[14px] font-semibold tracking-[-0.03em] text-navy">{product.stock} units</span>
+                    <span className="text-[12px] text-slate-400">MS {product.mainStore} · SF {product.salesFloor}</span>
                     <StatusLabel value={product.stockStatus} />
                     {product.isActive ? null : <span className="text-[12px] text-slate-400">Inactive</span>}
                   </div>
@@ -717,7 +748,7 @@ export function StockManager() {
             canReceive={canReceive}
             onAddStock={() => {
               closePanel();
-              router.push(`/supermarket/stock/add?product=${selected.id}`);
+              router.push("/supermarket/stock/receive-purchase");
             }}
           />
         </StockDrawer>
@@ -1507,7 +1538,7 @@ function StockDetails({
   canReceive,
   onAddStock,
 }: {
-  product: SupermarketProduct & { stock: number };
+  product: ProductStockRow;
   batches: ReturnType<typeof batchesForProduct>;
   movements: MovementRow[];
   canReceive: boolean;
@@ -1519,6 +1550,7 @@ function StockDetails({
       <section>
         <h3 className="text-[22px] font-semibold tracking-[-0.04em] text-navy">{product.name}</h3>
         <p className="mt-2 text-[28px] font-semibold tracking-[-0.05em] text-navy">{product.stock} units</p>
+        <p className="mt-1 text-[13px] text-slate-500">Main Store {product.mainStore} · Sales Floor {product.salesFloor}</p>
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-slate-500">
           <StatusLabel value={stockStatusFor(product.stock, product.reorderLevel)} />
           {product.isActive ? null : <span>Inactive</span>}
@@ -1545,7 +1577,7 @@ function StockDetails({
               return (
                 <div key={batch.id} className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 py-3 sm:grid-cols-[88px_1fr_auto_auto]">
                   <p className="font-semibold text-navy">{batch.batchNumber}</p>
-                  <p className="text-[13px] text-slate-500 sm:text-navy">{batch.quantity} units</p>
+                  <p className="text-[13px] text-slate-500 sm:text-navy">{batch.quantity} units · {batch.location || "Main Store"}</p>
                   <p className="text-[13px] text-slate-500">{formatDisplayDate(batch.expiryDate)}</p>
                   <StatusLabel value={status} />
                 </div>
@@ -1585,7 +1617,7 @@ function StockDetails({
             onClick={onAddStock}
             className="h-11 rounded-[16px] bg-navy px-5 text-[14px] font-semibold text-white"
           >
-            Add Stock
+            Receive Purchase
           </button>
         </div>
       ) : null}
@@ -1597,7 +1629,7 @@ function StockHistoryPanel({
   product,
   movements,
 }: {
-  product: SupermarketProduct & { stock: number };
+  product: ProductStockRow;
   movements: MovementRow[];
 }) {
   const rows = [...movements].reverse().slice(0, 8);

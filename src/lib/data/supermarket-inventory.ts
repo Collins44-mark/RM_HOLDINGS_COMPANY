@@ -1,6 +1,23 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import {
+  derivePurchaseOrderStatus,
+  destinationFromAllocation,
+  nextDocumentNumber,
+  seedPurchaseOrders,
+  seedPurchases,
+  seedSuppliers,
+  type CreatePurchaseOrderInput,
+  type CreateSupplierInput,
+  type Purchase,
+  type PurchaseOrder,
+  type ReceivePurchaseOrderInput,
+  type StockLocation,
+  type StockMovementCode,
+  type Supplier,
+  type TransferStockInput,
+} from "@/lib/data/supermarket-purchasing";
 
 export const SUPERMARKET_PRODUCT_CATEGORIES = [
   "Rice & Grains",
@@ -76,6 +93,7 @@ export type StockBatch = {
   buyingPrice: number;
   supplier: string;
   receivedAt: string;
+  location?: StockLocation;
 };
 
 export type StockMovement = {
@@ -97,6 +115,13 @@ export type StockMovement = {
   supplier?: string;
   batchNumber?: string;
   expiryDate?: string | null;
+  movementCode?: StockMovementCode;
+  fromLocation?: StockLocation;
+  toLocation?: StockLocation;
+  destination?: StockLocation | "Split";
+  sourceDocumentId?: string;
+  sourceDocumentType?: "purchase_order" | "purchase" | "transfer" | "adjustment" | "opening";
+  allocations?: { location: StockLocation; quantity: number }[];
 };
 
 export type InventorySnapshot = {
@@ -104,7 +129,9 @@ export type InventorySnapshot = {
   batches: StockBatch[];
   movements: StockMovement[];
   categories: SupermarketCategory[];
-  suppliers: string[];
+  suppliers: Supplier[];
+  purchaseOrders: PurchaseOrder[];
+  purchases: Purchase[];
 };
 
 export type SupermarketCategory = {
@@ -127,6 +154,9 @@ export type ReceiveStockInput = {
   reference?: string;
   note?: string;
   user?: string;
+  location?: StockLocation;
+  mainStore?: number;
+  salesFloor?: number;
 };
 
 export type AdjustStockInput = {
@@ -137,12 +167,15 @@ export type AdjustStockInput = {
   note?: string;
   correctionDirection?: "increase" | "decrease";
   user?: string;
+  location?: StockLocation;
 };
 
 export type InventoryKpiFocus = "all" | "units" | "low" | "out" | "soon" | "expired";
 
 export type ProductStockRow = SupermarketProduct & {
   stock: number;
+  mainStore: number;
+  salesFloor: number;
   stockStatus: StockStatus;
 };
 
@@ -157,17 +190,30 @@ export function formatDisplayDate(value: string | null | undefined) {
   const iso = value.includes("T") ? value : `${value}T00:00:00`;
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(date);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${String(date.getDate()).padStart(2, "0")} ${months[date.getMonth()]} ${date.getFullYear()}`;
 }
 
 export function currentStockFor(productId: string, batches: StockBatch[]) {
   return batches
     .filter((batch) => batch.productId === productId)
     .reduce((sum, batch) => sum + batch.quantity, 0);
+}
+
+export function batchLocation(batch: Pick<StockBatch, "location">): StockLocation {
+  return batch.location || "Main Store";
+}
+
+export function stockAtLocation(productId: string, batches: StockBatch[], location: StockLocation) {
+  return batches
+    .filter((batch) => batch.productId === productId && batchLocation(batch) === location)
+    .reduce((sum, batch) => sum + batch.quantity, 0);
+}
+
+export function locationStockFor(productId: string, batches: StockBatch[]) {
+  const mainStore = stockAtLocation(productId, batches, "Main Store");
+  const salesFloor = stockAtLocation(productId, batches, "Sales Floor");
+  return { mainStore, salesFloor, total: mainStore + salesFloor };
 }
 
 export function stockStatusFor(stock: number, reorderLevel: number): StockStatus {
@@ -238,11 +284,13 @@ export function productExpiryFilterStatus(productId: string, batches: StockBatch
 }
 
 export function attachStock(product: SupermarketProduct, batches: StockBatch[]): ProductStockRow {
-  const stock = currentStockFor(product.id, batches);
+  const locations = locationStockFor(product.id, batches);
   return {
     ...product,
-    stock,
-    stockStatus: stockStatusFor(stock, product.reorderLevel),
+    stock: locations.total,
+    mainStore: locations.mainStore,
+    salesFloor: locations.salesFloor,
+    stockStatus: stockStatusFor(locations.total, product.reorderLevel),
   };
 }
 
@@ -285,7 +333,7 @@ export function movementsForProduct(productId: string, movements: StockMovement[
     .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   let balance = 0;
   return rows.map((item) => {
-    balance += item.quantity;
+    if (item.type !== "Transfer") balance += item.quantity;
     return { ...item, balance };
   });
 }
@@ -296,12 +344,14 @@ export function movementTypeLabel(type: StockMovementType, adjustmentKind?: Stoc
   return type;
 }
 
-export function stockMovementKindLabel(item: Pick<StockMovement, "type" | "adjustmentKind">): StockMovementFilter | string {
+export function stockMovementKindLabel(item: Pick<StockMovement, "type" | "adjustmentKind" | "movementCode">): StockMovementFilter | string {
   if (item.adjustmentKind === "Damage") return "Damaged";
   if (item.adjustmentKind === "Expired") return "Expired";
   if (item.adjustmentKind === "Lost") return "Lost";
-  if (item.type === "Received") return "Purchase Received";
-  if (item.type === "Adjustment") return "Stock Adjustment";
+  if (item.movementCode === "PURCHASE_RECEIVED" || item.type === "Received") return "Purchase Received";
+  if (item.movementCode === "STOCK_TRANSFER" || item.type === "Transfer") return "Transfer";
+  if (item.movementCode === "STOCK_ADJUSTMENT" || item.type === "Adjustment") return "Stock Adjustment";
+  if (item.movementCode === "OPENING_STOCK" || item.type === "Opening Stock") return "Opening Stock";
   return item.type;
 }
 
@@ -466,11 +516,23 @@ function createSeed(): InventorySnapshot {
       id: "bat-cow-1",
       productId: "product-001",
       batchNumber: "B001",
-      quantity: 100,
+      quantity: 70,
       expiryDate: "2026-09-20",
       buyingPrice: 9_000,
       supplier: "XYZ Distributors",
       receivedAt: "2026-09-14",
+      location: "Main Store",
+    },
+    {
+      id: "bat-cow-1b",
+      productId: "product-001",
+      batchNumber: "B001",
+      quantity: 30,
+      expiryDate: "2026-09-20",
+      buyingPrice: 9_000,
+      supplier: "XYZ Distributors",
+      receivedAt: "2026-09-14",
+      location: "Sales Floor",
     },
     {
       id: "bat-cow-2",
@@ -496,41 +558,89 @@ function createSeed(): InventorySnapshot {
       id: "bat-rice-1",
       productId: "prd-rice-25",
       batchNumber: "OPENING",
-      quantity: 76,
+      quantity: 50,
       expiryDate: null,
       buyingPrice: 38_000,
       supplier: "",
       receivedAt: "2026-08-12",
+      location: "Main Store",
+    },
+    {
+      id: "bat-rice-2",
+      productId: "prd-rice-25",
+      batchNumber: "OPENING",
+      quantity: 26,
+      expiryDate: null,
+      buyingPrice: 38_000,
+      supplier: "",
+      receivedAt: "2026-08-12",
+      location: "Sales Floor",
     },
     {
       id: "bat-sugar-1",
       productId: "prd-sugar-1",
       batchNumber: "OPENING",
-      quantity: 124,
+      quantity: 80,
       expiryDate: null,
       buyingPrice: 2_900,
       supplier: "",
       receivedAt: "2026-08-18",
+      location: "Main Store",
+    },
+    {
+      id: "bat-sugar-2",
+      productId: "prd-sugar-1",
+      batchNumber: "OPENING",
+      quantity: 44,
+      expiryDate: null,
+      buyingPrice: 2_900,
+      supplier: "",
+      receivedAt: "2026-08-18",
+      location: "Sales Floor",
     },
     {
       id: "bat-oil-1",
       productId: "prd-oil-5",
       batchNumber: "B001",
-      quantity: 32,
+      quantity: 22,
       expiryDate: "2027-03-15",
       buyingPrice: 18_500,
       supplier: "Kibo Oils",
       receivedAt: "2026-08-22",
+      location: "Main Store",
+    },
+    {
+      id: "bat-oil-1b",
+      productId: "prd-oil-5",
+      batchNumber: "B001",
+      quantity: 10,
+      expiryDate: "2027-03-15",
+      buyingPrice: 18_500,
+      supplier: "Kibo Oils",
+      receivedAt: "2026-08-22",
+      location: "Sales Floor",
     },
     {
       id: "bat-oil-2",
       productId: "prd-oil-5",
       batchNumber: "B002",
-      quantity: 20,
+      quantity: 13,
       expiryDate: "2026-08-01",
       buyingPrice: 18_500,
       supplier: "Kibo Oils",
       receivedAt: "2026-07-10",
+      location: "Main Store",
+    },
+    {
+      id: "bat-oil-2b",
+      productId: "prd-oil-5",
+      batchNumber: "B002",
+      quantity: 7,
+      expiryDate: "2026-08-01",
+      buyingPrice: 18_500,
+      supplier: "Kibo Oils",
+      receivedAt: "2026-07-10",
+      location: "Sales Floor",
     },
     {
       id: "bat-soda-1",
@@ -842,9 +952,7 @@ function createSeed(): InventorySnapshot {
     },
   ];
 
-  const suppliers = [...new Set(batches.map((batch) => batch.supplier).filter(Boolean))].sort((a, b) =>
-    a.localeCompare(b),
-  );
+  const suppliers = seedSuppliers();
 
   return {
     products,
@@ -857,6 +965,8 @@ function createSeed(): InventorySnapshot {
       isActive: true,
     })),
     suppliers,
+    purchaseOrders: seedPurchaseOrders(),
+    purchases: seedPurchases(),
   };
 }
 
@@ -1004,15 +1114,100 @@ export function nextGoodsReceivedReference(movements = snapshot.movements) {
 }
 
 export function addInventorySupplier(name: string) {
+  const created = createSupplierRecord({ name });
+  if (created.error) return { error: created.error, name: "" };
+  return { error: null, name: created.supplier!.name };
+}
+
+function ensureSupplier(name: string, suppliers: Supplier[]) {
   const next = name.trim().replace(/\s+/g, " ");
-  if (!next) return { error: "Enter a supplier name.", name: "" };
-  const existing = snapshot.suppliers.find((item) => item.toLowerCase() === next.toLowerCase());
-  if (existing) return { error: null, name: existing };
+  if (!next) return suppliers;
+  if (suppliers.some((item) => item.name.toLowerCase() === next.toLowerCase())) return suppliers;
+  return [...suppliers, makeSupplier({ name: next })].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function makeSupplier(input: CreateSupplierInput): Supplier {
+  return {
+    id: `sup-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    name: input.name.trim().replace(/\s+/g, " "),
+    contactPerson: input.contactPerson?.trim() ?? "",
+    phone: input.phone?.trim() ?? "",
+    email: input.email?.trim() ?? "",
+    address: input.address?.trim() ?? "",
+    status: input.status ?? "Active",
+  };
+}
+
+export function createSupplierRecord(input: CreateSupplierInput) {
+  const name = input.name.trim().replace(/\s+/g, " ");
+  if (!name) return { error: "Enter a supplier name.", supplier: null as Supplier | null };
+  const existing = snapshot.suppliers.find((item) => item.name.toLowerCase() === name.toLowerCase());
+  if (existing) return { error: null, supplier: existing };
+  const supplier = makeSupplier({ ...input, name });
   setSnapshot({
     ...snapshot,
-    suppliers: [...snapshot.suppliers, next].sort((a, b) => a.localeCompare(b)),
+    suppliers: [...snapshot.suppliers, supplier].sort((a, b) => a.name.localeCompare(b.name)),
   });
-  return { error: null, name: next };
+  return { error: null, supplier };
+}
+
+function allocationForReceive(input: ReceiveStockInput) {
+  const mainStore =
+    input.mainStore != null ? Math.max(0, Math.round(input.mainStore)) : undefined;
+  const salesFloor =
+    input.salesFloor != null ? Math.max(0, Math.round(input.salesFloor)) : undefined;
+  if (mainStore != null || salesFloor != null) {
+    return { mainStore: mainStore ?? 0, salesFloor: salesFloor ?? 0 };
+  }
+  if (input.location === "Sales Floor") return { mainStore: 0, salesFloor: input.quantity };
+  return { mainStore: input.quantity, salesFloor: 0 };
+}
+
+function appendLocatedBatches(params: {
+  batches: StockBatch[];
+  productId: string;
+  batchNumber: string;
+  expiryDate: string | null;
+  buyingPrice: number;
+  supplier: string;
+  receivedAt: string;
+  mainStore: number;
+  salesFloor: number;
+  stamp: number;
+}) {
+  const next = [...params.batches];
+  const ids: string[] = [];
+  if (params.mainStore > 0) {
+    const id = `bat-${params.stamp}-ms`;
+    next.push({
+      id,
+      productId: params.productId,
+      batchNumber: params.batchNumber,
+      quantity: params.mainStore,
+      expiryDate: params.expiryDate,
+      buyingPrice: params.buyingPrice,
+      supplier: params.supplier,
+      receivedAt: params.receivedAt,
+      location: "Main Store",
+    });
+    ids.push(id);
+  }
+  if (params.salesFloor > 0) {
+    const id = `bat-${params.stamp}-sf`;
+    next.push({
+      id,
+      productId: params.productId,
+      batchNumber: params.batchNumber,
+      quantity: params.salesFloor,
+      expiryDate: params.expiryDate,
+      buyingPrice: params.buyingPrice,
+      supplier: params.supplier,
+      receivedAt: params.receivedAt,
+      location: "Sales Floor",
+    });
+    ids.push(id);
+  }
+  return { batches: next, ids };
 }
 
 export function receiveStock(input: ReceiveStockInput) {
@@ -1022,28 +1217,42 @@ export function receiveStock(input: ReceiveStockInput) {
   const batchNumber = input.batchNumber?.trim() || nextBatchNumber(input.productId, snapshot.batches);
   const stamp = Date.now();
   const supplier = input.supplier?.trim() ?? "";
-  const batch: StockBatch = {
-    id: `bat-${stamp}`,
+  const allocation = allocationForReceive(input);
+  if (allocation.mainStore + allocation.salesFloor !== input.quantity) {
+    return { error: "Stock allocation must equal the received quantity." } as const;
+  }
+  const appended = appendLocatedBatches({
+    batches: snapshot.batches,
     productId: input.productId,
     batchNumber,
-    quantity: input.quantity,
     expiryDate: input.expiryDate?.trim() ? input.expiryDate.trim() : null,
     buyingPrice: input.buyingPrice,
     supplier,
     receivedAt: receivedDate,
-  };
+    mainStore: allocation.mainStore,
+    salesFloor: allocation.salesFloor,
+    stamp,
+  });
   const reference =
     input.reference?.trim() ||
     (input.type === "Opening Stock" ? "OPENING" : nextGoodsReceivedReference(snapshot.movements));
+  const destination = destinationFromAllocation(allocation.mainStore, allocation.salesFloor);
+  const isOpening = input.type === "Opening Stock";
   const movement: StockMovement = {
     id: `mov-${stamp}`,
     productId: input.productId,
-    batchId: batch.id,
-    type: input.type ?? "Received",
+    batchId: appended.ids[0] ?? null,
+    type: isOpening ? "Opening Stock" : "Received",
     quantity: input.quantity,
     date: receivedAtRaw,
     reference,
-    note: input.note?.trim() || (supplier ? `Stock Received from ${supplier}` : "Stock Received"),
+    note:
+      input.note?.trim() ||
+      (isOpening
+        ? `Opening stock · ${destination}`
+        : supplier
+          ? `Stock Received from ${supplier}`
+          : "Stock Received"),
     user: input.user?.trim() || undefined,
     productName: product?.name,
     sku: product?.sku,
@@ -1051,33 +1260,65 @@ export function receiveStock(input: ReceiveStockInput) {
     totalCost: input.quantity * input.buyingPrice,
     supplier,
     batchNumber,
-    expiryDate: batch.expiryDate,
+    expiryDate: appended.batches.find((item) => item.id === appended.ids[0])?.expiryDate ?? null,
+    movementCode: isOpening ? "OPENING_STOCK" : "PURCHASE_RECEIVED",
+    destination,
+    sourceDocumentType: isOpening ? "opening" : "purchase",
+    allocations: [
+      ...(allocation.mainStore ? [{ location: "Main Store" as const, quantity: allocation.mainStore }] : []),
+      ...(allocation.salesFloor ? [{ location: "Sales Floor" as const, quantity: allocation.salesFloor }] : []),
+    ],
   };
-  const batches = [...snapshot.batches, batch];
   const products =
     product && input.sellingPrice != null && Number.isFinite(input.sellingPrice) && input.sellingPrice >= 0
       ? snapshot.products.map((item) =>
           item.id === product.id ? { ...item, sellingPrice: Math.round(input.sellingPrice as number) } : item,
         )
       : snapshot.products;
-  const suppliers =
-    supplier && !snapshot.suppliers.some((item) => item.toLowerCase() === supplier.toLowerCase())
-      ? [...snapshot.suppliers, supplier].sort((a, b) => a.localeCompare(b))
-      : snapshot.suppliers;
 
   setSnapshot({
     ...snapshot,
     products,
-    batches,
+    batches: appended.batches,
     movements: [...snapshot.movements, movement],
-    suppliers,
+    suppliers: ensureSupplier(supplier, snapshot.suppliers),
   });
 
   return {
-    batch,
+    batch: appended.batches.find((item) => item.id === appended.ids[0]) ?? null,
     movement,
-    newStock: currentStockFor(input.productId, batches),
+    newStock: currentStockFor(input.productId, appended.batches),
+    error: null,
   };
+}
+
+function takeFromLocation(batches: StockBatch[], productId: string, location: StockLocation, amount: number) {
+  let remaining = amount;
+  const next = batches.map((batch) => ({ ...batch }));
+  const ordered = next
+    .map((batch, index) => ({ batch, index }))
+    .filter(({ batch }) => batch.productId === productId && batch.quantity > 0 && batchLocation(batch) === location)
+    .sort((a, b) => {
+      const aKey = `${a.batch.expiryDate ?? "9999-12-31"}|${a.batch.receivedAt}`;
+      const bKey = `${b.batch.expiryDate ?? "9999-12-31"}|${b.batch.receivedAt}`;
+      return aKey.localeCompare(bKey);
+    });
+
+  let batchId: string | null = null;
+  let buyingPrice = 0;
+  let expiryDate: string | null = null;
+  let supplier = "";
+  for (const { batch, index } of ordered) {
+    if (remaining <= 0) break;
+    const take = Math.min(batch.quantity, remaining);
+    next[index] = { ...batch, quantity: batch.quantity - take };
+    remaining -= take;
+    batchId = batch.id;
+    buyingPrice = batch.buyingPrice;
+    expiryDate = batch.expiryDate;
+    supplier = batch.supplier;
+  }
+  return { batches: next, remaining, batchId, buyingPrice, expiryDate, supplier };
 }
 
 export function adjustStock(input: AdjustStockInput) {
@@ -1090,15 +1331,19 @@ export function adjustStock(input: AdjustStockInput) {
   }
 
   const delta = adjustmentDelta(input.kind, quantity, input.correctionDirection);
-  const current = currentStockFor(input.productId, snapshot.batches);
+  const location = input.location;
+  const current = location
+    ? stockAtLocation(input.productId, snapshot.batches, location)
+    : currentStockFor(input.productId, snapshot.batches);
   if (delta < 0 && current + delta < 0) {
-    return { error: "Decrease cannot make stock negative." };
+    return { error: location ? `Decrease cannot make ${location} stock negative.` : "Decrease cannot make stock negative." };
   }
 
   const stamp = Date.now();
   const date = new Date().toISOString().slice(0, 10);
-  const batches = snapshot.batches.map((batch) => ({ ...batch }));
+  let batches = snapshot.batches.map((batch) => ({ ...batch }));
   let batchId: string | null = null;
+  const destLocation: StockLocation = location ?? "Main Store";
 
   if (delta > 0) {
     const batch: StockBatch = {
@@ -1110,9 +1355,17 @@ export function adjustStock(input: AdjustStockInput) {
       buyingPrice: product.buyingPrice,
       supplier: "",
       receivedAt: date,
+      location: destLocation,
     };
     batches.push(batch);
     batchId = batch.id;
+  } else if (location) {
+    const taken = takeFromLocation(batches, input.productId, location, -delta);
+    if (taken.remaining > 0) {
+      return { error: `Decrease cannot make ${location} stock negative.` };
+    }
+    batches = taken.batches;
+    batchId = taken.batchId;
   } else {
     let remaining = -delta;
     const ordered = batches
@@ -1150,6 +1403,11 @@ export function adjustStock(input: AdjustStockInput) {
     reason: reason || input.kind,
     user: input.user?.trim() || "Storekeeper",
     adjustmentKind: input.kind,
+    productName: product.name,
+    sku: product.sku,
+    movementCode: "STOCK_ADJUSTMENT",
+    destination: destLocation,
+    sourceDocumentType: "adjustment",
   };
 
   setSnapshot({
@@ -1158,6 +1416,263 @@ export function adjustStock(input: AdjustStockInput) {
     movements: [...snapshot.movements, movement],
   });
   return { error: null };
+}
+
+export function transferStock(input: TransferStockInput) {
+  const product = snapshot.products.find((item) => item.id === input.productId);
+  if (!product) return { error: "Select a product." };
+  if (input.from === input.to) return { error: "Choose two different locations." };
+  const quantity = Math.round(input.quantity);
+  if (!Number.isInteger(quantity) || quantity <= 0) return { error: "Enter a quantity greater than zero." };
+  const available = stockAtLocation(input.productId, snapshot.batches, input.from);
+  if (quantity > available) return { error: `Only ${available} units available in ${input.from}.` };
+
+  const taken = takeFromLocation(snapshot.batches, input.productId, input.from, quantity);
+  if (taken.remaining > 0) return { error: `Only ${available} units available in ${input.from}.` };
+  const stamp = Date.now();
+  const date = new Date().toISOString();
+  const destinationBatch: StockBatch = {
+    id: `bat-${stamp}-tf`,
+    productId: input.productId,
+    batchNumber: nextBatchNumber(input.productId, taken.batches),
+    quantity,
+    expiryDate: taken.expiryDate,
+    buyingPrice: taken.buyingPrice || product.buyingPrice,
+    supplier: taken.supplier,
+    receivedAt: date.slice(0, 10),
+    location: input.to,
+  };
+  const batches = [...taken.batches, destinationBatch];
+  const movement: StockMovement = {
+    id: `mov-${stamp}`,
+    productId: input.productId,
+    batchId: destinationBatch.id,
+    type: "Transfer",
+    quantity,
+    date,
+    reference: nextTransferReference(),
+    note: `${input.from} → ${input.to}`,
+    user: input.user?.trim() || "Storekeeper",
+    productName: product.name,
+    sku: product.sku,
+    movementCode: "STOCK_TRANSFER",
+    fromLocation: input.from,
+    toLocation: input.to,
+    sourceDocumentType: "transfer",
+    allocations: [
+      { location: input.from, quantity: -quantity },
+      { location: input.to, quantity },
+    ],
+  };
+
+  setSnapshot({
+    ...snapshot,
+    batches,
+    movements: [...snapshot.movements, movement],
+  });
+  return { error: null, movement };
+}
+
+function nextTransferReference() {
+  const prefix = "TR-";
+  let max = 0;
+  for (const item of snapshot.movements) {
+    if (!item.reference.startsWith(prefix)) continue;
+    const value = Number(item.reference.slice(prefix.length));
+    if (Number.isFinite(value)) max = Math.max(max, value);
+  }
+  return `${prefix}${String(max + 1).padStart(3, "0")}`;
+}
+
+export function nextPurchaseOrderNumber(orders = snapshot.purchaseOrders) {
+  return nextDocumentNumber(
+    "PO",
+    orders.map((item) => item.number),
+  );
+}
+
+export function nextPurchaseNumber(purchases = snapshot.purchases) {
+  return nextDocumentNumber(
+    "PUR",
+    purchases.map((item) => item.number),
+  );
+}
+
+export function createPurchaseOrder(input: CreatePurchaseOrderInput) {
+  const supplier = snapshot.suppliers.find((item) => item.id === input.supplierId);
+  if (!supplier) return { error: "Select a supplier.", order: null as PurchaseOrder | null };
+  const lines = input.lines
+    .map((line, index) => {
+      const product = snapshot.products.find((item) => item.id === line.productId);
+      if (!product || line.quantity <= 0 || line.buyingPrice < 0) return null;
+      return {
+        id: `pol-${Date.now()}-${index}`,
+        productId: product.id,
+        productName: product.name,
+        sku: product.sku,
+        quantityOrdered: Math.round(line.quantity),
+        quantityReceived: 0,
+        buyingPrice: Math.round(line.buyingPrice),
+      };
+    })
+    .filter((line): line is NonNullable<typeof line> => Boolean(line));
+  if (!lines.length) return { error: "Add at least one product.", order: null };
+
+  const order: PurchaseOrder = {
+    id: `po-${Date.now()}`,
+    number: nextPurchaseOrderNumber(),
+    supplierId: supplier.id,
+    supplierName: supplier.name,
+    orderDate: input.orderDate,
+    expectedDate: input.expectedDate,
+    notes: input.notes?.trim() ?? "",
+    status: input.status,
+    discount: Math.max(0, Math.round(input.discount ?? 0)),
+    tax: Math.max(0, Math.round(input.tax ?? 0)),
+    lines,
+    createdAt: new Date().toISOString(),
+  };
+
+  setSnapshot({
+    ...snapshot,
+    purchaseOrders: [order, ...snapshot.purchaseOrders],
+  });
+  return { error: null, order };
+}
+
+export function sendPurchaseOrder(orderId: string) {
+  const current = snapshot.purchaseOrders.find((item) => item.id === orderId);
+  if (!current) return { error: "Purchase order not found." };
+  if (current.status !== "Draft") return { error: "Only draft orders can be sent." };
+  setSnapshot({
+    ...snapshot,
+    purchaseOrders: snapshot.purchaseOrders.map((item) =>
+      item.id === orderId ? { ...item, status: "Sent" } : item,
+    ),
+  });
+  return { error: null };
+}
+
+export function receivePurchaseOrder(input: ReceivePurchaseOrderInput) {
+  const order = snapshot.purchaseOrders.find((item) => item.id === input.purchaseOrderId);
+  if (!order) return { error: "Purchase order not found." };
+  if (order.status !== "Sent" && order.status !== "Partially Received") {
+    return { error: "This purchase order cannot be received." };
+  }
+
+  const receivedLines = input.lines.filter((line) => line.quantity > 0);
+  if (!receivedLines.length) return { error: "Enter a received quantity for at least one product." };
+
+  for (const line of receivedLines) {
+    const ordered = order.lines.find((item) => item.productId === line.productId);
+    if (!ordered) return { error: "A received product is not on this purchase order." };
+    const remaining = ordered.quantityOrdered - ordered.quantityReceived;
+    if (line.quantity > remaining) {
+      return { error: `${ordered.productName} cannot exceed the remaining ${remaining} units.` };
+    }
+    if (line.mainStore + line.salesFloor !== line.quantity) {
+      return { error: "Stock allocation must equal the received quantity." };
+    }
+    if (line.mainStore < 0 || line.salesFloor < 0) {
+      return { error: "Stock allocation must equal the received quantity." };
+    }
+  }
+
+  const stamp = Date.now();
+  const receivedAt = input.receivedAt || new Date().toISOString();
+  let batches = snapshot.batches.map((batch) => ({ ...batch }));
+  const movements: StockMovement[] = [];
+  const purchaseLines = receivedLines.map((line, index) => {
+    const ordered = order.lines.find((item) => item.productId === line.productId)!;
+    const product = snapshot.products.find((item) => item.id === line.productId);
+    const batchNumber = nextBatchNumber(line.productId, batches);
+    const appended = appendLocatedBatches({
+      batches,
+      productId: line.productId,
+      batchNumber,
+      expiryDate: null,
+      buyingPrice: ordered.buyingPrice,
+      supplier: order.supplierName,
+      receivedAt: receivedAt.slice(0, 10),
+      mainStore: line.mainStore,
+      salesFloor: line.salesFloor,
+      stamp: stamp + index,
+    });
+    batches = appended.batches;
+    const destination = destinationFromAllocation(line.mainStore, line.salesFloor);
+    movements.push({
+      id: `mov-${stamp}-${index}`,
+      productId: line.productId,
+      batchId: appended.ids[0] ?? null,
+      type: "Received",
+      quantity: line.quantity,
+      date: receivedAt,
+      reference: order.number,
+      note:
+        destination === "Split"
+          ? `Purchase Received · +${line.mainStore} Main Store · +${line.salesFloor} Sales Floor`
+          : `Purchase Received · ${destination}`,
+      user: input.user?.trim() || "Storekeeper",
+      productName: ordered.productName,
+      sku: ordered.sku,
+      buyingPrice: ordered.buyingPrice,
+      totalCost: line.quantity * ordered.buyingPrice,
+      supplier: order.supplierName,
+      batchNumber,
+      movementCode: "PURCHASE_RECEIVED",
+      destination,
+      sourceDocumentId: order.id,
+      sourceDocumentType: "purchase_order",
+      allocations: [
+        ...(line.mainStore ? [{ location: "Main Store" as const, quantity: line.mainStore }] : []),
+        ...(line.salesFloor ? [{ location: "Sales Floor" as const, quantity: line.salesFloor }] : []),
+      ],
+    });
+    return {
+      productId: line.productId,
+      productName: ordered.productName,
+      sku: ordered.sku,
+      quantity: line.quantity,
+      buyingPrice: ordered.buyingPrice,
+      mainStore: line.mainStore,
+      salesFloor: line.salesFloor,
+      product,
+    };
+  });
+
+  const updatedLines = order.lines.map((line) => {
+    const received = receivedLines.find((item) => item.productId === line.productId);
+    if (!received) return line;
+    return { ...line, quantityReceived: line.quantityReceived + received.quantity };
+  });
+  const status = derivePurchaseOrderStatus(updatedLines, order.status);
+  const purchase: Purchase = {
+    id: `pur-${stamp}`,
+    number: nextPurchaseNumber(),
+    purchaseOrderId: order.id,
+    purchaseOrderNumber: order.number,
+    supplierId: order.supplierId,
+    supplierName: order.supplierName,
+    receivedAt,
+    itemCount: purchaseLines.length,
+    totalCost: purchaseLines.reduce((sum, line) => sum + line.quantity * line.buyingPrice, 0),
+    paymentStatus: "Unpaid",
+    status: "Received",
+    receivedBy: input.user?.trim() || "Storekeeper",
+    lines: purchaseLines.map(({ product: _product, ...line }) => line),
+  };
+
+  setSnapshot({
+    ...snapshot,
+    batches,
+    movements: [...movements, ...snapshot.movements],
+    purchaseOrders: snapshot.purchaseOrders.map((item) =>
+      item.id === order.id ? { ...item, lines: updatedLines, status } : item,
+    ),
+    purchases: [purchase, ...snapshot.purchases],
+  });
+
+  return { error: null, purchase, orderStatus: status, movements };
 }
 
 export function rememberNewProductBarcode(barcode: string) {
@@ -1206,10 +1721,24 @@ export function useSupermarketInventory() {
     upsertProduct,
     receiveStock,
     adjustStock,
+    transferStock,
     toggleProductActive,
     addInventorySupplier,
+    createSupplierRecord,
     nextGoodsReceivedReference,
+    nextPurchaseOrderNumber,
+    nextPurchaseNumber,
+    createPurchaseOrder,
+    sendPurchaseOrder,
+    receivePurchaseOrder,
   };
 }
+
+export type {
+  Purchase,
+  PurchaseOrder,
+  StockLocation,
+  Supplier,
+} from "@/lib/data/supermarket-purchasing";
 
 export const SUPERMARKET_SAMPLE_PRODUCTS = INITIAL.products;

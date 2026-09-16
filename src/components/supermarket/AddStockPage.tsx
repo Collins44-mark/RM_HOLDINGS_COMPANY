@@ -158,9 +158,10 @@ export function AddStockPage() {
   }, [inventory.products, query]);
 
   const filteredSuppliers = useMemo(() => {
+    const names = inventory.suppliers.map((item) => item.name);
     const needle = supplierQuery.trim().toLowerCase();
-    if (!needle) return inventory.suppliers;
-    return inventory.suppliers.filter((item) => item.toLowerCase().includes(needle));
+    if (!needle) return names;
+    return names.filter((item) => item.toLowerCase().includes(needle));
   }, [inventory.suppliers, supplierQuery]);
 
   useEffect(() => {
@@ -257,6 +258,11 @@ export function AddStockPage() {
       user: user?.name || "Storekeeper",
       type: "Received",
     });
+
+    if (result.error || !result.movement) {
+      setErrors({ quantity: result.error || "Unable to receive stock." });
+      return;
+    }
 
     setSuccess({
       productName: selected!.name,
