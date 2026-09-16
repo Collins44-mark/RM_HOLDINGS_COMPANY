@@ -90,6 +90,13 @@ export type StockMovement = {
   reason?: string;
   user?: string;
   adjustmentKind?: StockAdjustmentKind;
+  productName?: string;
+  sku?: string;
+  buyingPrice?: number;
+  totalCost?: number;
+  supplier?: string;
+  batchNumber?: string;
+  expiryDate?: string | null;
 };
 
 export type InventorySnapshot = {
@@ -97,6 +104,7 @@ export type InventorySnapshot = {
   batches: StockBatch[];
   movements: StockMovement[];
   categories: SupermarketCategory[];
+  suppliers: string[];
 };
 
 export type SupermarketCategory = {
@@ -112,11 +120,13 @@ export type ReceiveStockInput = {
   batchNumber?: string;
   expiryDate?: string | null;
   buyingPrice: number;
+  sellingPrice?: number;
   supplier?: string;
   receivedAt?: string;
   type?: "Opening Stock" | "Received";
   reference?: string;
   note?: string;
+  user?: string;
 };
 
 export type AdjustStockInput = {
@@ -832,6 +842,10 @@ function createSeed(): InventorySnapshot {
     },
   ];
 
+  const suppliers = [...new Set(batches.map((batch) => batch.supplier).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b),
+  );
+
   return {
     products,
     batches,
@@ -842,6 +856,7 @@ function createSeed(): InventorySnapshot {
       description: "",
       isActive: true,
     })),
+    suppliers,
   };
 }
 
@@ -976,10 +991,37 @@ export function toggleProductActive(productId: string) {
   });
 }
 
+export function nextGoodsReceivedReference(movements = snapshot.movements) {
+  const year = new Date().getFullYear();
+  const prefix = `GRN-${year}-`;
+  let max = 0;
+  for (const item of movements) {
+    if (!item.reference.startsWith(prefix)) continue;
+    const value = Number(item.reference.slice(prefix.length));
+    if (Number.isFinite(value)) max = Math.max(max, value);
+  }
+  return `${prefix}${String(max + 1).padStart(4, "0")}`;
+}
+
+export function addInventorySupplier(name: string) {
+  const next = name.trim().replace(/\s+/g, " ");
+  if (!next) return { error: "Enter a supplier name.", name: "" };
+  const existing = snapshot.suppliers.find((item) => item.toLowerCase() === next.toLowerCase());
+  if (existing) return { error: null, name: existing };
+  setSnapshot({
+    ...snapshot,
+    suppliers: [...snapshot.suppliers, next].sort((a, b) => a.localeCompare(b)),
+  });
+  return { error: null, name: next };
+}
+
 export function receiveStock(input: ReceiveStockInput) {
-  const receivedAt = (input.receivedAt || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const product = snapshot.products.find((item) => item.id === input.productId);
+  const receivedAtRaw = input.receivedAt || new Date().toISOString();
+  const receivedDate = receivedAtRaw.slice(0, 10);
   const batchNumber = input.batchNumber?.trim() || nextBatchNumber(input.productId, snapshot.batches);
   const stamp = Date.now();
+  const supplier = input.supplier?.trim() ?? "";
   const batch: StockBatch = {
     id: `bat-${stamp}`,
     productId: input.productId,
@@ -987,25 +1029,55 @@ export function receiveStock(input: ReceiveStockInput) {
     quantity: input.quantity,
     expiryDate: input.expiryDate?.trim() ? input.expiryDate.trim() : null,
     buyingPrice: input.buyingPrice,
-    supplier: input.supplier?.trim() ?? "",
-    receivedAt,
+    supplier,
+    receivedAt: receivedDate,
   };
+  const reference =
+    input.reference?.trim() ||
+    (input.type === "Opening Stock" ? "OPENING" : nextGoodsReceivedReference(snapshot.movements));
   const movement: StockMovement = {
     id: `mov-${stamp}`,
     productId: input.productId,
     batchId: batch.id,
     type: input.type ?? "Received",
     quantity: input.quantity,
-    date: receivedAt,
-    reference: input.reference?.trim() || batchNumber,
-    note: input.note?.trim() || (batch.supplier ? `Received from ${batch.supplier}` : "Stock received"),
+    date: receivedAtRaw,
+    reference,
+    note: input.note?.trim() || (supplier ? `Stock Received from ${supplier}` : "Stock Received"),
+    user: input.user?.trim() || undefined,
+    productName: product?.name,
+    sku: product?.sku,
+    buyingPrice: input.buyingPrice,
+    totalCost: input.quantity * input.buyingPrice,
+    supplier,
+    batchNumber,
+    expiryDate: batch.expiryDate,
   };
+  const batches = [...snapshot.batches, batch];
+  const products =
+    product && input.sellingPrice != null && Number.isFinite(input.sellingPrice) && input.sellingPrice >= 0
+      ? snapshot.products.map((item) =>
+          item.id === product.id ? { ...item, sellingPrice: Math.round(input.sellingPrice as number) } : item,
+        )
+      : snapshot.products;
+  const suppliers =
+    supplier && !snapshot.suppliers.some((item) => item.toLowerCase() === supplier.toLowerCase())
+      ? [...snapshot.suppliers, supplier].sort((a, b) => a.localeCompare(b))
+      : snapshot.suppliers;
+
   setSnapshot({
     ...snapshot,
-    batches: [...snapshot.batches, batch],
+    products,
+    batches,
     movements: [...snapshot.movements, movement],
+    suppliers,
   });
-  return batch;
+
+  return {
+    batch,
+    movement,
+    newStock: currentStockFor(input.productId, batches),
+  };
 }
 
 export function adjustStock(input: AdjustStockInput) {
@@ -1135,6 +1207,8 @@ export function useSupermarketInventory() {
     receiveStock,
     adjustStock,
     toggleProductActive,
+    addInventorySupplier,
+    nextGoodsReceivedReference,
   };
 }
 

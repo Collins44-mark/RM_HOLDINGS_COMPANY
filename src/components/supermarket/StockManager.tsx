@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -11,7 +12,6 @@ import {
   MoreHorizontal,
   Package,
   Plus,
-  ScanLine,
   Search,
   TimerReset,
   Warehouse,
@@ -33,7 +33,6 @@ import {
   batchExpiryStatus,
   batchesForProduct,
   currentStockFor,
-  findProductByBarcode,
   formatDisplayDate,
   inventoryKpis,
   movementTypeLabel,
@@ -41,7 +40,6 @@ import {
   productExpiryFilterStatus,
   productHasExpiryStatus,
   productMatchesKpiFocus,
-  rememberNewProductBarcode,
   stockMovementKindLabel,
   stockStatusFor,
   useSupermarketInventory,
@@ -59,7 +57,7 @@ import {
 type StockStatusFilter = "all" | StockStatus;
 type ExpiryFilter = "all" | ExpiryStatus;
 type StockSort = "name" | "stock-low" | "stock-high" | "expiry";
-type DrawerMode = "add" | "adjust" | "view" | "history" | null;
+type DrawerMode = "adjust" | "view" | "history" | null;
 type MovementRow = ReturnType<typeof movementsForProduct>[number];
 
 const KPI_CHIP_LABEL: Record<Exclude<InventoryKpiFocus, "all" | "units">, string> = {
@@ -261,13 +259,6 @@ export function StockManager() {
     );
   }
 
-  function openAdd(productId?: string) {
-    setMenu(null);
-    setSelectedId(productId ?? null);
-    setPrefillProductId(productId ?? null);
-    setDrawer("add");
-  }
-
   function openView(productId: string) {
     const product = inventory.products.find((item) => item.id === productId);
     if (!product) return;
@@ -347,14 +338,13 @@ export function StockManager() {
           </p>
         </div>
         {canReceive ? (
-          <button
-            type="button"
-            onClick={() => openAdd()}
+          <Link
+            href="/supermarket/stock/add"
             className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_10px_22px_rgba(11,34,68,0.22),inset_0_1px_0_rgba(255,255,255,0.12)] transition duration-200 hover:bg-[#102a52] sm:w-auto"
           >
             <Plus className="h-4 w-4" strokeWidth={2.2} />
             Add Stock
-          </button>
+          </Link>
         ) : null}
       </div>
 
@@ -700,25 +690,6 @@ export function StockManager() {
           )
         : null}
 
-      {drawer === "add" ? (
-        <StockDrawer kicker="Inventory" title="Add Stock" onClose={closePanel}>
-          <AddStockForm
-            products={inventory.products}
-            batches={inventory.batches}
-            prefillProductId={prefillProductId}
-            onCancel={closePanel}
-            onCreateProduct={(barcode) => {
-              rememberNewProductBarcode(barcode);
-              router.push("/supermarket/products/new");
-            }}
-            onSubmit={(input) => {
-              inventory.receiveStock(input);
-              closePanel();
-            }}
-          />
-        </StockDrawer>
-      ) : null}
-
       {drawer === "adjust" ? (
         <StockDrawer kicker="Inventory" title="Adjust Stock" onClose={closePanel}>
           <AdjustStockForm
@@ -744,7 +715,10 @@ export function StockManager() {
             batches={batchesForProduct(selected.id, inventory.batches)}
             movements={movementsForProduct(selected.id, inventory.movements)}
             canReceive={canReceive}
-            onAddStock={() => openAdd(selected.id)}
+            onAddStock={() => {
+              closePanel();
+              router.push(`/supermarket/stock/add?product=${selected.id}`);
+            }}
           />
         </StockDrawer>
       ) : null}
@@ -1324,243 +1298,6 @@ function StockDrawer({
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8">{children}</div>
       </aside>
     </div>
-  );
-}
-
-function AddStockForm({
-  products,
-  batches,
-  prefillProductId,
-  onCancel,
-  onCreateProduct,
-  onSubmit,
-}: {
-  products: SupermarketProduct[];
-  batches: StockBatch[];
-  prefillProductId: string | null;
-  onCancel: () => void;
-  onCreateProduct: (barcode: string) => void;
-  onSubmit: (input: {
-    productId: string;
-    quantity: number;
-    batchNumber?: string;
-    expiryDate?: string | null;
-    buyingPrice: number;
-    supplier?: string;
-    receivedAt?: string;
-  }) => void;
-}) {
-  const barcodeRef = useRef<HTMLInputElement>(null);
-  const prefilled = products.find((item) => item.id === prefillProductId) ?? null;
-  const [barcode, setBarcode] = useState(prefilled?.barcode ?? "");
-  const [productQuery, setProductQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(prefilled?.id ?? null);
-  const [notFound, setNotFound] = useState(false);
-  const [quantity, setQuantity] = useState("");
-  const [batchNumber, setBatchNumber] = useState("");
-  const [expiryDate, setExpiryDate] = useState("");
-  const [buyingPrice, setBuyingPrice] = useState(prefilled ? String(prefilled.buyingPrice) : "");
-  const [supplier, setSupplier] = useState("");
-  const [receivedAt, setReceivedAt] = useState(new Date().toISOString().slice(0, 10));
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const selected = products.find((item) => item.id === selectedId) ?? null;
-  const matches = useMemo(() => {
-    const needle = productQuery.trim().toLowerCase();
-    if (!needle) return products.slice(0, 8);
-    return products
-      .filter(
-        (item) =>
-          item.name.toLowerCase().includes(needle) ||
-          item.sku.toLowerCase().includes(needle) ||
-          item.barcode.toLowerCase().includes(needle),
-      )
-      .slice(0, 8);
-  }, [productQuery, products]);
-
-  function selectProduct(product: SupermarketProduct) {
-    setSelectedId(product.id);
-    setBarcode(product.barcode);
-    setBuyingPrice(String(product.buyingPrice));
-    setNotFound(false);
-    setProductQuery("");
-    setErrors((current) => {
-      const next = { ...current };
-      delete next.product;
-      delete next.barcode;
-      return next;
-    });
-  }
-
-  function lookupBarcode(code: string) {
-    const match = findProductByBarcode(products, code);
-    if (match) {
-      selectProduct(match);
-      return;
-    }
-    setSelectedId(null);
-    setNotFound(Boolean(code.trim()));
-  }
-
-  function submit() {
-    const nextErrors: Record<string, string> = {};
-    const qty = Number(quantity);
-    const price = Number(buyingPrice);
-    if (!selected) nextErrors.product = "Select a product from the catalogue.";
-    if (!Number.isFinite(qty) || qty <= 0) nextErrors.quantity = "Enter a quantity greater than zero.";
-    if (!Number.isFinite(price) || price < 0) nextErrors.buyingPrice = "Enter a valid buying price.";
-    if (selected?.trackExpiry && !expiryDate.trim()) {
-      nextErrors.expiryDate = "Enter an expiry date for this batch.";
-    }
-    if (!receivedAt) nextErrors.receivedAt = "Enter the received date.";
-    if (Object.keys(nextErrors).length) {
-      setErrors(nextErrors);
-      return;
-    }
-    onSubmit({
-      productId: selected!.id,
-      quantity: qty,
-      batchNumber,
-      expiryDate: selected?.trackExpiry ? expiryDate : null,
-      buyingPrice: price,
-      supplier,
-      receivedAt,
-    });
-  }
-
-  return (
-    <form
-      className="space-y-7"
-      onSubmit={(event) => {
-        event.preventDefault();
-        submit();
-      }}
-    >
-      <section>
-        <p className="text-[12px] font-medium text-slate-500">Scan or enter barcode</p>
-        <div className="mt-2 flex gap-2">
-          <input
-            ref={barcodeRef}
-            value={barcode}
-            onChange={(event) => {
-              setBarcode(event.target.value);
-              setNotFound(false);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                lookupBarcode(barcode);
-              }
-            }}
-            placeholder="Scan or enter barcode..."
-            className={inputClass}
-          />
-          <button
-            type="button"
-            onClick={() => {
-              barcodeRef.current?.focus();
-              lookupBarcode(barcode);
-            }}
-            className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-[16px] border border-black/[0.05] bg-white/70 px-3.5 text-[13px] font-semibold text-navy transition hover:bg-white"
-          >
-            <ScanLine className="h-4 w-4" strokeWidth={1.8} />
-            Scan
-          </button>
-        </div>
-        {notFound ? (
-          <div className="mt-3 rounded-[16px] border border-black/[0.04] bg-white/60 px-3.5 py-3">
-            <p className="text-[13px] font-medium text-navy">Product not found.</p>
-            <button
-              type="button"
-              onClick={() => onCreateProduct(barcode.trim())}
-              className="mt-1 text-[13px] font-semibold text-navy underline-offset-2 hover:underline"
-            >
-              Create Product
-            </button>
-          </div>
-        ) : null}
-      </section>
-
-      <section>
-        <p className="text-[12px] font-medium text-slate-500">or Select Product</p>
-        <input
-          value={productQuery}
-          onChange={(event) => setProductQuery(event.target.value)}
-          placeholder="Search product..."
-          className={cn(inputClass, "mt-2")}
-        />
-        <div className="mt-2 max-h-48 overflow-y-auto rounded-[16px] border border-black/[0.04] bg-white/50">
-          {matches.length === 0 ? (
-            <p className="px-3 py-3 text-[13px] text-slate-500">No matching products.</p>
-          ) : (
-            matches.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => selectProduct(item)}
-                className={cn(
-                  "flex w-full flex-col px-3.5 py-2.5 text-left transition hover:bg-white/80",
-                  selectedId === item.id && "bg-white/90",
-                )}
-              >
-                <span className="text-[13px] font-semibold text-navy">{item.name}</span>
-                <span className="text-[12px] text-slate-500">
-                  {item.sku} · {item.barcode || "No barcode"}
-                </span>
-              </button>
-            ))
-          )}
-        </div>
-        {errors.product ? <p className="mt-1.5 text-[12px] text-slate-500">{errors.product}</p> : null}
-      </section>
-
-      {selected ? (
-        <section className="rounded-[18px] border border-white/80 bg-white/55 px-4 py-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Selected product</p>
-          <h3 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-navy">{selected.name}</h3>
-          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 text-[13px]">
-            <ReadOnlyField label="SKU" value={selected.sku} />
-            <ReadOnlyField label="Barcode" value={selected.barcode || "—"} />
-            <ReadOnlyField label="Category" value={selected.category} />
-            <ReadOnlyField label="Unit" value={selected.unit} />
-            <ReadOnlyField label="Selling price" value={formatTzs(selected.sellingPrice)} />
-            <ReadOnlyField label="Current stock" value={String(currentStockFor(selected.id, batches))} />
-          </dl>
-        </section>
-      ) : null}
-
-      <section className="space-y-3">
-        <Field label="Quantity Received" required error={errors.quantity}>
-          <input inputMode="numeric" value={quantity} onChange={(event) => setQuantity(event.target.value)} className={inputClass} />
-        </Field>
-        <Field label="Batch Number">
-          <input value={batchNumber} onChange={(event) => setBatchNumber(event.target.value)} placeholder="Auto if empty" className={inputClass} />
-        </Field>
-        {selected?.trackExpiry ? (
-          <Field label="Expiry Date" required error={errors.expiryDate}>
-            <input type="date" value={expiryDate} onChange={(event) => setExpiryDate(event.target.value)} className={inputClass} />
-          </Field>
-        ) : null}
-        <Field label="Buying Price" required error={errors.buyingPrice}>
-          <input inputMode="numeric" value={buyingPrice} onChange={(event) => setBuyingPrice(event.target.value)} className={inputClass} />
-        </Field>
-        <Field label="Supplier">
-          <input value={supplier} onChange={(event) => setSupplier(event.target.value)} className={inputClass} />
-        </Field>
-        <Field label="Received Date" required error={errors.receivedAt}>
-          <input type="date" value={receivedAt} onChange={(event) => setReceivedAt(event.target.value)} className={inputClass} />
-        </Field>
-      </section>
-
-      <div className="flex justify-end gap-2 pt-1">
-        <button type="button" onClick={onCancel} className="h-11 rounded-[16px] px-4 text-[14px] font-medium text-slate-500">
-          Cancel
-        </button>
-        <button type="submit" className="h-11 rounded-[16px] bg-navy px-5 text-[14px] font-semibold text-white">
-          Receive Stock
-        </button>
-      </div>
-    </form>
   );
 }
 
