@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import {
+  CalendarRange,
+  Check,
+  ChevronDown,
   Coins,
   Download,
   FileText,
@@ -19,16 +22,19 @@ import {
 import { ComparisonIndicator } from "@/components/finance/ComparisonIndicator";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
+import { downloadSalesReportPdf } from "@/lib/data/supermarket-sales-report";
 import {
   SALES_CASHIERS,
   SALES_PAGE_KPIS,
-  SALES_PERIODS,
   SUPERMARKET_SALES,
   filterSales,
+  formatSalesDate,
+  resolveSalesPeriod,
   saleTotal,
   salesKpis,
+  type SalesDateRange,
   type SalesPayment,
-  type SalesPeriodId,
+  type SalesPeriodPreset,
   type SalesStatus,
   type SupermarketSale,
 } from "@/lib/data/sample-supermarket-sales";
@@ -74,8 +80,240 @@ const KPI_TONES: Record<KpiTone, { card: string; orb: string; tint: string; icon
   },
 };
 
+const PERIOD_OPTIONS: { id: Exclude<SalesPeriodPreset, "range">; label: string }[] = [
+  { id: "today", label: "Today" },
+  { id: "yesterday", label: "Yesterday" },
+  { id: "week", label: "This Week" },
+  { id: "month", label: "This Month" },
+];
+
+function PeriodControl({
+  preset,
+  label,
+  range,
+  onPreset,
+  onRange,
+}: {
+  preset: SalesPeriodPreset;
+  label: string;
+  range: SalesDateRange;
+  onPreset: (preset: SalesPeriodPreset) => void;
+  onRange: (range: SalesDateRange) => void;
+}) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [mounted, setMounted] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [rangeOpen, setRangeOpen] = useState(false);
+  const [menuCoords, setMenuCoords] = useState({ top: 0, left: 0, width: 240 });
+  const [draft, setDraft] = useState<SalesDateRange>(range);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  function placeMenu() {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const width = Math.max(240, rect.width);
+    const left = Math.min(rect.left, window.innerWidth - width - 8);
+    setMenuCoords({
+      top: rect.bottom + 6,
+      left: Math.max(8, left),
+      width,
+    });
+  }
+
+  useEffect(() => {
+    if (!menuOpen && !rangeOpen) return;
+    placeMenu();
+    function onReposition() {
+      placeMenu();
+    }
+    window.addEventListener("resize", onReposition);
+    window.addEventListener("scroll", onReposition, true);
+    return () => {
+      window.removeEventListener("resize", onReposition);
+      window.removeEventListener("scroll", onReposition, true);
+    };
+  }, [menuOpen, rangeOpen]);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        setRangeOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  function openMenu() {
+    placeMenu();
+    setRangeOpen(false);
+    setMenuOpen((open) => !open);
+  }
+
+  function selectPreset(next: Exclude<SalesPeriodPreset, "range">) {
+    onPreset(next);
+    setMenuOpen(false);
+    setRangeOpen(false);
+  }
+
+  function openRange() {
+    setDraft(range);
+    setMenuOpen(false);
+    placeMenu();
+    setRangeOpen(true);
+  }
+
+  function applyRange() {
+    if (!draft.from || !draft.to) return;
+    const from = draft.from <= draft.to ? draft.from : draft.to;
+    const to = draft.from <= draft.to ? draft.to : draft.from;
+    onRange({ from, to });
+    onPreset("range");
+    setRangeOpen(false);
+  }
+
+  const panelOpen = menuOpen || rangeOpen;
+
+  return (
+    <div className="relative min-w-0 lg:w-auto lg:min-w-[12.5rem]">
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={panelOpen}
+        onClick={openMenu}
+        className={cn(filterClass, "inline-flex items-center justify-between gap-2 pr-3 text-left")}
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown
+          className={cn("h-4 w-4 shrink-0 text-slate-400 transition duration-200", panelOpen && "rotate-180")}
+          strokeWidth={2}
+        />
+      </button>
+      {mounted && panelOpen
+        ? createPortal(
+            <>
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-hidden={!panelOpen}
+                className={cn(
+                  "fixed inset-0 z-[79] cursor-default bg-transparent transition duration-200",
+                  panelOpen ? "opacity-100" : "pointer-events-none opacity-0",
+                )}
+                onClick={() => {
+                  setMenuOpen(false);
+                  setRangeOpen(false);
+                }}
+              />
+              {menuOpen ? (
+              <div
+                className="fixed z-[80] origin-top-left overflow-hidden rounded-[16px] border border-white/80 bg-white/92 py-1 shadow-[0_18px_50px_rgba(16,24,40,0.14)] backdrop-blur-xl transition duration-200 ease-out"
+                style={{ top: menuCoords.top, left: menuCoords.left, width: menuCoords.width }}
+                role="listbox"
+                aria-label="Sales period"
+              >
+                {PERIOD_OPTIONS.map((option) => {
+                  const selected = preset === option.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      onClick={() => selectPreset(option.id)}
+                      className={cn(
+                        "flex w-full items-center justify-between px-3.5 py-2.5 text-left text-[13px] text-navy transition duration-200 hover:bg-navy/[0.04]",
+                        selected && "bg-navy/[0.05] font-medium",
+                      )}
+                    >
+                      {option.label}
+                      {selected ? <Check className="h-3.5 w-3.5 text-navy" strokeWidth={2.4} /> : <span className="h-3.5 w-3.5" />}
+                    </button>
+                  );
+                })}
+                <div className="mx-3 my-1 h-px bg-[#d5dee8]/80" />
+                <button
+                  type="button"
+                  onClick={openRange}
+                  className={cn(
+                    "flex w-full items-center justify-between px-3.5 py-2.5 text-left text-[13px] text-navy transition duration-200 hover:bg-navy/[0.04]",
+                    preset === "range" && "bg-navy/[0.05] font-medium",
+                  )}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <CalendarRange className="h-3.5 w-3.5 text-slate-400" strokeWidth={1.9} />
+                    Date Range...
+                  </span>
+                    {preset === "range" ? <Check className="h-3.5 w-3.5 text-navy" strokeWidth={2.4} /> : null}
+                  </button>
+                </div>
+              ) : null}
+              {rangeOpen ? (
+              <div
+                className="fixed z-[80] w-[min(22rem,calc(100vw-16px))] origin-top-left overflow-hidden rounded-[20px] border border-white/80 bg-white/94 p-4 shadow-[0_18px_50px_rgba(16,24,40,0.16)] backdrop-blur-xl transition duration-200 ease-out"
+                style={{ top: menuCoords.top, left: menuCoords.left }}
+              >
+                <p className="text-[13px] font-semibold tracking-[-0.02em] text-navy">Date Range</p>
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1.5 block text-[12px] font-medium text-slate-500">From</span>
+                    <input
+                      type="date"
+                      value={draft.from}
+                      onChange={(event) => setDraft((current) => ({ ...current, from: event.target.value }))}
+                      className={cn(filterClass, "rounded-[14px] px-3")}
+                    />
+                    <span className="mt-1 block text-[11px] text-slate-400">
+                      {draft.from ? formatSalesDate(draft.from) : "Choose a start date"}
+                    </span>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-[12px] font-medium text-slate-500">To</span>
+                    <input
+                      type="date"
+                      value={draft.to}
+                      onChange={(event) => setDraft((current) => ({ ...current, to: event.target.value }))}
+                      className={cn(filterClass, "rounded-[14px] px-3")}
+                    />
+                    <span className="mt-1 block text-[11px] text-slate-400">
+                      {draft.to ? formatSalesDate(draft.to) : "Choose an end date"}
+                    </span>
+                  </label>
+                </div>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRangeOpen(false)}
+                    className="h-9 rounded-full px-3.5 text-[13px] font-medium text-slate-500 transition duration-200 hover:bg-navy/[0.04] hover:text-navy"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyRange}
+                    className="h-9 rounded-full bg-[#0b2244] px-4 text-[13px] font-semibold text-white transition duration-200 hover:bg-[#102a52]"
+                  >
+                    Apply
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
+}
+
 export function SalesManager() {
-  const [periodId, setPeriodId] = useState<SalesPeriodId>("01-14");
+  const [periodPreset, setPeriodPreset] = useState<SalesPeriodPreset>("today");
+  const [customRange, setCustomRange] = useState<SalesDateRange>({ from: "2026-09-01", to: "2026-09-14" });
   const [cashier, setCashier] = useState("all");
   const [payment, setPayment] = useState<"all" | SalesPayment>("all");
   const [status, setStatus] = useState<"all" | SalesStatus>("all");
@@ -86,29 +324,30 @@ export function SalesManager() {
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [fullDetails, setFullDetails] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const period = useMemo(
+    () => resolveSalesPeriod(periodPreset, customRange),
+    [periodPreset, customRange],
+  );
 
   const filtered = useMemo(
-    () => filterSales(SUPERMARKET_SALES, { periodId, cashier, payment, status, query }),
-    [periodId, cashier, payment, status, query],
+    () =>
+      filterSales(SUPERMARKET_SALES, {
+        start: period.start,
+        end: period.end,
+        cashier,
+        payment,
+        status,
+        query,
+      }),
+    [period.start, period.end, cashier, payment, status, query],
   );
-  const kpis = useMemo(() => {
-    const computed = salesKpis(filtered);
-    const unfiltered =
-      periodId === "01-14" && cashier === "all" && payment === "all" && status === "all" && !query.trim();
-    if (unfiltered) {
-      return {
-        totalSales: SALES_PAGE_KPIS.totalSales,
-        totalTransactions: SALES_PAGE_KPIS.totalTransactions,
-        itemsSold: SALES_PAGE_KPIS.itemsSold,
-        averageSale: SALES_PAGE_KPIS.averageSale,
-      };
-    }
-    return computed;
-  }, [filtered, periodId, cashier, payment, status, query]);
+  const kpis = useMemo(() => salesKpis(filtered), [filtered]);
 
   useEffect(() => {
     setPage(1);
-  }, [periodId, cashier, payment, status, query, pageSize]);
+  }, [period.start, period.end, cashier, payment, status, query, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -128,29 +367,28 @@ export function SalesManager() {
     setMenuId(null);
   }
 
-  function exportCsv() {
-    const header = ["Invoice", "Date", "Time", "Customer", "Cashier", "Items", "Payment", "Amount", "Status"];
-    const rows = filtered.map((sale) => [
-      sale.id,
-      sale.dateLabel,
-      sale.timeLabel,
-      sale.customer,
-      sale.cashier,
-      String(sale.itemsCount),
-      sale.payment,
-      String(sale.amount),
-      sale.status,
-    ]);
-    const csv = [header, ...rows]
-      .map((row) => row.map((value) => `"${value.replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "supermarket-sales.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+  function exportReport() {
+    if (exporting) return;
+    setExporting(true);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        try {
+          downloadSalesReportPdf({
+            sales: filtered,
+            periodLabel: periodPreset === "range" ? "Date Range" : period.label,
+            periodDates:
+              period.start === period.end
+                ? formatSalesDate(period.start)
+                : `${formatSalesDate(period.start)} - ${formatSalesDate(period.end)}`,
+            cashierLabel: cashier === "all" ? "All Cashiers" : cashier,
+            paymentLabel: payment === "all" ? "All Payment Methods" : payment,
+            statusLabel: status === "all" ? "All Status" : status,
+          });
+        } finally {
+          setExporting(false);
+        }
+      });
+    });
   }
 
   function printSale(sale: SupermarketSale) {
@@ -203,17 +441,13 @@ export function SalesManager() {
       </section>
 
       <section className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
-        <select
-          value={periodId}
-          onChange={(event) => setPeriodId(event.target.value as SalesPeriodId)}
-          className={cn(filterClass, "lg:w-auto lg:min-w-[16.5rem]")}
-        >
-          {SALES_PERIODS.map((period) => (
-            <option key={period.id} value={period.id}>
-              {period.label}
-            </option>
-          ))}
-        </select>
+        <PeriodControl
+          preset={periodPreset}
+          label={period.label}
+          range={customRange}
+          onPreset={setPeriodPreset}
+          onRange={setCustomRange}
+        />
         <select
           value={cashier}
           onChange={(event) => setCashier(event.target.value)}
@@ -256,11 +490,12 @@ export function SalesManager() {
         </label>
         <button
           type="button"
-          onClick={exportCsv}
-          className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_8px_18px_rgba(11,34,68,0.18)] transition duration-200 hover:bg-[#102a52]"
+          onClick={exportReport}
+          disabled={exporting}
+          className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_8px_18px_rgba(11,34,68,0.18)] transition duration-200 hover:bg-[#102a52] disabled:opacity-70"
         >
           <Download className="h-4 w-4" strokeWidth={2.1} />
-          Export
+          {exporting ? "Preparing PDF..." : "Export"}
         </button>
       </section>
 

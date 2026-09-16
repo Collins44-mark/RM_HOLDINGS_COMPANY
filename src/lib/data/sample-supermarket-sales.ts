@@ -16,6 +16,8 @@ export const SALES_PERIODS = [
 ] as const;
 
 export type SalesPeriodId = (typeof SALES_PERIODS)[number]["id"];
+export type SalesPeriodPreset = "today" | "yesterday" | "week" | "month" | "range";
+export type SalesDateRange = { from: string; to: string };
 export type SalesPayment = "Cash" | "Mobile Money" | "Card";
 export type SalesStatus = "Completed" | "Refunded";
 
@@ -321,22 +323,104 @@ export function saleDay(iso: string) {
   return iso.slice(0, 10);
 }
 
+export function formatSalesDate(value: string) {
+  const iso = value.includes("T") ? value : `${value}T00:00:00`;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${String(date.getDate()).padStart(2, "0")} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+function formatDay(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function parseDay(day: string) {
+  return new Date(`${day}T00:00:00`);
+}
+
+function shiftDay(day: string, amount: number) {
+  const date = parseDay(day);
+  date.setDate(date.getDate() + amount);
+  return formatDay(date);
+}
+
+function startOfWeek(day: string) {
+  const date = parseDay(day);
+  const weekday = date.getDay();
+  const offset = weekday === 0 ? 6 : weekday - 1;
+  date.setDate(date.getDate() - offset);
+  return formatDay(date);
+}
+
+function endOfWeek(day: string) {
+  const date = parseDay(startOfWeek(day));
+  date.setDate(date.getDate() + 6);
+  return formatDay(date);
+}
+
+function startOfMonth(day: string) {
+  return `${day.slice(0, 7)}-01`;
+}
+
+function endOfMonth(day: string) {
+  const date = parseDay(day);
+  date.setMonth(date.getMonth() + 1, 0);
+  return formatDay(date);
+}
+
+export function mockSalesAsOfDate(sales: SupermarketSale[] = SUPERMARKET_SALES) {
+  return sales.reduce((latest, sale) => {
+    const day = saleDay(sale.soldAt);
+    return day > latest ? day : latest;
+  }, "2026-09-01");
+}
+
+export function resolveSalesPeriod(
+  preset: SalesPeriodPreset,
+  range?: SalesDateRange | null,
+  asOf = mockSalesAsOfDate(),
+) {
+  if (preset === "today") {
+    return { start: asOf, end: asOf, label: "Today" };
+  }
+  if (preset === "yesterday") {
+    const day = shiftDay(asOf, -1);
+    return { start: day, end: day, label: "Yesterday" };
+  }
+  if (preset === "week") {
+    return { start: startOfWeek(asOf), end: endOfWeek(asOf), label: "This Week" };
+  }
+  if (preset === "month") {
+    return { start: startOfMonth(asOf), end: endOfMonth(asOf), label: "This Month" };
+  }
+
+  const from = range?.from || asOf;
+  const to = range?.to || asOf;
+  const start = from <= to ? from : to;
+  const end = from <= to ? to : from;
+  return {
+    start,
+    end,
+    label: `${formatSalesDate(start)} – ${formatSalesDate(end)}`,
+  };
+}
+
 export function filterSales(
   sales: SupermarketSale[],
   filters: {
-    periodId: SalesPeriodId;
+    start: string;
+    end: string;
     cashier: string;
     payment: "all" | SalesPayment;
     status: "all" | SalesStatus;
     query: string;
   },
 ) {
-  const period = SALES_PERIODS.find((item) => item.id === filters.periodId) ?? SALES_PERIODS[0];
   const needle = filters.query.trim().toLowerCase();
 
   return sales.filter((sale) => {
     const day = saleDay(sale.soldAt);
-    if (day < period.start || day > period.end) return false;
+    if (day < filters.start || day > filters.end) return false;
     if (filters.cashier !== "all" && sale.cashier !== filters.cashier) return false;
     if (filters.payment !== "all" && sale.payment !== filters.payment) return false;
     if (filters.status !== "all" && sale.status !== filters.status) return false;
