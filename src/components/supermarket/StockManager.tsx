@@ -663,10 +663,10 @@ export function StockManager() {
         )}
       </section>
 
-      <section className={cn(glass, "overflow-hidden px-4 py-3.5")}>
-        <div className="flex items-end justify-between gap-3">
+      <section className="overflow-hidden rounded-[20px] border border-white/70 bg-white/62 shadow-[0_8px_24px_rgba(15,35,64,0.045),inset_0_1px_0_rgba(255,255,255,0.92)] backdrop-blur-2xl">
+        <div className="flex items-end justify-between gap-3 px-5 pb-1 pt-4 sm:px-6">
           <div>
-            <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Recent Stock Movements</h2>
+            <h2 className="text-[17px] font-semibold tracking-[-0.03em] text-navy">Recent Stock Movements</h2>
             <p className="mt-0.5 text-[12.5px] text-slate-400">Latest inventory activity</p>
           </div>
           <button
@@ -679,22 +679,38 @@ export function StockManager() {
           </button>
         </div>
         {recentMovements.length === 0 ? (
-          <p className="mt-3 text-[13px] text-slate-500">No stock movements recorded yet.</p>
+          <div className="px-5 py-10 text-center sm:px-6">
+            <p className="text-[14px] font-medium text-navy">No stock movements yet</p>
+            <p className="mt-1 text-[12.5px] text-slate-400">Recent inventory activity will appear here.</p>
+          </div>
         ) : (
-          <div className="mt-2 divide-y divide-[#d5dee8]/70">
-            {recentMovements.map((item) => (
-              <div key={item.id} className="grid grid-cols-[1fr_auto] items-center gap-3 py-2 sm:grid-cols-[96px_minmax(0,1.2fr)_minmax(0,1fr)_64px_88px]">
-                <p className="text-[12.5px] text-slate-500">{formatStockDate(item.date)}</p>
-                <p className="min-w-0 truncate text-[13px] font-medium text-navy">{item.productName}</p>
-                <p className="hidden min-w-0 truncate text-[12.5px] text-slate-500 sm:block">
-                  {stockMovementKindLabel(item)}
-                </p>
-                <p className="text-right text-[13px] font-semibold text-navy">
-                  {item.quantity > 0 ? `+${item.quantity}` : item.quantity}
-                </p>
-                <p className="hidden truncate text-right text-[12px] text-slate-400 sm:block">{item.reference}</p>
-              </div>
-            ))}
+          <div className="mt-1 divide-y divide-black/[0.035]">
+            {recentMovements.map((item) => {
+              const kind = String(stockMovementKindLabel(item));
+              const signedQty = item.quantity > 0 ? `+${item.quantity}` : `\u2212${Math.abs(item.quantity)}`;
+              return (
+                <div
+                  key={item.id}
+                  className="grid grid-cols-1 px-5 py-[17px] transition-colors duration-200 hover:bg-white/28 sm:px-6 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_4.75rem_5.75rem] md:items-center md:gap-x-4"
+                >
+                  <div className="min-w-0">
+                    <p className="text-[11.5px] text-slate-400">{formatStockDate(item.date)}</p>
+                    <p className="mt-0.5 truncate text-[14.5px] font-semibold tracking-[-0.02em] text-navy">
+                      {item.productName}
+                    </p>
+                  </div>
+                  <div className="mt-2 flex min-w-0 items-center gap-3 md:mt-0 md:contents">
+                    <span className={cn("inline-flex max-w-full truncate rounded-full px-2 py-0.5 text-[11.5px] font-medium", recentMovementKindClass(kind))}>
+                      {kind}
+                    </span>
+                    <p className="ml-auto shrink-0 text-[14px] font-semibold tabular-nums tracking-[-0.02em] text-navy md:ml-0 md:text-right">
+                      {signedQty}
+                    </p>
+                    <p className="shrink-0 truncate text-[11.5px] text-slate-400 md:text-right">{item.reference}</p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
@@ -779,6 +795,19 @@ export function StockManager() {
       />
     </div>
   );
+}
+
+function recentMovementKindClass(kind: string) {
+  if (kind === "Purchase Received" || kind === "Return" || kind === "Opening Stock") {
+    return "bg-[#eef6f1]/90 text-[#4f7a5e]";
+  }
+  if (kind === "Stock Adjustment" || kind === "Damaged" || kind === "Expired" || kind === "Lost") {
+    return "bg-[#fbf6ea]/90 text-[#8f7544]";
+  }
+  if (kind === "Transfer") {
+    return "bg-[#f3f1f7]/90 text-[#6a657c]";
+  }
+  return "bg-[#eef2f6]/90 text-[#5c6b7a]";
 }
 
 function formatStockDate(value: string | null | undefined) {
