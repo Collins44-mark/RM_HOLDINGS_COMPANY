@@ -89,11 +89,117 @@ export type SalesReportData = {
   discounts: number;
   returnsAmount: number;
   returnsCount: number;
-  paymentBreakdown: { method: string; amount: number; count: number }[];
+  paymentBreakdown: { method: string; amount: number; count: number; percentage: number }[];
   dailySales: { day: string; amount: number; transactions: number }[];
+  trend: { label: string; amount: number; transactions: number }[];
   topProducts: { name: string; quantity: number; revenue: number }[];
+  categories: { category: string; itemsSold: number; revenue: number; percentage: number }[];
   sales: SupermarketSale[];
 };
+
+const PAYMENT_ORDER = ["Cash", "Mobile Money", "Card", "Bank"] as const;
+const WEEKDAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
+
+function productCategoryLookup() {
+  const map = new Map<string, string>();
+  for (const product of SUPERMARKET_SAMPLE_PRODUCTS) {
+    map.set(product.name, product.category);
+  }
+  return map;
+}
+
+function eachDayInclusive(start: string, end: string) {
+  const days: string[] = [];
+  let cursor = start;
+  while (cursor <= end) {
+    days.push(cursor);
+    const date = new Date(`${cursor}T00:00:00`);
+    date.setDate(date.getDate() + 1);
+    cursor = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  }
+  return days;
+}
+
+function buildSalesTrend(
+  sales: SupermarketSale[],
+  preset: SalesPeriodPreset,
+  start: string,
+  end: string,
+): { label: string; amount: number; transactions: number }[] {
+  const byDay = new Map<string, { amount: number; transactions: number }>();
+  for (const sale of sales) {
+    const day = sale.soldAt.slice(0, 10);
+    const row = byDay.get(day) ?? { amount: 0, transactions: 0 };
+    row.amount += saleTotal(sale);
+    row.transactions += 1;
+    byDay.set(day, row);
+  }
+
+  const days = eachDayInclusive(start, end);
+
+  if (preset === "week") {
+    return days.map((day, index) => {
+      const row = byDay.get(day) ?? { amount: 0, transactions: 0 };
+      return {
+        label: WEEKDAY_LABELS[index] ?? formatSalesDate(day),
+        amount: row.amount,
+        transactions: row.transactions,
+      };
+    });
+  }
+
+  if (preset === "today" || preset === "yesterday" || days.length === 1) {
+    const buckets = [
+      { label: "Morning", startHour: 6, endHour: 11 },
+      { label: "Midday", startHour: 11, endHour: 14 },
+      { label: "Afternoon", startHour: 14, endHour: 17 },
+      { label: "Evening", startHour: 17, endHour: 22 },
+    ];
+    return buckets.map((bucket) => {
+      let amount = 0;
+      let transactions = 0;
+      for (const sale of sales) {
+        const hour = new Date(sale.soldAt).getHours();
+        if (hour >= bucket.startHour && hour < bucket.endHour) {
+          amount += saleTotal(sale);
+          transactions += 1;
+        }
+      }
+      return { label: bucket.label, amount, transactions };
+    });
+  }
+
+  if (days.length > 16) {
+    const weekBuckets: { label: string; amount: number; transactions: number }[] = [];
+    for (let i = 0; i < days.length; i += 7) {
+      const slice = days.slice(i, i + 7);
+      let amount = 0;
+      let transactions = 0;
+      for (const day of slice) {
+        const row = byDay.get(day);
+        if (!row) continue;
+        amount += row.amount;
+        transactions += row.transactions;
+      }
+      weekBuckets.push({
+        label: `W${weekBuckets.length + 1}`,
+        amount,
+        transactions,
+      });
+    }
+    return weekBuckets;
+  }
+
+  return days.map((day) => {
+    const row = byDay.get(day) ?? { amount: 0, transactions: 0 };
+    const date = new Date(`${day}T00:00:00`);
+    return {
+      label: `${String(date.getDate()).padStart(2, "0")}`,
+      amount: row.amount,
+      transactions: row.transactions,
+    };
+  });
+}
 
 export function buildSalesReportData(preset: SalesPeriodPreset, range: SalesDateRange): SalesReportData {
   const period = resolveReportPeriod(preset, range);
@@ -115,8 +221,13 @@ export function buildSalesReportData(preset: SalesPeriodPreset, range: SalesDate
   });
 
   const paymentMap = new Map<string, { amount: number; count: number }>();
+  for (const method of PAYMENT_ORDER) {
+    paymentMap.set(method, { amount: 0, count: 0 });
+  }
   const dailyMap = new Map<string, { amount: number; transactions: number }>();
   const productMap = new Map<string, { quantity: number; revenue: number }>();
+  const categoryMap = new Map<string, { itemsSold: number; revenue: number }>();
+  const categoryLookup = productCategoryLookup();
   let discounts = 0;
   let itemsSold = 0;
 
@@ -139,8 +250,17 @@ export function buildSalesReportData(preset: SalesPeriodPreset, range: SalesDate
       product.quantity += line.quantity;
       product.revenue += line.quantity * line.unitPrice;
       productMap.set(line.name, product);
+
+      const categoryName = categoryLookup.get(line.name) ?? "General";
+      const category = categoryMap.get(categoryName) ?? { itemsSold: 0, revenue: 0 };
+      category.itemsSold += line.quantity;
+      category.revenue += line.quantity * line.unitPrice;
+      categoryMap.set(categoryName, category);
     }
   }
+
+  const totalRevenue = sales.reduce((sum, sale) => sum + saleTotal(sale), 0);
+  const categoryRevenueTotal = [...categoryMap.values()].reduce((sum, row) => sum + row.revenue, 0);
 
   return {
     periodLabel: period.label,
@@ -148,22 +268,37 @@ export function buildSalesReportData(preset: SalesPeriodPreset, range: SalesDate
       period.start === period.end
         ? formatSalesDate(period.start)
         : `${formatSalesDate(period.start)} - ${formatSalesDate(period.end)}`,
-    totalRevenue: sales.reduce((sum, sale) => sum + saleTotal(sale), 0),
+    totalRevenue,
     totalTransactions: sales.length,
     itemsSold,
     discounts,
     returnsAmount: returns.reduce((sum, row) => sum + row.amount, 0),
     returnsCount: returns.length,
-    paymentBreakdown: [...paymentMap.entries()]
-      .map(([method, value]) => ({ method, ...value }))
-      .sort((a, b) => b.amount - a.amount),
+    paymentBreakdown: PAYMENT_ORDER.map((method) => {
+      const value = paymentMap.get(method) ?? { amount: 0, count: 0 };
+      return {
+        method,
+        amount: value.amount,
+        count: value.count,
+        percentage: totalRevenue > 0 ? Math.round((value.amount / totalRevenue) * 1000) / 10 : 0,
+      };
+    }),
     dailySales: [...dailyMap.entries()]
       .map(([day, value]) => ({ day, ...value }))
       .slice(0, 14),
+    trend: buildSalesTrend(sales, preset, period.start, period.end),
     topProducts: [...productMap.entries()]
       .map(([name, value]) => ({ name, ...value }))
       .sort((a, b) => b.quantity - a.quantity)
       .slice(0, 8),
+    categories: [...categoryMap.entries()]
+      .map(([category, value]) => ({
+        category,
+        itemsSold: value.itemsSold,
+        revenue: value.revenue,
+        percentage: categoryRevenueTotal > 0 ? Math.round((value.revenue / categoryRevenueTotal) * 1000) / 10 : 0,
+      }))
+      .sort((a, b) => b.revenue - a.revenue),
     sales,
   };
 }
