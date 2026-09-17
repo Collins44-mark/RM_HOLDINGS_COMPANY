@@ -115,11 +115,12 @@ export const SUPERMARKET_NAV: NavItem[] = [
     icon: "wallet",
   },
   {
-    href: "/supermarket/expenses",
+    href: "/supermarket/finance",
     label: "Finance",
     icon: "finance",
     exact: true,
     children: [
+      { href: "/supermarket/finance", label: "Overview", icon: "finance", exact: true },
       { href: "/supermarket/expenses", label: "Expenses", icon: "wallet" },
       { href: "/supermarket/payments", label: "Payments", icon: "money" },
     ],
