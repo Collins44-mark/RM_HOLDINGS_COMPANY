@@ -5,9 +5,9 @@ import { SUPERMARKET_SAMPLE_PRODUCTS } from "@/lib/data/supermarket-inventory";
 import {
   FINANCE_SUPPLIER,
   getSupermarketFinanceSummary,
-  getProductProfitRows,
   recordedExpenseTotal,
   getFinanceActivitySnapshot,
+  filterMockExpenses,
 } from "@/lib/data/sample-supermarket-finance";
 import {
   SUPERMARKET_SALES,
@@ -30,22 +30,22 @@ export const REPORT_KIND_META: Record<
 > = {
   sales: {
     title: "Sales Report",
-    description: "Sales performance, revenue, transactions and payment methods.",
+    description: "Sales performance and transactions.",
     href: "/supermarket/reports/sales",
   },
   inventory: {
     title: "Inventory Report",
-    description: "Current stock, stock value, movements and low-stock items.",
+    description: "Stock levels and inventory value.",
     href: "/supermarket/reports/inventory",
   },
   purchases: {
     title: "Purchase Report",
-    description: "Purchases, suppliers, received stock and supplier payments.",
+    description: "Purchases and supplier payments.",
     href: "/supermarket/reports/purchases",
   },
   "profit-loss": {
     title: "Profit & Loss",
-    description: "Revenue, product profit, operating expenses and net profit.",
+    description: "Revenue, expenses and net profit.",
     href: "/supermarket/reports/profit-loss",
   },
 };
@@ -80,6 +80,20 @@ export function resolveReportPeriod(preset: SalesPeriodPreset, range: SalesDateR
   return resolveSalesPeriod(preset, range, REPORT_AS_OF);
 }
 
+function periodMeta(preset: SalesPeriodPreset, range: SalesDateRange) {
+  const period = resolveReportPeriod(preset, range);
+  return {
+    period,
+    periodLabel: period.label,
+    periodDates:
+      period.start === period.end
+        ? formatSalesDate(period.start)
+        : `${formatSalesDate(period.start)} - ${formatSalesDate(period.end)}`,
+  };
+}
+
+const PAYMENT_ORDER = ["Cash", "Mobile Money", "Card", "Bank"] as const;
+
 export type SalesReportData = {
   periodLabel: string;
   periodDates: string;
@@ -91,118 +105,12 @@ export type SalesReportData = {
   returnsCount: number;
   paymentBreakdown: { method: string; amount: number; count: number; percentage: number }[];
   dailySales: { day: string; amount: number; transactions: number }[];
-  trend: { label: string; amount: number; transactions: number }[];
   topProducts: { name: string; quantity: number; revenue: number }[];
-  categories: { category: string; itemsSold: number; revenue: number; percentage: number }[];
   sales: SupermarketSale[];
 };
 
-const PAYMENT_ORDER = ["Cash", "Mobile Money", "Card", "Bank"] as const;
-const WEEKDAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
-
-function productCategoryLookup() {
-  const map = new Map<string, string>();
-  for (const product of SUPERMARKET_SAMPLE_PRODUCTS) {
-    map.set(product.name, product.category);
-  }
-  return map;
-}
-
-function eachDayInclusive(start: string, end: string) {
-  const days: string[] = [];
-  let cursor = start;
-  while (cursor <= end) {
-    days.push(cursor);
-    const date = new Date(`${cursor}T00:00:00`);
-    date.setDate(date.getDate() + 1);
-    cursor = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-  }
-  return days;
-}
-
-function buildSalesTrend(
-  sales: SupermarketSale[],
-  preset: SalesPeriodPreset,
-  start: string,
-  end: string,
-): { label: string; amount: number; transactions: number }[] {
-  const byDay = new Map<string, { amount: number; transactions: number }>();
-  for (const sale of sales) {
-    const day = sale.soldAt.slice(0, 10);
-    const row = byDay.get(day) ?? { amount: 0, transactions: 0 };
-    row.amount += saleTotal(sale);
-    row.transactions += 1;
-    byDay.set(day, row);
-  }
-
-  const days = eachDayInclusive(start, end);
-
-  if (preset === "week") {
-    return days.map((day, index) => {
-      const row = byDay.get(day) ?? { amount: 0, transactions: 0 };
-      return {
-        label: WEEKDAY_LABELS[index] ?? formatSalesDate(day),
-        amount: row.amount,
-        transactions: row.transactions,
-      };
-    });
-  }
-
-  if (preset === "today" || preset === "yesterday" || days.length === 1) {
-    const buckets = [
-      { label: "Morning", startHour: 6, endHour: 11 },
-      { label: "Midday", startHour: 11, endHour: 14 },
-      { label: "Afternoon", startHour: 14, endHour: 17 },
-      { label: "Evening", startHour: 17, endHour: 22 },
-    ];
-    return buckets.map((bucket) => {
-      let amount = 0;
-      let transactions = 0;
-      for (const sale of sales) {
-        const hour = new Date(sale.soldAt).getHours();
-        if (hour >= bucket.startHour && hour < bucket.endHour) {
-          amount += saleTotal(sale);
-          transactions += 1;
-        }
-      }
-      return { label: bucket.label, amount, transactions };
-    });
-  }
-
-  if (days.length > 16) {
-    const weekBuckets: { label: string; amount: number; transactions: number }[] = [];
-    for (let i = 0; i < days.length; i += 7) {
-      const slice = days.slice(i, i + 7);
-      let amount = 0;
-      let transactions = 0;
-      for (const day of slice) {
-        const row = byDay.get(day);
-        if (!row) continue;
-        amount += row.amount;
-        transactions += row.transactions;
-      }
-      weekBuckets.push({
-        label: `W${weekBuckets.length + 1}`,
-        amount,
-        transactions,
-      });
-    }
-    return weekBuckets;
-  }
-
-  return days.map((day) => {
-    const row = byDay.get(day) ?? { amount: 0, transactions: 0 };
-    const date = new Date(`${day}T00:00:00`);
-    return {
-      label: `${String(date.getDate()).padStart(2, "0")}`,
-      amount: row.amount,
-      transactions: row.transactions,
-    };
-  });
-}
-
 export function buildSalesReportData(preset: SalesPeriodPreset, range: SalesDateRange): SalesReportData {
-  const period = resolveReportPeriod(preset, range);
+  const { period, periodLabel, periodDates } = periodMeta(preset, range);
   const sales = filterSales(SUPERMARKET_SALES, {
     start: period.start,
     end: period.end,
@@ -221,13 +129,9 @@ export function buildSalesReportData(preset: SalesPeriodPreset, range: SalesDate
   });
 
   const paymentMap = new Map<string, { amount: number; count: number }>();
-  for (const method of PAYMENT_ORDER) {
-    paymentMap.set(method, { amount: 0, count: 0 });
-  }
+  for (const method of PAYMENT_ORDER) paymentMap.set(method, { amount: 0, count: 0 });
   const dailyMap = new Map<string, { amount: number; transactions: number }>();
   const productMap = new Map<string, { quantity: number; revenue: number }>();
-  const categoryMap = new Map<string, { itemsSold: number; revenue: number }>();
-  const categoryLookup = productCategoryLookup();
   let discounts = 0;
   let itemsSold = 0;
 
@@ -239,35 +143,24 @@ export function buildSalesReportData(preset: SalesPeriodPreset, range: SalesDate
     pay.count += 1;
     paymentMap.set(sale.payment, pay);
 
-    const day = sale.dateLabel;
-    const daily = dailyMap.get(day) ?? { amount: 0, transactions: 0 };
+    const daily = dailyMap.get(sale.dateLabel) ?? { amount: 0, transactions: 0 };
     daily.amount += saleTotal(sale);
     daily.transactions += 1;
-    dailyMap.set(day, daily);
+    dailyMap.set(sale.dateLabel, daily);
 
     for (const line of sale.lines) {
       const product = productMap.get(line.name) ?? { quantity: 0, revenue: 0 };
       product.quantity += line.quantity;
       product.revenue += line.quantity * line.unitPrice;
       productMap.set(line.name, product);
-
-      const categoryName = categoryLookup.get(line.name) ?? "General";
-      const category = categoryMap.get(categoryName) ?? { itemsSold: 0, revenue: 0 };
-      category.itemsSold += line.quantity;
-      category.revenue += line.quantity * line.unitPrice;
-      categoryMap.set(categoryName, category);
     }
   }
 
   const totalRevenue = sales.reduce((sum, sale) => sum + saleTotal(sale), 0);
-  const categoryRevenueTotal = [...categoryMap.values()].reduce((sum, row) => sum + row.revenue, 0);
 
   return {
-    periodLabel: period.label,
-    periodDates:
-      period.start === period.end
-        ? formatSalesDate(period.start)
-        : `${formatSalesDate(period.start)} - ${formatSalesDate(period.end)}`,
+    periodLabel,
+    periodDates,
     totalRevenue,
     totalTransactions: sales.length,
     itemsSold,
@@ -283,22 +176,11 @@ export function buildSalesReportData(preset: SalesPeriodPreset, range: SalesDate
         percentage: totalRevenue > 0 ? Math.round((value.amount / totalRevenue) * 1000) / 10 : 0,
       };
     }),
-    dailySales: [...dailyMap.entries()]
-      .map(([day, value]) => ({ day, ...value }))
-      .slice(0, 14),
-    trend: buildSalesTrend(sales, preset, period.start, period.end),
+    dailySales: [...dailyMap.entries()].map(([day, value]) => ({ day, ...value })).slice(0, 14),
     topProducts: [...productMap.entries()]
       .map(([name, value]) => ({ name, ...value }))
       .sort((a, b) => b.quantity - a.quantity)
-      .slice(0, 8),
-    categories: [...categoryMap.entries()]
-      .map(([category, value]) => ({
-        category,
-        itemsSold: value.itemsSold,
-        revenue: value.revenue,
-        percentage: categoryRevenueTotal > 0 ? Math.round((value.revenue / categoryRevenueTotal) * 1000) / 10 : 0,
-      }))
-      .sort((a, b) => b.revenue - a.revenue),
+      .slice(0, 5),
     sales,
   };
 }
@@ -313,13 +195,20 @@ export type InventoryReportData = {
   lowStock: number;
   outOfStock: number;
   movements: { label: string; count: number }[];
-  lowStockProducts: { name: string; sku: string; stock: number; reorderLevel: number; value: number }[];
+  lowStockProducts: {
+    name: string;
+    sku: string;
+    stock: number;
+    reorderLevel: number;
+    value: number;
+    status: string;
+  }[];
+  valuation: { name: string; quantity: number; buyingPrice: number; stockValue: number }[];
 };
 
-export function buildInventoryReportData(preset: SalesPeriodPreset, range: SalesDateRange): InventoryReportData {
-  const period = resolveReportPeriod(preset, range);
+function inventoryRows() {
   const products = SUPERMARKET_SAMPLE_PRODUCTS.filter((item) => item.isActive !== false);
-  const rows = products.map((product, index) => {
+  return products.map((product, index) => {
     const stock =
       product.reorderLevel > 0
         ? Math.max(0, product.reorderLevel + ((index * 7) % 25) - 4)
@@ -335,24 +224,31 @@ export function buildInventoryReportData(preset: SalesPeriodPreset, range: Sales
       value: stock * product.buyingPrice,
     };
   });
+}
 
+export function buildInventoryReportData(preset: SalesPeriodPreset, range: SalesDateRange): InventoryReportData {
+  const { periodLabel, periodDates } = periodMeta(preset, range);
+  const rows = inventoryRows();
   const lowStockProducts = rows
     .filter((item) => item.status === "Low Stock" || item.status === "Out of Stock")
     .sort((a, b) => a.stock - b.stock)
     .slice(0, 12)
-    .map(({ name, sku, stock, reorderLevel, value }) => ({ name, sku, stock, reorderLevel, value }));
+    .map(({ name, sku, stock, reorderLevel, value, status }) => ({
+      name,
+      sku,
+      stock,
+      reorderLevel,
+      value,
+      status,
+    }));
 
   return {
-    periodLabel: period.label,
-    periodDates:
-      period.start === period.end
-        ? formatSalesDate(period.start)
-        : `${formatSalesDate(period.start)} - ${formatSalesDate(period.end)}`,
+    periodLabel,
+    periodDates,
     totalProducts: rows.length,
     totalStockUnits: rows.reduce((sum, item) => sum + item.stock, 0),
     totalInventoryValue:
-      SUPERMARKET_SAMPLE.kpis.inventoryValue ||
-      rows.reduce((sum, item) => sum + item.value, 0),
+      SUPERMARKET_SAMPLE.kpis.inventoryValue || rows.reduce((sum, item) => sum + item.value, 0),
     inStock: rows.filter((item) => item.status === "In Stock").length,
     lowStock: rows.filter((item) => item.status === "Low Stock").length,
     outOfStock: rows.filter((item) => item.status === "Out of Stock").length,
@@ -364,6 +260,16 @@ export function buildInventoryReportData(preset: SalesPeriodPreset, range: Sales
       { label: "Transferred", count: 3 },
     ],
     lowStockProducts,
+    valuation: rows
+      .slice()
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 12)
+      .map((row) => ({
+        name: row.name,
+        quantity: row.stock,
+        buyingPrice: row.buyingPrice,
+        stockValue: row.value,
+      })),
   };
 }
 
@@ -372,10 +278,19 @@ export type PurchaseReportData = {
   periodDates: string;
   totalPurchases: number;
   purchaseCount: number;
+  itemsPurchased: number;
   supplierCount: number;
   amountPaid: number;
   outstanding: number;
-  purchases: { number: string; supplier: string; date: string; amount: number; paymentStatus: string }[];
+  purchases: {
+    number: string;
+    supplier: string;
+    date: string;
+    items: number;
+    amount: number;
+    paymentStatus: string;
+    status: string;
+  }[];
   suppliers: { name: string; purchases: number; paid: number; outstanding: number }[];
 };
 
@@ -384,7 +299,7 @@ function purchaseDay(iso: string) {
 }
 
 export function buildPurchaseReportData(preset: SalesPeriodPreset, range: SalesDateRange): PurchaseReportData {
-  const period = resolveReportPeriod(preset, range);
+  const { period, periodLabel, periodDates } = periodMeta(preset, range);
   const purchases = seedPurchases().filter((item) => {
     const day = purchaseDay(item.receivedAt);
     return day >= period.start && day <= period.end;
@@ -398,10 +313,7 @@ export function buildPurchaseReportData(preset: SalesPeriodPreset, range: SalesD
     return sum;
   }, 0);
 
-  const outstanding = Math.max(
-    0,
-    FINANCE_SUPPLIER.totalPurchases - FINANCE_SUPPLIER.totalPaid,
-  );
+  const outstanding = Math.max(0, FINANCE_SUPPLIER.totalPurchases - FINANCE_SUPPLIER.totalPaid);
 
   const supplierRows = suppliers.map((supplier) => {
     const rows = allPurchases.filter((item) => item.supplierId === supplier.id);
@@ -420,13 +332,11 @@ export function buildPurchaseReportData(preset: SalesPeriodPreset, range: SalesD
   });
 
   return {
-    periodLabel: period.label,
-    periodDates:
-      period.start === period.end
-        ? formatSalesDate(period.start)
-        : `${formatSalesDate(period.start)} - ${formatSalesDate(period.end)}`,
+    periodLabel,
+    periodDates,
     totalPurchases: purchases.reduce((sum, item) => sum + item.totalCost, 0),
     purchaseCount: purchases.length,
+    itemsPurchased: purchases.reduce((sum, item) => sum + item.itemCount, 0),
     supplierCount: suppliers.length,
     amountPaid,
     outstanding,
@@ -434,8 +344,10 @@ export function buildPurchaseReportData(preset: SalesPeriodPreset, range: SalesD
       number: item.number,
       supplier: item.supplierName,
       date: formatSalesDate(item.receivedAt),
+      items: item.itemCount,
       amount: item.totalCost,
       paymentStatus: item.paymentStatus,
+      status: item.status,
     })),
     suppliers: supplierRows.filter((item) => item.purchases > 0).sort((a, b) => b.purchases - a.purchases),
   };
@@ -445,38 +357,69 @@ export type ProfitLossReportData = {
   periodLabel: string;
   periodDates: string;
   revenue: number;
-  productProfit: number;
+  costOfGoodsSold: number;
+  grossProfit: number;
   operatingExpenses: number;
   netProfit: number;
+  grossMargin: number;
+  netMargin: number;
+  /** Kept for PDF backwards compatibility */
+  productProfit: number;
   topProducts: { name: string; unitsSold: number; productProfit: number }[];
+  expenses: { category: string; description: string; amount: number }[];
 };
 
 export function buildProfitLossReportData(preset: SalesPeriodPreset, range: SalesDateRange): ProfitLossReportData {
-  const period = resolveReportPeriod(preset, range);
+  const { period, periodLabel, periodDates } = periodMeta(preset, range);
   const activity = getFinanceActivitySnapshot();
   const expensesOverride = recordedExpenseTotal(activity.expenses);
   const summary = getSupermarketFinanceSummary(preset, range, expensesOverride);
-  const products = getProductProfitRows()
-    .slice()
-    .sort((a, b) => b.productProfit - a.productProfit)
-    .slice(0, 8)
-    .map((row) => ({
-      name: row.product,
-      unitsSold: row.unitsSold,
-      productProfit: row.productProfit,
-    }));
+  const revenue = summary.revenue;
+  const grossProfit = summary.productProfit;
+  const costOfGoodsSold = Math.max(0, revenue - grossProfit);
+  const operatingExpenses = summary.expenses;
+  const netProfit = summary.netProfit;
+
+  const expenses = filterMockExpenses(activity.expenses, {
+    start: period.start,
+    end: period.end,
+    category: "all",
+    paymentMethod: "all",
+    query: "",
+  }).map((item) => ({
+    category: item.category,
+    description: item.name || item.note || item.category,
+    amount: item.amount,
+  }));
+
+  const fallbackExpenses =
+    expenses.length > 0
+      ? expenses
+      : [
+          { category: "Rent", description: "Shop rent", amount: Math.round(operatingExpenses * 0.35) },
+          { category: "Utilities", description: "Electricity and water", amount: Math.round(operatingExpenses * 0.18) },
+          { category: "Transport", description: "Delivery and logistics", amount: Math.round(operatingExpenses * 0.12) },
+          { category: "Salaries", description: "Staff salaries", amount: Math.round(operatingExpenses * 0.28) },
+          {
+            category: "Other Operating Expenses",
+            description: "Miscellaneous operating costs",
+            amount: Math.max(0, operatingExpenses - Math.round(operatingExpenses * 0.93)),
+          },
+        ];
 
   return {
-    periodLabel: period.label,
-    periodDates:
-      period.start === period.end
-        ? formatSalesDate(period.start)
-        : `${formatSalesDate(period.start)} - ${formatSalesDate(period.end)}`,
-    revenue: summary.revenue,
-    productProfit: summary.productProfit,
-    operatingExpenses: summary.expenses,
-    netProfit: summary.netProfit,
-    topProducts: products,
+    periodLabel,
+    periodDates,
+    revenue,
+    costOfGoodsSold,
+    grossProfit,
+    operatingExpenses,
+    netProfit,
+    grossMargin: revenue > 0 ? Math.round((grossProfit / revenue) * 1000) / 10 : 0,
+    netMargin: revenue > 0 ? Math.round((netProfit / revenue) * 1000) / 10 : 0,
+    productProfit: grossProfit,
+    topProducts: [],
+    expenses: fallbackExpenses,
   };
 }
 

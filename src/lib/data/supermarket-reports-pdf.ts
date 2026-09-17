@@ -213,31 +213,49 @@ function renderInventoryPdf(data: InventoryReportData) {
     ...kpiCard(MARGIN + 132, PAGE_H - 180, "Stock Units", String(data.totalStockUnits), "0.957 0.945 0.996"),
     ...kpiCard(MARGIN + 264, PAGE_H - 180, "Inventory Value", formatTzs(data.totalInventoryValue), "0.933 0.980 0.949"),
     ...kpiCard(MARGIN + 396, PAGE_H - 180, "Low Stock", String(data.lowStock), "1 0.973 0.918"),
-    text("F2", 11, MARGIN, PAGE_H - 220, "Stock Status"),
-    text("F1", 9, MARGIN, PAGE_H - 238, `In Stock: ${data.inStock}`),
-    text("F1", 9, MARGIN + 140, PAGE_H - 238, `Low Stock: ${data.lowStock}`),
-    text("F1", 9, MARGIN + 280, PAGE_H - 238, `Out of Stock: ${data.outOfStock}`),
-    text("F2", 11, MARGIN, PAGE_H - 268, "Stock Movement Summary"),
+    text("F2", 11, MARGIN, PAGE_H - 220, "Stock Movement"),
   ];
-  let y = PAGE_H - 286;
+  let y = PAGE_H - 238;
   for (const row of data.movements) {
     page.push(text("F1", 9, MARGIN, y, row.label), text("F2", 9, MARGIN + 200, y, String(row.count)));
     y -= 15;
   }
   y -= 12;
-  page.push(text("F2", 11, MARGIN, y, "Low-stock Products"));
+  page.push(text("F2", 11, MARGIN, y, "Low Stock Products"));
   y -= 18;
   for (const row of data.lowStockProducts) {
     if (y < 90) {
       pages.push(page);
-      page = [...header("Inventory Report"), text("F2", 11, MARGIN, PAGE_H - 96, "Low-stock Products (continued)")];
+      page = [...header("Inventory Report"), text("F2", 11, MARGIN, PAGE_H - 96, "Low Stock Products (continued)")];
+      y = PAGE_H - 120;
+    }
+    page.push(
+      text("F1", 9, MARGIN, y, clip(row.name, 22)),
+      text("F1", 9, MARGIN + 170, y, `Qty ${row.stock}`),
+      text("F1", 8, MARGIN + 240, y, row.status),
+      text("F2", 9, MARGIN + 340, y, formatTzs(row.value)),
+    );
+    y -= 15;
+  }
+  y -= 12;
+  if (y < 140) {
+    pages.push(page);
+    page = [...header("Inventory Report")];
+    y = PAGE_H - 100;
+  }
+  page.push(text("F2", 11, MARGIN, y, "Inventory Valuation"));
+  y -= 18;
+  for (const row of data.valuation) {
+    if (y < 90) {
+      pages.push(page);
+      page = [...header("Inventory Report"), text("F2", 11, MARGIN, PAGE_H - 96, "Inventory Valuation (continued)")];
       y = PAGE_H - 120;
     }
     page.push(
       text("F1", 9, MARGIN, y, clip(row.name, 24)),
-      text("F1", 8, MARGIN + 180, y, row.sku),
-      text("F1", 9, MARGIN + 280, y, `Qty ${row.stock}`),
-      text("F2", 9, MARGIN + 360, y, formatTzs(row.value)),
+      text("F1", 9, MARGIN + 190, y, String(row.quantity)),
+      text("F1", 8, MARGIN + 250, y, formatTzs(row.buyingPrice)),
+      text("F2", 9, MARGIN + 360, y, formatTzs(row.stockValue)),
     );
     y -= 15;
   }
@@ -303,23 +321,29 @@ function renderProfitLossPdf(data: ProfitLossReportData) {
   const page: string[] = [
     ...header("Profit & Loss"),
     ...metaBlock(data.periodLabel, data.periodDates, generated),
-    text("F1", 10, MARGIN, PAGE_H - 140, "Simple supermarket profit summary"),
-    text("F1", 9, MARGIN, PAGE_H - 158, "Product Profit = (Selling Price - Buying Price) x Quantity Sold"),
-    text("F1", 9, MARGIN, PAGE_H - 174, "Net Profit = Product Profit - Operating Expenses"),
-    ...kpiCard(MARGIN, PAGE_H - 250, "Revenue", formatTzs(data.revenue), "0.933 0.961 0.996"),
-    ...kpiCard(MARGIN + 132, PAGE_H - 250, "Product Profit", formatTzs(data.productProfit), "0.957 0.945 0.996"),
-    ...kpiCard(MARGIN + 264, PAGE_H - 250, "Expenses", formatTzs(data.operatingExpenses), "1 0.945 0.945"),
-    ...kpiCard(MARGIN + 396, PAGE_H - 250, "Net Profit", formatTzs(data.netProfit), "0.933 0.980 0.949"),
-    text("F2", 11, MARGIN, PAGE_H - 290, "Top Product Contribution"),
+    text("F2", 11, MARGIN, PAGE_H - 140, "Profit & Loss Summary"),
+    text("F1", 10, MARGIN, PAGE_H - 164, "Revenue"),
+    text("F2", 10, MARGIN + 280, PAGE_H - 164, formatTzs(data.revenue)),
+    text("F1", 10, MARGIN, PAGE_H - 182, "Cost of Goods Sold"),
+    text("F1", 10, MARGIN + 280, PAGE_H - 182, `- ${formatTzs(data.costOfGoodsSold)}`),
+    text("F2", 10, MARGIN, PAGE_H - 204, "Gross Profit"),
+    text("F2", 10, MARGIN + 280, PAGE_H - 204, formatTzs(data.grossProfit)),
+    text("F1", 10, MARGIN, PAGE_H - 222, "Operating Expenses"),
+    text("F1", 10, MARGIN + 280, PAGE_H - 222, `- ${formatTzs(data.operatingExpenses)}`),
+    text("F2", 11, MARGIN, PAGE_H - 248, "Net Profit"),
+    text("F2", 11, MARGIN + 280, PAGE_H - 248, formatTzs(data.netProfit)),
+    text("F1", 9, MARGIN, PAGE_H - 278, `Gross Margin: ${data.grossMargin}%`),
+    text("F1", 9, MARGIN + 180, PAGE_H - 278, `Net Margin: ${data.netMargin}%`),
+    text("F2", 11, MARGIN, PAGE_H - 310, "Operating Expenses"),
   ];
-  let y = PAGE_H - 310;
-  for (const row of data.topProducts) {
+  let y = PAGE_H - 330;
+  for (const row of data.expenses) {
     page.push(
-      text("F1", 9, MARGIN, y, clip(row.name, 28)),
-      text("F1", 9, MARGIN + 220, y, `${row.unitsSold} sold`),
-      text("F2", 9, MARGIN + 320, y, formatTzs(row.productProfit)),
+      text("F1", 9, MARGIN, y, clip(row.category, 18)),
+      text("F1", 8, MARGIN + 140, y, clip(row.description, 28)),
+      text("F2", 9, MARGIN + 360, y, formatTzs(row.amount)),
     );
-    y -= 16;
+    y -= 15;
   }
   return buildPdf([[...page, ...footer(1, 1)].join("\n")]);
 }
