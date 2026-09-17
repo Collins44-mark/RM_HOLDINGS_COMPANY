@@ -142,8 +142,8 @@ export function ReturnsManager() {
   const [method, setMethod] = useState<"all" | ReturnRefundMethod>("all");
   const [status, setStatus] = useState<"all" | ReturnStatus>("all");
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(SUPERMARKET_RETURNS[0]?.id ?? null);
-  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [invoiceQuery, setInvoiceQuery] = useState("");
   const [selectedSale, setSelectedSale] = useState<SupermarketSale | null>(null);
@@ -170,7 +170,7 @@ export function ReturnsManager() {
     [returns, period.start, period.end, cashier, method, status, query],
   );
   const kpis = useMemo(() => returnKpis(filtered), [filtered]);
-  const selected = filtered.find((row) => row.id === selectedId) ?? filtered[0] ?? null;
+  const selected = selectedId ? filtered.find((row) => row.id === selectedId) ?? null : null;
   const selectedSaleRecord = selected ? SUPERMARKET_SALES.find((sale) => sale.id === selected.invoiceId) ?? null : null;
   const invoiceMatches = useMemo(() => searchSalesInvoices(invoiceQuery), [invoiceQuery]);
   const selectedItems = draft.filter((line) => line.quantity > 0);
@@ -189,6 +189,24 @@ export function ReturnsManager() {
       )
     : null;
   const saleLabel = selectedSale ? invoiceReturnLabel(selectedSale, returns) : null;
+
+  useEffect(() => {
+    if (selectedId && !filtered.some((row) => row.id === selectedId)) {
+      setSelectedId(null);
+      setDetailsOpen(false);
+    }
+  }, [filtered, selectedId]);
+
+  function openReturn(id: string) {
+    setSelectedId(id);
+    setDetailsOpen(true);
+    setMenuId(null);
+  }
+
+  function closeReturn() {
+    setDetailsOpen(false);
+    setSelectedId(null);
+  }
 
   function printReturn(row: SupermarketReturn) {
     const sale = SUPERMARKET_SALES.find((item) => item.id === row.invoiceId) ?? null;
@@ -362,8 +380,7 @@ export function ReturnsManager() {
         onPrint={() => printReturn(completed)}
         onView={() => {
           setView("list");
-          setSelectedId(completed.id);
-          setDetailsOpen(true);
+          openReturn(completed.id);
         }}
         onNew={openWizard}
       />
@@ -450,7 +467,7 @@ export function ReturnsManager() {
       <section
         className={cn(
           "grid min-w-0 grid-cols-1 items-stretch gap-2.5 sm:gap-3",
-          detailsOpen && selected ? "xl:grid-cols-[minmax(0,1.72fr)_minmax(280px,0.28fr)]" : "xl:grid-cols-1",
+          detailsOpen && selected ? "2xl:grid-cols-[minmax(0,1fr)_minmax(380px,420px)]" : "2xl:grid-cols-1",
         )}
       >
         <article className={cn(glass, "flex min-h-[min(560px,65vh)] min-w-0 flex-col overflow-hidden")}>
@@ -470,7 +487,7 @@ export function ReturnsManager() {
             </div>
           ) : (
             <>
-              <div className="hidden min-w-0 flex-1 overflow-x-auto xl:block">
+              <div className="hidden min-w-0 flex-1 overflow-x-auto 2xl:block">
                 <table className="w-full min-w-[860px] text-left text-[13px]">
                   <thead className={tableHead}>
                     <tr className="border-b border-[#d5dee8]/70">
@@ -497,10 +514,7 @@ export function ReturnsManager() {
                         <td className="px-4 py-3">
                           <button
                             type="button"
-                            onClick={() => {
-                              setSelectedId(row.id);
-                              setDetailsOpen(true);
-                            }}
+                            onClick={() => openReturn(row.id)}
                             className="font-semibold text-[#2f6fdb] transition duration-200 hover:text-[#1f5cc4]"
                           >
                             #{row.id}
@@ -528,10 +542,7 @@ export function ReturnsManager() {
                             open={menuId === row.id}
                             onToggle={() => setMenuId((current) => (current === row.id ? null : row.id))}
                             onClose={() => setMenuId(null)}
-                            onView={() => {
-                              setSelectedId(row.id);
-                              setDetailsOpen(true);
-                            }}
+                            onView={() => openReturn(row.id)}
                             onPrint={() => printReturn(row)}
                           />
                         </td>
@@ -541,15 +552,57 @@ export function ReturnsManager() {
                 </table>
               </div>
 
-              <div className="space-y-2 px-3 pb-4 xl:hidden">
+              <div className="hidden min-w-0 flex-1 overflow-x-auto md:block 2xl:hidden">
+                <table className="w-full min-w-[560px] text-left text-[13px]">
+                  <thead className={tableHead}>
+                    <tr className="border-b border-[#d5dee8]/70">
+                      <th className="px-4 py-3 font-medium">Return #</th>
+                      <th className="px-3 py-3 font-medium">Invoice</th>
+                      <th className="px-3 py-3 font-medium">Amount</th>
+                      <th className="px-3 py-3 font-medium">Status</th>
+                      <th className="px-4 py-3 font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((row) => (
+                      <tr key={row.id} className="border-t border-[#d5dee8]/55">
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={() => openReturn(row.id)}
+                            className="font-semibold text-[#2f6fdb]"
+                          >
+                            #{row.id}
+                          </button>
+                          <p className="mt-0.5 text-[12px] text-slate-400">{row.customer}</p>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 text-slate-500">#{row.invoiceId}</td>
+                        <td className="px-3 py-3 font-semibold text-navy">{formatTzs(row.amount)}</td>
+                        <td className="px-3 py-3">
+                          <StatusPill value={row.status} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <RowActions
+                            id={row.id}
+                            open={menuId === row.id}
+                            onToggle={() => setMenuId((current) => (current === row.id ? null : row.id))}
+                            onClose={() => setMenuId(null)}
+                            onView={() => openReturn(row.id)}
+                            onPrint={() => printReturn(row)}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="space-y-2 px-3 pb-4 md:hidden">
                 {filtered.map((row) => (
                   <button
                     key={row.id}
                     type="button"
-                    onClick={() => {
-                      setSelectedId(row.id);
-                      setDetailsOpen(true);
-                    }}
+                    onClick={() => openReturn(row.id)}
                     className={cn(
                       "w-full rounded-[18px] border border-[#e6edf4] bg-white p-3.5 text-left shadow-[0_8px_18px_rgba(15,35,64,0.035)]",
                       selected?.id === row.id && "ring-1 ring-navy/10",
@@ -579,15 +632,15 @@ export function ReturnsManager() {
           <>
             <button
               type="button"
-              className="fixed inset-0 z-[55] bg-navy/20 backdrop-blur-sm xl:hidden"
+              className="fixed inset-0 z-[55] bg-navy/20 backdrop-blur-sm 2xl:hidden"
               aria-label="Close return details"
-              onClick={() => setDetailsOpen(false)}
+              onClick={closeReturn}
             />
             <ReturnDetails
               row={selected}
               sale={selectedSaleRecord}
               movements={movements.filter((item) => item.returnId === selected.id)}
-              onClose={() => setDetailsOpen(false)}
+              onClose={closeReturn}
               onPrint={() => printReturn(selected)}
             />
           </>
@@ -993,73 +1046,122 @@ function ReturnDetails({
   onPrint: () => void;
 }) {
   return (
-    <aside className={cn(glass, "flex min-h-[min(560px,65vh)] min-w-0 flex-col overflow-y-auto p-4 sm:p-5 max-xl:fixed max-xl:inset-x-3 max-xl:bottom-3 max-xl:top-20 max-xl:z-[60] xl:relative")}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
+    <aside
+      className={cn(
+        glass,
+        "flex max-h-[100dvh] min-h-0 min-w-0 flex-col overflow-hidden",
+        "max-2xl:fixed max-2xl:inset-x-3 max-2xl:bottom-3 max-2xl:top-[4.75rem] max-2xl:z-[60] max-2xl:mx-auto max-2xl:w-auto max-2xl:max-w-[min(48rem,calc(100vw-1.5rem))]",
+        "sm:max-2xl:inset-x-4 md:max-2xl:inset-x-6",
+        "2xl:relative 2xl:min-h-[min(560px,68vh)] 2xl:max-w-none",
+      )}
+    >
+      <div className="flex items-start justify-between gap-3 px-4 pb-2 pt-4 sm:px-5">
+        <div className="min-w-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="mb-2 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-slate-400 transition hover:text-navy"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2} />
+            Back to Returns
+          </button>
           <p className="text-[12px] font-medium uppercase tracking-[0.14em] text-slate-400">Return details</p>
           <h2 className="mt-1 text-[18px] font-semibold tracking-[-0.03em] text-navy">#{row.id}</h2>
         </div>
-        <button type="button" onClick={onClose} className="text-[12.5px] font-medium text-slate-400 hover:text-navy">
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-[12.5px] font-medium text-slate-400 transition hover:text-navy"
+          aria-label="Back to Returns"
+        >
           Close
         </button>
       </div>
-      <div className="mt-3">
-        <StatusPill value={row.status} />
-      </div>
-      <dl className="mt-4 space-y-3 text-[13px]">
-        <Info label="Original Invoice" value={`#${row.invoiceId}`} />
-        <Info label="Date & Time" value={`${row.dateLabel} ${row.timeLabel}`} />
-        <Info label="Customer" value={row.customer} />
-        <Info label="Cashier" value={row.cashier} />
-        <Info label="Refund Method" value={row.provider ? `${row.method} · ${row.provider}` : row.method} />
-        <Info label="Return Status" value={row.status} />
-      </dl>
-      <div className="mt-5">
-        <p className="text-[13px] font-semibold text-navy">Returned Items</p>
-        <ul className="mt-2 space-y-2.5">
-          {row.items.map((item) => (
-            <li key={`${item.name}-${item.condition}`} className="rounded-[14px] bg-[#f6f8fb] px-3 py-2.5">
-              <p className="text-[13px] font-medium text-navy">{item.name}</p>
-              <p className="mt-0.5 text-[12px] text-slate-500">
-                {item.quantity} × {formatTzs(item.unitPrice)}
-              </p>
-              <p className="mt-0.5 text-[12px] text-slate-500">Refund: {formatTzs(returnLineAmount(item))}</p>
-              <p className="mt-0.5 text-[12px] text-slate-400">Condition: {item.condition} · {item.reason}</p>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <p className="mt-4 text-[15px] font-semibold text-navy">Total Refund {formatTzs(row.amount)}</p>
-      <div className="mt-4">
-        <p className="text-[13px] font-semibold text-navy">Stock Action</p>
-        <ul className="mt-2 space-y-1.5 text-[12.5px] text-slate-500">
-          {row.items.map((item) => (
-            <li key={`${item.name}-stock`}>{stockActionLabel(item)}</li>
-          ))}
-        </ul>
-        {movements.filter((item) => item.sellable).length > 0 ? (
-          <ul className="mt-2 space-y-1 text-[11.5px] text-slate-400">
-            {movements
-              .filter((item) => item.sellable)
-              .map((item) => (
-                <li key={item.id}>
-                  {item.reference} · {item.product} +{item.quantity} · {item.reason}
-                </li>
-              ))}
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 sm:px-5">
+        <div className="mt-1">
+          <StatusPill value={row.status} />
+        </div>
+        <dl className="mt-4 grid grid-cols-1 gap-3 text-[13px] sm:grid-cols-2">
+          <Info label="Original Invoice" value={`#${row.invoiceId}`} />
+          <Info label="Date & Time" value={`${row.dateLabel} ${row.timeLabel}`} />
+          <Info label="Customer" value={row.customer} />
+          <Info label="Cashier" value={row.cashier} />
+          <Info label="Refund Method" value={row.provider ? `${row.method} · ${row.provider}` : row.method} />
+          <Info label="Return Status" value={row.status} />
+        </dl>
+
+        <div className="mt-5">
+          <p className="text-[13px] font-semibold text-navy">Returned Items</p>
+          <div className="mt-2 hidden grid-cols-[minmax(0,1fr)_auto_auto] gap-x-4 text-[12px] font-medium uppercase tracking-[0.08em] text-slate-400 md:grid">
+            <span>Product</span>
+            <span className="text-right">Qty × Price</span>
+            <span className="text-right">Refund</span>
+          </div>
+          <ul className="mt-2 space-y-2.5 md:mt-1.5 md:space-y-0">
+            {row.items.map((item) => (
+              <li
+                key={`${item.name}-${item.condition}`}
+                className="flex flex-col gap-1 rounded-[14px] border border-white/70 bg-white/45 px-3 py-2.5 md:grid md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-baseline md:gap-x-4 md:rounded-none md:border-0 md:bg-transparent md:px-0 md:py-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-[13px] font-medium text-navy">{item.name}</p>
+                  <p className="mt-0.5 text-[12px] text-slate-400">
+                    {item.condition} · {item.reason}
+                  </p>
+                </div>
+                <p className="text-[12.5px] text-slate-500 md:text-right">
+                  {item.quantity} × {formatTzs(item.unitPrice)}
+                </p>
+                <p className="text-[13px] font-semibold text-navy md:text-right md:font-medium">
+                  {formatTzs(returnLineAmount(item))}
+                </p>
+              </li>
+            ))}
           </ul>
+        </div>
+
+        <div className="mt-5 rounded-[16px] border border-white/80 bg-white/70 px-3.5 py-3">
+          <div className="flex items-center justify-between text-[14px] font-semibold text-navy">
+            <span>Total Refund</span>
+            <span>{formatTzs(row.amount)}</span>
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <p className="text-[13px] font-semibold text-navy">Stock Action</p>
+          <ul className="mt-2 space-y-1.5 text-[12.5px] text-slate-500">
+            {row.items.map((item) => (
+              <li key={`${item.name}-stock`}>{stockActionLabel(item)}</li>
+            ))}
+          </ul>
+          {movements.filter((item) => item.sellable).length > 0 ? (
+            <ul className="mt-2 space-y-1 text-[11.5px] text-slate-400">
+              {movements
+                .filter((item) => item.sellable)
+                .map((item) => (
+                  <li key={item.id}>
+                    {item.reference} · {item.product} +{item.quantity} · {item.reason}
+                  </li>
+                ))}
+            </ul>
+          ) : null}
+        </div>
+        {sale ? (
+          <p className="mt-3 text-[12px] text-slate-400">Original sale remains on record · {formatTzs(sale.amount)}</p>
         ) : null}
       </div>
-      {sale ? (
-        <p className="mt-3 text-[12px] text-slate-400">Original sale remains on record · {formatTzs(sale.amount)}</p>
-      ) : null}
-      <button
-        type="button"
-        onClick={onPrint}
-        className="mt-auto inline-flex h-10 items-center justify-center gap-2 rounded-[14px] border border-[#d8e1eb] bg-white text-[13px] font-medium text-navy"
-      >
-        <Printer className="h-4 w-4" />
-        Print Return Receipt
-      </button>
+
+      <div className="border-t border-[#d5dee8]/70 px-4 py-3 sm:px-5">
+        <button
+          type="button"
+          onClick={onPrint}
+          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-full border border-white/80 bg-white/80 text-[13px] font-semibold text-navy shadow-[0_6px_14px_rgba(15,35,64,0.06)] transition hover:bg-white"
+        >
+          <Printer className="h-4 w-4" />
+          Print Return Receipt
+        </button>
+      </div>
     </aside>
   );
 }

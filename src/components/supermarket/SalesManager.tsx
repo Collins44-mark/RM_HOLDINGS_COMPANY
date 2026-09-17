@@ -18,6 +18,7 @@ import {
   UserRound,
   Wallet,
   X,
+  ArrowLeft,
 } from "lucide-react";
 import { ComparisonIndicator } from "@/components/finance/ComparisonIndicator";
 import { cn } from "@/lib/cn";
@@ -320,8 +321,8 @@ export function SalesManager() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(10);
-  const [selectedId, setSelectedId] = useState<string | null>("INV-1048");
-  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [fullDetails, setFullDetails] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -354,17 +355,26 @@ export function SalesManager() {
   const pageRows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
   const from = filtered.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
   const to = Math.min(safePage * pageSize, filtered.length);
-  const selected = filtered.find((sale) => sale.id === selectedId) ?? pageRows[0] ?? null;
+  const selected = selectedId ? filtered.find((sale) => sale.id === selectedId) ?? null : null;
 
   useEffect(() => {
-    if (selected && selected.id !== selectedId) setSelectedId(selected.id);
-    if (!selected) setSelectedId(null);
-  }, [selected, selectedId]);
+    if (selectedId && !filtered.some((sale) => sale.id === selectedId)) {
+      setSelectedId(null);
+      setDetailsOpen(false);
+      setFullDetails(false);
+    }
+  }, [filtered, selectedId]);
 
   function openSale(id: string) {
     setSelectedId(id);
     setDetailsOpen(true);
     setMenuId(null);
+  }
+
+  function closeSale() {
+    setDetailsOpen(false);
+    setSelectedId(null);
+    setFullDetails(false);
   }
 
   function exportReport() {
@@ -686,7 +696,7 @@ export function SalesManager() {
               type="button"
               className="fixed inset-0 z-[55] bg-navy/20 backdrop-blur-sm 2xl:hidden"
               aria-label="Close sale details"
-              onClick={() => setDetailsOpen(false)}
+              onClick={closeSale}
             />
             <aside
               className={cn(
@@ -699,7 +709,7 @@ export function SalesManager() {
             >
               <SaleDetails
                 sale={selected}
-                onClose={() => setDetailsOpen(false)}
+                onClose={closeSale}
                 onPrint={() => printSale(selected)}
                 onFull={() => setFullDetails(true)}
               />
@@ -804,12 +814,22 @@ function SaleDetails({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-start justify-between gap-3 px-4 pb-2 pt-4 sm:px-5">
-        <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy sm:text-[17px]">Sale Details</h2>
+        <div className="min-w-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="mb-2 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-slate-400 transition hover:text-navy"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2} />
+            Back to Sales
+          </button>
+          <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy sm:text-[17px]">Sale Details</h2>
+        </div>
         <button
           type="button"
           onClick={onClose}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition duration-200 hover:bg-white hover:text-navy"
-          aria-label="Close sale details"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition duration-200 hover:bg-white hover:text-navy"
+          aria-label="Back to Sales"
         >
           <X className="h-4 w-4" />
         </button>
