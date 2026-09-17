@@ -409,7 +409,7 @@ export function SalesManager() {
         </p>
       </div>
 
-      <section className="grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
+      <section className="rm-kpi-grid">
         <KpiCard
           label="Total Sales"
           value={formatTzs(kpis.totalSales)}
@@ -502,10 +502,10 @@ export function SalesManager() {
       <section
         className={cn(
           "grid min-w-0 grid-cols-1 items-stretch gap-2.5 sm:gap-3",
-          detailsOpen && selected ? "xl:grid-cols-[minmax(0,1.72fr)_minmax(280px,0.28fr)]" : "xl:grid-cols-1",
+          detailsOpen && selected ? "2xl:grid-cols-[minmax(0,1fr)_minmax(380px,420px)]" : "2xl:grid-cols-1",
         )}
       >
-        <article className={cn(glass, "flex min-h-[min(640px,70vh)] min-w-0 flex-col overflow-hidden")}>
+        <article className={cn(glass, "flex min-h-[min(560px,68vh)] min-w-0 flex-col overflow-hidden")}>
           <div className="px-4 pb-2 pt-4 sm:px-5">
             <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy sm:text-[17px]">
               Sales Transactions ({filtered.length.toLocaleString("en-US")})
@@ -522,7 +522,7 @@ export function SalesManager() {
             </div>
           ) : (
             <>
-              <div className="hidden min-w-0 flex-1 overflow-x-auto xl:block">
+              <div className="hidden min-w-0 flex-1 overflow-x-auto 2xl:block">
                 <table className="w-full min-w-[760px] text-left text-[13px]">
                   <thead className={tableHead}>
                     <tr className="border-b border-[#d5dee8]/70">
@@ -589,7 +589,7 @@ export function SalesManager() {
                 </table>
               </div>
 
-              <div className="hidden min-w-0 flex-1 overflow-x-auto md:block xl:hidden">
+              <div className="hidden min-w-0 flex-1 overflow-x-auto md:block 2xl:hidden">
                 <table className="w-full min-w-[560px] text-left text-[13px]">
                   <thead className={tableHead}>
                     <tr className="border-b border-[#d5dee8]/70">
@@ -684,11 +684,19 @@ export function SalesManager() {
           <>
             <button
               type="button"
-              className="fixed inset-0 z-[55] bg-navy/20 backdrop-blur-sm xl:hidden"
+              className="fixed inset-0 z-[55] bg-navy/20 backdrop-blur-sm 2xl:hidden"
               aria-label="Close sale details"
               onClick={() => setDetailsOpen(false)}
             />
-            <aside className={cn(glass, "flex min-h-[min(640px,70vh)] min-w-0 flex-col overflow-hidden max-xl:fixed max-xl:inset-x-3 max-xl:bottom-3 max-xl:top-20 max-xl:z-[60] xl:relative")}>
+            <aside
+              className={cn(
+                glass,
+                "flex max-h-[100dvh] min-h-0 min-w-0 flex-col overflow-hidden",
+                "max-2xl:fixed max-2xl:inset-x-3 max-2xl:bottom-3 max-2xl:top-[4.75rem] max-2xl:z-[60] max-2xl:mx-auto max-2xl:w-auto max-2xl:max-w-[min(48rem,calc(100vw-1.5rem))]",
+                "sm:max-2xl:inset-x-4 md:max-2xl:inset-x-6",
+                "2xl:relative 2xl:min-h-[min(560px,68vh)] 2xl:max-w-none",
+              )}
+            >
               <SaleDetails
                 sale={selected}
                 onClose={() => setDetailsOpen(false)}
@@ -728,13 +736,13 @@ function KpiCard({
   return (
     <article
       className={cn(
-        "flex min-h-0 min-w-0 items-center gap-2.5 rounded-[22px] border px-3 py-3 shadow-[0_8px_24px_rgba(15,35,64,0.04)] backdrop-blur-xl sm:min-h-[108px] sm:gap-3 sm:px-4 sm:py-3.5",
+        "flex min-h-[96px] min-w-0 items-center gap-3 rounded-[22px] border px-3.5 py-3.5 shadow-[0_8px_24px_rgba(15,35,64,0.04)] backdrop-blur-xl sm:min-h-[112px] sm:gap-3.5 sm:px-4 sm:py-4",
         accent.card,
       )}
     >
       <span
         className={cn(
-          "relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border backdrop-blur-md sm:h-[52px] sm:w-[52px]",
+          "relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border backdrop-blur-md sm:h-12 sm:w-12",
           accent.orb,
         )}
       >
@@ -743,16 +751,16 @@ function KpiCard({
           className="pointer-events-none absolute inset-0 rounded-full bg-[linear-gradient(180deg,rgba(255,255,255,0.78)_0%,rgba(255,255,255,0.16)_38%,rgba(255,255,255,0)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.92),inset_0_-1px_1px_rgba(15,35,64,0.04)]"
           aria-hidden
         />
-        <Icon className={cn("relative h-[18px] w-[18px] sm:h-5 sm:w-5", accent.icon)} strokeWidth={1.75} />
+        <Icon className={cn("relative h-5 w-5", accent.icon)} strokeWidth={1.75} />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-medium text-slate-500 sm:text-[12px]">{label}</p>
-        <p className="mt-0.5 break-words text-[16px] font-semibold tracking-[-0.04em] text-navy sm:text-[20px]">
+        <p className="truncate text-[12px] font-medium text-slate-500">{label}</p>
+        <p className="rm-kpi-value mt-1 text-[17px] font-semibold tracking-[-0.04em] text-navy sm:text-[19px] 2xl:text-[21px]">
           {value}
         </p>
         <ComparisonIndicator value={delta} label="vs previous period" unsigned plainArrow />
       </div>
-      <div className="ml-1 hidden h-9 items-end gap-[3px] sm:flex" aria-hidden>
+      <div className="ml-1 hidden h-9 items-end gap-[3px] 2xl:flex" aria-hidden>
         {[38, 58, 46, 72, 92].map((height, index) => (
           <span
             key={index}
@@ -820,7 +828,7 @@ function SaleDetails({
 
         <div className="mt-4 space-y-3">
           <DetailRow icon={UserRound} label="Customer" value={sale.customer} />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <DetailRow icon={UserRound} label="Cashier" value={sale.cashier} />
             <DetailRow icon={Store} label="Store" value={sale.store} />
           </div>
@@ -829,14 +837,29 @@ function SaleDetails({
 
         <div className="mt-5">
           <p className="text-[13px] font-semibold text-navy">Items ({sale.itemsCount})</p>
-          <div className="mt-2 space-y-2.5">
+          <div className="mt-2 hidden grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-x-4 gap-y-2.5 text-[12px] font-medium uppercase tracking-[0.08em] text-slate-400 md:grid">
+            <span>Product</span>
+            <span className="text-right">Qty</span>
+            <span className="text-right">Price</span>
+            <span className="text-right">Total</span>
+          </div>
+          <div className="mt-2 space-y-2.5 md:mt-1.5 md:space-y-0">
             {sale.lines.map((item, index) => (
-              <div key={`${sale.id}-${item.name}-${index}`} className="grid grid-cols-[1fr_auto_auto] items-baseline gap-3 text-[13px]">
-                <p className="min-w-0 truncate text-navy">{item.name}</p>
-                <p className="whitespace-nowrap text-slate-400">
-                  {item.quantity} × {item.unitPrice.toLocaleString("en-US")}
+              <div
+                key={`${sale.id}-${item.name}-${index}`}
+                className="flex flex-col gap-1 rounded-[12px] border border-white/70 bg-white/45 px-3 py-2.5 md:grid md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-baseline md:gap-x-4 md:rounded-none md:border-0 md:bg-transparent md:px-0 md:py-2"
+              >
+                <p className="min-w-0 truncate text-[13px] font-medium text-navy">{item.name}</p>
+                <p className="text-[12.5px] text-slate-400 md:hidden">
+                  {item.quantity} × {formatTzs(item.unitPrice)}
                 </p>
-                <p className="whitespace-nowrap font-medium text-navy">
+                <p className="hidden whitespace-nowrap text-right text-[13px] text-slate-500 md:block">
+                  {item.quantity}
+                </p>
+                <p className="hidden whitespace-nowrap text-right text-[13px] text-slate-500 md:block">
+                  {formatTzs(item.unitPrice)}
+                </p>
+                <p className="whitespace-nowrap text-[13px] font-semibold text-navy md:text-right md:font-medium">
                   {formatTzs(item.quantity * item.unitPrice)}
                 </p>
               </div>
@@ -860,20 +883,20 @@ function SaleDetails({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 border-t border-[#d5dee8]/70 px-4 py-3 sm:px-5">
+      <div className="flex flex-col gap-2 border-t border-[#d5dee8]/70 px-4 py-3 sm:flex-row sm:flex-wrap sm:px-5">
         <button
           type="button"
           onClick={onPrint}
-          className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full border border-white/80 bg-white/80 px-3 text-[13px] font-semibold text-navy shadow-[0_6px_14px_rgba(15,35,64,0.06)] transition duration-200 hover:bg-white"
+          className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-full border border-white/80 bg-white/80 px-3 text-[13px] font-semibold text-navy shadow-[0_6px_14px_rgba(15,35,64,0.06)] transition duration-200 hover:bg-white sm:min-w-0 sm:flex-1"
         >
-          <Printer className="h-3.5 w-3.5" strokeWidth={2} />
+          <Printer className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
           Print Receipt
         </button>
         {onFull ? (
           <button
             type="button"
             onClick={onFull}
-            className="inline-flex h-10 flex-1 items-center justify-center rounded-full bg-[#0b2244] px-3 text-[13px] font-semibold text-white shadow-[0_8px_18px_rgba(11,34,68,0.18)] transition duration-200 hover:bg-[#102a52]"
+            className="inline-flex h-10 w-full items-center justify-center rounded-full bg-[#0b2244] px-3 text-[13px] font-semibold text-white shadow-[0_8px_18px_rgba(11,34,68,0.18)] transition duration-200 hover:bg-[#102a52] sm:min-w-0 sm:flex-1"
           >
             View Full Details
           </button>
@@ -897,9 +920,9 @@ function DetailRow({
       <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#eef3f8] text-slate-500">
         <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
       </span>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-[11.5px] text-slate-400">{label}</p>
-        <p className="text-[13.5px] font-medium text-navy">{value}</p>
+        <p className="truncate text-[13.5px] font-medium text-navy">{value}</p>
       </div>
     </div>
   );
@@ -928,9 +951,14 @@ function FullDetailsOverlay({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-end justify-center sm:items-center">
+    <div className="fixed inset-0 z-[80] flex items-end justify-center p-0 sm:items-center sm:p-4">
       <button type="button" className="absolute inset-0 bg-navy/20 backdrop-blur-sm" aria-label="Close" onClick={onClose} />
-      <div className={cn(glass, "relative max-h-[92vh] w-full max-w-[560px] overflow-y-auto p-5 sm:rounded-[28px]")}>
+      <div
+        className={cn(
+          glass,
+          "relative max-h-[min(92dvh,92vh)] w-full max-w-[min(48rem,calc(100vw-1.5rem))] overflow-y-auto p-4 sm:rounded-[28px] sm:p-5",
+        )}
+      >
         <SaleDetails sale={sale} onClose={onClose} onPrint={onPrint} />
       </div>
     </div>

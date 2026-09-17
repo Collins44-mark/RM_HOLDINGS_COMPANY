@@ -99,7 +99,7 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
         </Link>
       </div>
 
-      <section className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
+      <section className="rm-kpi-grid">
         <KpiCard
           label="Today's Sales"
           value={formatTzs(data.kpis.todaySales)}
@@ -133,12 +133,12 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
         />
       </section>
 
-      <section className="grid min-w-0 grid-cols-1 items-stretch gap-2.5 sm:gap-3 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1.12fr)]">
+      <section className="grid min-w-0 grid-cols-1 items-stretch gap-2.5 sm:gap-3 xl:grid-cols-2">
         <SalesOverviewCard data={data} />
         <RecentSalesCard sales={data.recentSales} />
       </section>
 
-      <section className="grid min-w-0 grid-cols-1 items-stretch gap-2.5 sm:gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1.45fr)_minmax(0,0.55fr)]">
+      <section className="grid min-w-0 grid-cols-1 items-stretch gap-2.5 sm:gap-3 lg:grid-cols-2 2xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1.35fr)_minmax(0,0.7fr)]">
         <article className={cn(glass, "flex h-full min-w-0 flex-col px-4 py-3.5 sm:px-5 sm:py-4")}>
           <CardTitle title="Top Selling Products" href="/supermarket/products" />
           <ol className="mt-3 space-y-2">
@@ -148,7 +148,7 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
                   <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#eef2f6] text-[11px] font-semibold text-slate-500">
                     {index + 1}
                   </span>
-                  <p className="min-w-[96px] shrink-0 truncate text-[13px] font-medium text-navy sm:min-w-[110px] sm:text-[13.5px]">
+                  <p className="min-w-0 max-w-[40%] shrink truncate text-[13px] font-medium text-navy sm:max-w-none sm:min-w-[110px] sm:shrink-0 sm:text-[13.5px]">
                     {product.name}
                   </p>
                   <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[#eef2f6]">
@@ -201,11 +201,11 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
           </ul>
         </article>
 
-        <article className={cn(glass, "flex h-full min-w-0 flex-col px-4 py-3.5 sm:px-5 sm:py-4")}>
+        <article className={cn(glass, "flex h-full min-w-0 flex-col px-4 py-3.5 sm:px-5 sm:py-4 lg:col-span-2 2xl:col-span-1")}>
           <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy sm:text-[17px]">
             Quick Actions
           </h2>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-1 xl:gap-2">
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 2xl:grid-cols-1 2xl:gap-2">
             {QUICK_ACTIONS.map((action) => (
               <Link
                 key={action.href + action.label}
@@ -250,13 +250,13 @@ function KpiCard({
   return (
     <article
       className={cn(
-        "flex min-h-0 min-w-0 items-center gap-2.5 rounded-[22px] border px-3 py-3 shadow-[0_8px_24px_rgba(15,35,64,0.04)] backdrop-blur-xl sm:min-h-[108px] sm:gap-3 sm:px-4 sm:py-3.5",
+        "flex min-h-[96px] min-w-0 items-center gap-3 rounded-[22px] border px-3.5 py-3.5 shadow-[0_8px_24px_rgba(15,35,64,0.04)] backdrop-blur-xl sm:min-h-[112px] sm:gap-3.5 sm:px-4 sm:py-4",
         accent.card,
       )}
     >
       <span
         className={cn(
-          "relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border backdrop-blur-md sm:h-[52px] sm:w-[52px]",
+          "relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border backdrop-blur-md sm:h-12 sm:w-12",
           accent.orb,
         )}
       >
@@ -265,20 +265,20 @@ function KpiCard({
           className="pointer-events-none absolute inset-0 rounded-full bg-[linear-gradient(180deg,rgba(255,255,255,0.78)_0%,rgba(255,255,255,0.16)_38%,rgba(255,255,255,0)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.92),inset_0_-1px_1px_rgba(15,35,64,0.04)]"
           aria-hidden
         />
-        <Icon className={cn("relative h-[18px] w-[18px] sm:h-5 sm:w-5", accent.icon)} strokeWidth={1.75} />
+        <Icon className={cn("relative h-5 w-5", accent.icon)} strokeWidth={1.75} />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-medium text-slate-500 sm:text-[12px]">{label}</p>
-        <p className="mt-0.5 break-words text-[16px] font-semibold tracking-[-0.04em] text-navy sm:text-[20px]">
+        <p className="truncate text-[12px] font-medium text-slate-500">{label}</p>
+        <p className="rm-kpi-value mt-1 text-[17px] font-semibold tracking-[-0.04em] text-navy sm:text-[19px] 2xl:text-[21px]">
           {value}
         </p>
         {delta != null && comparisonLabel ? (
           <ComparisonIndicator value={delta} label={comparisonLabel} unsigned plainArrow />
         ) : hint ? (
-          <p className="mt-1.5 text-[11px] font-normal text-slate-400 sm:text-[12px]">{hint}</p>
+          <p className="mt-1.5 truncate text-[11px] font-normal text-slate-400 sm:text-[12px]">{hint}</p>
         ) : null}
       </div>
-      <div className="ml-1 hidden h-9 items-end gap-[3px] sm:flex" aria-hidden>
+      <div className="ml-1 hidden h-9 items-end gap-[3px] 2xl:flex" aria-hidden>
         {[38, 58, 46, 72, 92].map((height, index) => (
           <span
             key={index}
@@ -324,9 +324,9 @@ function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
       </div>
 
       <div className="mt-1 flex items-end justify-between gap-3">
-        <p className="min-w-0 text-[13px] text-slate-500">This week compared with daily store trading.</p>
-        <div className="shrink-0 text-right">
-          <p className="text-[16px] font-semibold tracking-[-0.04em] text-navy sm:text-[18px]">
+        <p className="min-w-0 flex-1 text-[13px] text-slate-500">This week compared with daily store trading.</p>
+        <div className="min-w-0 shrink-0 text-right">
+          <p className="rm-kpi-value text-[15px] font-semibold tracking-[-0.04em] text-navy sm:text-[18px]">
             {formatTzs(amount)}
           </p>
           {delta != null ? (
@@ -337,8 +337,8 @@ function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
         </div>
       </div>
 
-      <div className="mt-2 flex min-h-[148px] min-w-0 flex-1 flex-col sm:min-h-[168px]">
-        <div className="flex min-h-0 flex-1 items-stretch gap-1.5">
+      <div className="mt-2 flex min-h-[120px] min-w-0 flex-1 flex-col sm:min-h-[140px] lg:min-h-[152px] xl:min-h-[168px]">
+        <div className="flex min-h-0 min-w-0 flex-1 items-stretch gap-1.5">
           <div className="hidden w-6 shrink-0 flex-col justify-between pt-0.5 text-right sm:flex" aria-hidden>
             {ticks.map((tick) => (
               <span key={tick} className="text-[10px] font-medium leading-none text-slate-400">
@@ -346,7 +346,7 @@ function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
               </span>
             ))}
           </div>
-          <div className="relative min-h-0 min-w-0 flex-1">
+          <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
             <div
               aria-hidden
               className="pointer-events-none absolute inset-0"
@@ -445,28 +445,28 @@ function RecentSalesCard({ sales }: { sales: SupermarketSaleRow[] }) {
       <CardTitle title="Recent Sales" href="/supermarket/sales" actionLabel="View All" />
 
       <div className={cn(tableWrap, "hidden md:block")}>
-        <table className="w-full table-fixed text-left text-[12.5px]">
+        <table className="w-full min-w-[640px] text-left text-[12.5px]">
           <thead className={tableHead}>
             <tr>
-              <th className="w-[17%] px-2 py-2 font-medium">Invoice</th>
-              <th className="w-[13%] px-1.5 py-2 font-medium">Time</th>
-              <th className="w-[12%] px-1.5 py-2 font-medium">Items</th>
-              <th className="w-[12%] px-1.5 py-2 font-medium">Cashier</th>
-              <th className="w-[16%] px-1.5 py-2 font-medium">Payment</th>
-              <th className="w-[16%] px-1.5 py-2 font-medium">Amount</th>
-              <th className="w-[14%] px-1.5 py-2 font-medium">Status</th>
+              <th className="px-2.5 py-2 font-medium">Invoice</th>
+              <th className="px-2 py-2 font-medium">Time</th>
+              <th className="px-2 py-2 font-medium">Items</th>
+              <th className="hidden px-2 py-2 font-medium lg:table-cell">Cashier</th>
+              <th className="px-2 py-2 font-medium">Payment</th>
+              <th className="px-2 py-2 font-medium">Amount</th>
+              <th className="px-2 py-2 font-medium">Status</th>
             </tr>
           </thead>
           <tbody>
             {sales.map((sale) => (
               <tr key={sale.invoice} className="border-t border-[#d5dee8]/55">
-                <td className="whitespace-nowrap px-2 py-2 font-semibold text-navy">#{sale.invoice}</td>
-                <td className="whitespace-nowrap px-1.5 py-2 text-slate-500">{sale.time}</td>
-                <td className="whitespace-nowrap px-1.5 py-2 text-slate-500">{sale.items} items</td>
-                <td className="whitespace-nowrap px-1.5 py-2 text-slate-500">{sale.cashier}</td>
-                <td className="whitespace-nowrap px-1.5 py-2 text-slate-500">{sale.payment}</td>
-                <td className="whitespace-nowrap px-1.5 py-2 font-semibold text-navy">{formatTzs(sale.amount)}</td>
-                <td className="whitespace-nowrap px-1.5 py-2">
+                <td className="whitespace-nowrap px-2.5 py-2 font-semibold text-navy">#{sale.invoice}</td>
+                <td className="whitespace-nowrap px-2 py-2 text-slate-500">{sale.time}</td>
+                <td className="whitespace-nowrap px-2 py-2 text-slate-500">{sale.items} items</td>
+                <td className="hidden whitespace-nowrap px-2 py-2 text-slate-500 lg:table-cell">{sale.cashier}</td>
+                <td className="whitespace-nowrap px-2 py-2 text-slate-500">{sale.payment}</td>
+                <td className="whitespace-nowrap px-2 py-2 font-semibold text-navy">{formatTzs(sale.amount)}</td>
+                <td className="whitespace-nowrap px-2 py-2">
                   <SaleStatus status={sale.status} />
                 </td>
               </tr>

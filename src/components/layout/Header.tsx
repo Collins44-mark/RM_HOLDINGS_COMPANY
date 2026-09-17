@@ -130,11 +130,11 @@ export function Header({
   }
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 min-w-0 items-center gap-2 bg-transparent px-3 sm:h-[72px] sm:gap-3 sm:px-4 lg:px-7">
+    <header className="sticky top-0 z-30 flex h-14 min-w-0 items-center gap-1.5 bg-transparent px-3 sm:h-[72px] sm:gap-3 sm:px-4 lg:px-7">
       <button
         type="button"
         onClick={onMenuClick}
-        className="inline-flex h-10 w-10 items-center justify-center rounded-[12px] border border-white/80 bg-white/90 text-navy shadow-[0_1px_2px_rgba(15,35,64,0.04)] lg:hidden"
+        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-white/80 bg-white/90 text-navy shadow-[0_1px_2px_rgba(15,35,64,0.04)] lg:hidden"
         aria-label="Open navigation"
       >
         <span className="sr-only">Open menu</span>
@@ -143,7 +143,7 @@ export function Header({
       <button
         type="button"
         onClick={onToggleSidebar}
-        className="hidden h-10 w-10 items-center justify-center rounded-[12px] border border-white/80 bg-white/90 text-navy shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition duration-200 hover:bg-white lg:inline-flex"
+        className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-white/80 bg-white/90 text-navy shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition duration-200 hover:bg-white lg:inline-flex"
         aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         aria-expanded={!sidebarCollapsed}
       >
@@ -154,7 +154,7 @@ export function Header({
         className="relative min-w-0 flex-1"
         onBlurCapture={(event) => closeIfOutside(event, () => setSearchOpen(false))}
       >
-        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={1.8} />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 sm:left-3.5" strokeWidth={1.8} />
         <input
           ref={searchRef}
           value={query}
@@ -164,9 +164,9 @@ export function Header({
           }}
           onFocus={() => setSearchOpen(true)}
           placeholder="Search modules, reports, users..."
-          className="h-11 w-full rounded-full border border-white/80 bg-white/75 pl-10 pr-16 text-sm text-navy shadow-[0_1px_2px_rgba(15,35,64,0.04)] outline-none backdrop-blur-xl transition placeholder:text-slate-400 focus:border-[#c5d4ea] focus:bg-white"
+          className="h-10 w-full min-w-0 rounded-full border border-white/80 bg-white/75 pl-9 pr-3 text-sm text-navy shadow-[0_1px_2px_rgba(15,35,64,0.04)] outline-none backdrop-blur-xl transition placeholder:truncate placeholder:text-slate-400 focus:border-[#c5d4ea] focus:bg-white sm:h-11 sm:pl-10 sm:pr-16"
         />
-        <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 items-center rounded-full border border-white/80 bg-white/70 px-2 py-0.5 text-[11px] font-medium text-slate-400 sm:inline-flex">
+        <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 items-center rounded-full border border-white/80 bg-white/70 px-2 py-0.5 text-[11px] font-medium text-slate-400 md:inline-flex">
           ⌘ K
         </kbd>
         {searchOpen ? (
@@ -193,7 +193,7 @@ export function Header({
         ) : null}
       </div>
 
-      <div className="flex items-center gap-1 sm:gap-2">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         <div
           className="relative"
           onBlurCapture={(event) => closeIfOutside(event, () => setAlertsOpen(false))}
@@ -201,7 +201,7 @@ export function Header({
           <button
             type="button"
             onClick={() => setAlertsOpen((value) => !value)}
-            className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/80 bg-white/75 text-slate-500 shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition hover:bg-white hover:text-navy"
+            className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white/75 text-slate-500 shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition hover:bg-white hover:text-navy sm:h-11 sm:w-11"
             aria-label="Notifications"
           >
             <Bell className="h-5 w-5" strokeWidth={1.75} />
@@ -210,7 +210,7 @@ export function Header({
             ) : null}
           </button>
           {alertsOpen ? (
-            <div className="absolute right-0 top-[calc(100%+8px)] w-[320px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-black/6 bg-white shadow-[0_16px_40px_rgba(16,24,40,0.12)]">
+            <div className="absolute right-0 top-[calc(100%+8px)] w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-black/6 bg-white shadow-[0_16px_40px_rgba(16,24,40,0.12)]">
               <div className="border-b border-black/5 px-4 py-3 text-sm font-semibold text-navy">
                 Notifications
               </div>
@@ -240,24 +240,28 @@ export function Header({
           <button
             type="button"
             onClick={() => setProfileOpen((value) => !value)}
-            className="flex items-center gap-3 rounded-full border border-white/70 bg-white/75 py-1 pl-1 pr-2.5 shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition hover:bg-white"
+            className="flex items-center gap-2 rounded-full border border-white/70 bg-white/75 py-1 pl-1 pr-1.5 shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition hover:bg-white sm:gap-3 sm:pr-2.5"
           >
             {avatar ? (
               <img
                 src={avatar}
                 alt=""
-                className="h-10 w-10 rounded-full object-cover ring-1 ring-black/5"
+                className="h-8 w-8 rounded-full object-cover ring-1 ring-black/5 sm:h-10 sm:w-10"
               />
             ) : (
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#e8eef6] text-sm font-semibold text-navy">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#e8eef6] text-sm font-semibold text-navy sm:h-10 sm:w-10">
                 {initials(user.name)}
               </span>
             )}
-            <span className="hidden text-left sm:block">
-              <span className="block text-sm font-semibold leading-5 text-navy">{user.name}</span>
-              <span className="block text-xs text-slate-500">{caption}</span>
+            <span className="hidden text-left md:block">
+              <span className="block max-w-[10rem] truncate text-sm font-semibold leading-5 text-navy lg:max-w-none">
+                {user.name}
+              </span>
+              <span className="block max-w-[10rem] truncate text-xs text-slate-500 lg:max-w-none">
+                {caption}
+              </span>
             </span>
-            <ChevronDown className="hidden h-4 w-4 text-slate-400 sm:block" strokeWidth={1.8} />
+            <ChevronDown className="hidden h-4 w-4 text-slate-400 md:block" strokeWidth={1.8} />
           </button>
           {profileOpen ? (
             <div className="absolute right-0 top-[calc(100%+8px)] w-56 overflow-hidden rounded-2xl border border-black/6 bg-white py-1 shadow-[0_16px_40px_rgba(16,24,40,0.12)]">
