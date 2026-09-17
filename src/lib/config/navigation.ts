@@ -124,12 +124,6 @@ export const SUPERMARKET_NAV: NavItem[] = [
     href: "/supermarket/reports",
     label: "Reports",
     icon: "reports",
-    children: [
-      { href: "/supermarket/reports/sales", label: "Sales Reports", icon: "reports" },
-      { href: "/supermarket/reports/inventory", label: "Inventory Reports", icon: "warehouse" },
-      { href: "/supermarket/reports/purchases", label: "Purchase Reports", icon: "wallet" },
-      { href: "/supermarket/reports/profit-loss", label: "Profit & Loss", icon: "chart" },
-    ],
   },
 ];
 
