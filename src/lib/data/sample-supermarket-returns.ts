@@ -5,6 +5,7 @@ import {
   formatSalesDate,
   saleDay,
   saleSubtotal,
+  saleTotal,
   type SalesPeriodPreset,
   type SupermarketSale,
 } from "@/lib/data/sample-supermarket-sales";
@@ -127,21 +128,30 @@ function takeLine(
 }
 
 export function returnLineAmount(line: Pick<ReturnLine, "quantity" | "unitPrice">) {
-  return line.quantity * line.unitPrice;
+  const quantity = Math.max(0, Number(line.quantity) || 0);
+  const unitPrice = Math.max(0, Number(line.unitPrice) || 0);
+  return quantity * unitPrice;
 }
 
-export function returnSubtotal(items: ReturnLine[]) {
+export function returnSubtotal(items: Array<Pick<ReturnLine, "quantity" | "unitPrice">>) {
   return items.reduce((sum, item) => sum + returnLineAmount(item), 0);
 }
 
+/**
+ * Refund for the currently selected return quantities.
+ * returnAmount (per line) = qty × unitPrice
+ * returnSubtotal = sum of selected return amounts
+ * refundAmount = returnSubtotal − proportional sale discount share
+ * Capped so total refunds cannot exceed the original sale total.
+ */
 export function refundBreakdown(sale: SupermarketSale, items: ReturnLine[], alreadyRefunded = 0) {
   const originalSubtotal = saleSubtotal(sale);
-  const originalTotal = sale.amount;
-  const selected = returnSubtotal(items);
+  const originalTotal = saleTotal(sale);
+  const selected = returnSubtotal(items.filter((item) => item.quantity > 0));
   const discount = Math.max(0, originalSubtotal - originalTotal);
   const share = originalSubtotal > 0 ? selected / originalSubtotal : 0;
   const discountAdjustment = Math.round(discount * share);
-  const remaining = Math.max(0, originalTotal - alreadyRefunded);
+  const remaining = Math.max(0, originalTotal - Math.max(0, alreadyRefunded));
   const refundAmount = Math.min(Math.max(0, selected - discountAdjustment), remaining);
   return {
     originalTotal,
@@ -320,7 +330,6 @@ export const SUPERMARKET_RETURNS: SupermarketReturn[] = [
         method: "Mobile Money",
         provider: "Tigo Pesa",
         status: "Partially Refunded",
-        amount: 42_500,
         items: [takeLine(sale1047, 0, 1, "Resellable", "Customer Changed Mind")],
       })
     : null,
@@ -369,7 +378,9 @@ export function alreadyRefundedAmount(invoiceId: string, returns: SupermarketRet
   return returns.reduce((sum, row) => {
     if (row.invoiceId !== invoiceId) return sum;
     if (row.status === "Rejected" || row.status === "Pending") return sum;
-    return sum + row.amount;
+    const fromItems = returnSubtotal(row.items);
+    const discountAdj = Math.max(0, row.discountAdjustment ?? 0);
+    return sum + Math.max(0, fromItems - discountAdj);
   }, 0);
 }
 

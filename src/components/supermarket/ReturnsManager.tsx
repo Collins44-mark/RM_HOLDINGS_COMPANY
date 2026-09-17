@@ -244,7 +244,9 @@ export function ReturnsManager() {
       current.map((line) => {
         if (line.name !== name) return line;
         const next = { ...line, ...patch };
-        next.quantity = Math.min(line.remaining, Math.max(0, next.quantity));
+        const rawQty = Number(next.quantity);
+        next.quantity = Math.min(line.remaining, Math.max(0, Number.isFinite(rawQty) ? rawQty : 0));
+        next.unitPrice = Math.max(0, Number(next.unitPrice) || 0);
         return next;
       }),
     );
@@ -813,7 +815,7 @@ function WizardView({
                           label={line.name}
                         />
                       </td>
-                      <td className="px-3 py-3 font-semibold text-navy">{formatTzs(line.quantity * line.unitPrice)}</td>
+                      <td className="px-3 py-3 font-semibold text-navy">{formatTzs(returnLineAmount(line))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -829,7 +831,7 @@ function WizardView({
                   </p>
                   <div className="mt-2 flex items-center justify-between">
                     <QtyControl value={line.quantity} max={line.remaining} onChange={(quantity) => onDraft(line.name, { quantity })} label={line.name} />
-                    <span className="text-[13px] font-semibold text-navy">{formatTzs(line.quantity * line.unitPrice)}</span>
+                    <span className="text-[13px] font-semibold text-navy">{formatTzs(returnLineAmount(line))}</span>
                   </div>
                 </div>
               ))}
