@@ -34,7 +34,7 @@ export function ProductProfitAnalysis() {
   const totals = useMemo(() => productProfitTotals(rows), [rows]);
 
   return (
-    <div className="min-w-0 space-y-5 pb-10 sm:space-y-6">
+    <div className="min-w-0 max-w-full space-y-5 pb-10 sm:space-y-6">
       <div>
         <Link
           href="/supermarket/finance"

@@ -111,7 +111,7 @@ export function StockAdjustmentPage() {
         </div>
         {error ? <p className="mt-3 text-[12.5px] text-[#c45b66]">{error}</p> : null}
       </section>
-      <div className="flex justify-end gap-2">
+      <div className="flex flex-wrap justify-end gap-2">
         <Link href="/supermarket/stock" className={secondaryButton}>Cancel</Link>
         <button type="button" onClick={confirm} className={primaryButton}>Save Adjustment</button>
       </div>

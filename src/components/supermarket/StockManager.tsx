@@ -374,7 +374,7 @@ export function StockManager() {
         ) : null}
       </div>
 
-      <section className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-3 xl:grid-cols-6">
+      <section className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-6">
         <KpiCard
           label="Total Products"
           value={String(kpis.totalProducts)}
@@ -431,8 +431,8 @@ export function StockManager() {
         />
       </section>
 
-      <section className="flex flex-col gap-2.5 lg:flex-row lg:flex-wrap lg:items-center">
-        <label className="relative block min-w-0 flex-1 lg:min-w-[240px]">
+      <section className="rm-filter-bar">
+        <label className="relative block min-w-0 flex-1 lg:basis-[min(100%,14rem)]">
           <span className="sr-only">Search stock</span>
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
           <input
@@ -1102,7 +1102,7 @@ function KpiCard({
       </span>
       <div className="min-w-0">
         <p className="text-[11.5px] font-medium text-slate-500">{label}</p>
-        <p className="mt-0.5 text-[24px] font-semibold leading-none tracking-[-0.05em] text-navy sm:text-[26px]">{value}</p>
+        <p className="mt-0.5 break-words text-[20px] font-semibold leading-none tracking-[-0.05em] text-navy sm:text-[24px] xl:text-[26px]">{value}</p>
         <p className="mt-1.5 text-[11px] leading-4 text-slate-400">{hint}</p>
       </div>
     </button>
@@ -1338,7 +1338,7 @@ function StockDrawer({
         aria-label="Close"
         onClick={onClose}
       />
-      <aside className="relative flex h-full w-full max-w-[540px] flex-col border-l border-white/70 bg-white/82 shadow-[-24px_0_60px_rgba(15,35,64,0.12)] backdrop-blur-[28px]">
+      <aside className="relative flex h-full w-full max-w-[min(540px,100%)] flex-col border-l border-white/70 bg-white/82 shadow-[-24px_0_60px_rgba(15,35,64,0.12)] backdrop-blur-[28px]">
         <div className="flex items-start justify-between px-5 py-5">
           <div>
             {kicker ? (

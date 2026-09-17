@@ -78,6 +78,43 @@ a {
   animation: page-enter 160ms ease-out;
 }
 
+/* Responsive foundation: keep page content within the viewport */
+.rm-page {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.rm-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.rm-truncate-safe {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.rm-filter-bar {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+@media (min-width: 1024px) {
+  .rm-filter-bar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+}
+
 @keyframes modal-overlay-enter {
   from {
     opacity: 0;

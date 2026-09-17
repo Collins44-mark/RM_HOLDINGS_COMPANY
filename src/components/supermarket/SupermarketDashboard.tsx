@@ -35,7 +35,7 @@ const QUICK_ACTIONS = [
 const glass =
   "rounded-[24px] border border-white/65 bg-white/76 shadow-[0_10px_28px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-xl";
 const tableWrap =
-  "mt-3 overflow-hidden rounded-[14px] border border-white/60 bg-white/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]";
+  "rm-table-scroll mt-3 rounded-[14px] border border-white/60 bg-white/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]";
 const tableHead =
   "bg-[#eef3f8]/80 text-[10.5px] font-medium uppercase tracking-[0.14em] text-slate-400";
 const viewAllClass =
@@ -99,7 +99,7 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
         </Link>
       </div>
 
-      <section className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
+      <section className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
         <KpiCard
           label="Today's Sales"
           value={formatTzs(data.kpis.todaySales)}
@@ -138,7 +138,7 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
         <RecentSalesCard sales={data.recentSales} />
       </section>
 
-      <section className="grid min-w-0 grid-cols-1 items-stretch gap-2.5 sm:gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1.45fr)_minmax(200px,0.55fr)]">
+      <section className="grid min-w-0 grid-cols-1 items-stretch gap-2.5 sm:gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1.45fr)_minmax(0,0.55fr)]">
         <article className={cn(glass, "flex h-full min-w-0 flex-col px-4 py-3.5 sm:px-5 sm:py-4")}>
           <CardTitle title="Top Selling Products" href="/supermarket/products" />
           <ol className="mt-3 space-y-2">

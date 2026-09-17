@@ -13,12 +13,12 @@ export function PageHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div>
+    <div className="mb-5 flex min-w-0 flex-col gap-3 sm:mb-6 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0">
         <h1 className="text-[20px] font-semibold tracking-[-0.02em] text-navy sm:text-[22px]">{title}</h1>
-        {description ? <p className="mt-1 max-w-2xl text-[13.5px] leading-6 text-slate-500">{description}</p> : null}
+        {description ? <p className="mt-1 max-w-2xl text-[13px] leading-6 text-slate-500 sm:text-[13.5px]">{description}</p> : null}
       </div>
-      {action}
+      {action ? <div className="flex min-w-0 flex-wrap items-center gap-2">{action}</div> : null}
     </div>
   );
 }
@@ -46,7 +46,7 @@ export function Surface({
   className?: string;
 }) {
   return (
-    <div className={cn("rounded-[18px] border border-black/[0.04] bg-white shadow-card", className)}>
+    <div className={cn("min-w-0 max-w-full overflow-hidden rounded-[18px] border border-black/[0.04] bg-white shadow-card", className)}>
       {children}
     </div>
   );

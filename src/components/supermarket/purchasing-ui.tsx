@@ -2,11 +2,15 @@ import { cn } from "@/lib/cn";
 import type { PurchaseOrderStatus, PurchasePaymentStatus, SupplierStatus } from "@/lib/data/supermarket-purchasing";
 
 export const glassCard =
-  "rounded-[24px] border border-white/65 bg-white/76 shadow-[0_10px_28px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-xl";
+  "min-w-0 max-w-full rounded-[24px] border border-white/65 bg-white/76 shadow-[0_10px_28px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-xl";
 export const glassPanel =
-  "rounded-[24px] border border-white/80 bg-white/82 px-5 py-6 shadow-[0_12px_36px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-xl sm:px-6 sm:py-7";
+  "min-w-0 max-w-full rounded-[24px] border border-white/80 bg-white/82 px-4 py-5 shadow-[0_12px_36px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-xl sm:px-5 sm:py-6 lg:px-6 lg:py-7";
 export const filterClass =
   "h-10 w-full min-w-0 rounded-full border border-white/70 bg-white/82 px-3.5 text-[13px] text-navy shadow-[0_6px_18px_rgba(15,35,64,0.06),inset_0_1px_0_rgba(255,255,255,0.95)] outline-none backdrop-blur-xl transition duration-200 focus:border-white focus:bg-white";
+export const filterBarClass =
+  "rm-filter-bar";
+export const tableScrollClass =
+  "rm-table-scroll";
 export const inputClass =
   "h-12 w-full rounded-[14px] border border-[#dbe4ef] bg-white px-3.5 text-[14px] text-navy shadow-[0_1px_2px_rgba(15,35,64,0.03)] outline-none transition placeholder:text-slate-400 focus:border-[#9bb6e0] focus:ring-4 focus:ring-[#5b82c4]/10";
 export const tableHead =

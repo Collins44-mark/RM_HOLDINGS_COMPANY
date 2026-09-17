@@ -113,7 +113,7 @@ export function FinanceOverview() {
   );
 
   return (
-    <div className="min-w-0 space-y-5 pb-10 sm:space-y-6">
+    <div className="min-w-0 max-w-full space-y-5 pb-10 sm:space-y-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[28px]">Finance</h1>
@@ -294,7 +294,7 @@ function KpiCard({
           {icon}
         </span>
       </div>
-      <p className="mt-5 text-[22px] font-semibold tracking-[-0.04em] text-navy sm:text-[24px]">
+      <p className="mt-5 break-words text-[20px] font-semibold tracking-[-0.04em] text-navy sm:text-[22px] xl:text-[24px]">
         {formatTzs(amount)}
       </p>
       <p className={cn("mt-2 text-[12px] font-medium", positive ? accent.deltaUp : accent.deltaDown)}>
@@ -562,7 +562,7 @@ function RecordExpenseModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-[80] flex items-end justify-center bg-[#0b2244]/20 p-3 backdrop-blur-sm sm:items-center">
       <button type="button" className="absolute inset-0 cursor-default" aria-label="Close record expense" onClick={onClose} />
       <form
-        className="relative z-[81] w-full max-w-lg rounded-[24px] border border-white/80 bg-white/95 p-5 shadow-[0_24px_60px_rgba(15,35,64,0.16)]"
+        className="relative z-[81] w-full max-w-[min(32rem,calc(100vw-1.5rem))] rounded-[24px] border border-white/80 bg-white/95 p-4 shadow-[0_24px_60px_rgba(15,35,64,0.16)] sm:p-5"
         onSubmit={onSubmit}
       >
         <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">Record Expense</h2>
@@ -679,7 +679,7 @@ function RecordPaymentModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-[80] flex items-end justify-center bg-[#0b2244]/20 p-3 backdrop-blur-sm sm:items-center">
       <button type="button" className="absolute inset-0 cursor-default" aria-label="Close record payment" onClick={onClose} />
       <form
-        className="relative z-[81] w-full max-w-lg rounded-[24px] border border-white/80 bg-white/95 p-5 shadow-[0_24px_60px_rgba(15,35,64,0.16)]"
+        className="relative z-[81] w-full max-w-[min(32rem,calc(100vw-1.5rem))] rounded-[24px] border border-white/80 bg-white/95 p-4 shadow-[0_24px_60px_rgba(15,35,64,0.16)] sm:p-5"
         onSubmit={onSubmit}
       >
         <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">Record Payment</h2>

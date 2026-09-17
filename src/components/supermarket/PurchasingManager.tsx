@@ -172,7 +172,7 @@ function OrdersView({
 }) {
   return (
     <>
-      <section className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-5">
+      <section className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-5">
         <KpiCard label="Open Orders" value={String(kpis.open)} active={focus === "open"} onClick={() => onFocus(focus === "open" ? "all" : "open")} />
         <KpiCard label="Pending Delivery" value={String(kpis.pending)} active={focus === "pending"} onClick={() => onFocus(focus === "pending" ? "all" : "pending")} />
         <KpiCard label="Partially Received" value={String(kpis.partial)} active={focus === "partial"} onClick={() => onFocus(focus === "partial" ? "all" : "partial")} />

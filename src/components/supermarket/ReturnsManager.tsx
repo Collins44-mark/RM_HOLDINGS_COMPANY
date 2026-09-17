@@ -61,7 +61,7 @@ import {
 const glass =
   "rounded-[24px] border border-white/65 bg-white/76 shadow-[0_10px_28px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-xl";
 const filterClass =
-  "h-10 w-full rounded-full border border-white/75 bg-white/88 px-3.5 text-[13px] text-navy shadow-[0_6px_18px_rgba(15,35,64,0.06),inset_0_1px_0_rgba(255,255,255,0.95)] outline-none backdrop-blur-xl transition duration-200 focus:border-white focus:bg-white";
+  "h-10 w-full min-w-0 rounded-full border border-white/75 bg-white/88 px-3.5 text-[13px] text-navy shadow-[0_6px_18px_rgba(15,35,64,0.06),inset_0_1px_0_rgba(255,255,255,0.95)] outline-none backdrop-blur-xl transition duration-200 focus:border-white focus:bg-white";
 const tableHead =
   "bg-[#eef3f8]/80 text-[10.5px] font-medium uppercase tracking-[0.14em] text-slate-400";
 const control =
@@ -435,7 +435,7 @@ export function ReturnsManager() {
             </option>
           ))}
         </select>
-        <label className="relative block min-w-0 flex-1 lg:min-w-[17rem]">
+        <label className="relative block min-w-0 flex-1 lg:basis-[min(100%,16rem)]">
           <span className="sr-only">Search returns, invoices, customers</span>
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
           <input
@@ -453,7 +453,7 @@ export function ReturnsManager() {
           detailsOpen && selected ? "xl:grid-cols-[minmax(0,1.72fr)_minmax(280px,0.28fr)]" : "xl:grid-cols-1",
         )}
       >
-        <article className={cn(glass, "flex min-h-[560px] min-w-0 flex-col overflow-hidden")}>
+        <article className={cn(glass, "flex min-h-[min(560px,65vh)] min-w-0 flex-col overflow-hidden")}>
           <div className="px-4 pb-2 pt-4 sm:px-5">
             <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy sm:text-[17px]">
               Return Transactions ({filtered.length.toLocaleString("en-US")})
@@ -993,7 +993,7 @@ function ReturnDetails({
   onPrint: () => void;
 }) {
   return (
-    <aside className={cn(glass, "flex min-h-[560px] flex-col overflow-y-auto p-4 sm:p-5 max-xl:fixed max-xl:inset-x-3 max-xl:bottom-3 max-xl:top-20 max-xl:z-[60] xl:relative")}>
+    <aside className={cn(glass, "flex min-h-[min(560px,65vh)] min-w-0 flex-col overflow-y-auto p-4 sm:p-5 max-xl:fixed max-xl:inset-x-3 max-xl:bottom-3 max-xl:top-20 max-xl:z-[60] xl:relative")}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[12px] font-medium uppercase tracking-[0.14em] text-slate-400">Return details</p>

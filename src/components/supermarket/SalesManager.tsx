@@ -43,7 +43,7 @@ const PAGE_SIZES = [10, 20, 50] as const;
 const glass =
   "rounded-[24px] border border-white/65 bg-white/76 shadow-[0_10px_28px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-xl";
 const filterClass =
-  "h-10 w-full rounded-full border border-white/75 bg-white/88 px-3.5 text-[13px] text-navy shadow-[0_6px_18px_rgba(15,35,64,0.06),inset_0_1px_0_rgba(255,255,255,0.95)] outline-none backdrop-blur-xl transition duration-200 focus:border-white focus:bg-white";
+  "h-10 w-full min-w-0 rounded-full border border-white/75 bg-white/88 px-3.5 text-[13px] text-navy shadow-[0_6px_18px_rgba(15,35,64,0.06),inset_0_1px_0_rgba(255,255,255,0.95)] outline-none backdrop-blur-xl transition duration-200 focus:border-white focus:bg-white";
 const tableHead =
   "bg-[#eef3f8]/80 text-[10.5px] font-medium uppercase tracking-[0.14em] text-slate-400";
 
@@ -440,7 +440,7 @@ export function SalesManager() {
         />
       </section>
 
-      <section className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
+      <section className="rm-filter-bar">
         <PeriodControl
           preset={periodPreset}
           label={period.label}
@@ -451,7 +451,7 @@ export function SalesManager() {
         <select
           value={cashier}
           onChange={(event) => setCashier(event.target.value)}
-          className={cn(filterClass, "lg:w-auto lg:min-w-[10.5rem]")}
+          className={cn(filterClass, "lg:w-auto lg:basis-[10.5rem]")}
         >
           {SALES_CASHIERS.map((item) => (
             <option key={item} value={item}>
@@ -462,7 +462,7 @@ export function SalesManager() {
         <select
           value={payment}
           onChange={(event) => setPayment(event.target.value as "all" | SalesPayment)}
-          className={cn(filterClass, "lg:w-auto lg:min-w-[13.5rem]")}
+          className={cn(filterClass, "lg:w-auto lg:basis-[13.5rem]")}
         >
           <option value="all">All Payment Methods</option>
           <option value="Cash">Cash</option>
@@ -472,13 +472,13 @@ export function SalesManager() {
         <select
           value={status}
           onChange={(event) => setStatus(event.target.value as "all" | SalesStatus)}
-          className={cn(filterClass, "lg:w-auto lg:min-w-[10rem]")}
+          className={cn(filterClass, "lg:w-auto lg:basis-[10rem]")}
         >
           <option value="all">All Status</option>
           <option value="Completed">Completed</option>
           <option value="Refunded">Refunded</option>
         </select>
-        <label className="relative block min-w-0 flex-1 lg:min-w-[17rem]">
+        <label className="relative block min-w-0 flex-1 lg:basis-[min(100%,16rem)]">
           <span className="sr-only">Search sales</span>
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
           <input
@@ -505,7 +505,7 @@ export function SalesManager() {
           detailsOpen && selected ? "xl:grid-cols-[minmax(0,1.72fr)_minmax(280px,0.28fr)]" : "xl:grid-cols-1",
         )}
       >
-        <article className={cn(glass, "flex min-h-[640px] min-w-0 flex-col overflow-hidden")}>
+        <article className={cn(glass, "flex min-h-[min(640px,70vh)] min-w-0 flex-col overflow-hidden")}>
           <div className="px-4 pb-2 pt-4 sm:px-5">
             <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy sm:text-[17px]">
               Sales Transactions ({filtered.length.toLocaleString("en-US")})
@@ -688,7 +688,7 @@ export function SalesManager() {
               aria-label="Close sale details"
               onClick={() => setDetailsOpen(false)}
             />
-            <aside className={cn(glass, "flex min-h-[640px] min-w-0 flex-col overflow-hidden max-xl:fixed max-xl:inset-x-3 max-xl:bottom-3 max-xl:top-20 max-xl:z-[60] xl:relative")}>
+            <aside className={cn(glass, "flex min-h-[min(640px,70vh)] min-w-0 flex-col overflow-hidden max-xl:fixed max-xl:inset-x-3 max-xl:bottom-3 max-xl:top-20 max-xl:z-[60] xl:relative")}>
               <SaleDetails
                 sale={selected}
                 onClose={() => setDetailsOpen(false)}

@@ -435,13 +435,13 @@ export function PosManager() {
             heldSales={heldSales}
             onRestore={restoreHeld}
           />
-          <div className={cn(glass, "min-w-[16.5rem] rounded-[20px] px-4 py-2.5")}>
-            <div className="flex items-start justify-between gap-5">
-              <div>
+          <div className={cn(glass, "w-full min-w-0 max-w-full rounded-[20px] px-3.5 py-2.5 sm:min-w-[14rem] sm:max-w-[18rem] sm:px-4")}>
+            <div className="flex items-start justify-between gap-3 sm:gap-5">
+              <div className="min-w-0">
                 <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-slate-400">Invoice #</p>
-                <p className="mt-0.5 text-[18px] font-semibold tracking-[-0.04em] text-navy">#{invoiceLabel}</p>
+                <p className="mt-0.5 truncate text-[16px] font-semibold tracking-[-0.04em] text-navy sm:text-[18px]">#{invoiceLabel}</p>
               </div>
-              <div className="pt-0.5 text-right">
+              <div className="shrink-0 pt-0.5 text-right">
                 <p className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-[#1f8a4c]">
                   <span className="h-1.5 w-1.5 rounded-full bg-[#22a45a]" />
                   {completed ? "Completed" : "New Sale"}
@@ -453,7 +453,7 @@ export function PosManager() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-[minmax(0,1.62fr)_minmax(22rem,0.9fr)] xl:grid-cols-[minmax(0,1.78fr)_minmax(24rem,0.82fr)]">
+      <div className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[minmax(0,1.78fr)_minmax(20rem,0.82fr)]">
         <section className={cn(glass, "min-w-0 p-4 sm:p-5")}>
           <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">Products</h2>
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -533,7 +533,7 @@ export function PosManager() {
             ))}
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-4">
+          <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
             {catalog.map((product) => {
               const remaining = remainingStock(product, items);
               const out = remaining <= 0;

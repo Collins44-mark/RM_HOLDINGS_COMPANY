@@ -82,7 +82,7 @@ const EMPTY_FORM: ProductFormState = {
 const glass =
   "rounded-[28px] border border-white/70 bg-white/78 shadow-[0_18px_50px_rgba(15,35,64,0.06),inset_0_1px_0_rgba(255,255,255,0.92)] backdrop-blur-2xl";
 const filterClass =
-  "h-11 w-full appearance-none rounded-[18px] border border-white/80 bg-white/82 px-3.5 text-[13px] text-navy shadow-[0_8px_20px_rgba(15,35,64,0.055),inset_0_1px_0_rgba(255,255,255,0.96)] outline-none backdrop-blur-xl transition focus:border-white focus:bg-white";
+  "h-11 w-full min-w-0 appearance-none rounded-[18px] border border-white/80 bg-white/82 px-3.5 text-[13px] text-navy shadow-[0_8px_20px_rgba(15,35,64,0.055),inset_0_1px_0_rgba(255,255,255,0.96)] outline-none backdrop-blur-xl transition focus:border-white focus:bg-white";
 const iconControl =
   "inline-flex h-11 w-11 items-center justify-center rounded-[18px] border border-white/80 bg-white/82 text-slate-400 shadow-[0_8px_20px_rgba(15,35,64,0.055),inset_0_1px_0_rgba(255,255,255,0.96)] backdrop-blur-xl transition hover:bg-white hover:text-navy";
 const selectClass =
@@ -432,8 +432,8 @@ export function ProductsManager() {
         </div>
       </div>
 
-      <div className="flex flex-col gap-2.5 lg:flex-row lg:flex-wrap lg:items-center">
-        <label className="relative block min-w-0 flex-1 lg:min-w-[240px] lg:max-w-[340px]">
+      <div className="rm-filter-bar">
+        <label className="relative block min-w-0 flex-1 lg:max-w-[340px] lg:basis-[min(100%,240px)]">
           <span className="sr-only">Search products</span>
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
           <input
@@ -458,7 +458,7 @@ export function ProductsManager() {
             setCategory(value);
           }}
           icon={<LayoutGrid className="h-3.5 w-3.5 text-slate-400" strokeWidth={1.8} />}
-          className="lg:w-[168px] lg:shrink-0"
+          className="min-w-0 lg:w-[168px] lg:shrink-0"
         >
           <option value="all">All Categories</option>
           {categories.map((item) => (
@@ -472,7 +472,7 @@ export function ProductsManager() {
           value={status}
           onChange={(value) => setStatus(value as ProductStatusFilter)}
           icon={<span className="h-2 w-2 rounded-full bg-emerald-400" />}
-          className="lg:w-[148px] lg:shrink-0"
+          className="min-w-0 lg:w-[148px] lg:shrink-0"
         >
           <option value="all">All Status</option>
           <option value="active">Active</option>
@@ -482,7 +482,7 @@ export function ProductsManager() {
           value={sort}
           onChange={(value) => setSort(value as ProductSort)}
           icon={<ArrowUpDown className="h-3.5 w-3.5 text-slate-400" strokeWidth={1.8} />}
-          className="lg:w-[15rem] lg:min-w-[15rem] lg:shrink-0"
+          className="min-w-0 lg:w-[15rem] lg:shrink-0"
         >
           <option value="name">Product Name (A - Z)</option>
           <option value="recent">Recently Added</option>
@@ -557,8 +557,8 @@ export function ProductsManager() {
               </div>
             ) : (
               <>
-                <div className="hidden px-3 pt-3 xl:block">
-                  <table className="min-w-full border-separate border-spacing-0 text-left text-[13px]">
+                <div className="rm-table-scroll hidden px-3 pt-3 xl:block">
+                  <table className="min-w-[960px] w-full border-separate border-spacing-0 text-left text-[13px]">
                     <thead>
                       <tr>
                         <th className={thClass}>Product</th>
@@ -600,8 +600,8 @@ export function ProductsManager() {
                   </table>
                 </div>
 
-                <div className="hidden px-3 pt-3 md:block xl:hidden">
-                  <table className="min-w-full border-separate border-spacing-0 text-left text-[13px]">
+                <div className="rm-table-scroll hidden px-3 pt-3 md:block xl:hidden">
+                  <table className="min-w-[720px] w-full border-separate border-spacing-0 text-left text-[13px]">
                     <thead>
                       <tr>
                         <th className={thClass}>Product</th>
@@ -1081,7 +1081,7 @@ function ProductDrawer({
   return (
     <div className="fixed inset-0 z-[70] flex justify-end">
       <button type="button" className="absolute inset-0 bg-navy/20 backdrop-blur-sm" aria-label="Close" onClick={onClose} />
-      <aside className="relative flex h-full w-full max-w-[520px] flex-col border-l border-white/70 bg-white/82 shadow-[-24px_0_60px_rgba(15,35,64,0.12)] backdrop-blur-[28px]">
+      <aside className="relative flex h-full w-full max-w-[min(520px,100%)] flex-col border-l border-white/70 bg-white/82 shadow-[-24px_0_60px_rgba(15,35,64,0.12)] backdrop-blur-[28px]">
         <div className="flex items-center justify-between px-5 py-5">
           <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">{title}</h2>
           <button

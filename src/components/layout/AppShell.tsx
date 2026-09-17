@@ -68,14 +68,14 @@ export function AppShell({
           onMenuClick={() => setMobileOpen(true)}
           onToggleSidebar={toggle}
         />
-        <main className="relative z-10 min-w-0 flex-1 px-3 py-4 sm:px-4 sm:py-5 lg:px-7 lg:py-6">
+        <main className="relative z-10 min-w-0 flex-1 overflow-x-clip px-4 py-4 sm:px-5 sm:py-5 md:px-6 lg:px-7 lg:py-6">
           {moduleCode && moduleCode !== "owner" && moduleCode !== "supermarket" ? (
             <ModuleContextBar
               moduleCode={moduleCode}
               showDashboardCrumb={isOwnerRole(user.roleCode)}
             />
           ) : null}
-          {children}
+          <div className="rm-page mx-auto w-full min-w-0 max-w-full">{children}</div>
         </main>
         {showFooter ? <PageFooter /> : null}
       </div>
