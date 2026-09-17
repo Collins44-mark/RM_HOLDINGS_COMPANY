@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   BarChart3,
   Boxes,
+  Check,
   Download,
   FileText,
   ShoppingBag,
@@ -28,40 +29,40 @@ import {
 import { downloadReportPdf } from "@/lib/data/supermarket-reports-pdf";
 import type { SalesDateRange, SalesPeriodPreset } from "@/lib/data/sample-supermarket-sales";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
-import { primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
+import { primaryButton } from "@/components/supermarket/purchasing-ui";
 
 const glass =
-  "rounded-[28px] border border-white/55 bg-white/58 shadow-[0_18px_50px_rgba(15,35,64,0.07),inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-2xl";
+  "rounded-[24px] border border-white/55 bg-white/58 shadow-[0_14px_40px_rgba(15,35,64,0.06),inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-2xl";
 
 const CARDS: {
   kind: ReportKind;
   icon: typeof TrendingUp;
-  tone: string;
   iconTone: string;
+  selectedTone: string;
 }[] = [
   {
     kind: "sales",
     icon: TrendingUp,
-    tone: "border-emerald-200/35 bg-emerald-50/40",
     iconTone: "border-emerald-200/50 bg-white/70 text-emerald-600",
+    selectedTone: "border-emerald-300/70 bg-emerald-50/55 ring-2 ring-emerald-400/35",
   },
   {
     kind: "inventory",
     icon: Boxes,
-    tone: "border-sky-200/35 bg-sky-50/40",
     iconTone: "border-sky-200/50 bg-white/70 text-sky-600",
+    selectedTone: "border-sky-300/70 bg-sky-50/55 ring-2 ring-sky-400/35",
   },
   {
     kind: "purchases",
     icon: ShoppingBag,
-    tone: "border-amber-200/35 bg-amber-50/40",
     iconTone: "border-amber-200/50 bg-white/70 text-amber-600",
+    selectedTone: "border-amber-300/70 bg-amber-50/55 ring-2 ring-amber-400/35",
   },
   {
     kind: "profit-loss",
     icon: BarChart3,
-    tone: "border-violet-200/35 bg-violet-50/40",
     iconTone: "border-violet-200/50 bg-white/70 text-violet-600",
+    selectedTone: "border-violet-300/70 bg-violet-50/55 ring-2 ring-violet-400/35",
   },
 ];
 
@@ -120,56 +121,103 @@ function BackToReports({ query }: { query: string }) {
 
 export function ReportsCenter() {
   const { preset, range, period, query, onPreset, onRange } = useReportsPeriod("/supermarket/reports");
+  const [selected, setSelected] = useState<ReportKind | null>(null);
+  const [exportHint, setExportHint] = useState(false);
+
+  function handleExport() {
+    if (!selected) {
+      setExportHint(true);
+      return;
+    }
+    setExportHint(false);
+    downloadReportPdf(selected, preset, range);
+  }
 
   return (
     <div className="min-w-0 max-w-full space-y-5 pb-10 sm:space-y-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[28px]">Reports</h1>
           <p className="mt-1.5 text-[13.5px] text-slate-500">View and download detailed supermarket reports.</p>
         </div>
-        <FinancePeriodFilter
-          preset={preset}
-          label={period.label}
-          range={range}
-          onPreset={onPreset}
-          onRange={onRange}
-          ariaLabel="Reports period"
-        />
+        <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <FinancePeriodFilter
+            preset={preset}
+            label={period.label}
+            range={range}
+            onPreset={onPreset}
+            onRange={onRange}
+            ariaLabel="Reports period"
+          />
+          <button
+            type="button"
+            onClick={handleExport}
+            aria-disabled={!selected}
+            className={cn(
+              primaryButton,
+              "w-full shrink-0 sm:w-auto",
+              !selected && "cursor-not-allowed bg-[#0b2244]/45 opacity-55 shadow-none hover:bg-[#0b2244]/45",
+            )}
+          >
+            <Download className="h-3.5 w-3.5" strokeWidth={2} />
+            Export
+          </button>
+        </div>
       </header>
+
+      {exportHint && !selected ? (
+        <p className="text-[13px] font-medium text-amber-700/90" role="status">
+          Select a report to export.
+        </p>
+      ) : null}
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {CARDS.map((card) => {
           const meta = REPORT_KIND_META[card.kind];
           const Icon = card.icon;
+          const isSelected = selected === card.kind;
           return (
             <article
               key={card.kind}
-              className={cn(glass, "flex min-w-0 flex-col px-4 py-4 sm:px-5 sm:py-5", card.tone)}
+              className={cn(
+                glass,
+                "flex min-w-0 flex-col px-3.5 py-3.5 transition duration-200 sm:px-4 sm:py-4",
+                isSelected ? card.selectedTone : "hover:border-white/80 hover:bg-white/68",
+              )}
             >
-              <span
-                className={cn(
-                  "inline-flex h-10 w-10 items-center justify-center rounded-full border shadow-[0_6px_14px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.95)]",
-                  card.iconTone,
-                )}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelected(card.kind);
+                  setExportHint(false);
+                }}
+                aria-pressed={isSelected}
+                className="flex w-full min-w-0 items-center gap-3 text-left"
               >
-                <Icon className="h-4 w-4" strokeWidth={1.9} />
-              </span>
-              <h2 className="mt-3 text-[16px] font-semibold tracking-[-0.02em] text-navy">{meta.title}</h2>
-              <p className="mt-1.5 flex-1 text-[12.5px] leading-5 text-slate-500">{meta.description}</p>
-              <div className="mt-4 flex flex-col gap-2">
-                <Link href={`${meta.href}?${query}`} className={cn(primaryButton, "w-full")}>
-                  View Report
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => downloadReportPdf(card.kind, preset, range)}
-                  className={cn(secondaryButton, "w-full")}
+                <span
+                  className={cn(
+                    "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border shadow-[0_6px_14px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.95)]",
+                    card.iconTone,
+                  )}
                 >
-                  <Download className="h-3.5 w-3.5" strokeWidth={2} />
-                  Download PDF
-                </button>
-              </div>
+                  <Icon className="h-4 w-4" strokeWidth={1.9} />
+                </span>
+                <span className="min-w-0 flex-1 text-[15px] font-semibold tracking-[-0.02em] text-navy">
+                  {meta.title}
+                </span>
+                {isSelected ? (
+                  <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#0b2244] text-white">
+                    <Check className="h-3.5 w-3.5" strokeWidth={2.4} />
+                  </span>
+                ) : null}
+              </button>
+              <Link
+                href={`${meta.href}?${query}`}
+                onClick={() => setSelected(card.kind)}
+                className={cn(primaryButton, "mt-3.5 w-full")}
+              >
+                View Report
+              </Link>
             </article>
           );
         })}
@@ -416,7 +464,7 @@ function ReportDetail({ kind }: { kind: ReportKind }) {
         <div className="min-w-0">
           <BackToReports query={query} />
           <h1 className="mt-3 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[28px]">{meta.title}</h1>
-          <p className="mt-1.5 text-[13.5px] text-slate-500">{meta.description}</p>
+          <p className="mt-1.5 text-[13.5px] text-slate-500">{period.label}</p>
         </div>
         <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           <FinancePeriodFilter
@@ -433,7 +481,7 @@ function ReportDetail({ kind }: { kind: ReportKind }) {
             className={cn(primaryButton, "w-full shrink-0 sm:w-auto")}
           >
             <Download className="h-3.5 w-3.5" strokeWidth={2} />
-            Download PDF
+            Export
           </button>
         </div>
       </header>
