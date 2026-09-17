@@ -1,0 +1,10 @@
+---
+description: RM Holdings Ltd project scope
+alwaysApply: true
+---
+
+# Project scope
+
+This repository is **RM Holdings Ltd** only.
+
+When starting, verifying, or browsing this app, use only this repo and `http://localhost:3000`.
