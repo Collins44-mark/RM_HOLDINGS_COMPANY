@@ -123,7 +123,11 @@ export function SummarySection({
       <div
         className={cn(
           "mt-4 grid gap-3",
-          items.length <= 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4",
+          items.length <= 2
+            ? "grid-cols-1 sm:grid-cols-2"
+            : items.length <= 4
+              ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4"
+              : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3",
         )}
       >
         {items.map((item) => (
@@ -195,9 +199,9 @@ export function StatusPill({ value }: { value: string }) {
   const tone =
     value === "Completed" || value === "Paid" || value === "Received" || value === "In Stock"
       ? "bg-[#e7f4ea] text-[#3f8a5a]"
-      : value === "Refunded" || value === "Out of Stock" || value === "Unpaid"
+      : value === "Refunded" || value === "Out of Stock" || value === "Unpaid" || value === "Expired"
         ? "bg-[#fff2f3] text-[#c45b66]"
-        : value === "Low Stock" || value === "Partial"
+        : value === "Low Stock" || value === "Partial" || value === "Expiring Soon"
           ? "bg-[#fff8eb] text-[#b5812a]"
           : "bg-[#f3f6fa] text-slate-500";
   return (

@@ -83,6 +83,11 @@ export function ProfitLossReportDetail() {
           <LineRow label="Cost of Goods Sold" value={`- ${formatTzs(data.costOfGoodsSold)}`} tone="muted" />
           <LineRow label="Gross Profit" value={formatTzs(data.grossProfit)} tone="strong" />
           <LineRow label="Operating Expenses" value={`- ${formatTzs(data.operatingExpenses)}`} tone="muted" />
+          <LineRow
+            label="Loss from Expired/Damaged Stock"
+            value={`- ${formatTzs(data.inventoryLoss)}`}
+            tone="muted"
+          />
           <LineRow label="Net Profit" value={formatTzs(data.netProfit)} tone="result" />
         </div>
 

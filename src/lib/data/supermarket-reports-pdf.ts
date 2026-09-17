@@ -213,36 +213,17 @@ function renderInventoryPdf(data: InventoryReportData) {
     ...kpiCard(MARGIN + 132, PAGE_H - 180, "Stock Units", String(data.totalStockUnits), "0.957 0.945 0.996"),
     ...kpiCard(MARGIN + 264, PAGE_H - 180, "Inventory Value", formatTzs(data.totalInventoryValue), "0.933 0.980 0.949"),
     ...kpiCard(MARGIN + 396, PAGE_H - 180, "Low Stock", String(data.lowStock), "1 0.973 0.918"),
-    text("F2", 11, MARGIN, PAGE_H - 220, "Stock Movement"),
+    text("F1", 9, MARGIN, PAGE_H - 208, `Expiring Soon: ${data.expiringSoon}`),
+    text("F1", 9, MARGIN + 160, PAGE_H - 208, `Expired Items: ${data.expiredItems}`),
+    text("F1", 9, MARGIN + 320, PAGE_H - 208, `Expired Loss: ${formatTzs(data.expiredStockValue)}`),
+    text("F2", 11, MARGIN, PAGE_H - 236, "Stock Movement"),
   ];
-  let y = PAGE_H - 238;
+  let y = PAGE_H - 254;
   for (const row of data.movements) {
     page.push(text("F1", 9, MARGIN, y, row.label), text("F2", 9, MARGIN + 200, y, String(row.count)));
     y -= 15;
   }
   y -= 12;
-  page.push(text("F2", 11, MARGIN, y, "Low Stock Products"));
-  y -= 18;
-  for (const row of data.lowStockProducts) {
-    if (y < 90) {
-      pages.push(page);
-      page = [...header("Inventory Report"), text("F2", 11, MARGIN, PAGE_H - 96, "Low Stock Products (continued)")];
-      y = PAGE_H - 120;
-    }
-    page.push(
-      text("F1", 9, MARGIN, y, clip(row.name, 22)),
-      text("F1", 9, MARGIN + 170, y, `Qty ${row.stock}`),
-      text("F1", 8, MARGIN + 240, y, row.status),
-      text("F2", 9, MARGIN + 340, y, formatTzs(row.value)),
-    );
-    y -= 15;
-  }
-  y -= 12;
-  if (y < 140) {
-    pages.push(page);
-    page = [...header("Inventory Report")];
-    y = PAGE_H - 100;
-  }
   page.push(text("F2", 11, MARGIN, y, "Inventory Valuation"));
   y -= 18;
   for (const row of data.valuation) {
@@ -256,6 +237,31 @@ function renderInventoryPdf(data: InventoryReportData) {
       text("F1", 9, MARGIN + 190, y, String(row.quantity)),
       text("F1", 8, MARGIN + 250, y, formatTzs(row.buyingPrice)),
       text("F2", 9, MARGIN + 360, y, formatTzs(row.stockValue)),
+    );
+    y -= 15;
+  }
+  y -= 12;
+  if (y < 140) {
+    pages.push(page);
+    page = [...header("Inventory Report")];
+    y = PAGE_H - 100;
+  }
+  page.push(text("F2", 11, MARGIN, y, "Expiry & Inventory Loss"));
+  y -= 16;
+  page.push(text("F1", 9, MARGIN, y, `Expired Stock Value / Loss: ${formatTzs(data.expiredStockValue)}`));
+  y -= 18;
+  for (const row of data.expiryRows) {
+    if (y < 90) {
+      pages.push(page);
+      page = [...header("Inventory Report"), text("F2", 11, MARGIN, PAGE_H - 96, "Expiry & Inventory Loss (continued)")];
+      y = PAGE_H - 120;
+    }
+    page.push(
+      text("F1", 9, MARGIN, y, clip(row.name, 20)),
+      text("F1", 9, MARGIN + 160, y, String(row.quantity)),
+      text("F1", 8, MARGIN + 210, y, row.expiryDate),
+      text("F1", 8, MARGIN + 300, y, row.status),
+      text("F2", 9, MARGIN + 390, y, formatTzs(row.stockValue)),
     );
     y -= 15;
   }
@@ -330,13 +336,15 @@ function renderProfitLossPdf(data: ProfitLossReportData) {
     text("F2", 10, MARGIN + 280, PAGE_H - 204, formatTzs(data.grossProfit)),
     text("F1", 10, MARGIN, PAGE_H - 222, "Operating Expenses"),
     text("F1", 10, MARGIN + 280, PAGE_H - 222, `- ${formatTzs(data.operatingExpenses)}`),
-    text("F2", 11, MARGIN, PAGE_H - 248, "Net Profit"),
-    text("F2", 11, MARGIN + 280, PAGE_H - 248, formatTzs(data.netProfit)),
-    text("F1", 9, MARGIN, PAGE_H - 278, `Gross Margin: ${data.grossMargin}%`),
-    text("F1", 9, MARGIN + 180, PAGE_H - 278, `Net Margin: ${data.netMargin}%`),
-    text("F2", 11, MARGIN, PAGE_H - 310, "Operating Expenses"),
+    text("F1", 10, MARGIN, PAGE_H - 240, "Loss from Expired/Damaged Stock"),
+    text("F1", 10, MARGIN + 280, PAGE_H - 240, `- ${formatTzs(data.inventoryLoss)}`),
+    text("F2", 11, MARGIN, PAGE_H - 266, "Net Profit"),
+    text("F2", 11, MARGIN + 280, PAGE_H - 266, formatTzs(data.netProfit)),
+    text("F1", 9, MARGIN, PAGE_H - 296, `Gross Margin: ${data.grossMargin}%`),
+    text("F1", 9, MARGIN + 180, PAGE_H - 296, `Net Margin: ${data.netMargin}%`),
+    text("F2", 11, MARGIN, PAGE_H - 328, "Operating Expenses"),
   ];
-  let y = PAGE_H - 330;
+  let y = PAGE_H - 348;
   for (const row of data.expenses) {
     page.push(
       text("F1", 9, MARGIN, y, clip(row.category, 18)),
