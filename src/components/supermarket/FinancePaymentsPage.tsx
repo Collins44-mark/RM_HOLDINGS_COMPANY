@@ -1,0 +1,241 @@
+"use client";
+
+import { useMemo, useState, useSyncExternalStore } from "react";
+import { Search, Trash2 } from "lucide-react";
+import { cn } from "@/lib/cn";
+import { formatTzs } from "@/lib/format/currency";
+import {
+  FINANCE_PAYMENT_METHODS,
+  PAYMENT_TYPES,
+  deleteMockPayment,
+  filterMockPayments,
+  formatFinanceDate,
+  getFinanceActivitySnapshot,
+  paymentDirection,
+  paymentDisplayDescription,
+  paymentSummaryCards,
+  subscribeFinanceActivity,
+  type FinancePaymentMethod,
+  type PaymentType,
+} from "@/lib/data/sample-supermarket-finance";
+import { FinanceBackLink } from "@/components/supermarket/FinanceBackLink";
+import { RecordPaymentModal } from "@/components/supermarket/FinanceRecordModals";
+import { filterClass, primaryButton, tableHead } from "@/components/supermarket/purchasing-ui";
+
+const glass =
+  "rounded-[28px] border border-white/55 bg-white/58 shadow-[0_18px_50px_rgba(15,35,64,0.07),inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-2xl";
+
+export function FinancePaymentsPage() {
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [paymentType, setPaymentType] = useState<"all" | PaymentType>("all");
+  const [paymentMethod, setPaymentMethod] = useState<"all" | FinancePaymentMethod>("all");
+  const [date, setDate] = useState("");
+
+  const activity = useSyncExternalStore(
+    subscribeFinanceActivity,
+    getFinanceActivitySnapshot,
+    getFinanceActivitySnapshot,
+  );
+
+  const summary = useMemo(() => paymentSummaryCards(activity.payments), [activity.payments]);
+  const rows = useMemo(
+    () => filterMockPayments(activity.payments, { query, paymentType, paymentMethod, date }),
+    [activity.payments, query, paymentType, paymentMethod, date],
+  );
+
+  return (
+    <div className="min-w-0 max-w-full space-y-5 pb-10 sm:space-y-6">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <FinanceBackLink />
+          <h1 className="mt-3 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[28px]">Payments</h1>
+          <p className="mt-1.5 text-[13.5px] text-slate-500">Track money received and money paid.</p>
+        </div>
+        <button type="button" onClick={() => setPaymentOpen(true)} className={primaryButton}>
+          + Record Payment
+        </button>
+      </header>
+
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <SummaryStat label="Money Received" value={formatTzs(summary.received)} />
+        <SummaryStat label="Money Paid" value={formatTzs(summary.paid)} />
+        <SummaryStat label="Total Transactions" value={summary.totalTransactions.toLocaleString("en-US")} />
+      </section>
+
+      <section className={cn(glass, "px-4 py-4 sm:px-5 sm:py-5")}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <label className="relative block sm:col-span-2 xl:col-span-1">
+            <span className="sr-only">Search payments</span>
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search payments..."
+              className={cn(filterClass, "pl-10")}
+            />
+          </label>
+          <label className="block">
+            <span className="sr-only">Payment type</span>
+            <select
+              value={paymentType}
+              onChange={(event) => setPaymentType(event.target.value as "all" | PaymentType)}
+              className={filterClass}
+            >
+              <option value="all">All Types</option>
+              {PAYMENT_TYPES.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="sr-only">Payment method</span>
+            <select
+              value={paymentMethod}
+              onChange={(event) => setPaymentMethod(event.target.value as "all" | FinancePaymentMethod)}
+              className={filterClass}
+            >
+              <option value="all">All Methods</option>
+              {FINANCE_PAYMENT_METHODS.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="sr-only">Date</span>
+            <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className={filterClass} />
+          </label>
+        </div>
+      </section>
+
+      <section className={cn(glass, "overflow-hidden")}>
+        <div className="hidden overflow-x-auto md:block">
+          <table className="min-w-full text-left">
+            <thead className={tableHead}>
+              <tr>
+                <th className="px-5 py-3 font-medium">Date</th>
+                <th className="px-5 py-3 font-medium">Type</th>
+                <th className="px-5 py-3 font-medium">Description</th>
+                <th className="px-5 py-3 font-medium">Payment Method</th>
+                <th className="px-5 py-3 font-medium">Amount</th>
+                <th className="px-5 py-3 font-medium">Reference</th>
+                <th className="px-5 py-3 font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const direction = paymentDirection(row.paymentType);
+                return (
+                  <tr key={row.id} className="border-t border-white/50">
+                    <td className="px-5 py-3.5 text-[13.5px] tabular-nums text-slate-600">
+                      {formatFinanceDate(row.date)}
+                    </td>
+                    <td className="px-5 py-3.5 text-[13.5px] text-slate-600">{row.paymentType}</td>
+                    <td className="px-5 py-3.5 text-[13.5px] font-semibold text-navy">
+                      {paymentDisplayDescription(row)}
+                    </td>
+                    <td className="px-5 py-3.5 text-[13.5px] text-slate-600">{row.paymentMethod}</td>
+                    <td
+                      className={cn(
+                        "px-5 py-3.5 text-[13.5px] font-semibold tabular-nums",
+                        direction === "in" ? "text-emerald-700" : "text-[#c45b66]",
+                      )}
+                    >
+                      {direction === "in" ? "+" : "-"}
+                      {formatTzs(row.amount)}
+                    </td>
+                    <td className="px-5 py-3.5 text-[13.5px] text-slate-600">{row.reference || "—"}</td>
+                    <td className="px-5 py-3.5">
+                      <button
+                        type="button"
+                        onClick={() => deleteMockPayment(row.id)}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium text-[#c45b66] transition hover:bg-rose-50"
+                        aria-label={`Delete ${paymentDisplayDescription(row)}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" strokeWidth={1.9} />
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-5 py-10 text-center text-[13.5px] text-slate-500">
+                    No payments found for these filters.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="space-y-3 p-4 md:hidden">
+          {rows.map((row) => {
+            const direction = paymentDirection(row.paymentType);
+            return (
+              <article
+                key={row.id}
+                className="rounded-[18px] border border-white/70 bg-white/55 px-4 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[14px] font-semibold text-navy">{paymentDisplayDescription(row)}</p>
+                    <p className="mt-0.5 text-[12px] text-slate-500">
+                      {formatFinanceDate(row.date)} · {row.paymentType}
+                    </p>
+                  </div>
+                  <p
+                    className={cn(
+                      "shrink-0 text-[14px] font-semibold tabular-nums",
+                      direction === "in" ? "text-emerald-700" : "text-[#c45b66]",
+                    )}
+                  >
+                    {direction === "in" ? "+" : "-"}
+                    {formatTzs(row.amount)}
+                  </p>
+                </div>
+                <dl className="mt-3 grid grid-cols-2 gap-2 text-[12.5px]">
+                  <div>
+                    <dt className="text-slate-400">Payment Method</dt>
+                    <dd className="mt-0.5 font-medium text-navy">{row.paymentMethod}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-400">Reference</dt>
+                    <dd className="mt-0.5 font-medium text-navy">{row.reference || "—"}</dd>
+                  </div>
+                </dl>
+                <button
+                  type="button"
+                  onClick={() => deleteMockPayment(row.id)}
+                  className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium text-[#c45b66] transition hover:bg-rose-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" strokeWidth={1.9} />
+                  Delete
+                </button>
+              </article>
+            );
+          })}
+          {rows.length === 0 ? (
+            <p className="py-8 text-center text-[13.5px] text-slate-500">No payments found for these filters.</p>
+          ) : null}
+        </div>
+      </section>
+
+      {paymentOpen ? <RecordPaymentModal onClose={() => setPaymentOpen(false)} /> : null}
+    </div>
+  );
+}
+
+function SummaryStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className={cn(glass, "px-4 py-4 sm:px-5")}>
+      <p className="text-[12px] font-medium text-slate-500">{label}</p>
+      <p className="mt-2 text-[20px] font-semibold tracking-[-0.04em] text-navy">{value}</p>
+    </div>
+  );
+}

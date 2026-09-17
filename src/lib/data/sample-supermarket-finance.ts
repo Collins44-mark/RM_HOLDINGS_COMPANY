@@ -174,11 +174,11 @@ function rangeSeed(range: SalesDateRange | null | undefined): FinancePeriodSeed 
 export function getSupermarketFinanceSummary(
   preset: SalesPeriodPreset,
   range?: SalesDateRange | null,
-  extraExpenses = 0,
+  expensesOverride?: number | null,
 ): FinanceSummary {
   const period = resolveSalesPeriod(preset, range);
   const seed = preset === "range" ? rangeSeed(range) : PERIOD_SEEDS[preset];
-  const expenses = seed.expenses + extraExpenses;
+  const expenses = expensesOverride != null ? expensesOverride : seed.expenses;
   return buildFinanceSummary({
     lines: seed.lines,
     expenses,
@@ -288,11 +288,13 @@ export type MockExpense = {
   date: string;
   note: string;
   reference: string;
+  recordedBy: string;
 };
 
 export type MockPayment = {
   id: string;
   paymentType: PaymentType;
+  description: string;
   amount: number;
   paymentMethod: FinancePaymentMethod;
   date: string;
@@ -318,6 +320,7 @@ const SEED_EXPENSES: MockExpense[] = [
     date: "2026-09-14",
     note: "September power bill",
     reference: "TANESCO-914",
+    recordedBy: "Collins Sarungi",
   },
   {
     id: "exp-seed-2",
@@ -328,6 +331,7 @@ const SEED_EXPENSES: MockExpense[] = [
     date: "2026-09-15",
     note: "Store van fuel",
     reference: "",
+    recordedBy: "Storekeeper",
   },
   {
     id: "exp-seed-3",
@@ -338,12 +342,82 @@ const SEED_EXPENSES: MockExpense[] = [
     date: "2026-09-16",
     note: "",
     reference: "MM-4412",
+    recordedBy: "Storekeeper",
+  },
+  {
+    id: "exp-seed-4",
+    name: "Shop rent",
+    category: "Rent",
+    amount: 450_000,
+    paymentMethod: "Bank",
+    date: "2026-09-01",
+    note: "Monthly rent",
+    reference: "RENT-SEP",
+    recordedBy: "Collins Sarungi",
+  },
+  {
+    id: "exp-seed-5",
+    name: "Cashier salaries",
+    category: "Salaries",
+    amount: 320_000,
+    paymentMethod: "Bank",
+    date: "2026-09-05",
+    note: "First week payroll",
+    reference: "PAY-W1",
+    recordedBy: "Collins Sarungi",
+  },
+];
+
+const SEED_PAYMENTS: MockPayment[] = [
+  {
+    id: "pay-seed-1",
+    paymentType: "Supplier Payment",
+    description: "Rice & oil stock payment",
+    amount: 1_200_000,
+    paymentMethod: "Bank",
+    date: "2026-09-12",
+    reference: "PO-1048",
+    notes: "Partial payment on PO-1048",
+    supplier: "Bakhresa Food Products",
+  },
+  {
+    id: "pay-seed-2",
+    paymentType: "Customer Receipt",
+    description: "Wholesale customer settlement",
+    amount: 480_000,
+    paymentMethod: "Mobile Money",
+    date: "2026-09-14",
+    reference: "REC-221",
+    notes: "",
+    supplier: "",
+  },
+  {
+    id: "pay-seed-3",
+    paymentType: "Refund",
+    description: "Returned soda crate refund",
+    amount: 18_000,
+    paymentMethod: "Cash",
+    date: "2026-09-15",
+    reference: "RF-019",
+    notes: "POS return",
+    supplier: "",
+  },
+  {
+    id: "pay-seed-4",
+    paymentType: "Supplier Payment",
+    description: "Dairy invoice settlement",
+    amount: 650_000,
+    paymentMethod: "Card",
+    date: "2026-09-16",
+    reference: "PO-1051",
+    notes: "",
+    supplier: "Azam Dairy",
   },
 ];
 
 let activitySnapshot: FinanceActivitySnapshot = {
   expenses: SEED_EXPENSES,
-  payments: [],
+  payments: SEED_PAYMENTS,
 };
 
 const activityListeners = new Set<() => void>();
@@ -395,4 +469,108 @@ export function recordMockPayment(input: Omit<MockPayment, "id">) {
   };
   emitActivity();
   return payment;
+}
+
+export function deleteMockExpense(id: string) {
+  activitySnapshot = {
+    ...activitySnapshot,
+    expenses: activitySnapshot.expenses.filter((item) => item.id !== id),
+  };
+  emitActivity();
+}
+
+export function deleteMockPayment(id: string) {
+  activitySnapshot = {
+    ...activitySnapshot,
+    payments: activitySnapshot.payments.filter((item) => item.id !== id),
+  };
+  emitActivity();
+}
+
+export function formatFinanceDate(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${String(date.getDate()).padStart(2, "0")} ${months[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+export function filterMockExpenses(
+  expenses: MockExpense[],
+  filters: {
+    query: string;
+    category: "all" | ExpenseCategory;
+    paymentMethod: "all" | FinancePaymentMethod;
+    date: string;
+  },
+) {
+  const needle = filters.query.trim().toLowerCase();
+  return expenses.filter((item) => {
+    if (filters.category !== "all" && item.category !== filters.category) return false;
+    if (filters.paymentMethod !== "all" && item.paymentMethod !== filters.paymentMethod) return false;
+    if (filters.date && item.date !== filters.date) return false;
+    if (!needle) return true;
+    return (
+      item.name.toLowerCase().includes(needle) ||
+      item.category.toLowerCase().includes(needle) ||
+      item.reference.toLowerCase().includes(needle) ||
+      item.recordedBy.toLowerCase().includes(needle)
+    );
+  });
+}
+
+export function expenseSummaryCards(expenses: MockExpense[], asOf = "2026-09-16") {
+  const total = recordedExpenseTotal(expenses);
+  const today = expenses.filter((item) => item.date === asOf).reduce((sum, item) => sum + item.amount, 0);
+  const monthPrefix = asOf.slice(0, 7);
+  const thisMonth = expenses
+    .filter((item) => item.date.startsWith(monthPrefix))
+    .reduce((sum, item) => sum + item.amount, 0);
+  return { total, today, thisMonth };
+}
+
+/** Money in = Customer Receipt; Money out = Supplier Payment + Refund + Other */
+export function paymentDirection(type: PaymentType): "in" | "out" {
+  return type === "Customer Receipt" ? "in" : "out";
+}
+
+export function filterMockPayments(
+  payments: MockPayment[],
+  filters: {
+    query: string;
+    paymentType: "all" | PaymentType;
+    paymentMethod: "all" | FinancePaymentMethod;
+    date: string;
+  },
+) {
+  const needle = filters.query.trim().toLowerCase();
+  return payments.filter((item) => {
+    if (filters.paymentType !== "all" && item.paymentType !== filters.paymentType) return false;
+    if (filters.paymentMethod !== "all" && item.paymentMethod !== filters.paymentMethod) return false;
+    if (filters.date && item.date !== filters.date) return false;
+    if (!needle) return true;
+    return (
+      item.description.toLowerCase().includes(needle) ||
+      item.paymentType.toLowerCase().includes(needle) ||
+      item.reference.toLowerCase().includes(needle) ||
+      item.supplier.toLowerCase().includes(needle)
+    );
+  });
+}
+
+export function paymentSummaryCards(payments: MockPayment[]) {
+  let received = 0;
+  let paid = 0;
+  for (const item of payments) {
+    if (paymentDirection(item.paymentType) === "in") received += item.amount;
+    else paid += item.amount;
+  }
+  return { received, paid, totalTransactions: payments.length };
+}
+
+export function paymentDisplayDescription(payment: MockPayment) {
+  if (payment.description.trim()) return payment.description;
+  if (payment.paymentType === "Supplier Payment" && payment.supplier) {
+    return `Payment to ${payment.supplier}`;
+  }
+  return payment.paymentType;
 }

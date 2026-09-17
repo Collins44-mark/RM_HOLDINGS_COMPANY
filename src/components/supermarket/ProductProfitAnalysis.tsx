@@ -1,8 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import {
@@ -11,6 +10,7 @@ import {
   productProfitTotals,
   type ProductProfitSort,
 } from "@/lib/data/sample-supermarket-finance";
+import { FinanceBackLink } from "@/components/supermarket/FinanceBackLink";
 import { filterClass, tableHead } from "@/components/supermarket/purchasing-ui";
 
 const glass =
@@ -36,12 +36,7 @@ export function ProductProfitAnalysis() {
   return (
     <div className="min-w-0 max-w-full space-y-5 pb-10 sm:space-y-6">
       <div>
-        <Link
-          href="/supermarket/finance"
-          className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-slate-500 transition hover:text-navy"
-        >
-          <ArrowLeft className="h-4 w-4" /> Back to Finance
-        </Link>
+        <FinanceBackLink />
         <h1 className="mt-3 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[28px]">
           Product Profit
         </h1>
