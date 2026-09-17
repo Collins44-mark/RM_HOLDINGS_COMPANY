@@ -174,15 +174,225 @@ function rangeSeed(range: SalesDateRange | null | undefined): FinancePeriodSeed 
 export function getSupermarketFinanceSummary(
   preset: SalesPeriodPreset,
   range?: SalesDateRange | null,
+  extraExpenses = 0,
 ): FinanceSummary {
   const period = resolveSalesPeriod(preset, range);
   const seed = preset === "range" ? rangeSeed(range) : PERIOD_SEEDS[preset];
+  const expenses = seed.expenses + extraExpenses;
   return buildFinanceSummary({
     lines: seed.lines,
-    expenses: seed.expenses,
+    expenses,
     cashBalance: FINANCE_CASH_BALANCE,
     supplier: FINANCE_SUPPLIER,
     deltas: seed.deltas,
     periodLabel: period.label,
   });
+}
+
+export type ProductProfitSort = "all" | "highest" | "lowest";
+
+export type ProductProfitRow = {
+  product: string;
+  unitsSold: number;
+  sellingPrice: number;
+  buyingPrice: number;
+  revenue: number;
+  buyingCost: number;
+  productProfit: number;
+  marginPercent: number;
+};
+
+/** Analysis catalogue — illustrative product-level profits for the Product Profit page. */
+const PRODUCT_PROFIT_SEED: FinanceSoldLine[] = [
+  { name: "Rice 25kg", buyingPrice: 40_000, sellingPrice: 46_000, quantitySold: 120 },
+  { name: "Cooking Oil 5L", buyingPrice: 19_000, sellingPrice: 22_000, quantitySold: 85 },
+  { name: "Sugar 1kg", buyingPrice: 2_000, sellingPrice: 2_500, quantitySold: 200 },
+  { name: "Maize Flour 2kg", buyingPrice: 3_400, sellingPrice: 4_200, quantitySold: 140 },
+  { name: "Cowbell Milk 4L", buyingPrice: 9_000, sellingPrice: 12_000, quantitySold: 95 },
+  { name: "Soda 500ml", buyingPrice: 1_200, sellingPrice: 1_500, quantitySold: 310 },
+  { name: "Bar Soap 800g", buyingPrice: 2_200, sellingPrice: 2_800, quantitySold: 160 },
+  { name: "Washing Powder 1kg", buyingPrice: 4_800, sellingPrice: 6_000, quantitySold: 72 },
+];
+
+export function toProductProfitRow(line: FinanceSoldLine): ProductProfitRow {
+  const revenue = lineRevenue(line);
+  const buyingCost = line.buyingPrice * line.quantitySold;
+  const productProfit = lineProductProfit(line);
+  return {
+    product: line.name,
+    unitsSold: line.quantitySold,
+    sellingPrice: line.sellingPrice,
+    buyingPrice: line.buyingPrice,
+    revenue,
+    buyingCost,
+    productProfit,
+    marginPercent: revenue === 0 ? 0 : (productProfit / revenue) * 100,
+  };
+}
+
+export function getProductProfitRows(): ProductProfitRow[] {
+  return PRODUCT_PROFIT_SEED.map(toProductProfitRow);
+}
+
+export function filterProductProfitRows(
+  rows: ProductProfitRow[],
+  options: { sort: ProductProfitSort; query: string },
+) {
+  const needle = options.query.trim().toLowerCase();
+  let next = needle
+    ? rows.filter((row) => row.product.toLowerCase().includes(needle))
+    : rows.slice();
+
+  if (options.sort === "highest") {
+    next.sort((a, b) => b.productProfit - a.productProfit);
+  } else if (options.sort === "lowest") {
+    next.sort((a, b) => a.productProfit - b.productProfit);
+  } else {
+    next.sort((a, b) => a.product.localeCompare(b.product, undefined, { sensitivity: "base" }));
+  }
+  return next;
+}
+
+export function productProfitTotals(rows: ProductProfitRow[]) {
+  const totalProductProfit = rows.reduce((sum, row) => sum + row.productProfit, 0);
+  const totalUnitsSold = rows.reduce((sum, row) => sum + row.unitsSold, 0);
+  const totalRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
+  const averageMargin = totalRevenue === 0 ? 0 : (totalProductProfit / totalRevenue) * 100;
+  return { totalProductProfit, totalUnitsSold, averageMargin };
+}
+
+export const EXPENSE_CATEGORIES = [
+  "Utilities",
+  "Transport",
+  "Rent",
+  "Salaries",
+  "Maintenance",
+  "Supplies",
+  "Other",
+] as const;
+
+export const FINANCE_PAYMENT_METHODS = ["Cash", "Mobile Money", "Card", "Bank"] as const;
+
+export const PAYMENT_TYPES = ["Supplier Payment", "Customer Receipt", "Refund", "Other"] as const;
+
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+export type FinancePaymentMethod = (typeof FINANCE_PAYMENT_METHODS)[number];
+export type PaymentType = (typeof PAYMENT_TYPES)[number];
+
+export type MockExpense = {
+  id: string;
+  name: string;
+  category: ExpenseCategory;
+  amount: number;
+  paymentMethod: FinancePaymentMethod;
+  date: string;
+  note: string;
+  reference: string;
+};
+
+export type MockPayment = {
+  id: string;
+  paymentType: PaymentType;
+  amount: number;
+  paymentMethod: FinancePaymentMethod;
+  date: string;
+  reference: string;
+  notes: string;
+  supplier: string;
+};
+
+export const MOCK_SUPPLIERS = ["Bakhresa Food Products", "Azam Dairy", "Mohammed Enterprises", "City Wholesalers"] as const;
+
+type FinanceActivitySnapshot = {
+  expenses: MockExpense[];
+  payments: MockPayment[];
+};
+
+const SEED_EXPENSES: MockExpense[] = [
+  {
+    id: "exp-seed-1",
+    name: "Electricity bill",
+    category: "Utilities",
+    amount: 180_000,
+    paymentMethod: "Bank",
+    date: "2026-09-14",
+    note: "September power bill",
+    reference: "TANESCO-914",
+  },
+  {
+    id: "exp-seed-2",
+    name: "Delivery fuel",
+    category: "Transport",
+    amount: 75_000,
+    paymentMethod: "Cash",
+    date: "2026-09-15",
+    note: "Store van fuel",
+    reference: "",
+  },
+  {
+    id: "exp-seed-3",
+    name: "Shop cleaning supplies",
+    category: "Supplies",
+    amount: 45_000,
+    paymentMethod: "Mobile Money",
+    date: "2026-09-16",
+    note: "",
+    reference: "MM-4412",
+  },
+];
+
+let activitySnapshot: FinanceActivitySnapshot = {
+  expenses: SEED_EXPENSES,
+  payments: [],
+};
+
+const activityListeners = new Set<() => void>();
+
+function emitActivity() {
+  activityListeners.forEach((listener) => listener());
+}
+
+export function getFinanceActivitySnapshot() {
+  return activitySnapshot;
+}
+
+export function subscribeFinanceActivity(listener: () => void) {
+  activityListeners.add(listener);
+  return () => activityListeners.delete(listener);
+}
+
+export function recordedExpenseTotal(expenses: MockExpense[] = activitySnapshot.expenses) {
+  return expenses.reduce((sum, item) => sum + item.amount, 0);
+}
+
+/** Seed expenses already counted inside period seed (300k today). Extra = newly recorded only. */
+export function extraExpenseTotal(expenses: MockExpense[] = activitySnapshot.expenses) {
+  const seedIds = new Set(SEED_EXPENSES.map((item) => item.id));
+  return expenses.filter((item) => !seedIds.has(item.id)).reduce((sum, item) => sum + item.amount, 0);
+}
+
+export function recordMockExpense(input: Omit<MockExpense, "id">) {
+  const expense: MockExpense = {
+    ...input,
+    id: `exp-${Date.now()}`,
+  };
+  activitySnapshot = {
+    ...activitySnapshot,
+    expenses: [expense, ...activitySnapshot.expenses],
+  };
+  emitActivity();
+  return expense;
+}
+
+export function recordMockPayment(input: Omit<MockPayment, "id">) {
+  const payment: MockPayment = {
+    ...input,
+    id: `pay-${Date.now()}`,
+  };
+  activitySnapshot = {
+    ...activitySnapshot,
+    payments: [payment, ...activitySnapshot.payments],
+  };
+  emitActivity();
+  return payment;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
@@ -22,15 +22,32 @@ import {
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import {
+  EXPENSE_CATEGORIES,
+  FINANCE_PAYMENT_METHODS,
+  MOCK_SUPPLIERS,
+  PAYMENT_TYPES,
+  extraExpenseTotal,
+  getFinanceActivitySnapshot,
   getSupermarketFinanceSummary,
+  recordMockExpense,
+  recordMockPayment,
+  subscribeFinanceActivity,
   totalCashOnHand,
+  type ExpenseCategory,
+  type FinancePaymentMethod,
   type FinanceSummary,
+  type PaymentType,
 } from "@/lib/data/sample-supermarket-finance";
 import {
   type SalesDateRange,
   type SalesPeriodPreset,
 } from "@/lib/data/sample-supermarket-sales";
-import { filterClass } from "@/components/supermarket/purchasing-ui";
+import {
+  filterClass,
+  inputClass,
+  primaryButton,
+  secondaryButton,
+} from "@/components/supermarket/purchasing-ui";
 
 const PERIOD_OPTIONS: { id: Exclude<SalesPeriodPreset, "range">; label: string }[] = [
   { id: "today", label: "Today" },
@@ -44,9 +61,6 @@ const PRODUCT_PROFIT_HINT =
 
 const glass =
   "rounded-[28px] border border-white/55 bg-white/58 shadow-[0_18px_50px_rgba(15,35,64,0.07),inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-2xl";
-
-const actionButton =
-  "inline-flex h-9 items-center justify-center gap-1 rounded-full bg-[#0b2244] px-3.5 text-[12.5px] font-semibold text-white shadow-[0_10px_22px_rgba(11,34,68,0.18),inset_0_1px_0_rgba(255,255,255,0.12)] transition duration-200 hover:bg-[#102a52]";
 
 type KpiTone = "revenue" | "profit" | "expenses" | "net";
 
@@ -77,13 +91,25 @@ const KPI_TONES: Record<KpiTone, { card: string; iconWrap: string; deltaUp: stri
   },
 };
 
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function FinanceOverview() {
   const [preset, setPreset] = useState<SalesPeriodPreset>("today");
   const [customRange, setCustomRange] = useState<SalesDateRange>({ from: "2026-09-01", to: "2026-09-16" });
+  const [expenseOpen, setExpenseOpen] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+
+  const activity = useSyncExternalStore(
+    subscribeFinanceActivity,
+    getFinanceActivitySnapshot,
+    getFinanceActivitySnapshot,
+  );
 
   const summary = useMemo(
-    () => getSupermarketFinanceSummary(preset, customRange),
-    [preset, customRange],
+    () => getSupermarketFinanceSummary(preset, customRange, extraExpenseTotal(activity.expenses)),
+    [preset, customRange, activity.expenses],
   );
 
   return (
@@ -119,6 +145,8 @@ export function FinanceOverview() {
           delta={summary.deltas.productProfit}
           icon={<CircleDollarSign className="h-[18px] w-[18px]" strokeWidth={1.9} />}
           showProfitHint
+          actionHref="/supermarket/finance/product-profit"
+          actionLabel="View Product Profit →"
         />
         <KpiCard
           tone="expenses"
@@ -147,32 +175,39 @@ export function FinanceOverview() {
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <ActionCard
           title="Expenses"
-          description="Manage supermarket operating expenses"
-          href="/supermarket/expenses"
-          cta="View Expenses →"
+          description="Operating expenses"
+          meta={formatTzs(summary.expenses)}
           icon={<Wallet className="h-4 w-4" strokeWidth={1.9} />}
           tone="border-rose-200/30 bg-rose-50/30"
           iconTone="border-rose-200/45 bg-white/70 text-rose-500"
+          primaryAction={{ label: "+ Record Expense", onClick: () => setExpenseOpen(true) }}
+          secondaryHref="/supermarket/expenses"
+          secondaryLabel="View Expenses →"
         />
         <ActionCard
           title="Payments"
-          description="Track money received and money paid"
-          href="/supermarket/payments"
-          cta="View Payments →"
+          description="Money received and money paid"
+          meta={`${activity.payments.length} recorded`}
           icon={<Banknote className="h-4 w-4" strokeWidth={1.9} />}
           tone="border-sky-200/30 bg-sky-50/30"
           iconTone="border-sky-200/45 bg-white/70 text-sky-600"
+          primaryAction={{ label: "+ Record Payment", onClick: () => setPaymentOpen(true) }}
+          secondaryHref="/supermarket/payments"
+          secondaryLabel="View Payments →"
         />
         <ActionCard
           title="Reports"
           description="View detailed financial reports"
-          href="/supermarket/reports"
-          cta="Open Reports →"
           icon={<FileBarChart2 className="h-4 w-4" strokeWidth={1.9} />}
           tone="border-violet-200/30 bg-violet-50/30"
           iconTone="border-violet-200/45 bg-white/70 text-violet-600"
+          secondaryHref="/supermarket/reports"
+          secondaryLabel="Open Reports →"
         />
       </section>
+
+      {expenseOpen ? <RecordExpenseModal onClose={() => setExpenseOpen(false)} /> : null}
+      {paymentOpen ? <RecordPaymentModal onClose={() => setPaymentOpen(false)} /> : null}
     </div>
   );
 }
@@ -186,6 +221,8 @@ function KpiCard({
   icon,
   invertDelta = false,
   showProfitHint = false,
+  actionHref,
+  actionLabel,
 }: {
   tone: KpiTone;
   title: string;
@@ -195,6 +232,8 @@ function KpiCard({
   icon: ReactNode;
   invertDelta?: boolean;
   showProfitHint?: boolean;
+  actionHref?: string;
+  actionLabel?: string;
 }) {
   const accent = KPI_TONES[tone];
   const positive = invertDelta ? delta < 0 : delta >= 0;
@@ -262,6 +301,14 @@ function KpiCard({
         {arrow} {delta >= 0 ? "+" : ""}
         {delta}% vs yesterday
       </p>
+      {actionHref && actionLabel ? (
+        <Link
+          href={actionHref}
+          className="mt-3 inline-flex text-[12.5px] font-semibold text-[#3d6db5] transition hover:text-navy"
+        >
+          {actionLabel}
+        </Link>
+      ) : null}
     </article>
   );
 }
@@ -410,19 +457,23 @@ function SupplierOutstandingCard({ summary }: { summary: FinanceSummary }) {
 function ActionCard({
   title,
   description,
-  href,
-  cta,
+  meta,
   icon,
   tone,
   iconTone,
+  primaryAction,
+  secondaryHref,
+  secondaryLabel,
 }: {
   title: string;
   description: string;
-  href: string;
-  cta: string;
+  meta?: string;
   icon: ReactNode;
   tone: string;
   iconTone: string;
+  primaryAction?: { label: string; onClick: () => void };
+  secondaryHref: string;
+  secondaryLabel: string;
 }) {
   return (
     <article className={cn(glass, "flex flex-col px-4 py-4 sm:px-5 sm:py-5", tone)}>
@@ -438,14 +489,266 @@ function ActionCard({
         <div className="min-w-0">
           <h3 className="text-[14.5px] font-semibold tracking-[-0.02em] text-navy">{title}</h3>
           <p className="mt-1 text-[12.5px] leading-5 text-slate-500">{description}</p>
+          {meta ? <p className="mt-2 text-[16px] font-semibold tracking-[-0.03em] tabular-nums text-navy">{meta}</p> : null}
         </div>
       </div>
-      <div className="mt-4">
-        <Link href={href} className={actionButton}>
-          {cta}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        {primaryAction ? (
+          <button type="button" onClick={primaryAction.onClick} className={primaryButton}>
+            {primaryAction.label}
+          </button>
+        ) : null}
+        <Link href={secondaryHref} className={primaryAction ? secondaryButton : primaryButton}>
+          {secondaryLabel}
         </Link>
       </div>
     </article>
+  );
+}
+
+function RecordExpenseModal({ onClose }: { onClose: () => void }) {
+  const [mounted, setMounted] = useState(false);
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState<ExpenseCategory>(EXPENSE_CATEGORIES[0]);
+  const [amount, setAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<FinancePaymentMethod>(FINANCE_PAYMENT_METHODS[0]);
+  const [date, setDate] = useState(todayIso);
+  const [note, setNote] = useState("");
+  const [reference, setReference] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const parsed = Number(amount.replace(/,/g, ""));
+    if (!name.trim()) {
+      setError("Expense name is required.");
+      return;
+    }
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setError("Enter a valid amount.");
+      return;
+    }
+    if (!date) {
+      setError("Date is required.");
+      return;
+    }
+    recordMockExpense({
+      name: name.trim(),
+      category,
+      amount: Math.round(parsed),
+      paymentMethod,
+      date,
+      note: note.trim(),
+      reference: reference.trim(),
+    });
+    onClose();
+  }
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-[#0b2244]/20 p-3 backdrop-blur-sm sm:items-center">
+      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close record expense" onClick={onClose} />
+      <form
+        className="relative z-[81] w-full max-w-lg rounded-[24px] border border-white/80 bg-white/95 p-5 shadow-[0_24px_60px_rgba(15,35,64,0.16)]"
+        onSubmit={onSubmit}
+      >
+        <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">Record Expense</h2>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="block sm:col-span-2">
+            <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Expense Name</span>
+            <input value={name} onChange={(event) => setName(event.target.value)} className={inputClass} placeholder="e.g. Electricity bill" />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Expense Category</span>
+            <select value={category} onChange={(event) => setCategory(event.target.value as ExpenseCategory)} className={inputClass}>
+              {EXPENSE_CATEGORIES.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Amount</span>
+            <input inputMode="numeric" value={amount} onChange={(event) => setAmount(event.target.value)} className={inputClass} placeholder="0" />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Payment Method</span>
+            <select
+              value={paymentMethod}
+              onChange={(event) => setPaymentMethod(event.target.value as FinancePaymentMethod)}
+              className={inputClass}
+            >
+              {FINANCE_PAYMENT_METHODS.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Date</span>
+            <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className={inputClass} />
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Description / Note</span>
+            <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} className={cn(inputClass, "h-auto py-3")} />
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Receipt / Reference (optional)</span>
+            <input value={reference} onChange={(event) => setReference(event.target.value)} className={inputClass} placeholder="Optional" />
+          </label>
+          {error ? <p className="sm:col-span-2 text-[12.5px] text-[#c45b66]">{error}</p> : null}
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className={secondaryButton}>
+            Cancel
+          </button>
+          <button type="submit" className={primaryButton}>
+            Save Expense
+          </button>
+        </div>
+      </form>
+    </div>,
+    document.body,
+  );
+}
+
+function RecordPaymentModal({ onClose }: { onClose: () => void }) {
+  const [mounted, setMounted] = useState(false);
+  const [paymentType, setPaymentType] = useState<PaymentType>(PAYMENT_TYPES[0]);
+  const [amount, setAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<FinancePaymentMethod>(FINANCE_PAYMENT_METHODS[0]);
+  const [date, setDate] = useState(todayIso);
+  const [reference, setReference] = useState("");
+  const [notes, setNotes] = useState("");
+  const [supplier, setSupplier] = useState<string>(MOCK_SUPPLIERS[0]);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const parsed = Number(amount.replace(/,/g, ""));
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setError("Enter a valid amount.");
+      return;
+    }
+    if (!date) {
+      setError("Date is required.");
+      return;
+    }
+    recordMockPayment({
+      paymentType,
+      amount: Math.round(parsed),
+      paymentMethod,
+      date,
+      reference: reference.trim(),
+      notes: notes.trim(),
+      supplier: paymentType === "Supplier Payment" ? supplier : "",
+    });
+    onClose();
+  }
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-[#0b2244]/20 p-3 backdrop-blur-sm sm:items-center">
+      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close record payment" onClick={onClose} />
+      <form
+        className="relative z-[81] w-full max-w-lg rounded-[24px] border border-white/80 bg-white/95 p-5 shadow-[0_24px_60px_rgba(15,35,64,0.16)]"
+        onSubmit={onSubmit}
+      >
+        <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">Record Payment</h2>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="block sm:col-span-2">
+            <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Payment Type</span>
+            <select value={paymentType} onChange={(event) => setPaymentType(event.target.value as PaymentType)} className={inputClass}>
+              {PAYMENT_TYPES.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+          {paymentType === "Supplier Payment" ? (
+            <label className="block sm:col-span-2">
+              <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Supplier</span>
+              <select value={supplier} onChange={(event) => setSupplier(event.target.value)} className={inputClass}>
+                {MOCK_SUPPLIERS.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <label className="block">
+            <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Amount</span>
+            <input inputMode="numeric" value={amount} onChange={(event) => setAmount(event.target.value)} className={inputClass} placeholder="0" />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Payment Method</span>
+            <select
+              value={paymentMethod}
+              onChange={(event) => setPaymentMethod(event.target.value as FinancePaymentMethod)}
+              className={inputClass}
+            >
+              {FINANCE_PAYMENT_METHODS.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Date</span>
+            <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className={inputClass} />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Reference</span>
+            <input value={reference} onChange={(event) => setReference(event.target.value)} className={inputClass} placeholder="Optional" />
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Notes</span>
+            <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} className={cn(inputClass, "h-auto py-3")} />
+          </label>
+          {error ? <p className="sm:col-span-2 text-[12.5px] text-[#c45b66]">{error}</p> : null}
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className={secondaryButton}>
+            Cancel
+          </button>
+          <button type="submit" className={primaryButton}>
+            Save Payment
+          </button>
+        </div>
+      </form>
+    </div>,
+    document.body,
   );
 }
 
