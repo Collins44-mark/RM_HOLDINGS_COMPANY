@@ -266,16 +266,28 @@ export const EXPENSE_CATEGORIES = [
   "Transport",
   "Rent",
   "Salaries",
-  "Maintenance",
+  "Repairs",
   "Supplies",
   "Other",
 ] as const;
 
+export const EXPENSE_STATUSES = ["Recorded", "Paid"] as const;
+
 export const FINANCE_PAYMENT_METHODS = ["Cash", "Mobile Money", "Card", "Bank"] as const;
 
-export const PAYMENT_TYPES = ["Supplier Payment", "Customer Receipt", "Refund", "Other"] as const;
+/** Money-in types do not reduce Net Profit. Supplier payments settle payables only. */
+export const MONEY_IN_PAYMENT_TYPES = ["Customer Receipt", "Other Income"] as const;
+export const MONEY_OUT_PAYMENT_TYPES = [
+  "Supplier Payment",
+  "Expense Payment",
+  "Customer Refund",
+  "Other Payment",
+] as const;
+
+export const PAYMENT_TYPES = [...MONEY_IN_PAYMENT_TYPES, ...MONEY_OUT_PAYMENT_TYPES] as const;
 
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+export type ExpenseStatus = (typeof EXPENSE_STATUSES)[number];
 export type FinancePaymentMethod = (typeof FINANCE_PAYMENT_METHODS)[number];
 export type PaymentType = (typeof PAYMENT_TYPES)[number];
 
@@ -289,6 +301,7 @@ export type MockExpense = {
   note: string;
   reference: string;
   recordedBy: string;
+  status: ExpenseStatus;
 };
 
 export type MockPayment = {
@@ -301,6 +314,8 @@ export type MockPayment = {
   reference: string;
   notes: string;
   supplier: string;
+  /** When paymentType is Expense Payment, optionally link to an operating expense. */
+  linkedExpenseId: string;
 };
 
 export const MOCK_SUPPLIERS = ["Bakhresa Food Products", "Azam Dairy", "Mohammed Enterprises", "City Wholesalers"] as const;
@@ -321,6 +336,7 @@ const SEED_EXPENSES: MockExpense[] = [
     note: "September power bill",
     reference: "TANESCO-914",
     recordedBy: "Collins Sarungi",
+    status: "Paid",
   },
   {
     id: "exp-seed-2",
@@ -332,6 +348,7 @@ const SEED_EXPENSES: MockExpense[] = [
     note: "Store van fuel",
     reference: "",
     recordedBy: "Storekeeper",
+    status: "Paid",
   },
   {
     id: "exp-seed-3",
@@ -343,6 +360,7 @@ const SEED_EXPENSES: MockExpense[] = [
     note: "",
     reference: "MM-4412",
     recordedBy: "Storekeeper",
+    status: "Paid",
   },
   {
     id: "exp-seed-4",
@@ -354,6 +372,7 @@ const SEED_EXPENSES: MockExpense[] = [
     note: "Monthly rent",
     reference: "RENT-SEP",
     recordedBy: "Collins Sarungi",
+    status: "Paid",
   },
   {
     id: "exp-seed-5",
@@ -365,6 +384,19 @@ const SEED_EXPENSES: MockExpense[] = [
     note: "First week payroll",
     reference: "PAY-W1",
     recordedBy: "Collins Sarungi",
+    status: "Paid",
+  },
+  {
+    id: "exp-seed-6",
+    name: "Fridge compressor repair",
+    category: "Repairs",
+    amount: 95_000,
+    paymentMethod: "Cash",
+    date: "2026-09-13",
+    note: "Cold room maintenance",
+    reference: "REP-088",
+    recordedBy: "Storekeeper",
+    status: "Recorded",
   },
 ];
 
@@ -377,8 +409,9 @@ const SEED_PAYMENTS: MockPayment[] = [
     paymentMethod: "Bank",
     date: "2026-09-12",
     reference: "PO-1048",
-    notes: "Partial payment on PO-1048",
+    notes: "Partial payment on PO-1048 — settles payable, not an operating expense",
     supplier: "Bakhresa Food Products",
+    linkedExpenseId: "",
   },
   {
     id: "pay-seed-2",
@@ -390,10 +423,11 @@ const SEED_PAYMENTS: MockPayment[] = [
     reference: "REC-221",
     notes: "",
     supplier: "",
+    linkedExpenseId: "",
   },
   {
     id: "pay-seed-3",
-    paymentType: "Refund",
+    paymentType: "Customer Refund",
     description: "Returned soda crate refund",
     amount: 18_000,
     paymentMethod: "Cash",
@@ -401,6 +435,7 @@ const SEED_PAYMENTS: MockPayment[] = [
     reference: "RF-019",
     notes: "POS return",
     supplier: "",
+    linkedExpenseId: "",
   },
   {
     id: "pay-seed-4",
@@ -412,6 +447,31 @@ const SEED_PAYMENTS: MockPayment[] = [
     reference: "PO-1051",
     notes: "",
     supplier: "Azam Dairy",
+    linkedExpenseId: "",
+  },
+  {
+    id: "pay-seed-5",
+    paymentType: "Expense Payment",
+    description: "Electricity bill settlement",
+    amount: 180_000,
+    paymentMethod: "Bank",
+    date: "2026-09-14",
+    reference: "TANESCO-914",
+    notes: "Linked to operating expense",
+    supplier: "",
+    linkedExpenseId: "exp-seed-1",
+  },
+  {
+    id: "pay-seed-6",
+    paymentType: "Other Income",
+    description: "Empty crate deposit refund from distributor",
+    amount: 25_000,
+    paymentMethod: "Cash",
+    date: "2026-09-13",
+    reference: "INC-012",
+    notes: "",
+    supplier: "",
+    linkedExpenseId: "",
   },
 ];
 
@@ -500,37 +560,37 @@ export function filterMockExpenses(
     query: string;
     category: "all" | ExpenseCategory;
     paymentMethod: "all" | FinancePaymentMethod;
-    date: string;
+    start: string;
+    end: string;
   },
 ) {
   const needle = filters.query.trim().toLowerCase();
   return expenses.filter((item) => {
     if (filters.category !== "all" && item.category !== filters.category) return false;
     if (filters.paymentMethod !== "all" && item.paymentMethod !== filters.paymentMethod) return false;
-    if (filters.date && item.date !== filters.date) return false;
+    if (filters.start && item.date < filters.start) return false;
+    if (filters.end && item.date > filters.end) return false;
     if (!needle) return true;
     return (
       item.name.toLowerCase().includes(needle) ||
       item.category.toLowerCase().includes(needle) ||
+      item.note.toLowerCase().includes(needle) ||
       item.reference.toLowerCase().includes(needle) ||
       item.recordedBy.toLowerCase().includes(needle)
     );
   });
 }
 
-export function expenseSummaryCards(expenses: MockExpense[], asOf = "2026-09-16") {
-  const total = recordedExpenseTotal(expenses);
-  const today = expenses.filter((item) => item.date === asOf).reduce((sum, item) => sum + item.amount, 0);
-  const monthPrefix = asOf.slice(0, 7);
-  const thisMonth = expenses
-    .filter((item) => item.date.startsWith(monthPrefix))
-    .reduce((sum, item) => sum + item.amount, 0);
-  return { total, today, thisMonth };
+export function expenseSummaryCards(expenses: MockExpense[]) {
+  const total = expenses.reduce((sum, item) => sum + item.amount, 0);
+  const count = expenses.length;
+  const average = count === 0 ? 0 : Math.round(total / count);
+  return { total, count, average };
 }
 
-/** Money in = Customer Receipt; Money out = Supplier Payment + Refund + Other */
+/** Money in increases cash; money out decreases cash. Supplier Payment does not affect Net Profit. */
 export function paymentDirection(type: PaymentType): "in" | "out" {
-  return type === "Customer Receipt" ? "in" : "out";
+  return (MONEY_IN_PAYMENT_TYPES as readonly string[]).includes(type) ? "in" : "out";
 }
 
 export function filterMockPayments(
@@ -539,20 +599,23 @@ export function filterMockPayments(
     query: string;
     paymentType: "all" | PaymentType;
     paymentMethod: "all" | FinancePaymentMethod;
-    date: string;
+    start: string;
+    end: string;
   },
 ) {
   const needle = filters.query.trim().toLowerCase();
   return payments.filter((item) => {
     if (filters.paymentType !== "all" && item.paymentType !== filters.paymentType) return false;
     if (filters.paymentMethod !== "all" && item.paymentMethod !== filters.paymentMethod) return false;
-    if (filters.date && item.date !== filters.date) return false;
+    if (filters.start && item.date < filters.start) return false;
+    if (filters.end && item.date > filters.end) return false;
     if (!needle) return true;
     return (
       item.description.toLowerCase().includes(needle) ||
       item.paymentType.toLowerCase().includes(needle) ||
       item.reference.toLowerCase().includes(needle) ||
-      item.supplier.toLowerCase().includes(needle)
+      item.supplier.toLowerCase().includes(needle) ||
+      item.notes.toLowerCase().includes(needle)
     );
   });
 }
@@ -574,3 +637,5 @@ export function paymentDisplayDescription(payment: MockPayment) {
   }
   return payment.paymentType;
 }
+
+export const FINANCE_ACTIVITY_AS_OF = "2026-09-16";

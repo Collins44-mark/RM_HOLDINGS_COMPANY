@@ -5,8 +5,10 @@ import { Search, Trash2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import {
+  FINANCE_ACTIVITY_AS_OF,
   FINANCE_PAYMENT_METHODS,
-  PAYMENT_TYPES,
+  MONEY_IN_PAYMENT_TYPES,
+  MONEY_OUT_PAYMENT_TYPES,
   deleteMockPayment,
   filterMockPayments,
   formatFinanceDate,
@@ -18,7 +20,13 @@ import {
   type FinancePaymentMethod,
   type PaymentType,
 } from "@/lib/data/sample-supermarket-finance";
+import {
+  resolveSalesPeriod,
+  type SalesDateRange,
+  type SalesPeriodPreset,
+} from "@/lib/data/sample-supermarket-sales";
 import { FinanceBackLink } from "@/components/supermarket/FinanceBackLink";
+import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
 import { RecordPaymentModal } from "@/components/supermarket/FinanceRecordModals";
 import { filterClass, primaryButton, tableHead } from "@/components/supermarket/purchasing-ui";
 
@@ -30,7 +38,11 @@ export function FinancePaymentsPage() {
   const [query, setQuery] = useState("");
   const [paymentType, setPaymentType] = useState<"all" | PaymentType>("all");
   const [paymentMethod, setPaymentMethod] = useState<"all" | FinancePaymentMethod>("all");
-  const [date, setDate] = useState("");
+  const [preset, setPreset] = useState<SalesPeriodPreset>("week");
+  const [customRange, setCustomRange] = useState<SalesDateRange>({
+    from: "2026-09-01",
+    to: FINANCE_ACTIVITY_AS_OF,
+  });
 
   const activity = useSyncExternalStore(
     subscribeFinanceActivity,
@@ -38,11 +50,24 @@ export function FinancePaymentsPage() {
     getFinanceActivitySnapshot,
   );
 
-  const summary = useMemo(() => paymentSummaryCards(activity.payments), [activity.payments]);
-  const rows = useMemo(
-    () => filterMockPayments(activity.payments, { query, paymentType, paymentMethod, date }),
-    [activity.payments, query, paymentType, paymentMethod, date],
+  const period = useMemo(
+    () => resolveSalesPeriod(preset, customRange, FINANCE_ACTIVITY_AS_OF),
+    [preset, customRange],
   );
+
+  const rows = useMemo(
+    () =>
+      filterMockPayments(activity.payments, {
+        query,
+        paymentType,
+        paymentMethod,
+        start: period.start,
+        end: period.end,
+      }),
+    [activity.payments, query, paymentType, paymentMethod, period.start, period.end],
+  );
+
+  const summary = useMemo(() => paymentSummaryCards(rows), [rows]);
 
   return (
     <div className="min-w-0 max-w-full space-y-5 pb-10 sm:space-y-6">
@@ -50,11 +75,23 @@ export function FinancePaymentsPage() {
         <div>
           <FinanceBackLink />
           <h1 className="mt-3 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[28px]">Payments</h1>
-          <p className="mt-1.5 text-[13.5px] text-slate-500">Track money received and money paid.</p>
+          <p className="mt-1.5 max-w-2xl text-[13.5px] text-slate-500">
+            Money movements only. Supplier payments settle outstanding payables and do not reduce Net Profit again.
+          </p>
         </div>
-        <button type="button" onClick={() => setPaymentOpen(true)} className={primaryButton}>
-          + Record Payment
-        </button>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <FinancePeriodFilter
+            preset={preset}
+            label={period.label}
+            range={customRange}
+            onPreset={setPreset}
+            onRange={setCustomRange}
+            ariaLabel="Payments period"
+          />
+          <button type="button" onClick={() => setPaymentOpen(true)} className={cn(primaryButton, "w-full sm:w-auto")}>
+            + Record Payment
+          </button>
+        </div>
       </header>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -64,7 +101,7 @@ export function FinancePaymentsPage() {
       </section>
 
       <section className={cn(glass, "px-4 py-4 sm:px-5 sm:py-5")}>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <label className="relative block sm:col-span-2 xl:col-span-1">
             <span className="sr-only">Search payments</span>
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
@@ -83,11 +120,20 @@ export function FinancePaymentsPage() {
               className={filterClass}
             >
               <option value="all">All Types</option>
-              {PAYMENT_TYPES.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
+              <optgroup label="Money In">
+                {MONEY_IN_PAYMENT_TYPES.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Money Out">
+                {MONEY_OUT_PAYMENT_TYPES.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </label>
           <label className="block">
@@ -104,10 +150,6 @@ export function FinancePaymentsPage() {
                 </option>
               ))}
             </select>
-          </label>
-          <label className="block">
-            <span className="sr-only">Date</span>
-            <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className={filterClass} />
           </label>
         </div>
       </section>
@@ -131,17 +173,32 @@ export function FinancePaymentsPage() {
                 const direction = paymentDirection(row.paymentType);
                 return (
                   <tr key={row.id} className="border-t border-white/50">
-                    <td className="px-5 py-3.5 text-[13.5px] tabular-nums text-slate-600">
+                    <td className="whitespace-nowrap px-5 py-3.5 text-[13.5px] tabular-nums text-slate-600">
                       {formatFinanceDate(row.date)}
                     </td>
-                    <td className="px-5 py-3.5 text-[13.5px] text-slate-600">{row.paymentType}</td>
-                    <td className="px-5 py-3.5 text-[13.5px] font-semibold text-navy">
+                    <td className="px-5 py-3.5">
+                      <p className="text-[13.5px] text-slate-600">{row.paymentType}</p>
+                      <p className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">
+                        {direction === "in" ? "Money In" : "Money Out"}
+                      </p>
+                    </td>
+                    <td className="min-w-0 px-5 py-3.5 text-[13.5px] font-semibold text-navy">
                       {paymentDisplayDescription(row)}
+                      {row.paymentType === "Supplier Payment" ? (
+                        <span className="mt-0.5 block text-[11.5px] font-normal text-slate-400">
+                          Settles supplier outstanding — not an operating expense
+                        </span>
+                      ) : null}
+                      {row.paymentType === "Expense Payment" ? (
+                        <span className="mt-0.5 block text-[11.5px] font-normal text-slate-400">
+                          Linked expense payment — profit impact is via the expense
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-5 py-3.5 text-[13.5px] text-slate-600">{row.paymentMethod}</td>
                     <td
                       className={cn(
-                        "px-5 py-3.5 text-[13.5px] font-semibold tabular-nums",
+                        "whitespace-nowrap px-5 py-3.5 text-[13.5px] font-semibold tabular-nums",
                         direction === "in" ? "text-emerald-700" : "text-[#c45b66]",
                       )}
                     >
@@ -201,10 +258,14 @@ export function FinancePaymentsPage() {
                 </div>
                 <dl className="mt-3 grid grid-cols-2 gap-2 text-[12.5px]">
                   <div>
+                    <dt className="text-slate-400">Direction</dt>
+                    <dd className="mt-0.5 font-medium text-navy">{direction === "in" ? "Money In" : "Money Out"}</dd>
+                  </div>
+                  <div>
                     <dt className="text-slate-400">Payment Method</dt>
                     <dd className="mt-0.5 font-medium text-navy">{row.paymentMethod}</dd>
                   </div>
-                  <div>
+                  <div className="col-span-2">
                     <dt className="text-slate-400">Reference</dt>
                     <dd className="mt-0.5 font-medium text-navy">{row.reference || "—"}</dd>
                   </div>
