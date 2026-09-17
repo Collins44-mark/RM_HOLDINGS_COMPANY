@@ -12,6 +12,7 @@ import {
   CircleDollarSign,
   Clock3,
   CreditCard,
+  FileBarChart2,
   Info,
   Phone,
   ShoppingCart,
@@ -29,7 +30,7 @@ import {
   type SalesDateRange,
   type SalesPeriodPreset,
 } from "@/lib/data/sample-supermarket-sales";
-import { filterClass, glassCard, glassPanel } from "@/components/supermarket/purchasing-ui";
+import { filterClass } from "@/components/supermarket/purchasing-ui";
 
 const PERIOD_OPTIONS: { id: Exclude<SalesPeriodPreset, "range">; label: string }[] = [
   { id: "today", label: "Today" },
@@ -41,37 +42,36 @@ const PERIOD_OPTIONS: { id: Exclude<SalesPeriodPreset, "range">; label: string }
 const PRODUCT_PROFIT_HINT =
   "Product Profit is calculated from the difference between each product's selling price and buying price multiplied by the quantity sold.";
 
+const glass =
+  "rounded-[28px] border border-white/55 bg-white/58 shadow-[0_18px_50px_rgba(15,35,64,0.07),inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-2xl";
+
+const actionButton =
+  "inline-flex h-9 items-center justify-center gap-1 rounded-full bg-[#0b2244] px-3.5 text-[12.5px] font-semibold text-white shadow-[0_10px_22px_rgba(11,34,68,0.18),inset_0_1px_0_rgba(255,255,255,0.12)] transition duration-200 hover:bg-[#102a52]";
+
 type KpiTone = "revenue" | "profit" | "expenses" | "net";
 
-const KPI_TONES: Record<
-  KpiTone,
-  { card: string; iconWrap: string; icon: string; deltaUp: string; deltaDown: string }
-> = {
+const KPI_TONES: Record<KpiTone, { card: string; iconWrap: string; deltaUp: string; deltaDown: string }> = {
   revenue: {
-    card: "border-emerald-200/40 bg-[#eefaf3]/90",
-    iconWrap: "bg-emerald-500/[0.12] text-emerald-600",
-    icon: "text-emerald-600",
+    card: "border-emerald-200/35 bg-emerald-50/45",
+    iconWrap: "border-emerald-200/50 bg-white/70 text-emerald-600",
     deltaUp: "text-emerald-600",
     deltaDown: "text-[#c45b66]",
   },
   profit: {
-    card: "border-sky-200/40 bg-[#eef5ff]/90",
-    iconWrap: "bg-sky-500/[0.12] text-sky-600",
-    icon: "text-sky-600",
+    card: "border-sky-200/35 bg-sky-50/45",
+    iconWrap: "border-sky-200/50 bg-white/70 text-sky-600",
     deltaUp: "text-emerald-600",
     deltaDown: "text-[#c45b66]",
   },
   expenses: {
-    card: "border-rose-200/40 bg-[#fff4f5]/92",
-    iconWrap: "bg-rose-500/[0.12] text-rose-500",
-    icon: "text-rose-500",
+    card: "border-rose-200/35 bg-rose-50/45",
+    iconWrap: "border-rose-200/50 bg-white/70 text-rose-500",
     deltaUp: "text-[#c45b66]",
     deltaDown: "text-emerald-600",
   },
   net: {
-    card: "border-violet-200/40 bg-[#f6f2ff]/92",
-    iconWrap: "bg-violet-500/[0.12] text-violet-600",
-    icon: "text-violet-600",
+    card: "border-violet-200/35 bg-violet-50/45",
+    iconWrap: "border-violet-200/50 bg-white/70 text-violet-600",
     deltaUp: "text-emerald-600",
     deltaDown: "text-[#c45b66]",
   },
@@ -90,10 +90,8 @@ export function FinanceOverview() {
     <div className="min-w-0 space-y-5 pb-10 sm:space-y-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[28px]">
-            Finance Overview
-          </h1>
-          <p className="mt-1.5 text-[13.5px] text-slate-500">Your supermarket&apos;s financial summary</p>
+          <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[28px]">Finance</h1>
+          <p className="mt-1.5 text-[13.5px] text-slate-500">Your supermarket&apos;s financial overview</p>
         </div>
         <FinancePeriodControl
           preset={preset}
@@ -111,15 +109,16 @@ export function FinanceOverview() {
           description="Total sales (all payment methods)"
           amount={summary.revenue}
           delta={summary.deltas.revenue}
-          icon={<TrendingUp className="h-[18px] w-[18px]" strokeWidth={2} />}
+          icon={<TrendingUp className="h-[18px] w-[18px]" strokeWidth={1.9} />}
         />
         <KpiCard
           tone="profit"
-          title="Profit"
+          title="Product Profit"
           description="Profit from products sold"
           amount={summary.productProfit}
           delta={summary.deltas.productProfit}
-          icon={<CircleDollarSign className="h-[18px] w-[18px]" strokeWidth={2} />}
+          icon={<CircleDollarSign className="h-[18px] w-[18px]" strokeWidth={1.9} />}
+          showProfitHint
         />
         <KpiCard
           tone="expenses"
@@ -127,7 +126,7 @@ export function FinanceOverview() {
           description="Total operating expenses"
           amount={summary.expenses}
           delta={summary.deltas.expenses}
-          icon={<Wallet className="h-[18px] w-[18px]" strokeWidth={2} />}
+          icon={<Wallet className="h-[18px] w-[18px]" strokeWidth={1.9} />}
           invertDelta
         />
         <KpiCard
@@ -136,16 +135,44 @@ export function FinanceOverview() {
           description="Profit after expenses"
           amount={summary.netProfit}
           delta={summary.deltas.netProfit}
-          icon={<Clock3 className="h-[18px] w-[18px]" strokeWidth={2} />}
+          icon={<Clock3 className="h-[18px] w-[18px]" strokeWidth={1.9} />}
         />
       </section>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ProfitSummaryCard summary={summary} />
         <CashBalanceCard summary={summary} />
+        <SupplierOutstandingCard summary={summary} />
       </section>
 
-      <SupplierOutstandingCard summary={summary} />
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <ActionCard
+          title="Expenses"
+          description="Manage supermarket operating expenses"
+          href="/supermarket/expenses"
+          cta="View Expenses →"
+          icon={<Wallet className="h-4 w-4" strokeWidth={1.9} />}
+          tone="border-rose-200/30 bg-rose-50/30"
+          iconTone="border-rose-200/45 bg-white/70 text-rose-500"
+        />
+        <ActionCard
+          title="Payments"
+          description="Track money received and money paid"
+          href="/supermarket/payments"
+          cta="View Payments →"
+          icon={<Banknote className="h-4 w-4" strokeWidth={1.9} />}
+          tone="border-sky-200/30 bg-sky-50/30"
+          iconTone="border-sky-200/45 bg-white/70 text-sky-600"
+        />
+        <ActionCard
+          title="Reports"
+          description="View detailed financial reports"
+          href="/supermarket/reports"
+          cta="Open Reports →"
+          icon={<FileBarChart2 className="h-4 w-4" strokeWidth={1.9} />}
+          tone="border-violet-200/30 bg-violet-50/30"
+          iconTone="border-violet-200/45 bg-white/70 text-violet-600"
+        />
+      </section>
     </div>
   );
 }
@@ -158,6 +185,7 @@ function KpiCard({
   delta,
   icon,
   invertDelta = false,
+  showProfitHint = false,
 }: {
   tone: KpiTone;
   title: string;
@@ -166,31 +194,61 @@ function KpiCard({
   delta: number;
   icon: ReactNode;
   invertDelta?: boolean;
+  showProfitHint?: boolean;
 }) {
   const accent = KPI_TONES[tone];
   const positive = invertDelta ? delta < 0 : delta >= 0;
   const arrow = delta >= 0 ? "↑" : "↓";
-  const vsLabel =
-    title === "Expenses" && invertDelta
-      ? `${arrow} ${delta >= 0 ? "+" : ""}${delta}% vs yesterday`
-      : `${arrow} ${delta >= 0 ? "+" : ""}${delta}% vs yesterday`;
+  const [hintOpen, setHintOpen] = useState(false);
+  const hintRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showProfitHint) return;
+    function onPointerDown(event: PointerEvent) {
+      if (!hintRef.current?.contains(event.target as Node)) setHintOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [showProfitHint]);
 
   return (
     <article
       className={cn(
-        glassCard,
+        glass,
         "relative overflow-hidden px-4 py-4 sm:px-5 sm:py-5",
         accent.card,
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[14px] font-semibold tracking-[-0.02em] text-navy">{title}</p>
+          <div className="inline-flex items-center gap-1.5">
+            <p className="text-[14px] font-semibold tracking-[-0.02em] text-navy">{title}</p>
+            {showProfitHint ? (
+              <div ref={hintRef} className="relative">
+                <button
+                  type="button"
+                  aria-label="About Product Profit"
+                  aria-expanded={hintOpen}
+                  onClick={() => setHintOpen((open) => !open)}
+                  onMouseEnter={() => setHintOpen(true)}
+                  onMouseLeave={() => setHintOpen(false)}
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-400 transition hover:bg-white/70 hover:text-navy"
+                >
+                  <Info className="h-3.5 w-3.5" strokeWidth={2} />
+                </button>
+                {hintOpen ? (
+                  <div className="absolute left-0 top-[calc(100%+8px)] z-20 w-[min(18rem,calc(100vw-3rem))] rounded-[14px] border border-white/80 bg-white/95 px-3.5 py-3 text-[12.5px] leading-5 text-slate-600 shadow-[0_14px_36px_rgba(15,35,64,0.12)] backdrop-blur-xl">
+                    {PRODUCT_PROFIT_HINT}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
           <p className="mt-0.5 text-[12px] leading-5 text-slate-500">{description}</p>
         </div>
         <span
           className={cn(
-            "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+            "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border shadow-[0_6px_14px_rgba(15,35,64,0.06),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md",
             accent.iconWrap,
           )}
         >
@@ -201,69 +259,10 @@ function KpiCard({
         {formatTzs(amount)}
       </p>
       <p className={cn("mt-2 text-[12px] font-medium", positive ? accent.deltaUp : accent.deltaDown)}>
-        {vsLabel}
+        {arrow} {delta >= 0 ? "+" : ""}
+        {delta}% vs yesterday
       </p>
     </article>
-  );
-}
-
-function ProfitSummaryCard({ summary }: { summary: FinanceSummary }) {
-  const [hintOpen, setHintOpen] = useState(false);
-  const hintRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function onPointerDown(event: PointerEvent) {
-      if (!hintRef.current?.contains(event.target as Node)) setHintOpen(false);
-    }
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, []);
-
-  return (
-    <section className={cn(glassPanel, "flex flex-col")}>
-      <div>
-        <h2 className="text-[17px] font-semibold tracking-[-0.03em] text-navy">Profit Summary</h2>
-        <p className="mt-1 text-[13px] text-slate-500">Simple breakdown of your profit</p>
-      </div>
-      <div className="mt-5 flex flex-1 flex-col">
-        <SummaryRow label="Total Sales (Revenue)" value={formatTzs(summary.revenue)} />
-        <div className="flex items-center justify-between gap-3 border-b border-black/[0.04] py-3.5">
-          <div ref={hintRef} className="relative inline-flex items-center gap-1.5">
-            <span className="text-[13.5px] text-slate-600">Product Profit</span>
-            <button
-              type="button"
-              aria-label="About Product Profit"
-              aria-expanded={hintOpen}
-              onClick={() => setHintOpen((open) => !open)}
-              onMouseEnter={() => setHintOpen(true)}
-              onMouseLeave={() => setHintOpen(false)}
-              className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-400 transition hover:bg-navy/[0.04] hover:text-navy"
-            >
-              <Info className="h-3.5 w-3.5" strokeWidth={2} />
-            </button>
-            {hintOpen ? (
-              <div className="absolute left-0 top-[calc(100%+8px)] z-20 w-[min(18rem,calc(100vw-3rem))] rounded-[14px] border border-white/80 bg-white/95 px-3.5 py-3 text-[12.5px] leading-5 text-slate-600 shadow-[0_14px_36px_rgba(15,35,64,0.12)] backdrop-blur-xl">
-                {PRODUCT_PROFIT_HINT}
-              </div>
-            ) : null}
-          </div>
-          <span className="text-[13.5px] font-semibold tabular-nums text-navy">{formatTzs(summary.productProfit)}</span>
-        </div>
-        <SummaryRow
-          label="Operating Expenses"
-          value={`- ${formatTzs(summary.expenses)}`}
-          valueClass="text-[#c45b66]"
-        />
-        <div className="mt-auto pt-4">
-          <div className="flex items-center justify-between gap-3 rounded-[16px] border border-emerald-200/50 bg-[#eaf7ef]/90 px-4 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-md">
-            <span className="text-[14px] font-semibold text-navy">Net Profit</span>
-            <span className="text-[18px] font-semibold tracking-[-0.03em] tabular-nums text-emerald-700">
-              {formatTzs(summary.netProfit)}
-            </span>
-          </div>
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -273,30 +272,30 @@ function CashBalanceCard({ summary }: { summary: FinanceSummary }) {
       label: "Cash",
       amount: summary.cashBalance.cash,
       icon: <Banknote className="h-4 w-4" strokeWidth={1.9} />,
-      tone: "bg-emerald-500/[0.12] text-emerald-600",
+      tone: "border-emerald-200/45 bg-white/70 text-emerald-600",
     },
     {
       label: "Mobile Money",
       amount: summary.cashBalance.mobileMoney,
       icon: <Phone className="h-4 w-4" strokeWidth={1.9} />,
-      tone: "bg-sky-500/[0.12] text-sky-600",
+      tone: "border-sky-200/45 bg-white/70 text-sky-600",
     },
     {
       label: "Card",
       amount: summary.cashBalance.card,
       icon: <CreditCard className="h-4 w-4" strokeWidth={1.9} />,
-      tone: "bg-violet-500/[0.12] text-violet-600",
+      tone: "border-violet-200/45 bg-white/70 text-violet-600",
     },
     {
       label: "Bank",
       amount: summary.cashBalance.bank,
       icon: <Building2 className="h-4 w-4" strokeWidth={1.9} />,
-      tone: "bg-amber-500/[0.12] text-amber-600",
+      tone: "border-amber-200/45 bg-white/70 text-amber-600",
     },
   ] as const;
 
   return (
-    <section className={cn(glassPanel, "flex flex-col")}>
+    <section className={cn(glass, "flex flex-col px-5 py-6 sm:px-6 sm:py-7")}>
       <div>
         <h2 className="text-[17px] font-semibold tracking-[-0.03em] text-navy">Cash Balance</h2>
         <p className="mt-1 text-[13px] text-slate-500">Money available in each payment method</p>
@@ -305,10 +304,15 @@ function CashBalanceCard({ summary }: { summary: FinanceSummary }) {
         {rows.map((row) => (
           <div
             key={row.label}
-            className="flex items-center justify-between gap-3 border-b border-black/[0.04] py-3.5"
+            className="flex items-center justify-between gap-3 border-b border-white/50 py-3.5"
           >
             <div className="inline-flex items-center gap-2.5">
-              <span className={cn("inline-flex h-8 w-8 items-center justify-center rounded-full", row.tone)}>
+              <span
+                className={cn(
+                  "inline-flex h-8 w-8 items-center justify-center rounded-full border shadow-[0_6px_14px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md",
+                  row.tone,
+                )}
+              >
                 {row.icon}
               </span>
               <span className="text-[13.5px] text-slate-600">{row.label}</span>
@@ -317,8 +321,8 @@ function CashBalanceCard({ summary }: { summary: FinanceSummary }) {
           </div>
         ))}
         <div className="mt-auto pt-4">
-          <div className="flex items-center justify-between gap-3 rounded-[16px] border border-sky-200/45 bg-[#eef4fb]/90 px-4 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-md">
-            <span className="text-[14px] font-semibold text-navy">Total Cash on Hand</span>
+          <div className="flex items-center justify-between gap-3 rounded-[18px] border border-sky-200/40 bg-sky-50/55 px-4 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-md">
+            <span className="text-[14px] font-semibold text-navy">Total Cash Available</span>
             <span className="text-[18px] font-semibold tracking-[-0.03em] tabular-nums text-navy">
               {formatTzs(totalCashOnHand(summary.cashBalance))}
             </span>
@@ -335,60 +339,67 @@ function SupplierOutstandingCard({ summary }: { summary: FinanceSummary }) {
       label: "Total Purchases",
       amount: summary.supplierOutstanding.totalPurchases,
       icon: <ShoppingCart className="h-4 w-4" strokeWidth={1.9} />,
-      card: "border-sky-200/45 bg-[#eef5ff]/85",
-      iconWrap: "bg-sky-500/[0.12] text-sky-600",
+      card: "border-sky-200/40 bg-sky-50/50",
+      iconWrap: "border-sky-200/45 bg-white/70 text-sky-600",
       amountClass: "text-navy",
     },
     {
       label: "Total Paid",
       amount: summary.supplierOutstanding.totalPaid,
       icon: <Check className="h-4 w-4" strokeWidth={2.2} />,
-      card: "border-emerald-200/45 bg-[#eefaf3]/88",
-      iconWrap: "bg-emerald-500/[0.12] text-emerald-600",
+      card: "border-emerald-200/40 bg-emerald-50/50",
+      iconWrap: "border-emerald-200/45 bg-white/70 text-emerald-600",
       amountClass: "text-navy",
     },
     {
       label: "Outstanding",
       amount: summary.supplierOutstanding.outstanding,
       icon: <Clock3 className="h-4 w-4" strokeWidth={1.9} />,
-      card: "border-rose-200/50 bg-[#fff4f5]/92",
-      iconWrap: "bg-rose-500/[0.12] text-rose-500",
+      card: "border-rose-200/45 bg-rose-50/55",
+      iconWrap: "border-rose-200/50 bg-white/70 text-rose-500",
       amountClass: "text-[#c45b66]",
     },
   ] as const;
 
   return (
-    <section className={glassPanel}>
+    <section className={cn(glass, "px-5 py-6 sm:px-6 sm:py-7")}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-[17px] font-semibold tracking-[-0.03em] text-navy">Supplier Outstanding</h2>
           <p className="mt-1 text-[13px] text-slate-500">Amount still to be paid to suppliers</p>
         </div>
         <Link
-          href="/supermarket/payments"
+          href="/supermarket/purchasing"
           className="inline-flex items-center gap-1 self-start text-[13px] font-semibold text-[#3d6db5] transition hover:text-navy"
         >
           View Details →
         </Link>
       </div>
-      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="mt-5 grid grid-cols-1 gap-3">
         {items.map((item) => (
           <div
             key={item.label}
             className={cn(
-              "rounded-[18px] border px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]",
+              "rounded-[18px] border px-4 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-md",
               item.card,
             )}
           >
-            <div className="flex items-center gap-2.5">
-              <span className={cn("inline-flex h-8 w-8 items-center justify-center rounded-full", item.iconWrap)}>
-                {item.icon}
-              </span>
-              <span className="text-[13px] font-medium text-slate-600">{item.label}</span>
+            <div className="flex items-center justify-between gap-3">
+              <div className="inline-flex items-center gap-2.5">
+                <span
+                  className={cn(
+                    "inline-flex h-8 w-8 items-center justify-center rounded-full border shadow-[0_6px_14px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.95)]",
+                    item.iconWrap,
+                  )}
+                >
+                  {item.icon}
+                </span>
+                <span className="text-[13px] font-medium text-slate-600">{item.label}</span>
+              </div>
+              <p className={cn("text-[16px] font-semibold tracking-[-0.03em] tabular-nums", item.amountClass)}>
+                {formatTzs(item.amount)}
+              </p>
             </div>
-            <p className={cn("mt-3 text-[18px] font-semibold tracking-[-0.03em] tabular-nums", item.amountClass)}>
-              {formatTzs(item.amount)}
-            </p>
           </div>
         ))}
       </div>
@@ -396,20 +407,45 @@ function SupplierOutstandingCard({ summary }: { summary: FinanceSummary }) {
   );
 }
 
-function SummaryRow({
-  label,
-  value,
-  valueClass,
+function ActionCard({
+  title,
+  description,
+  href,
+  cta,
+  icon,
+  tone,
+  iconTone,
 }: {
-  label: string;
-  value: string;
-  valueClass?: string;
+  title: string;
+  description: string;
+  href: string;
+  cta: string;
+  icon: ReactNode;
+  tone: string;
+  iconTone: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-black/[0.04] py-3.5">
-      <span className="text-[13.5px] text-slate-600">{label}</span>
-      <span className={cn("text-[13.5px] font-semibold tabular-nums text-navy", valueClass)}>{value}</span>
-    </div>
+    <article className={cn(glass, "flex flex-col px-4 py-4 sm:px-5 sm:py-5", tone)}>
+      <div className="flex items-start gap-3">
+        <span
+          className={cn(
+            "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border shadow-[0_6px_14px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md",
+            iconTone,
+          )}
+        >
+          {icon}
+        </span>
+        <div className="min-w-0">
+          <h3 className="text-[14.5px] font-semibold tracking-[-0.02em] text-navy">{title}</h3>
+          <p className="mt-1 text-[12.5px] leading-5 text-slate-500">{description}</p>
+        </div>
+      </div>
+      <div className="mt-4">
+        <Link href={href} className={actionButton}>
+          {cta}
+        </Link>
+      </div>
+    </article>
   );
 }
 
