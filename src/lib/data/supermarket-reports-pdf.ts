@@ -1,5 +1,4 @@
 import {
-  ReportDocument,
   downloadPdfBytes,
   formatPdfGeneratedAt,
   formatPdfNumber,
@@ -251,19 +250,21 @@ function renderInventoryPdf(data: InventoryReportData) {
 }
 
 function renderPurchasePdf(data: PurchaseReportData) {
-  const doc = new ReportDocument({
+  const doc = new CorporateReportDocument({
     businessUnit: BUSINESS_UNIT,
     title: "Purchase Report",
     subtitle: "Purchases, suppliers and outstanding amounts for the selected period.",
     periodLabel: data.periodLabel,
     periodDates: data.periodDates,
     generatedAt: formatPdfGeneratedAt(),
+    preparedBy: "Collins Sarungi",
+    preparedRole: "System Administrator",
     filtersNote:
       "This report summarizes purchase activity for the selected period. All figures are in Tanzanian Shillings (TZS).",
   });
 
-  doc.addSectionTitle("Purchase Summary");
-  doc.addSimpleTable(
+  doc.addSectionTable(
+    "Purchase Summary",
     [
       { key: "metric", label: "Metric", width: 360 },
       { key: "value", label: "Value", width: 151, align: "right" },
@@ -275,11 +276,10 @@ function renderPurchasePdf(data: PurchaseReportData) {
       { metric: "Amount Paid (TZS)", value: formatPdfNumber(data.amountPaid) },
       { metric: "Outstanding (TZS)", value: formatPdfNumber(data.outstanding) },
     ],
-    { sectionTitle: "Purchase Summary" },
   );
 
-  doc.addSectionTitle("Purchases by Supplier");
-  doc.addSimpleTable(
+  doc.addSectionTable(
+    "Purchases by Supplier",
     [
       { key: "supplier", label: "Supplier", width: 170 },
       { key: "purchases", label: "Amount (TZS)", width: 100, align: "right" },
@@ -292,11 +292,10 @@ function renderPurchasePdf(data: PurchaseReportData) {
       paid: formatPdfNumber(row.paid),
       due: formatPdfNumber(row.outstanding),
     })),
-    { sectionTitle: "Purchases by Supplier" },
   );
 
-  doc.addSectionTitle("Purchase Details");
-  doc.addSimpleTable(
+  doc.addFlowingSectionTable(
+    "Purchase Details",
     [
       { key: "number", label: "PO Number", width: 80 },
       { key: "supplier", label: "Supplier", width: 130 },
@@ -313,13 +312,12 @@ function renderPurchasePdf(data: PurchaseReportData) {
       amount: formatPdfNumber(row.amount),
       status: row.paymentStatus,
     })),
-    { sectionTitle: "Purchase Details" },
   );
 
   const outstandingSuppliers = data.suppliers.filter((row) => row.outstanding > 0);
   if (outstandingSuppliers.length > 0) {
-    doc.addSectionTitle("Supplier Outstanding");
-    doc.addSimpleTable(
+    doc.addSectionTable(
+      "Supplier Outstanding",
       [
         { key: "supplier", label: "Supplier", width: 320 },
         { key: "due", label: "Amount Due (TZS)", width: 191, align: "right" },
@@ -328,7 +326,6 @@ function renderPurchasePdf(data: PurchaseReportData) {
         supplier: row.name,
         due: formatPdfNumber(row.outstanding),
       })),
-      { sectionTitle: "Supplier Outstanding" },
     );
   }
 
@@ -336,19 +333,21 @@ function renderPurchasePdf(data: PurchaseReportData) {
 }
 
 function renderProfitLossPdf(data: ProfitLossReportData) {
-  const doc = new ReportDocument({
+  const doc = new CorporateReportDocument({
     businessUnit: BUSINESS_UNIT,
     title: "Profit & Loss",
     subtitle: "Financial performance for the selected period.",
     periodLabel: data.periodLabel,
     periodDates: data.periodDates,
     generatedAt: formatPdfGeneratedAt(),
+    preparedBy: "Collins Sarungi",
+    preparedRole: "System Administrator",
     filtersNote:
       "Net Profit = Gross Profit - Operating Expenses - Loss from Expired/Damaged Stock. Expired stock loss is excluded from COGS to avoid double-counting. All figures are in Tanzanian Shillings (TZS).",
   });
 
-  doc.addSectionTitle("Profit & Loss Statement");
-  doc.addSimpleTable(
+  doc.addSectionTable(
+    "Profit & Loss Statement",
     [
       { key: "desc", label: "Description", width: 360 },
       { key: "amount", label: "Amount (TZS)", width: 151, align: "right" },
@@ -358,16 +357,21 @@ function renderProfitLossPdf(data: ProfitLossReportData) {
       { desc: "Less: Cost of Goods Sold", amount: formatPdfNumber(data.costOfGoodsSold) },
       { desc: "Gross Profit", amount: formatPdfNumber(data.grossProfit) },
       { desc: "Less: Operating Expenses", amount: formatPdfNumber(data.operatingExpenses) },
-      { desc: "Less: Loss from Expired/Damaged Stock", amount: formatPdfNumber(data.inventoryLoss) },
+      {
+        desc: "Less: Loss from Expired/Damaged Stock",
+        amount: formatPdfNumber(data.inventoryLoss),
+      },
       { desc: "Net Profit", amount: formatPdfNumber(data.netProfit) },
       { desc: "Gross Margin", amount: formatPdfPercent(data.grossMargin) },
       { desc: "Net Margin", amount: formatPdfPercent(data.netMargin) },
     ],
-    { sectionTitle: "Profit & Loss Statement" },
+    {
+      emphasize: { key: "desc", values: ["Gross Profit", "Net Profit"] },
+    },
   );
 
-  doc.addSectionTitle("Operating Expenses");
-  doc.addSimpleTable(
+  doc.addSectionTable(
+    "Operating Expenses",
     [
       { key: "category", label: "Category", width: 140 },
       { key: "description", label: "Description", width: 220 },
@@ -379,7 +383,6 @@ function renderProfitLossPdf(data: ProfitLossReportData) {
       amount: formatPdfNumber(row.amount),
     })),
     {
-      sectionTitle: "Operating Expenses",
       totalRow: {
         category: "Total",
         description: "",
@@ -388,25 +391,17 @@ function renderProfitLossPdf(data: ProfitLossReportData) {
     },
   );
 
-  doc.addSectionTitle("Inventory / Expiry Losses");
-  doc.addSimpleTable(
+  doc.addSectionTable(
+    "Stock Losses",
     [
-      { key: "type", label: "Loss Type", width: 360 },
+      { key: "type", label: "Category", width: 360 },
       { key: "amount", label: "Amount (TZS)", width: 151, align: "right" },
     ],
     [
       { type: "Expired Stock", amount: formatPdfNumber(data.inventoryLoss) },
       { type: "Damaged Stock", amount: formatPdfNumber(0) },
       { type: "Lost Stock", amount: formatPdfNumber(0) },
-      { type: "Other Stock Loss", amount: formatPdfNumber(0) },
     ],
-    {
-      sectionTitle: "Inventory / Expiry Losses",
-      totalRow: {
-        type: "Total Inventory Losses",
-        amount: formatPdfNumber(data.inventoryLoss),
-      },
-    },
   );
 
   return doc.build();
@@ -463,4 +458,14 @@ export function buildSalesReportPdfBytes(
 /** Dev/test helper: returns Inventory PDF bytes for the selected period. */
 export function buildInventoryReportPdfBytes(preset: SalesPeriodPreset, range: SalesDateRange) {
   return renderInventoryPdf(buildInventoryReportData(preset, range));
+}
+
+/** Dev/test helper: returns Profit & Loss PDF bytes. */
+export function buildProfitLossReportPdfBytes(preset: SalesPeriodPreset, range: SalesDateRange) {
+  return renderProfitLossPdf(buildProfitLossReportData(preset, range));
+}
+
+/** Dev/test helper: returns Purchase PDF bytes. */
+export function buildPurchaseReportPdfBytes(preset: SalesPeriodPreset, range: SalesDateRange) {
+  return renderPurchasePdf(buildPurchaseReportData(preset, range));
 }

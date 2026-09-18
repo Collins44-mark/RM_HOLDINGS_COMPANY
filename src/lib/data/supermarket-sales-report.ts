@@ -1,4 +1,4 @@
-import { APP_NAME, APP_TAGLINE } from "@/lib/config/app";
+import { APP_NAME } from "@/lib/config/app";
 import { formatTzs } from "@/lib/format/currency";
 import { formatSalesDate, salesKpis, type SupermarketSale } from "@/lib/data/sample-supermarket-sales";
 
@@ -131,7 +131,7 @@ export function renderSalesReportPdf(input: SalesReportInput) {
       "0.55 0.58 0.62 rg",
       line(MARGIN, 40, PAGE_W - MARGIN, 40, 0.4),
       text("F1", 8, MARGIN, 26, `${APP_NAME}`),
-      text("F1", 8, MARGIN + 120, 26, ascii(APP_TAGLINE)),
+      text("F1", 8, MARGIN + 120, 26, "Supermarket System"),
       text("F1", 8, PAGE_W - MARGIN - 70, 26, `Page ${pageNumber} of ${pageCount}`),
       "0.043 0.133 0.267 rg",
     ];

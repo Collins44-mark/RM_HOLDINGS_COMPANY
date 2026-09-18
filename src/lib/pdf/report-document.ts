@@ -1,4 +1,4 @@
-import { APP_NAME, APP_TAGLINE } from "@/lib/config/app";
+import { APP_NAME } from "@/lib/config/app";
 
 export const PAGE_W = 595;
 export const PAGE_H = 842;
@@ -9,11 +9,12 @@ export const CONTENT_W = PAGE_W - MARGIN_X * 2;
 export const COL_GAP = 14;
 export const COL_W = (CONTENT_W - COL_GAP) / 2;
 
-/** Light blue-gray used for section bars, table headers, and total rows */
-export const FILL_HEADER = "0.922 0.949 0.969";
-export const STROKE = "0.78 0.82 0.86";
-export const INK = "0.05 0.12 0.22";
-export const MUTED = "0.45 0.50 0.56";
+/** Neutral gray fills — never blue section bars */
+export const FILL_HEADER = "0.973 0.980 0.988";
+export const STROKE = "0.886 0.910 0.941";
+export const INK = "0.059 0.090 0.165";
+export const MUTED = "0.392 0.455 0.545";
+export const FILL_PROFIT = "0.953 0.980 0.965";
 
 export type PdfFont = "F1" | "F2";
 export type PdfAlign = "left" | "right" | "center";
@@ -199,16 +200,6 @@ export class ReportDocument {
     this.setInk(INK);
     this.page.ops.push(pdfText("F2", 14, MARGIN_X, yTop - 2, APP_NAME));
     this.page.ops.push(pdfText("F1", 9, MARGIN_X, yTop - 16, this.meta.businessUnit));
-
-    const tagLine1 = APP_TAGLINE.includes("•")
-      ? APP_TAGLINE
-      : "One Vision - Multiple Opportunities";
-    const tagLine2 = "A Greater Tomorrow";
-    this.setInk(MUTED);
-    const t1w = pdfTextWidth(tagLine1, 8);
-    const t2w = pdfTextWidth(tagLine2, 8);
-    this.page.ops.push(pdfText("F1", 8, PAGE_W - MARGIN_X - t1w, yTop - 2, tagLine1));
-    this.page.ops.push(pdfText("F1", 8, PAGE_W - MARGIN_X - t2w, yTop - 14, tagLine2));
 
     this.setStroke(STROKE);
     this.page.ops.push(pdfLine(MARGIN_X, yTop - 26, PAGE_W - MARGIN_X, yTop - 26, 0.6));

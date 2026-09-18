@@ -1,4 +1,4 @@
-import { APP_NAME, APP_TAGLINE } from "@/lib/config/app";
+import { APP_NAME } from "@/lib/config/app";
 import {
   COL_GAP,
   COL_W,
@@ -6,7 +6,6 @@ import {
   MARGIN_BOTTOM,
   MARGIN_TOP,
   MARGIN_X,
-  MUTED,
   PAGE_H,
   PAGE_W,
   buildPdfBytes,
@@ -20,14 +19,16 @@ import {
   type TableColumn,
 } from "@/lib/pdf/report-document";
 
-/** Subtle light blue-grey — section titles & table headers (never dark bars) */
-const FILL_HEAD = "0.945 0.957 0.969";
-const FILL_TOTAL = "0.922 0.938 0.953";
-const FILL_NOTE = "0.949 0.960 0.973";
-const BORDER = "0.84 0.87 0.90";
-const DIVIDER = "0.70 0.73 0.76";
-const INK = "0.06 0.12 0.20";
-const SECTION_RADIUS = 7;
+/** Neutral greys only — white page, dark text, subtle slate (no blue bars) */
+const FILL_HEAD = "0.973 0.980 0.988"; // #F8FAFC
+const FILL_TOTAL = "0.961 0.969 0.980"; // #F5F7FA
+const FILL_NOTE = "0.973 0.980 0.988";
+const FILL_PROFIT = "0.953 0.980 0.965"; // pale green
+const BORDER = "0.886 0.910 0.941"; // #E2E8F0
+const DIVIDER = "0.886 0.910 0.941";
+const INK = "0.059 0.090 0.165"; // #0F172A
+const MUTED = "0.392 0.455 0.545"; // #64748B
+const SECTION_RADIUS = 6;
 const PAD_X = 10;
 
 const STATUS_FILL: Record<string, string> = {
@@ -99,6 +100,8 @@ export type SectionTableOptions = {
   subtitle?: string;
   /** Column key rendered as a subtle status pill */
   statusKey?: string;
+  /** Rows matching these cell values get bold + pale-green highlight */
+  emphasize?: { key: string; values: string[] };
 };
 
 /**
@@ -136,18 +139,6 @@ export class CorporateReportDocument {
     this.page.ops.push(pdfText("F2", 13, MARGIN_X, yTop - 2, APP_NAME));
     this.setInk(MUTED);
     this.page.ops.push(pdfText("F1", 9, MARGIN_X, yTop - 15, this.meta.businessUnit));
-
-    const tagLine1 = APP_TAGLINE.includes("•")
-      ? APP_TAGLINE
-      : "One Vision - Multiple Opportunities";
-    const tagLine2 = "A Greater Tomorrow";
-    this.setInk(MUTED);
-    this.page.ops.push(
-      pdfText("F1", 8, PAGE_W - MARGIN_X - pdfTextWidth(tagLine1, 8), yTop - 2, tagLine1),
-    );
-    this.page.ops.push(
-      pdfText("F1", 8, PAGE_W - MARGIN_X - pdfTextWidth(tagLine2, 8), yTop - 14, tagLine2),
-    );
 
     this.setStroke(DIVIDER);
     this.page.ops.push(pdfLine(MARGIN_X, yTop - 24, PAGE_W - MARGIN_X, yTop - 24, 0.45));
@@ -260,10 +251,19 @@ export class CorporateReportDocument {
     row: Record<string, string>,
     rowH: number,
     fontSize: number,
-    options: { bold?: boolean; tint?: boolean; statusKey?: string },
+    options: {
+      bold?: boolean;
+      tint?: boolean;
+      profit?: boolean;
+      statusKey?: string;
+    },
   ) {
     const ry = y - rowH;
-    if (options.tint) {
+    if (options.profit) {
+      this.page.ops.push(
+        `${FILL_PROFIT} rg ${tableX.toFixed(2)} ${ry.toFixed(2)} ${tableW.toFixed(2)} ${rowH.toFixed(2)} re f`,
+      );
+    } else if (options.tint) {
       this.page.ops.push(
         `${FILL_TOTAL} rg ${tableX.toFixed(2)} ${ry.toFixed(2)} ${tableW.toFixed(2)} ${rowH.toFixed(2)} re f`,
       );
@@ -276,11 +276,10 @@ export class CorporateReportDocument {
       if (options.statusKey && col.key === options.statusKey) {
         this.paintStatusPill(colX, ry, col.width, rowH, value);
       } else {
-        const emphasize = options.bold || col.align === "right";
         this.setInk(INK);
         this.page.ops.push(
           pdfAlignedText(
-            emphasize ? "F2" : "F1",
+            options.bold ? "F2" : "F1",
             fontSize,
             colX,
             ry + 4.2,
@@ -295,6 +294,14 @@ export class CorporateReportDocument {
     return ry;
   }
 
+  private rowIsEmphasized(
+    row: Record<string, string>,
+    emphasize?: { key: string; values: string[] },
+  ) {
+    if (!emphasize) return false;
+    return emphasize.values.includes(row[emphasize.key] ?? "");
+  }
+
   private paintTable(
     tableX: number,
     startY: number,
@@ -306,12 +313,18 @@ export class CorporateReportDocument {
     rowH: number,
     fontSize: number,
     statusKey?: string,
+    emphasize?: { key: string; values: string[] },
   ) {
     const scale = tableW / columns.reduce((sum, col) => sum + col.width, 0);
     const scaled = columns.map((col) => ({ ...col, width: col.width * scale }));
     let y = this.paintTableHeader(tableX, startY, tableW, scaled, headerH, fontSize);
     for (const row of rows) {
-      y = this.paintDataRow(tableX, y, tableW, scaled, row, rowH, fontSize, { statusKey });
+      const profit = this.rowIsEmphasized(row, emphasize);
+      y = this.paintDataRow(tableX, y, tableW, scaled, row, rowH, fontSize, {
+        statusKey,
+        bold: profit,
+        profit,
+      });
     }
     if (totalRow) {
       y = this.paintDataRow(tableX, y, tableW, scaled, totalRow, rowH, fontSize, {
@@ -399,6 +412,7 @@ export class CorporateReportDocument {
       rowH,
       8,
       options?.statusKey,
+      options?.emphasize,
     );
 
     this.page.y = boxBottom - 12;
@@ -471,8 +485,11 @@ export class CorporateReportDocument {
         8,
       );
       for (const row of chunk) {
+        const profit = this.rowIsEmphasized(row, options?.emphasize);
         y = this.paintDataRow(MARGIN_X + PAD_X, y, tableW, scaled, row, rowH, 8, {
           statusKey: options?.statusKey,
+          bold: profit,
+          profit,
         });
       }
       if (totalForChunk) {
