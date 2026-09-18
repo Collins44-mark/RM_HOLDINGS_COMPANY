@@ -93,61 +93,120 @@ function periodMeta(preset: SalesPeriodPreset, range: SalesDateRange) {
 
 const PAYMENT_ORDER = ["Cash", "Mobile Money", "Card", "Bank"] as const;
 
+export type SalesReportFilters = {
+  cashier?: string;
+  payment?: string;
+  category?: string;
+};
+
 export type SalesReportData = {
   periodLabel: string;
   periodDates: string;
+  comparisonLabel: string;
   totalRevenue: number;
-  totalTransactions: number;
+  totalSales: number;
   itemsSold: number;
   discounts: number;
   returnsAmount: number;
   returnsCount: number;
+  deltas: {
+    revenue: number;
+    sales: number;
+    itemsSold: number;
+    returns: number;
+  };
   paymentBreakdown: { method: string; amount: number; count: number; percentage: number }[];
+  cashierPerformance: { cashier: string; sales: number; itemsSold: number; revenue: number }[];
   dailySales: { day: string; amount: number; transactions: number }[];
   topProducts: { name: string; quantity: number; revenue: number }[];
+  lowProducts: { name: string; quantity: number; revenue: number }[];
+  /** Kept for PDF / legacy callers */
+  totalTransactions: number;
   sales: SupermarketSale[];
 };
 
-export function buildSalesReportData(preset: SalesPeriodPreset, range: SalesDateRange): SalesReportData {
-  const { period, periodLabel, periodDates } = periodMeta(preset, range);
-  const sales = filterSales(SUPERMARKET_SALES, {
-    start: period.start,
-    end: period.end,
-    cashier: "all",
-    payment: "all",
-    status: "all",
-    query: "",
-  });
-  const returns = filterReturns(SUPERMARKET_RETURNS, {
-    start: period.start,
-    end: period.end,
-    cashier: "all",
-    method: "all",
-    status: "all",
-    query: "",
-  });
+function productCategoryMap() {
+  const map = new Map<string, string>();
+  for (const product of SUPERMARKET_SAMPLE_PRODUCTS) {
+    map.set(product.name, product.category);
+  }
+  return map;
+}
 
+function daySpan(start: string, end: string) {
+  const a = new Date(`${start}T00:00:00`).getTime();
+  const b = new Date(`${end}T00:00:00`).getTime();
+  return Math.max(1, Math.round((b - a) / 86_400_000) + 1);
+}
+
+function shiftIsoDay(day: string, amount: number) {
+  const date = new Date(`${day}T00:00:00`);
+  date.setDate(date.getDate() + amount);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function comparisonLabelFor(preset: SalesPeriodPreset) {
+  if (preset === "today") return "vs yesterday";
+  if (preset === "yesterday") return "vs prior day";
+  if (preset === "week") return "vs last week";
+  if (preset === "month") return "vs last month";
+  return "vs prior period";
+}
+
+function pctDelta(current: number, previous: number) {
+  if (previous === 0) return current === 0 ? 0 : 100;
+  return Math.round(((current - previous) / previous) * 1000) / 10;
+}
+
+function collectSalesMetrics(
+  sales: SupermarketSale[],
+  category: string,
+  categoryLookup: Map<string, string>,
+) {
   const paymentMap = new Map<string, { amount: number; count: number }>();
   for (const method of PAYMENT_ORDER) paymentMap.set(method, { amount: 0, count: 0 });
-  const dailyMap = new Map<string, { amount: number; transactions: number }>();
+  const cashierMap = new Map<string, { sales: number; itemsSold: number; revenue: number }>();
   const productMap = new Map<string, { quantity: number; revenue: number }>();
+  const dailyMap = new Map<string, { amount: number; transactions: number }>();
   let discounts = 0;
   let itemsSold = 0;
+  let totalRevenue = 0;
+  const matchedSales: SupermarketSale[] = [];
 
   for (const sale of sales) {
-    discounts += sale.discount;
-    itemsSold += sale.itemsCount;
+    const lines =
+      category === "all"
+        ? sale.lines
+        : sale.lines.filter((line) => categoryLookup.get(line.name) === category);
+    if (category !== "all" && lines.length === 0) continue;
+
+    matchedSales.push(sale);
+    const amount =
+      category === "all"
+        ? saleTotal(sale)
+        : lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
+    const saleItems = lines.reduce((sum, line) => sum + line.quantity, 0);
+    discounts += category === "all" ? sale.discount : 0;
+    itemsSold += saleItems;
+    totalRevenue += amount;
+
     const pay = paymentMap.get(sale.payment) ?? { amount: 0, count: 0 };
-    pay.amount += saleTotal(sale);
+    pay.amount += amount;
     pay.count += 1;
     paymentMap.set(sale.payment, pay);
 
+    const cashier = cashierMap.get(sale.cashier) ?? { sales: 0, itemsSold: 0, revenue: 0 };
+    cashier.sales += 1;
+    cashier.itemsSold += saleItems;
+    cashier.revenue += amount;
+    cashierMap.set(sale.cashier, cashier);
+
     const daily = dailyMap.get(sale.dateLabel) ?? { amount: 0, transactions: 0 };
-    daily.amount += saleTotal(sale);
+    daily.amount += amount;
     daily.transactions += 1;
     dailyMap.set(sale.dateLabel, daily);
 
-    for (const line of sale.lines) {
+    for (const line of lines) {
       const product = productMap.get(line.name) ?? { quantity: 0, revenue: 0 };
       product.quantity += line.quantity;
       product.revenue += line.quantity * line.unitPrice;
@@ -155,32 +214,133 @@ export function buildSalesReportData(preset: SalesPeriodPreset, range: SalesDate
     }
   }
 
-  const totalRevenue = sales.reduce((sum, sale) => sum + saleTotal(sale), 0);
+  return {
+    paymentMap,
+    cashierMap,
+    productMap,
+    dailyMap,
+    discounts,
+    itemsSold,
+    totalRevenue,
+    matchedSales,
+  };
+}
+
+export function buildSalesReportData(
+  preset: SalesPeriodPreset,
+  range: SalesDateRange,
+  filters: SalesReportFilters = {},
+): SalesReportData {
+  const { period, periodLabel, periodDates } = periodMeta(preset, range);
+  const cashier = filters.cashier && filters.cashier !== "all" ? filters.cashier : "all";
+  const paymentRaw = filters.payment && filters.payment !== "all" ? filters.payment : "all";
+  const category = filters.category && filters.category !== "all" ? filters.category : "all";
+  const categoryLookup = productCategoryMap();
+
+  const paymentForSales =
+    paymentRaw === "Cash" || paymentRaw === "Mobile Money" || paymentRaw === "Card" ? paymentRaw : "all";
+
+  const periodSales =
+    paymentRaw === "Bank"
+      ? []
+      : filterSales(SUPERMARKET_SALES, {
+          start: period.start,
+          end: period.end,
+          cashier,
+          payment: paymentForSales,
+          status: "all",
+          query: "",
+        });
+
+  const returns = filterReturns(SUPERMARKET_RETURNS, {
+    start: period.start,
+    end: period.end,
+    cashier,
+    method: paymentForSales === "all" ? "all" : paymentForSales,
+    status: "all",
+    query: "",
+  });
+
+  const current = collectSalesMetrics(periodSales, category, categoryLookup);
+
+  const span = daySpan(period.start, period.end);
+  const prevEnd = shiftIsoDay(period.start, -1);
+  const prevStart = shiftIsoDay(period.start, -span);
+  const previousSales =
+    paymentRaw === "Bank"
+      ? []
+      : filterSales(SUPERMARKET_SALES, {
+          start: prevStart,
+          end: prevEnd,
+          cashier,
+          payment: paymentForSales,
+          status: "all",
+          query: "",
+        });
+  const previous = collectSalesMetrics(previousSales, category, categoryLookup);
+
+  const previousReturns = filterReturns(SUPERMARKET_RETURNS, {
+    start: prevStart,
+    end: prevEnd,
+    cashier,
+    method: paymentForSales === "all" ? "all" : paymentForSales,
+    status: "all",
+    query: "",
+  });
+  const returnsAmount = returns.reduce((sum, row) => sum + row.amount, 0);
+  const previousReturnsAmount = previousReturns.reduce((sum, row) => sum + row.amount, 0);
+
+  const catalogNames = new Set([
+    ...SUPERMARKET_SAMPLE_PRODUCTS.filter((item) => item.isActive !== false).map((item) => item.name),
+    ...current.productMap.keys(),
+  ]);
+  if (category !== "all") {
+    for (const name of [...catalogNames]) {
+      if (categoryLookup.get(name) !== category) catalogNames.delete(name);
+    }
+  }
+  for (const name of catalogNames) {
+    if (!current.productMap.has(name)) current.productMap.set(name, { quantity: 0, revenue: 0 });
+  }
+
+  const rankedProducts = [...current.productMap.entries()]
+    .map(([name, value]) => ({ name, ...value }))
+    .sort((a, b) => b.quantity - a.quantity || b.revenue - a.revenue);
 
   return {
     periodLabel,
     periodDates,
-    totalRevenue,
-    totalTransactions: sales.length,
-    itemsSold,
-    discounts,
-    returnsAmount: returns.reduce((sum, row) => sum + row.amount, 0),
+    comparisonLabel: comparisonLabelFor(preset),
+    totalRevenue: current.totalRevenue,
+    totalSales: current.matchedSales.length,
+    totalTransactions: current.matchedSales.length,
+    itemsSold: current.itemsSold,
+    discounts: current.discounts,
+    returnsAmount,
     returnsCount: returns.length,
+    deltas: {
+      revenue: pctDelta(current.totalRevenue, previous.totalRevenue),
+      sales: pctDelta(current.matchedSales.length, previous.matchedSales.length),
+      itemsSold: pctDelta(current.itemsSold, previous.itemsSold),
+      returns: pctDelta(returnsAmount, previousReturnsAmount),
+    },
     paymentBreakdown: PAYMENT_ORDER.map((method) => {
-      const value = paymentMap.get(method) ?? { amount: 0, count: 0 };
+      const value = current.paymentMap.get(method) ?? { amount: 0, count: 0 };
       return {
         method,
         amount: value.amount,
         count: value.count,
-        percentage: totalRevenue > 0 ? Math.round((value.amount / totalRevenue) * 1000) / 10 : 0,
+        percentage:
+          current.totalRevenue > 0 ? Math.round((value.amount / current.totalRevenue) * 1000) / 10 : 0,
       };
     }),
-    dailySales: [...dailyMap.entries()].map(([day, value]) => ({ day, ...value })).slice(0, 14),
-    topProducts: [...productMap.entries()]
-      .map(([name, value]) => ({ name, ...value }))
-      .sort((a, b) => b.quantity - a.quantity)
-      .slice(0, 5),
-    sales,
+    cashierPerformance: [...current.cashierMap.entries()]
+      .map(([name, value]) => ({ cashier: name, ...value }))
+      .sort((a, b) => b.revenue - a.revenue),
+    dailySales: [...current.dailyMap.entries()].map(([day, value]) => ({ day, ...value })).slice(0, 14),
+    topProducts: rankedProducts.filter((row) => row.quantity > 0).slice(0, 5),
+    lowProducts: [...rankedProducts].sort((a, b) => a.quantity - b.quantity || a.revenue - b.revenue).slice(0, 5),
+    sales: current.matchedSales,
   };
 }
 

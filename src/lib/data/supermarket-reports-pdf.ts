@@ -10,6 +10,7 @@ import {
   type ProfitLossReportData,
   type PurchaseReportData,
   type SalesReportData,
+  type SalesReportFilters,
 } from "@/lib/data/sample-supermarket-reports";
 import type { SalesDateRange, SalesPeriodPreset } from "@/lib/data/sample-supermarket-sales";
 
@@ -142,9 +143,9 @@ function renderSalesPdf(data: SalesReportData) {
     ...header("Sales Report"),
     ...metaBlock(data.periodLabel, data.periodDates, generated),
     ...kpiCard(MARGIN, PAGE_H - 180, "Total Revenue", formatTzs(data.totalRevenue), "0.933 0.961 0.996"),
-    ...kpiCard(MARGIN + 132, PAGE_H - 180, "Transactions", String(data.totalTransactions), "0.957 0.945 0.996"),
+    ...kpiCard(MARGIN + 132, PAGE_H - 180, "Sales", String(data.totalSales), "0.957 0.945 0.996"),
     ...kpiCard(MARGIN + 264, PAGE_H - 180, "Items Sold", String(data.itemsSold), "0.933 0.980 0.949"),
-    ...kpiCard(MARGIN + 396, PAGE_H - 180, "Discounts", formatTzs(data.discounts), "1 0.973 0.918"),
+    ...kpiCard(MARGIN + 396, PAGE_H - 180, "Returns", formatTzs(data.returnsAmount), "1 0.945 0.945"),
     text("F2", 11, MARGIN, PAGE_H - 220, "Payment Methods"),
   ];
   let y = PAGE_H - 240;
@@ -156,18 +157,19 @@ function renderSalesPdf(data: SalesReportData) {
     y -= 16;
   }
   y -= 10;
-  page.push(text("F2", 11, MARGIN, y, "Daily Sales Summary"));
+  page.push(text("F2", 11, MARGIN, y, "Cashier Performance"));
   y -= 18;
-  for (const row of data.dailySales.slice(0, 10)) {
+  for (const row of data.cashierPerformance) {
     if (y < 90) {
       pages.push(page);
-      page = [...header("Sales Report"), text("F2", 11, MARGIN, PAGE_H - 96, "Daily Sales Summary (continued)")];
+      page = [...header("Sales Report"), text("F2", 11, MARGIN, PAGE_H - 96, "Cashier Performance (continued)")];
       y = PAGE_H - 120;
     }
     page.push(
-      text("F1", 9, MARGIN, y, row.day),
-      text("F1", 9, MARGIN + 160, y, `${row.transactions} sales`),
-      text("F2", 9, MARGIN + 280, y, formatTzs(row.amount)),
+      text("F1", 9, MARGIN, y, row.cashier),
+      text("F1", 9, MARGIN + 120, y, `${row.sales} sales`),
+      text("F1", 9, MARGIN + 200, y, `${row.itemsSold} items`),
+      text("F2", 9, MARGIN + 300, y, formatTzs(row.revenue)),
     );
     y -= 15;
   }
@@ -188,16 +190,26 @@ function renderSalesPdf(data: SalesReportData) {
     y -= 15;
   }
   y -= 12;
-  if (y < 120) {
+  if (y < 140) {
     pages.push(page);
     page = [...header("Sales Report")];
     y = PAGE_H - 100;
   }
-  page.push(
-    text("F2", 11, MARGIN, y, "Returns & Discounts"),
-    text("F1", 9, MARGIN, y - 18, `Returns: ${data.returnsCount}  |  ${formatTzs(data.returnsAmount)}`),
-    text("F1", 9, MARGIN, y - 34, `Discounts given: ${formatTzs(data.discounts)}`),
-  );
+  page.push(text("F2", 11, MARGIN, y, "Low Selling Products"));
+  y -= 18;
+  for (const row of data.lowProducts) {
+    if (y < 90) {
+      pages.push(page);
+      page = [...header("Sales Report"), text("F2", 11, MARGIN, PAGE_H - 96, "Low Selling Products (continued)")];
+      y = PAGE_H - 120;
+    }
+    page.push(
+      text("F1", 9, MARGIN, y, clip(row.name, 28)),
+      text("F1", 9, MARGIN + 200, y, `${row.quantity} sold`),
+      text("F2", 9, MARGIN + 300, y, formatTzs(row.revenue)),
+    );
+    y -= 15;
+  }
   pages.push(page);
   const streams = pages.map((ops, index) => [...ops, ...footer(index + 1, pages.length)].join("\n"));
   return buildPdf(streams);
@@ -356,8 +368,12 @@ function renderProfitLossPdf(data: ProfitLossReportData) {
   return buildPdf([[...page, ...footer(1, 1)].join("\n")]);
 }
 
-export function downloadSalesCenterReportPdf(preset: SalesPeriodPreset, range: SalesDateRange) {
-  downloadBytes(renderSalesPdf(buildSalesReportData(preset, range)), "RM-Supermarket-Sales-Report.pdf");
+export function downloadSalesCenterReportPdf(
+  preset: SalesPeriodPreset,
+  range: SalesDateRange,
+  filters: SalesReportFilters = {},
+) {
+  downloadBytes(renderSalesPdf(buildSalesReportData(preset, range, filters)), "RM-Supermarket-Sales-Report.pdf");
 }
 
 export function downloadInventoryCenterReportPdf(preset: SalesPeriodPreset, range: SalesDateRange) {
