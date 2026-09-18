@@ -19,10 +19,15 @@ const loadUnreadNotifications = unstable_cache(
   { revalidate: 30 },
 );
 
+/**
+ * Shared authenticated chrome. Soft-nav latency is reduced by:
+ * - proxy-only module ACL (ModuleGate is a passthrough)
+ * - requireAuth without headers()
+ * - JWT skipProfile + cached notifications
+ * - segment loading.tsx skeletons
+ */
 export async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   const user = await requireAuth();
-  // AppShell already derives hideUtilities from usePathname — do not read
-  // headers()/x-pathname here (that forced a full dynamic shell re-render).
   const notifications = await loadUnreadNotifications(user.id);
 
   return (

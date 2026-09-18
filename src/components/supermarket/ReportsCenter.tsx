@@ -109,7 +109,7 @@ export function ReportsCenter() {
                   <span className="mt-1 block text-[12.5px] leading-5 text-slate-500">{meta.description}</span>
                 </span>
               </button>
-              <Link href={`${meta.href}?${query}`} className={cn(primaryButton, "mt-4 w-full")}>
+              <Link href={`${meta.href}?${query}`} prefetch className={cn(primaryButton, "mt-4 w-full")}>
                 View Report
               </Link>
             </article>

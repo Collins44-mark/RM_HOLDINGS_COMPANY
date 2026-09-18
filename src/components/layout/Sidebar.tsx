@@ -83,6 +83,7 @@ function NavLink({
   return (
     <Link
       href={item.href}
+      prefetch
       onClick={onNavigate}
       title={collapsed ? item.label : undefined}
       className={cn(

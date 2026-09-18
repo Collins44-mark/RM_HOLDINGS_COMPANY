@@ -4,6 +4,7 @@ import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { PageFooter } from "@/components/layout/PageFooter";
+import { PageTransition } from "@/components/layout/PageTransition";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { ModuleContextBar } from "@/components/layout/ModuleContextBar";
 import { useSidebarCollapsed } from "@/lib/hooks/useSidebarCollapsed";
@@ -75,7 +76,9 @@ export function AppShell({
               showDashboardCrumb={isOwnerRole(user.roleCode)}
             />
           ) : null}
-          <div className="rm-page mx-auto w-full min-w-0 max-w-full">{children}</div>
+          <div className="rm-page mx-auto w-full min-w-0 max-w-full">
+            <PageTransition>{children}</PageTransition>
+          </div>
         </main>
         {showFooter ? <PageFooter /> : null}
       </div>

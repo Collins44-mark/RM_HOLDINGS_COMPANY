@@ -65,8 +65,8 @@ a {
 
 @keyframes page-enter {
   from {
-    opacity: 0.82;
-    transform: translateY(4px);
+    opacity: 0.88;
+    transform: translateY(3px);
   }
   to {
     opacity: 1;
@@ -75,7 +75,7 @@ a {
 }
 
 .page-enter {
-  animation: page-enter 160ms ease-out;
+  animation: page-enter 140ms ease-out;
 }
 
 /* Responsive foundation: keep page content within the viewport */

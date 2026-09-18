@@ -216,10 +216,19 @@ async function enforcePasswordChangeGate(user: AuthUser) {
   }
 }
 
+/**
+ * Soft-nav / shared-layout auth. Avoids headers() so layouts do not block
+ * client navigations. Password-change redirects that need the current path
+ * run in requireVerifiedAuth (mutations / sensitive flows).
+ * With skipProfile, mustChangePassword is typically false; full profile
+ * hydrate + path-aware gate still apply on verified auth.
+ */
 export async function requireAuth() {
   const user = await getAuthUser();
   if (!user) redirect(LOGIN_PATH);
-  await enforcePasswordChangeGate(user);
+  if (user.mustChangePassword) {
+    redirect(CHANGE_PASSWORD_PATH);
+  }
   return user;
 }
 
