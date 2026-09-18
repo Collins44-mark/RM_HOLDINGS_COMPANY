@@ -7,7 +7,10 @@ import {
   pdfAscii,
   type TableColumn,
 } from "@/lib/pdf/report-document";
-import { CorporateSalesDocument } from "@/lib/pdf/corporate-sales-document";
+import {
+  CorporateReportDocument,
+  CorporateSalesDocument,
+} from "@/lib/pdf/corporate-report-document";
 import {
   buildInventoryReportData,
   buildProfitLossReportData,
@@ -39,6 +42,18 @@ function salesReportFilename(periodLabel: string) {
     .replace(/^-|-$/g, "")
     .slice(0, 40);
   return `RM-Supermarket-Sales-Report-${slug || "Period"}.pdf`;
+}
+
+function inventoryReportFilename(periodLabel: string) {
+  const slug = pdfAscii(periodLabel)
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 40);
+  return `RM-Supermarket-Inventory-Report-${slug || "Period"}.pdf`;
+}
+
+function formatPdfTzs(amount: number) {
+  return `TZS ${formatPdfNumber(amount)}`;
 }
 
 function renderSalesPdf(data: SalesReportData, filters: SalesReportFilters = {}) {
@@ -161,126 +176,76 @@ function renderSalesPdf(data: SalesReportData, filters: SalesReportFilters = {})
 }
 
 function renderInventoryPdf(data: InventoryReportData) {
-  const doc = new ReportDocument({
+  const doc = new CorporateReportDocument({
     businessUnit: BUSINESS_UNIT,
     title: "Inventory Report",
     subtitle: "Stock levels, valuation and expiry status for the selected period.",
     periodLabel: data.periodLabel,
     periodDates: data.periodDates,
     generatedAt: formatPdfGeneratedAt(),
+    preparedBy: "Collins Sarungi",
+    preparedRole: "System Administrator",
     filtersNote:
       "This report shows inventory valuation at buying/cost price. Expired stock is excluded from sellable inventory value and reported separately. All figures are in Tanzanian Shillings (TZS).",
   });
 
-  doc.addSectionTitle("Inventory Summary");
-  doc.addSimpleTable(
+  doc.addSectionTable(
+    "Inventory Summary",
     [
-      { key: "metric", label: "Metric", width: 360 },
-      { key: "value", label: "Value", width: 151, align: "right" },
+      { key: "metric", label: "Metric", width: 340 },
+      { key: "value", label: "Value", width: 171, align: "right" },
     ],
     [
       { metric: "Total Products", value: formatPdfNumber(data.totalProducts) },
       { metric: "Total Stock Units", value: formatPdfNumber(data.totalStockUnits) },
       { metric: "Inventory Value (TZS)", value: formatPdfNumber(data.totalInventoryValue) },
-      { metric: "Low Stock", value: formatPdfNumber(data.lowStock) },
+      { metric: "Low Stock Items", value: formatPdfNumber(data.lowStock) },
       { metric: "Expiring Soon", value: formatPdfNumber(data.expiringSoon) },
       { metric: "Expired Items", value: formatPdfNumber(data.expiredItems) },
-      { metric: "Expired Stock Value / Loss (TZS)", value: formatPdfNumber(data.expiredStockValue) },
+      {
+        metric: "Expired Stock Value / Loss (TZS)",
+        value: formatPdfNumber(data.expiredStockValue),
+      },
     ],
-    { sectionTitle: "Inventory Summary" },
   );
 
-  doc.addSectionTitle("Stock Movement Summary");
-  doc.addSimpleTable(
+  doc.addSectionTable(
+    "Stock Movement",
     [
-      { key: "type", label: "Movement Type", width: 250 },
-      { key: "count", label: "Count", width: 100, align: "right" },
-      { key: "qty", label: "Quantity", width: 161, align: "right" },
+      { key: "movement", label: "Movement", width: 220 },
+      { key: "count", label: "Count", width: 120, align: "right" },
+      { key: "quantity", label: "Quantity", width: 171, align: "right" },
     ],
     data.movements.map((row) => ({
-      type: row.label,
+      movement: row.label,
       count: formatPdfNumber(row.count),
-      qty: formatPdfNumber(row.quantity),
+      quantity: formatPdfNumber(row.quantity),
     })),
-    { sectionTitle: "Stock Movement Summary" },
   );
 
-  doc.addSectionTitle("Inventory Valuation");
-  doc.addSimpleTable(
+  doc.addFlowingSectionTable(
+    "Inventory Valuation",
     [
-      { key: "product", label: "Product", width: 200 },
-      { key: "qty", label: "Quantity", width: 70, align: "right" },
-      { key: "price", label: "Buying Price", width: 110, align: "right" },
-      { key: "value", label: "Stock Value", width: 131, align: "right" },
+      { key: "rank", label: "#", width: 28, align: "center" },
+      { key: "product", label: "Product", width: 150 },
+      { key: "qty", label: "Quantity", width: 58, align: "right" },
+      { key: "price", label: "Buying Price", width: 95, align: "right" },
+      { key: "value", label: "Stock Value", width: 95, align: "right" },
+      { key: "status", label: "Status", width: 85 },
     ],
-    data.valuation.map((row) => ({
+    data.valuation.map((row, index) => ({
+      rank: String(index + 1),
       product: row.name,
       qty: formatPdfNumber(row.quantity),
-      price: formatPdfNumber(row.buyingPrice),
-      value: formatPdfNumber(row.stockValue),
+      price: formatPdfTzs(row.buyingPrice),
+      value: formatPdfTzs(row.stockValue),
+      status: row.status,
     })),
-    { sectionTitle: "Inventory Valuation" },
+    {
+      subtitle: "Current stock valuation by product.",
+      statusKey: "status",
+    },
   );
-
-  if (data.lowStockProducts.length > 0) {
-    doc.addSectionTitle("Low Stock Products");
-    doc.addSimpleTable(
-      [
-        { key: "product", label: "Product", width: 200 },
-        { key: "stock", label: "Current Stock", width: 80, align: "right" },
-        { key: "reorder", label: "Reorder Level", width: 90, align: "right" },
-        { key: "status", label: "Status", width: 141 },
-      ],
-      data.lowStockProducts.map((row) => ({
-        product: row.name,
-        stock: formatPdfNumber(row.stock),
-        reorder: formatPdfNumber(row.reorderLevel),
-        status: row.status,
-      })),
-      { sectionTitle: "Low Stock Products" },
-    );
-  }
-
-  const expired = data.expiryRows.filter((row) => row.status === "Expired");
-  const soon = data.expiryRows.filter((row) => row.status === "Expiring Soon");
-
-  if (expired.length > 0) {
-    doc.addSectionTitle("Expired Products");
-    doc.addSimpleTable(
-      [
-        { key: "product", label: "Product", width: 180 },
-        { key: "qty", label: "Quantity", width: 70, align: "right" },
-        { key: "value", label: "Value (TZS)", width: 110, align: "right" },
-        { key: "expiry", label: "Expiry Date", width: 151 },
-      ],
-      expired.map((row) => ({
-        product: row.name,
-        qty: formatPdfNumber(row.quantity),
-        value: formatPdfNumber(row.stockValue),
-        expiry: row.expiryDate,
-      })),
-      { sectionTitle: "Expired Products" },
-    );
-  }
-
-  if (soon.length > 0) {
-    doc.addSectionTitle("Expiring Soon");
-    doc.addSimpleTable(
-      [
-        { key: "product", label: "Product", width: 180 },
-        { key: "qty", label: "Quantity", width: 70, align: "right" },
-        { key: "value", label: "Value (TZS)", width: 110, align: "right" },
-        { key: "expiry", label: "Expiry Date", width: 151 },
-      ],
-      soon.map((row) => ({
-        product: row.name,
-        qty: formatPdfNumber(row.quantity),
-        value: formatPdfNumber(row.stockValue),
-        expiry: row.expiryDate,
-      })),
-      { sectionTitle: "Expiring Soon" },
-    );
-  }
 
   return doc.build();
 }
@@ -457,10 +422,8 @@ export function downloadSalesCenterReportPdf(
 }
 
 export function downloadInventoryCenterReportPdf(preset: SalesPeriodPreset, range: SalesDateRange) {
-  downloadPdfBytes(
-    renderInventoryPdf(buildInventoryReportData(preset, range)),
-    "RM-Supermarket-Inventory-Report.pdf",
-  );
+  const data = buildInventoryReportData(preset, range);
+  downloadPdfBytes(renderInventoryPdf(data), inventoryReportFilename(data.periodLabel));
 }
 
 export function downloadPurchaseCenterReportPdf(preset: SalesPeriodPreset, range: SalesDateRange) {
@@ -495,4 +458,9 @@ export function buildSalesReportPdfBytes(
   filters: SalesReportFilters = {},
 ) {
   return renderSalesPdf(buildSalesReportData(preset, range, filters), filters);
+}
+
+/** Dev/test helper: returns Inventory PDF bytes for the selected period. */
+export function buildInventoryReportPdfBytes(preset: SalesPeriodPreset, range: SalesDateRange) {
+  return renderInventoryPdf(buildInventoryReportData(preset, range));
 }
