@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Plus, Search } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
@@ -35,23 +35,34 @@ const TABS: { id: PurchasingTab; label: string }[] = [
   { id: "suppliers", label: "Suppliers" },
 ];
 
+function tabFromSearchParam(value: string | null): PurchasingTab {
+  return value === "purchases" || value === "suppliers" ? value : "orders";
+}
+
 export function PurchasingManager() {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const tabParam = searchParams.get("tab");
-  const tab: PurchasingTab = tabParam === "purchases" || tabParam === "suppliers" ? tabParam : "orders";
   const inventory = useSupermarketInventory();
+  const [tab, setTabState] = useState<PurchasingTab>(() => tabFromSearchParam(searchParams.get("tab")));
   const [query, setQuery] = useState("");
   const [focus, setFocus] = useState<PurchaseOrderKpiFocus>("all");
   const [supplierOpen, setSupplierOpen] = useState(false);
 
+  // Keep in sync when arriving via Link (?tab=suppliers) without remounting on every click.
+  useEffect(() => {
+    setTabState(tabFromSearchParam(searchParams.get("tab")));
+  }, [searchParams]);
+
   function setTab(next: PurchasingTab) {
+    if (next === tab) return;
+    setTabState(next);
+    // Update the URL without triggering App Router RSC / Suspense navigation.
     const params = new URLSearchParams(searchParams.toString());
     if (next === "orders") params.delete("tab");
     else params.set("tab", next);
     const suffix = params.toString();
-    router.replace(suffix ? `${pathname}?${suffix}` : pathname, { scroll: false });
+    const url = suffix ? `${pathname}?${suffix}` : pathname;
+    window.history.replaceState(window.history.state ?? null, "", url);
   }
 
   const kpis = useMemo(() => purchaseOrderKpis(inventory.purchaseOrders), [inventory.purchaseOrders]);
@@ -95,50 +106,61 @@ export function PurchasingManager() {
             Add Supplier
           </button>
         ) : (
-          <Link href="/supermarket/purchasing/new" className={cn(primaryButton, "w-full sm:w-auto")}>
+          <Link href="/supermarket/purchasing/new" prefetch className={cn(primaryButton, "w-full sm:w-auto")}>
             <Plus className="h-4 w-4" strokeWidth={2.2} />
             New Purchase Order
           </Link>
         )}
       </div>
 
-      <div className="inline-flex w-full rounded-full border border-white/70 bg-white/55 p-1 shadow-[0_6px_18px_rgba(15,35,64,0.05)] backdrop-blur-xl sm:w-auto">
-        {TABS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setTab(item.id)}
-            className={cn(
-              "h-9 flex-1 rounded-full px-4 text-[13px] font-semibold transition duration-200 sm:flex-none",
-              tab === item.id ? "bg-[#0b2244] text-white shadow-[0_8px_16px_rgba(11,34,68,0.18)]" : "text-slate-500 hover:text-navy",
-            )}
-          >
-            {item.label}
-          </button>
-        ))}
+      <div
+        role="tablist"
+        aria-label="Purchasing views"
+        className="inline-flex w-full rounded-full border border-white/70 bg-white/55 p-1 shadow-[0_6px_18px_rgba(15,35,64,0.05)] backdrop-blur-xl sm:w-auto"
+      >
+        {TABS.map((item) => {
+          const active = tab === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setTab(item.id)}
+              className={cn(
+                "h-9 flex-1 rounded-full px-4 text-[13px] font-semibold transition duration-150 sm:flex-none",
+                active ? "bg-[#0b2244] text-white shadow-[0_8px_16px_rgba(11,34,68,0.18)]" : "text-slate-500 hover:text-navy",
+              )}
+            >
+              {item.label}
+            </button>
+          );
+        })}
       </div>
 
-      {tab === "orders" ? (
-        <OrdersView
-          kpis={kpis}
-          focus={focus}
-          onFocus={setFocus}
-          query={query}
-          onQuery={setQuery}
-          orders={orders}
-        />
-      ) : null}
-      {tab === "purchases" ? (
-        <PurchasesView query={query} onQuery={setQuery} purchases={purchases} />
-      ) : null}
-      {tab === "suppliers" ? (
-        <SuppliersView
-          query={query}
-          onQuery={setQuery}
-          suppliers={suppliers}
-          purchases={inventory.purchases}
-        />
-      ) : null}
+      <div key={tab} className="page-enter min-w-0">
+        {tab === "orders" ? (
+          <OrdersView
+            kpis={kpis}
+            focus={focus}
+            onFocus={setFocus}
+            query={query}
+            onQuery={setQuery}
+            orders={orders}
+          />
+        ) : null}
+        {tab === "purchases" ? (
+          <PurchasesView query={query} onQuery={setQuery} purchases={purchases} />
+        ) : null}
+        {tab === "suppliers" ? (
+          <SuppliersView
+            query={query}
+            onQuery={setQuery}
+            suppliers={suppliers}
+            purchases={inventory.purchases}
+          />
+        ) : null}
+      </div>
 
       {supplierOpen ? (
         <AddSupplierModal
