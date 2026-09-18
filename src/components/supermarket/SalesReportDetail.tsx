@@ -1,9 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState, type ReactNode } from "react";
 import {
-  ArrowLeft,
   Banknote,
   BarChart3,
   Building2,
@@ -26,6 +24,7 @@ import { formatTzs } from "@/lib/format/currency";
 import { ComparisonIndicator } from "@/components/finance/ComparisonIndicator";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
 import { primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
+import { PageBackButton } from "@/components/ui/PageBackButton";
 import {
   SUPERMARKET_PRODUCT_CATEGORIES,
 } from "@/lib/data/supermarket-inventory";
@@ -182,13 +181,8 @@ export function SalesReportDetail() {
     <div className="min-w-0 max-w-full space-y-4 pb-10 sm:space-y-5">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
-          <Link
-            href={`/supermarket/reports?${query}`}
-            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-500 transition hover:text-navy"
-          >
-            <ArrowLeft className="h-4 w-4" /> Back to Reports
-          </Link>
-          <div className="mt-3 flex items-start gap-3">
+          <PageBackButton href={`/supermarket/reports?${query}`} prefetch />
+          <div className="mt-4 flex items-start gap-3">
             <span className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#0b2244] text-white shadow-[0_8px_18px_rgba(11,34,68,0.22)]">
               <BarChart3 className="h-4 w-4" strokeWidth={1.9} />
             </span>

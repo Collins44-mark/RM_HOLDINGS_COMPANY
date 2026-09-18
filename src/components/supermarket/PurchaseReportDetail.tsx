@@ -1,20 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowUp,
-  Building2,
-  CalendarDays,
-  ChevronDown,
-  CreditCard,
-  Download,
-  Minus,
-  RotateCcw,
-  Search,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, Building2, CalendarDays, ChevronDown, CreditCard, Download, Minus, RotateCcw, Search } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
@@ -26,6 +13,7 @@ import {
 import { seedSuppliers } from "@/lib/data/supermarket-purchasing";
 import { downloadReportPdf } from "@/lib/data/supermarket-reports-pdf";
 import { useReportPeriod } from "@/components/supermarket/report-shell";
+import { PageBackButton } from "@/components/ui/PageBackButton";
 
 const glass =
   "rounded-[18px] border border-[#e7ecf3] bg-white/90 shadow-[0_8px_24px_rgba(15,35,64,0.04)] backdrop-blur-xl";
@@ -202,13 +190,8 @@ export function PurchaseReportDetail() {
     <div className="min-w-0 max-w-full space-y-4 pb-10 sm:space-y-5">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="min-w-0">
-          <Link
-            href={`/supermarket/reports?${query}`}
-            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-500 transition hover:text-navy"
-          >
-            <ArrowLeft className="h-4 w-4" /> Back to Reports
-          </Link>
-          <div className="mt-3 min-w-0">
+          <PageBackButton href={`/supermarket/reports?${query}`} prefetch />
+          <div className="mt-4 min-w-0">
             <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[28px]">
               Purchase Report
             </h1>

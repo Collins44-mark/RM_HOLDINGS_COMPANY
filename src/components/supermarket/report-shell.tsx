@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Download } from "lucide-react";
+import { Download } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   parseReportPeriodParams,
@@ -13,6 +12,7 @@ import {
 import type { SalesDateRange, SalesPeriodPreset } from "@/lib/data/sample-supermarket-sales";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
 import { primaryButton } from "@/components/supermarket/purchasing-ui";
+import { PageBackButton } from "@/components/ui/PageBackButton";
 
 export const reportGlass =
   "rounded-[22px] border border-white/60 bg-white/62 shadow-[0_12px_36px_rgba(15,35,64,0.055),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-2xl";
@@ -74,18 +74,11 @@ export function ReportPageHeader({
   return (
     <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div className="min-w-0">
-        {showBack ? (
-          <Link
-            href={`/supermarket/reports?${query}`}
-            className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-slate-500 transition hover:text-navy"
-          >
-            <ArrowLeft className="h-4 w-4" /> Back to Reports
-          </Link>
-        ) : null}
+        {showBack ? <PageBackButton href={`/supermarket/reports?${query}`} prefetch /> : null}
         <h1
           className={cn(
             "text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[28px]",
-            showBack ? "mt-3" : "",
+            showBack ? "mt-4" : "",
           )}
         >
           {title}

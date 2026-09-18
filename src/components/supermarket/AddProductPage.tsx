@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save, ScanLine } from "lucide-react";
+import { Save, ScanLine } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { CategoryCreateModal, ADD_CATEGORY_OPTION, canCreateSupermarketCategory } from "@/components/supermarket/CategoryCreateModal";
 import { isOwnerRole } from "@/lib/auth/rbac";
@@ -21,6 +21,7 @@ import {
   type SupermarketProductUnit,
 } from "@/lib/data/supermarket-inventory";
 import type { AuthUser } from "@/lib/auth/types";
+import { PageBackButton } from "@/components/ui/PageBackButton";
 
 type FormState = {
   name: string;
@@ -225,19 +226,15 @@ export function AddProductPage() {
   return (
     <div className="page-enter min-w-0 pb-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          <Link
+        <div className="min-w-0">
+          <PageBackButton
             href="/supermarket/products"
             prefetch
             onClick={(event) => {
               if (busy) event.preventDefault();
             }}
-            className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/80 bg-white/85 text-navy shadow-[0_6px_16px_rgba(15,35,64,0.06)] backdrop-blur-md transition duration-150 hover:bg-white active:scale-[0.98]"
-            aria-label="Back to products"
-          >
-            <ArrowLeft className="h-4 w-4" strokeWidth={1.9} />
-          </Link>
-          <div className="min-w-0">
+          />
+          <div className="mt-4 min-w-0">
             <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Add Product</h1>
             <p className="mt-1 text-[13.5px] text-slate-500">Create a new product in your supermarket inventory.</p>
           </div>

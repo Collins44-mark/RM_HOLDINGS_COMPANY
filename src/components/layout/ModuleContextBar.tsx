@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 import { getBusinessUnit, type ModuleCode } from "@/lib/config/app";
 import { MODULE_NAV, type NavItem } from "@/lib/config/navigation";
+import { PageBackButton } from "@/components/ui/PageBackButton";
 
 function navLabelForHref(href: string, items: NavItem[]): string | null {
   for (const item of items) {
@@ -65,18 +65,11 @@ export function ModuleContextBar({
   return (
     <div className="mb-4 min-w-0">
       {isRoot ? null : (
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-navy/70 transition hover:text-navy"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.8} />
-          Back
-        </button>
+        <PageBackButton onClick={() => router.back()} className="mb-3" />
       )}
       <nav
         aria-label="Breadcrumb"
-        className={isRoot ? "break-words text-[12.5px] leading-5 text-slate-400" : "mt-2 break-words text-[12.5px] leading-5 text-slate-400"}
+        className={isRoot ? "break-words text-[12.5px] leading-5 text-slate-400" : "break-words text-[12.5px] leading-5 text-slate-400"}
       >
         {crumbs.map((crumb, index) => {
           const last = index === crumbs.length - 1;

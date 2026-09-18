@@ -4,20 +4,7 @@ import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  AlertTriangle,
-  ArrowLeft,
-  Ban,
-  ChevronDown,
-  Clock3,
-  MoreHorizontal,
-  Package,
-  Plus,
-  Search,
-  TimerReset,
-  Warehouse,
-  X,
-} from "lucide-react";
+import { AlertTriangle, Ban, ChevronDown, Clock3, MoreHorizontal, Package, Plus, Search, TimerReset, Warehouse, X } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { CategoryCreateModal, CategoryDropdownActions, ADD_CATEGORY_OPTION, MANAGE_CATEGORIES_OPTION, canCreateSupermarketCategory, canManageSupermarketCategories } from "@/components/supermarket/CategoryCreateModal";
 import { CategoryManageModal } from "@/components/supermarket/CategoryManageModal";
@@ -26,6 +13,7 @@ import { matchPermission } from "@/lib/config/permissions";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import type { AuthUser } from "@/lib/auth/types";
+import { PageBackButton } from "@/components/ui/PageBackButton";
 import {
   EXPIRING_SOON_DAYS,
   STOCK_MOVEMENT_FILTERS,
@@ -877,15 +865,8 @@ function FullStockMovements({
     <div className="min-w-0 space-y-3.5 sm:space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <button
-            type="button"
-            onClick={onBack}
-            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-500 transition duration-200 hover:text-navy"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2.1} />
-            Stock
-          </button>
-          <h1 className="mt-2 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Stock Movements</h1>
+          <PageBackButton onClick={onBack} />
+          <h1 className="mt-4 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Stock Movements</h1>
           <p className="mt-1.5 max-w-xl text-[13px] leading-5 text-slate-500">
             Complete inventory activity across purchases, sales and adjustments.
           </p>

@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+
 import { formatTzs } from "@/lib/format/currency";
 import { formatDisplayDate, useSupermarketInventory } from "@/lib/data/supermarket-inventory";
 import { purchaseOrderGrandTotal, purchaseOrderItemCount, receivablePurchaseOrders } from "@/lib/data/supermarket-purchasing";
 import { StatusPill, glassCard, primaryButton, tableHead } from "@/components/supermarket/purchasing-ui";
+import { PageBackButton } from "@/components/ui/PageBackButton";
 
 export function ReceivePurchasePickerPage() {
   const inventory = useSupermarketInventory();
@@ -14,11 +15,8 @@ export function ReceivePurchasePickerPage() {
   return (
     <div className="min-w-0 space-y-5 pb-10">
       <div>
-        <Link href="/supermarket/stock" className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-slate-500 transition hover:text-navy">
-          <ArrowLeft className="h-4 w-4" strokeWidth={1.9} />
-          Back to Stock
-        </Link>
-        <h1 className="mt-3 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Receive Purchase</h1>
+        <PageBackButton href="/supermarket/stock" prefetch />
+        <h1 className="mt-4 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Receive Purchase</h1>
         <p className="mt-1.5 text-[13px] text-slate-500">Open a sent or partially received purchase order to receive goods into stock.</p>
       </div>
       <section className={glassCard}>

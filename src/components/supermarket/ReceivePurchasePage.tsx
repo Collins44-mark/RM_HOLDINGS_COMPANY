@@ -3,13 +3,14 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Check } from "lucide-react";
+import { Check } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import { formatDisplayDate, useSupermarketInventory } from "@/lib/data/supermarket-inventory";
 import { purchaseLineRemaining, type ReceivePurchaseLineInput } from "@/lib/data/supermarket-purchasing";
 import { glassPanel, inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
+import { PageBackButton } from "@/components/ui/PageBackButton";
 
 type LineState = {
   productId: string;
@@ -50,9 +51,7 @@ export function ReceivePurchasePage() {
   if (!order) {
     return (
       <div className="min-w-0 pb-10">
-        <Link href="/supermarket/purchasing" className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-slate-500">
-          Back to Purchasing
-        </Link>
+        <PageBackButton href="/supermarket/purchasing" prefetch />
         <h1 className="mt-4 text-[24px] font-semibold text-navy">Purchase order not found.</h1>
       </div>
     );
@@ -60,10 +59,7 @@ export function ReceivePurchasePage() {
   if (order.status !== "Sent" && order.status !== "Partially Received" && !success) {
     return (
       <div className="min-w-0 pb-10">
-        <Link href={`/supermarket/purchasing/${order.id}`} className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-slate-500">
-          <ArrowLeft className="h-4 w-4" />
-          Back to {order.number}
-        </Link>
+        <PageBackButton href={`/supermarket/purchasing/${order.id}`} prefetch />
         <h1 className="mt-4 text-[24px] font-semibold text-navy">This order is not open for receiving.</h1>
       </div>
     );
@@ -182,11 +178,8 @@ export function ReceivePurchasePage() {
   return (
     <div className="min-w-0 space-y-5 pb-10">
       <div>
-        <Link href={`/supermarket/purchasing/${order.id}`} className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-slate-500 transition hover:text-navy">
-          <ArrowLeft className="h-4 w-4" strokeWidth={1.9} />
-          Back to {order.number}
-        </Link>
-        <h1 className="mt-3 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Receive Purchase</h1>
+        <PageBackButton href={`/supermarket/purchasing/${order.id}`} prefetch />
+        <h1 className="mt-4 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Receive Purchase</h1>
         <p className="mt-1.5 text-[13px] text-slate-500">
           {order.number} · {order.supplierName} · Ordered {formatDisplayDate(order.orderDate)}
         </p>

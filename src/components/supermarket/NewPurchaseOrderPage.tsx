@@ -3,12 +3,13 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Plus, Search, X } from "lucide-react";
+import { Plus, Search, X } from "lucide-react";
 import { APP_TIMEZONE } from "@/lib/config/app";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import { useSupermarketInventory, type SupermarketProduct } from "@/lib/data/supermarket-inventory";
 import { glassPanel, inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
+import { PageBackButton } from "@/components/ui/PageBackButton";
 
 type LineDraft = {
   key: string;
@@ -122,11 +123,8 @@ export function NewPurchaseOrderPage() {
   return (
     <div className="min-w-0 space-y-5 pb-10">
       <div>
-        <Link href="/supermarket/purchasing" className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-slate-500 transition hover:text-navy">
-          <ArrowLeft className="h-4 w-4" strokeWidth={1.9} />
-          Back to Purchasing
-        </Link>
-        <h1 className="mt-3 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">New Purchase Order</h1>
+        <PageBackButton href="/supermarket/purchasing" prefetch />
+        <h1 className="mt-4 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">New Purchase Order</h1>
         <p className="mt-1.5 text-[13px] text-slate-500">Create a supplier order, then save as draft or send.</p>
       </div>
 

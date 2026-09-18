@@ -1,22 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowUp,
-  Boxes,
-  ChevronDown,
-  ClipboardList,
-  Download,
-  LayoutGrid,
-  Package,
-  RotateCcw,
-  Search,
-  TriangleAlert,
-  Wallet,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, Boxes, ChevronDown, ClipboardList, Download, LayoutGrid, Package, RotateCcw, Search, TriangleAlert, Wallet } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
@@ -28,6 +13,7 @@ import {
 } from "@/lib/data/sample-supermarket-reports";
 import { downloadReportPdf } from "@/lib/data/supermarket-reports-pdf";
 import { useReportPeriod } from "@/components/supermarket/report-shell";
+import { PageBackButton } from "@/components/ui/PageBackButton";
 
 const glass =
   "rounded-[18px] border border-[#e7ecf3] bg-white/90 shadow-[0_8px_24px_rgba(15,35,64,0.04)] backdrop-blur-xl";
@@ -189,13 +175,8 @@ export function InventoryReportDetail() {
     <div className="min-w-0 max-w-full space-y-4 pb-10 sm:space-y-5">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="min-w-0">
-          <Link
-            href={`/supermarket/reports?${query}`}
-            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-500 transition hover:text-navy"
-          >
-            <ArrowLeft className="h-4 w-4" /> Back to Reports
-          </Link>
-          <div className="mt-3 flex items-start gap-3">
+          <PageBackButton href={`/supermarket/reports?${query}`} prefetch />
+          <div className="mt-4 flex items-start gap-3">
             <span className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-[#e7ecf3] bg-[#f7f9fc] text-navy/55 shadow-[0_4px_12px_rgba(15,35,64,0.04)]">
               <Boxes className="h-4 w-4" strokeWidth={1.9} />
             </span>

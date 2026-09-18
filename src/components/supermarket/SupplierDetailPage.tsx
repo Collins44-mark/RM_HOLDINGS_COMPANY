@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+
 import { formatTzs } from "@/lib/format/currency";
 import { formatDisplayDate, useSupermarketInventory } from "@/lib/data/supermarket-inventory";
 import { purchaseOrderGrandTotal, supplierOutstanding, supplierPurchaseTotal } from "@/lib/data/supermarket-purchasing";
 import { StatusPill, glassCard, glassPanel, tableHead } from "@/components/supermarket/purchasing-ui";
+import { PageBackButton } from "@/components/ui/PageBackButton";
 
 export function SupplierDetailPage() {
   const params = useParams<{ supplierId: string }>();
@@ -15,9 +16,7 @@ export function SupplierDetailPage() {
   if (!supplier) {
     return (
       <div className="min-w-0 pb-10">
-        <Link href="/supermarket/purchasing?tab=suppliers" className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-slate-500">
-          Back to Suppliers
-        </Link>
+        <PageBackButton href="/supermarket/purchasing?tab=suppliers" prefetch />
         <h1 className="mt-4 text-[24px] font-semibold text-navy">Supplier not found.</h1>
       </div>
     );
@@ -30,11 +29,8 @@ export function SupplierDetailPage() {
   return (
     <div className="min-w-0 space-y-5 pb-10">
       <div>
-        <Link href="/supermarket/purchasing?tab=suppliers" className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-slate-500 transition hover:text-navy">
-          <ArrowLeft className="h-4 w-4" strokeWidth={1.9} />
-          Back to Suppliers
-        </Link>
-        <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
+        <PageBackButton href="/supermarket/purchasing?tab=suppliers" prefetch />
+        <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">{supplier.name}</h1>
             <p className="mt-1.5 text-[13px] text-slate-500">{supplier.address || "No address on file"}</p>

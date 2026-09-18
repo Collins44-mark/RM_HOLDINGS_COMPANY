@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import { formatDisplayDate, useSupermarketInventory } from "@/lib/data/supermarket-inventory";
 import { purchaseLineRemaining, purchaseOrderGrandTotal, purchaseOrderSubtotal } from "@/lib/data/supermarket-purchasing";
 import { StatusPill, glassPanel, primaryButton, secondaryButton, tableHead } from "@/components/supermarket/purchasing-ui";
+import { PageBackButton } from "@/components/ui/PageBackButton";
 
 export function PurchaseOrderDetailPage() {
   const params = useParams<{ poId: string }>();
@@ -16,9 +17,7 @@ export function PurchaseOrderDetailPage() {
   if (!order) {
     return (
       <div className="min-w-0 pb-10">
-        <Link href="/supermarket/purchasing" className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-slate-500">
-          Back to Purchasing
-        </Link>
+        <PageBackButton href="/supermarket/purchasing" prefetch />
         <h1 className="mt-4 text-[24px] font-semibold text-navy">Purchase order not found.</h1>
       </div>
     );
@@ -32,11 +31,8 @@ export function PurchaseOrderDetailPage() {
     <div className="min-w-0 space-y-5 pb-10">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <Link href="/supermarket/purchasing" className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-slate-500 transition hover:text-navy">
-            <ArrowLeft className="h-4 w-4" strokeWidth={1.9} />
-            Back to Purchasing
-          </Link>
-          <h1 className="mt-3 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">{order.number}</h1>
+          <PageBackButton href="/supermarket/purchasing" prefetch />
+          <h1 className="mt-4 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">{order.number}</h1>
           <p className="mt-1.5 text-[13px] text-slate-500">{order.supplierName} · Ordered {formatDisplayDate(order.orderDate)}</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">

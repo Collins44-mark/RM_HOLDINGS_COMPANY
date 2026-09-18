@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Check, Search } from "lucide-react";
+import { Check, Search } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { cn } from "@/lib/cn";
 import { attachStock, useSupermarketInventory, type StockLocation } from "@/lib/data/supermarket-inventory";
 import { STOCK_LOCATIONS } from "@/lib/data/supermarket-purchasing";
 import { glassPanel, inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
+import { PageBackButton } from "@/components/ui/PageBackButton";
 
 export function TransferStockPage() {
   const { user } = useAuth();
@@ -71,10 +72,8 @@ export function TransferStockPage() {
   return (
     <div className="min-w-0 space-y-5 pb-10">
       <div>
-        <Link href="/supermarket/stock" className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-slate-500 hover:text-navy">
-          <ArrowLeft className="h-4 w-4" /> Back to Stock
-        </Link>
-        <h1 className="mt-3 text-[26px] font-semibold tracking-[-0.045em] text-navy">Transfer Stock</h1>
+        <PageBackButton href="/supermarket/stock" prefetch />
+        <h1 className="mt-4 text-[26px] font-semibold tracking-[-0.045em] text-navy">Transfer Stock</h1>
         <p className="mt-1.5 text-[13px] text-slate-500">Move units between Main Store and Sales Floor without changing total stock.</p>
       </div>
       <section className={glassPanel}>

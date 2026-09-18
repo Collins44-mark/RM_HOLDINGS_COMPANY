@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, Plus, Search } from "lucide-react";
+import { Check, Plus, Search } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { matchPermission } from "@/lib/config/permissions";
@@ -11,6 +11,7 @@ import { APP_TIMEZONE } from "@/lib/config/app";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import type { AuthUser } from "@/lib/auth/types";
+import { PageBackButton } from "@/components/ui/PageBackButton";
 import {
   currentStockFor,
   useSupermarketInventory,
@@ -277,13 +278,7 @@ export function AddStockPage() {
   if (success) {
     return (
       <div className="page-enter min-w-0 pb-8">
-        <Link
-          href="/supermarket/stock"
-          className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-slate-500 transition hover:text-navy"
-        >
-          <ArrowLeft className="h-4 w-4" strokeWidth={1.9} />
-          Back to Stock
-        </Link>
+        <PageBackButton href="/supermarket/stock" prefetch />
         <div className={cn(card, "mx-auto mt-6 max-w-lg px-6 py-10 text-center sm:px-10")}>
           <span className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#e8f6ee] text-[#1f8a4c]">
             <Check className="h-7 w-7" strokeWidth={2.4} />
@@ -317,13 +312,7 @@ export function AddStockPage() {
 
   return (
     <div className="page-enter min-w-0 pb-8">
-      <Link
-        href="/supermarket/stock"
-        className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-slate-500 transition hover:text-navy"
-      >
-        <ArrowLeft className="h-4 w-4" strokeWidth={1.9} />
-        Back to Stock
-      </Link>
+      <PageBackButton href="/supermarket/stock" prefetch />
       <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Add Stock</h1>
