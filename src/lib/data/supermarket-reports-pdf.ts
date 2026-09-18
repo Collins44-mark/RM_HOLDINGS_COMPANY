@@ -4,8 +4,10 @@ import {
   formatPdfGeneratedAt,
   formatPdfNumber,
   formatPdfPercent,
+  pdfAscii,
   type TableColumn,
 } from "@/lib/pdf/report-document";
+import { CorporateSalesDocument } from "@/lib/pdf/corporate-sales-document";
 import {
   buildInventoryReportData,
   buildProfitLossReportData,
@@ -27,23 +29,33 @@ function filtersDescription(filters: SalesReportFilters = {}) {
   if (filters.payment && filters.payment !== "all") parts.push(`Payment Method: ${filters.payment}`);
   if (filters.category && filters.category !== "all") parts.push(`Category: ${filters.category}`);
   const filterText =
-    parts.length > 0 ? ` Applied filters: ${parts.join("; ")}.` : " No additional filters applied.";
+    parts.length > 0 ? ` Applied filters: ${parts.join("; ")}.` : "";
   return `This report shows the sales performance for the selected period based on applied filters (if any).${filterText} All figures are in Tanzanian Shillings (TZS).`;
 }
 
+function salesReportFilename(periodLabel: string) {
+  const slug = pdfAscii(periodLabel)
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 40);
+  return `RM-Supermarket-Sales-Report-${slug || "Period"}.pdf`;
+}
+
 function renderSalesPdf(data: SalesReportData, filters: SalesReportFilters = {}) {
-  const doc = new ReportDocument({
+  const doc = new CorporateSalesDocument({
     businessUnit: BUSINESS_UNIT,
     title: "Sales Report",
     subtitle: "Sales performance for the selected period.",
     periodLabel: data.periodLabel,
     periodDates: data.periodDates,
     generatedAt: formatPdfGeneratedAt(),
+    preparedBy: "Collins Sarungi",
+    preparedRole: "System Administrator",
     filtersNote: filtersDescription(filters),
   });
 
-  doc.addSectionTitle("Sales Summary");
-  doc.addSimpleTable(
+  doc.addSectionTable(
+    "Sales Summary",
     [
       { key: "metric", label: "Metric", width: 360 },
       { key: "value", label: "Value", width: 151, align: "right" },
@@ -54,7 +66,6 @@ function renderSalesPdf(data: SalesReportData, filters: SalesReportFilters = {})
       { metric: "Items Sold", value: formatPdfNumber(data.itemsSold) },
       { metric: "Returns (TZS)", value: formatPdfNumber(data.returnsAmount) },
     ],
-    { sectionTitle: "Sales Summary" },
   );
 
   const paymentCols: TableColumn[] = [
@@ -77,7 +88,7 @@ function renderSalesPdf(data: SalesReportData, filters: SalesReportFilters = {})
   const cashierItems = data.cashierPerformance.reduce((sum, row) => sum + row.itemsSold, 0);
   const cashierRevenue = data.cashierPerformance.reduce((sum, row) => sum + row.revenue, 0);
 
-  doc.addTwoColumnTables(
+  doc.addTwoColumnSections(
     {
       title: "Sales by Payment Method",
       columns: paymentCols,
@@ -123,7 +134,7 @@ function renderSalesPdf(data: SalesReportData, filters: SalesReportFilters = {})
     { key: "revenue", label: "Revenue (TZS)", width: 60, align: "right" },
   ];
 
-  doc.addTwoColumnTables(
+  doc.addTwoColumnSections(
     {
       title: "Top Selling Products",
       columns: productCols,
@@ -441,10 +452,8 @@ export function downloadSalesCenterReportPdf(
   range: SalesDateRange,
   filters: SalesReportFilters = {},
 ) {
-  downloadPdfBytes(
-    renderSalesPdf(buildSalesReportData(preset, range, filters), filters),
-    "RM-Supermarket-Sales-Report.pdf",
-  );
+  const data = buildSalesReportData(preset, range, filters);
+  downloadPdfBytes(renderSalesPdf(data, filters), salesReportFilename(data.periodLabel));
 }
 
 export function downloadInventoryCenterReportPdf(preset: SalesPeriodPreset, range: SalesDateRange) {
