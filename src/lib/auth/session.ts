@@ -191,15 +191,13 @@ async function readCookieUser(verified: boolean) {
   return session?.user ?? null;
 }
 
-async function isPrefetchRequest() {
-  const headerStore = await headers();
-  return headerStore.get("next-router-prefetch") === "1";
-}
-
 export const getAuthUser = cache(async function getAuthUser(): Promise<AuthUser | null> {
   const user = await readCookieUser(false);
   if (!user) return null;
-  return hydrateAuthUser(user, { skipProfile: await isPrefetchRequest() });
+  // Prefer JWT/app_metadata claims on soft navigations and prefetches so report
+  // transitions do not wait on a profiles round-trip. Mutations still use
+  // getVerifiedAuthUser() → full hydrate.
+  return hydrateAuthUser(user, { skipProfile: true });
 });
 
 export const getVerifiedAuthUser = cache(async function getVerifiedAuthUser(): Promise<AuthUser | null> {

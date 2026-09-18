@@ -1,11 +1,12 @@
 import { Suspense } from "react";
 import { ProfitLossReportDetail } from "@/components/supermarket/ProfitLossReportDetail";
+import ReportsLoading from "../loading";
 
 export const metadata = { title: "Profit & Loss" };
 
 export default function SupermarketProfitLossReportRoute() {
   return (
-    <Suspense fallback={<div className="min-h-[40vh]" />}>
+    <Suspense fallback={<ReportsLoading />}>
       <ProfitLossReportDetail />
     </Suspense>
   );
