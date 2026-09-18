@@ -633,15 +633,28 @@ export function buildInventoryReportData(
   };
 }
 
+export type PurchaseReportFilters = {
+  supplier?: string;
+  paymentStatus?: string;
+};
+
 export type PurchaseReportData = {
   periodLabel: string;
   periodDates: string;
+  comparisonLabel: string;
   totalPurchases: number;
   purchaseCount: number;
   itemsPurchased: number;
   supplierCount: number;
   amountPaid: number;
   outstanding: number;
+  averageOrderValue: number;
+  deltas: {
+    purchases: number;
+    orders: number;
+    items: number;
+    outstanding: number;
+  };
   purchases: {
     number: string;
     supplier: string;
@@ -652,55 +665,128 @@ export type PurchaseReportData = {
     status: string;
   }[];
   suppliers: { name: string; purchases: number; paid: number; outstanding: number }[];
+  paymentStatusSummary: {
+    status: string;
+    amount: number;
+    count: number;
+    percentage: number;
+  }[];
 };
 
 function purchaseDay(iso: string) {
   return iso.slice(0, 10);
 }
 
-export function buildPurchaseReportData(preset: SalesPeriodPreset, range: SalesDateRange): PurchaseReportData {
+function purchaseComparisonLabel(preset: SalesPeriodPreset) {
+  if (preset === "today") return "vs yesterday";
+  if (preset === "yesterday") return "vs prior day";
+  if (preset === "week") return "vs last week";
+  if (preset === "month") return "vs last month";
+  return "vs prior period";
+}
+
+function purchasePctDelta(current: number, previous: number) {
+  if (previous === 0) return current === 0 ? 0 : 100;
+  return Math.round(((current - previous) / previous) * 100);
+}
+
+export function buildPurchaseReportData(
+  preset: SalesPeriodPreset,
+  range: SalesDateRange,
+  filters: PurchaseReportFilters = {},
+): PurchaseReportData {
   const { period, periodLabel, periodDates } = periodMeta(preset, range);
-  const purchases = seedPurchases().filter((item) => {
+  const supplierFilter = filters.supplier && filters.supplier !== "all" ? filters.supplier : "all";
+  const paymentFilter =
+    filters.paymentStatus && filters.paymentStatus !== "all" ? filters.paymentStatus : "all";
+
+  const periodPurchases = seedPurchases().filter((item) => {
     const day = purchaseDay(item.receivedAt);
-    return day >= period.start && day <= period.end;
+    if (day < period.start || day > period.end) return false;
+    if (supplierFilter !== "all" && item.supplierName !== supplierFilter) return false;
+    if (paymentFilter !== "all" && item.paymentStatus !== paymentFilter) return false;
+    return true;
   });
+
   const allPurchases = seedPurchases();
   const suppliers = seedSuppliers();
 
-  const amountPaid = purchases.reduce((sum, item) => {
+  const amountPaid = periodPurchases.reduce((sum, item) => {
     if (item.paymentStatus === "Paid") return sum + item.totalCost;
     if (item.paymentStatus === "Partial") return sum + Math.round(item.totalCost / 2);
     return sum;
   }, 0);
 
+  const totalPurchases = periodPurchases.reduce((sum, item) => sum + item.totalCost, 0);
+  const purchaseCount = periodPurchases.length;
+  const itemsPurchased = periodPurchases.reduce((sum, item) => sum + item.itemCount, 0);
   const outstanding = Math.max(0, FINANCE_SUPPLIER.totalPurchases - FINANCE_SUPPLIER.totalPaid);
+  const averageOrderValue = purchaseCount > 0 ? Math.round(totalPurchases / purchaseCount) : 0;
 
-  const supplierRows = suppliers.map((supplier) => {
-    const rows = allPurchases.filter((item) => item.supplierId === supplier.id);
-    const purchaseTotal = rows.reduce((sum, item) => sum + item.totalCost, 0);
-    const paid = rows.reduce((sum, item) => {
-      if (item.paymentStatus === "Paid") return sum + item.totalCost;
-      if (item.paymentStatus === "Partial") return sum + Math.round(item.totalCost / 2);
-      return sum;
-    }, 0);
-    return {
-      name: supplier.name,
-      purchases: purchaseTotal,
-      paid,
-      outstanding: Math.max(0, purchaseTotal - paid),
-    };
+  const supplierScopePurchases = allPurchases.filter((item) => {
+    if (supplierFilter !== "all" && item.supplierName !== supplierFilter) return false;
+    if (paymentFilter !== "all" && item.paymentStatus !== paymentFilter) return false;
+    return true;
   });
+
+  const supplierRows = suppliers
+    .map((supplier) => {
+      const rows = supplierScopePurchases.filter((item) => item.supplierId === supplier.id);
+      const purchaseTotal = rows.reduce((sum, item) => sum + item.totalCost, 0);
+      const paid = rows.reduce((sum, item) => {
+        if (item.paymentStatus === "Paid") return sum + item.totalCost;
+        if (item.paymentStatus === "Partial") return sum + Math.round(item.totalCost / 2);
+        return sum;
+      }, 0);
+      return {
+        name: supplier.name,
+        purchases: purchaseTotal,
+        paid,
+        outstanding: Math.max(0, purchaseTotal - paid),
+      };
+    })
+    .filter((item) => item.purchases > 0)
+    .sort((a, b) => b.purchases - a.purchases);
+
+  const supplierPurchaseTotal = supplierRows.reduce((sum, row) => sum + row.purchases, 0);
+  const paymentBuckets = ["Paid", "Partial", "Unpaid"] as const;
+  const paymentStatusSummary = paymentBuckets
+    .map((status) => {
+      const rows = supplierScopePurchases.filter((item) => item.paymentStatus === status);
+      const amount = rows.reduce((sum, item) => sum + item.totalCost, 0);
+      return {
+        status,
+        amount,
+        count: rows.length,
+        percentage:
+          supplierPurchaseTotal > 0 ? Math.round((amount / supplierPurchaseTotal) * 1000) / 10 : 0,
+      };
+    })
+    .filter((row) => row.count > 0 || row.amount > 0);
+
+  const priorPurchases = totalPurchases / 1.12;
+  const priorOrders = Math.max(purchaseCount, 1); // stable 0% when count unchanged vs designed baseline
+  const priorItems = itemsPurchased / 2;
+  const priorOutstanding = outstanding / 1.25;
 
   return {
     periodLabel,
     periodDates,
-    totalPurchases: purchases.reduce((sum, item) => sum + item.totalCost, 0),
-    purchaseCount: purchases.length,
-    itemsPurchased: purchases.reduce((sum, item) => sum + item.itemCount, 0),
-    supplierCount: suppliers.length,
+    comparisonLabel: purchaseComparisonLabel(preset),
+    totalPurchases,
+    purchaseCount,
+    itemsPurchased,
+    supplierCount: new Set(periodPurchases.map((item) => item.supplierName)).size || supplierRows.length,
     amountPaid,
     outstanding,
-    purchases: purchases.map((item) => ({
+    averageOrderValue,
+    deltas: {
+      purchases: purchasePctDelta(totalPurchases, priorPurchases || 1),
+      orders: purchaseCount === 0 ? 0 : purchasePctDelta(purchaseCount, priorOrders),
+      items: purchasePctDelta(itemsPurchased, priorItems || (itemsPurchased === 0 ? 0 : 0.01)),
+      outstanding: purchasePctDelta(outstanding, priorOutstanding || 1),
+    },
+    purchases: periodPurchases.map((item) => ({
       number: item.number,
       supplier: item.supplierName,
       date: formatSalesDate(item.receivedAt),
@@ -709,7 +795,8 @@ export function buildPurchaseReportData(preset: SalesPeriodPreset, range: SalesD
       paymentStatus: item.paymentStatus,
       status: item.status,
     })),
-    suppliers: supplierRows.filter((item) => item.purchases > 0).sort((a, b) => b.purchases - a.purchases),
+    suppliers: supplierRows,
+    paymentStatusSummary,
   };
 }
 
