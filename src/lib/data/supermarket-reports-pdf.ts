@@ -182,10 +182,15 @@ function renderInventoryPdf(data: InventoryReportData) {
   doc.addSectionTitle("Stock Movement Summary");
   doc.addSimpleTable(
     [
-      { key: "type", label: "Movement Type", width: 360 },
-      { key: "qty", label: "Quantity", width: 151, align: "right" },
+      { key: "type", label: "Movement Type", width: 250 },
+      { key: "count", label: "Count", width: 100, align: "right" },
+      { key: "qty", label: "Quantity", width: 161, align: "right" },
     ],
-    data.movements.map((row) => ({ type: row.label, qty: formatPdfNumber(row.count) })),
+    data.movements.map((row) => ({
+      type: row.label,
+      count: formatPdfNumber(row.count),
+      qty: formatPdfNumber(row.quantity),
+    })),
     { sectionTitle: "Stock Movement Summary" },
   );
 

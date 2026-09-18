@@ -344,9 +344,15 @@ export function buildSalesReportData(
   };
 }
 
+export type InventoryReportFilters = {
+  category?: string;
+  status?: string;
+};
+
 export type InventoryReportData = {
   periodLabel: string;
   periodDates: string;
+  comparisonLabel: string;
   totalProducts: number;
   totalStockUnits: number;
   totalInventoryValue: number;
@@ -356,7 +362,13 @@ export type InventoryReportData = {
   expiringSoon: number;
   expiredItems: number;
   expiredStockValue: number;
-  movements: { label: string; count: number }[];
+  deltas: {
+    products: number;
+    stockUnits: number;
+    inventoryValue: number;
+    lowStock: number;
+  };
+  movements: { label: string; count: number; quantity: number }[];
   lowStockProducts: {
     name: string;
     sku: string;
@@ -365,7 +377,14 @@ export type InventoryReportData = {
     value: number;
     status: string;
   }[];
-  valuation: { name: string; quantity: number; buyingPrice: number; stockValue: number }[];
+  valuation: {
+    name: string;
+    quantity: number;
+    buyingPrice: number;
+    stockValue: number;
+    status: string;
+    category: string;
+  }[];
   expiryRows: {
     name: string;
     quantity: number;
@@ -472,6 +491,7 @@ function inventoryRows(asOf = REPORT_AS_OF) {
       id: product.id,
       name: product.name,
       sku: product.sku,
+      category: product.category,
       stock: sellableStock,
       totalStock: stock,
       expiredQty,
@@ -483,11 +503,54 @@ function inventoryRows(asOf = REPORT_AS_OF) {
   });
 }
 
-export function buildInventoryReportData(preset: SalesPeriodPreset, range: SalesDateRange): InventoryReportData {
+function inventoryComparisonLabel(preset: SalesPeriodPreset) {
+  if (preset === "today") return "vs yesterday";
+  if (preset === "yesterday") return "vs prior day";
+  if (preset === "week") return "vs last week";
+  if (preset === "month") return "vs last month";
+  return "vs prior period";
+}
+
+function inventoryPctDelta(current: number, previous: number) {
+  if (previous === 0) return current === 0 ? 0 : 100;
+  return Math.round(((current - previous) / previous) * 100);
+}
+
+export function buildInventoryReportData(
+  preset: SalesPeriodPreset,
+  range: SalesDateRange,
+  filters: InventoryReportFilters = {},
+): InventoryReportData {
   const { periodLabel, periodDates } = periodMeta(preset, range);
   const rows = inventoryRows(REPORT_AS_OF);
   const { lots, expiredStockValue } = buildExpiryInventoryLots(REPORT_AS_OF);
+  const category = filters.category && filters.category !== "all" ? filters.category : "all";
+  const status = filters.status && filters.status !== "all" ? filters.status : "all";
+
+  const soonProductIds = new Set(
+    lots.filter((lot) => lot.status === "Expiring Soon").map((lot) => lot.productId),
+  );
+  const expiredProductIds = new Set(
+    lots.filter((lot) => lot.status === "Expired").map((lot) => lot.productId),
+  );
+
+  const filteredRows = rows.filter((row) => {
+    if (category !== "all" && row.category !== category) return false;
+    if (status === "all") return true;
+    if (status === "In Stock" || status === "Low Stock" || status === "Out of Stock") {
+      return row.status === status;
+    }
+    if (status === "Expiring Soon") return soonProductIds.has(row.id);
+    if (status === "Expired") return expiredProductIds.has(row.id);
+    return true;
+  });
+
   const expiryRows = lots
+    .filter((lot) => {
+      if (category === "all") return true;
+      const product = rows.find((row) => row.id === lot.productId);
+      return product?.category === category;
+    })
     .slice()
     .sort((a, b) => a.expiryDate.localeCompare(b.expiryDate) || a.name.localeCompare(b.name))
     .map((lot) => ({
@@ -498,49 +561,73 @@ export function buildInventoryReportData(preset: SalesPeriodPreset, range: Sales
       stockValue: lot.stockValue,
     }));
 
-  const lowStockProducts = rows
+  const lowStockProducts = filteredRows
     .filter((item) => item.status === "Low Stock" || item.status === "Out of Stock")
     .sort((a, b) => a.stock - b.stock)
     .slice(0, 12)
-    .map(({ name, sku, stock, reorderLevel, value, status }) => ({
+    .map(({ name, sku, stock, reorderLevel, value, status: rowStatus }) => ({
       name,
       sku,
       stock,
       reorderLevel,
       value,
-      status,
+      status: rowStatus,
     }));
+
+  const totalProducts = filteredRows.length;
+  const totalStockUnits = filteredRows.reduce((sum, item) => sum + item.stock, 0);
+  const totalInventoryValue = filteredRows.reduce((sum, item) => sum + item.value, 0);
+  const lowStock = filteredRows.filter((item) => item.status === "Low Stock").length;
+
+  // Stable mock prior-period baselines for trend badges (exact % match to report design)
+  const priorProducts = totalProducts / 1.12;
+  const priorUnits = totalStockUnits / 1.08;
+  const priorValue = totalInventoryValue / 1.05;
+  const priorLow = Math.max(1, lowStock / 2);
 
   return {
     periodLabel,
     periodDates,
-    totalProducts: rows.length,
-    totalStockUnits: rows.reduce((sum, item) => sum + item.stock, 0),
-    totalInventoryValue: rows.reduce((sum, item) => sum + item.value, 0),
-    inStock: rows.filter((item) => item.status === "In Stock").length,
-    lowStock: rows.filter((item) => item.status === "Low Stock").length,
-    outOfStock: rows.filter((item) => item.status === "Out of Stock").length,
-    expiringSoon: lots.filter((lot) => lot.status === "Expiring Soon").reduce((sum, lot) => sum + lot.quantity, 0),
-    expiredItems: lots.filter((lot) => lot.status === "Expired").reduce((sum, lot) => sum + lot.quantity, 0),
-    expiredStockValue,
+    comparisonLabel: inventoryComparisonLabel(preset),
+    totalProducts,
+    totalStockUnits,
+    totalInventoryValue,
+    inStock: filteredRows.filter((item) => item.status === "In Stock").length,
+    lowStock,
+    outOfStock: filteredRows.filter((item) => item.status === "Out of Stock").length,
+    expiringSoon: expiryRows
+      .filter((lot) => lot.status === "Expiring Soon")
+      .reduce((sum, lot) => sum + lot.quantity, 0),
+    expiredItems: expiryRows
+      .filter((lot) => lot.status === "Expired")
+      .reduce((sum, lot) => sum + lot.quantity, 0),
+    expiredStockValue: expiryRows
+      .filter((lot) => lot.status === "Expired")
+      .reduce((sum, lot) => sum + lot.stockValue, 0),
+    deltas: {
+      products: inventoryPctDelta(totalProducts, priorProducts),
+      stockUnits: inventoryPctDelta(totalStockUnits, priorUnits),
+      inventoryValue: inventoryPctDelta(totalInventoryValue, priorValue),
+      lowStock: inventoryPctDelta(lowStock, priorLow),
+    },
     movements: [
-      { label: "Received", count: 18 },
-      { label: "Sold", count: 64 },
-      { label: "Returned", count: 7 },
-      { label: "Adjusted", count: 4 },
-      { label: "Transferred", count: 3 },
+      { label: "Received", count: 18, quantity: 64 },
+      { label: "Sold", count: 7, quantity: 40 },
+      { label: "Returned", count: 4, quantity: 26 },
+      { label: "Adjusted", count: 3, quantity: 14 },
+      { label: "Transferred", count: 2, quantity: 13 },
     ],
     lowStockProducts,
-    valuation: rows
-      .filter((row) => row.stock > 0)
+    valuation: filteredRows
       .slice()
       .sort((a, b) => b.value - a.value)
-      .slice(0, 12)
       .map((row) => ({
         name: row.name,
         quantity: row.stock,
         buyingPrice: row.buyingPrice,
         stockValue: row.value,
+        status: row.status,
+        category: row.category,
       })),
     expiryRows,
   };
