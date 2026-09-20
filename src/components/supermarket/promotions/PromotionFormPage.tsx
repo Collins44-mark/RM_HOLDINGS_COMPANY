@@ -1,26 +1,25 @@
 "use client";
 
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useMemo, useState, type FormEvent, type ReactNode, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Search, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { PageBackButton } from "@/components/ui/PageBackButton";
-import {
-  glassCard,
-  inputClass,
-  primaryButton,
-  secondaryButton,
-} from "@/components/supermarket/purchasing-ui";
+import { inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
 import {
   MOCK_PROMOTION_CATEGORIES,
   MOCK_PROMOTION_PRODUCTS,
-  PROMOTION_TYPE_OPTIONS,
   createPromotionId,
   createTierId,
+  effectivePromotionStatus,
+  getActivePromotionTypeOptions,
   getPromotionProduct,
+  getPromotionTypesSnapshot,
+  promotionStatusLabel,
+  subscribePromotionTypes,
+  todayIsoDate,
   upsertPromotion,
   type Promotion,
-  type PromotionStatus,
   type PromotionTargetType,
   type PromotionType,
 } from "@/lib/data/sample-supermarket-promotions";
@@ -33,7 +32,7 @@ type FormState = {
   type: PromotionType | "";
   targetType: PromotionTargetType;
   productIds: string[];
-  categoryId: string;
+  categoryIds: string[];
   buyQuantity: string;
   freeQuantity: string;
   discountPercent: string;
@@ -46,11 +45,14 @@ type FormState = {
   tiers: { id: string; minimumSpend: string; discountPercent: string }[];
   startDate: string;
   endDate: string;
-  status: PromotionStatus;
+  paused: boolean;
   allowMultipleUse: boolean;
   usageLimitEnabled: boolean;
   usageLimit: string;
 };
+
+const formCard =
+  "rounded-[24px] border border-white/80 bg-white/82 px-5 py-6 shadow-[0_12px_36px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-xl sm:px-6 sm:py-7";
 
 function emptyForm(): FormState {
   return {
@@ -59,7 +61,7 @@ function emptyForm(): FormState {
     type: "",
     targetType: "PRODUCTS",
     productIds: [],
-    categoryId: "",
+    categoryIds: [],
     buyQuantity: "2",
     freeQuantity: "1",
     discountPercent: "10",
@@ -76,7 +78,7 @@ function emptyForm(): FormState {
     ],
     startDate: "",
     endDate: "",
-    status: "ACTIVE",
+    paused: false,
     allowMultipleUse: true,
     usageLimitEnabled: false,
     usageLimit: "",
@@ -90,7 +92,7 @@ function formFromPromotion(item: Promotion): FormState {
     type: item.type,
     targetType: item.targetType,
     productIds: [...item.productIds],
-    categoryId: item.categoryIds[0] ?? "",
+    categoryIds: [...item.categoryIds],
     buyQuantity: String(item.rule.buyQuantity ?? 2),
     freeQuantity: String(item.rule.freeQuantity ?? 1),
     discountPercent: String(item.rule.discountPercent ?? 10),
@@ -110,7 +112,7 @@ function formFromPromotion(item: Promotion): FormState {
         : emptyForm().tiers,
     startDate: item.startDate,
     endDate: item.endDate,
-    status: item.status === "EXPIRED" ? "INACTIVE" : item.status,
+    paused: item.status === "INACTIVE",
     allowMultipleUse: item.allowMultipleUse,
     usageLimitEnabled: item.usageLimitEnabled,
     usageLimit: item.usageLimit != null ? String(item.usageLimit) : "",
@@ -135,6 +137,8 @@ export function PromotionFormPage({
   initial?: Promotion | null;
 }) {
   const router = useRouter();
+  useSyncExternalStore(subscribePromotionTypes, getPromotionTypesSnapshot, getPromotionTypesSnapshot);
+  const typeOptions = getActivePromotionTypeOptions();
   const [form, setForm] = useState<FormState>(() =>
     mode === "edit" && initial ? formFromPromotion(initial) : emptyForm(),
   );
@@ -145,6 +149,12 @@ export function PromotionFormPage({
   function patch(partial: Partial<FormState>) {
     setForm((current) => ({ ...current, ...partial }));
   }
+
+  const previewStatus = effectivePromotionStatus({
+    startDate: form.startDate || "9999-12-31",
+    endDate: form.endDate || "9999-12-31",
+    status: form.paused ? "INACTIVE" : "ACTIVE",
+  });
 
   const productMatches = useMemo(() => {
     const needle = productQuery.trim().toLowerCase();
@@ -173,14 +183,12 @@ export function PromotionFormPage({
     if (form.startDate && form.endDate && form.endDate < form.startDate) {
       next.endDate = "End date cannot be before start date.";
     }
-
     if (form.targetType === "PRODUCTS" && form.productIds.length === 0) {
       next.products = "Select at least one product.";
     }
-    if (form.targetType === "CATEGORY" && !form.categoryId) {
-      next.category = "Select a category.";
+    if (form.targetType === "CATEGORY" && form.categoryIds.length === 0) {
+      next.category = "Select at least one category.";
     }
-
     if (form.type === "PERCENTAGE" && !parsePositiveNumber(form.discountPercent)) {
       next.discountPercent = "Enter a valid discount percentage.";
     }
@@ -220,26 +228,18 @@ export function PromotionFormPage({
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0 || !form.type) return null;
 
-    const productIds =
-      form.targetType === "PRODUCTS"
-        ? form.productIds
-        : form.type === "BUNDLE"
-          ? form.bundleProductIds
-          : [];
-    const categoryIds = form.targetType === "CATEGORY" && form.categoryId ? [form.categoryId] : [];
-
     const base: Promotion = {
       id: mode === "edit" && initial ? initial.id : createPromotionId(),
       name: form.name.trim(),
       description: form.description.trim(),
       type: form.type,
       targetType: form.targetType,
-      productIds,
-      categoryIds,
+      productIds: form.targetType === "PRODUCTS" ? form.productIds : [],
+      categoryIds: form.targetType === "CATEGORY" ? form.categoryIds : [],
       rule: {},
       startDate: form.startDate,
       endDate: form.endDate,
-      status: form.status,
+      status: form.paused ? "INACTIVE" : "ACTIVE",
       allowMultipleUse: form.allowMultipleUse,
       usageLimitEnabled: form.usageLimitEnabled,
       usageLimit: form.usageLimitEnabled ? parsePositiveInt(form.usageLimit) : null,
@@ -295,17 +295,10 @@ export function PromotionFormPage({
   }
 
   return (
-    <div className="min-w-0 max-w-full space-y-5 pb-10 sm:space-y-6">
+    <div className="page-enter min-w-0 pb-10">
       <PageBackButton href="/supermarket/promotions" prefetch />
-
-      <header>
-        <p className="text-[12px] font-medium text-slate-400">
-          Supermarket <span className="mx-1.5 text-slate-300">›</span>{" "}
-          <span className="text-slate-400">Promotions</span>
-          <span className="mx-1.5 text-slate-300">›</span>{" "}
-          <span className="text-slate-500">{mode === "edit" ? "Edit Promotion" : "Create Promotion"}</span>
-        </p>
-        <h1 className="mt-2 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[28px]">
+      <div className="mt-4">
+        <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">
           {mode === "edit" ? "Edit Promotion" : "Create Promotion"}
         </h1>
         <p className="mt-1.5 max-w-2xl text-[13.5px] text-slate-500">
@@ -313,9 +306,9 @@ export function PromotionFormPage({
             ? "Update this promotion’s products, rules, dates and settings."
             : "Create and configure a promotion for selected products or categories."}
         </p>
-      </header>
+      </div>
 
-      <form onSubmit={onSubmit} className="mx-auto w-full max-w-4xl space-y-4">
+      <form onSubmit={onSubmit} className="mx-auto mt-6 w-full max-w-[980px] space-y-5">
         <Section step={1} title="Basic Information">
           <div className="space-y-3">
             <Field label="Promotion Name *" error={errors.name}>
@@ -342,7 +335,7 @@ export function PromotionFormPage({
                 className={inputClass}
               >
                 <option value="">Select promotion type</option>
-                {PROMOTION_TYPE_OPTIONS.map((item) => (
+                {typeOptions.map((item) => (
                   <option key={item.value} value={item.value}>
                     {item.label}
                   </option>
@@ -384,79 +377,51 @@ export function PromotionFormPage({
             </Field>
 
             {form.targetType === "PRODUCTS" ? (
-              <div className="space-y-2">
-                <Field label="Search and select products *" error={errors.products}>
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      value={productQuery}
-                      onChange={(event) => setProductQuery(event.target.value)}
-                      className={cn(inputClass, "pl-10")}
-                      placeholder="Search products..."
-                    />
-                  </div>
-                </Field>
-                {productMatches.length > 0 ? (
-                  <div className="overflow-hidden rounded-[14px] border border-[#e7ecf3] bg-white">
-                    {productMatches.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          patch({ productIds: [...form.productIds, item.id] });
-                          setProductQuery("");
-                        }}
-                        className="flex w-full px-3.5 py-2.5 text-left text-[13px] text-navy hover:bg-[#f5f8fc]"
-                      >
-                        {item.name}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                {form.productIds.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {form.productIds.map((id) => {
-                      const product = getPromotionProduct(id);
-                      if (!product) return null;
-                      return (
-                        <span
-                          key={id}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-[#e7ecf3] bg-[#f8fafc] px-3 py-1.5 text-[12.5px] font-medium text-navy"
-                        >
-                          {product.name}
-                          <button
-                            type="button"
-                            onClick={() =>
-                              patch({ productIds: form.productIds.filter((item) => item !== id) })
-                            }
-                            className="text-slate-400 transition hover:text-navy"
-                            aria-label={`Remove ${product.name}`}
-                          >
-                            <X className="h-3.5 w-3.5" strokeWidth={2} />
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </div>
+              <ProductPicker
+                query={productQuery}
+                onQuery={setProductQuery}
+                matches={productMatches}
+                selectedIds={form.productIds}
+                error={errors.products}
+                onAdd={(id) => {
+                  patch({ productIds: [...form.productIds, id] });
+                  setProductQuery("");
+                }}
+                onRemove={(id) => patch({ productIds: form.productIds.filter((item) => item !== id) })}
+              />
             ) : null}
 
             {form.targetType === "CATEGORY" ? (
-              <Field label="Select Category *" error={errors.category}>
-                <select
-                  value={form.categoryId}
-                  onChange={(event) => patch({ categoryId: event.target.value })}
-                  className={inputClass}
-                >
-                  <option value="">Select category</option>
-                  {MOCK_PROMOTION_CATEGORIES.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+              <div className="space-y-2">
+                <p className="text-[12px] font-medium text-slate-500">Select Category *</p>
+                <div className="flex flex-wrap gap-2">
+                  {MOCK_PROMOTION_CATEGORIES.map((item) => {
+                    const selected = form.categoryIds.includes(item.id);
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() =>
+                          patch({
+                            categoryIds: selected
+                              ? form.categoryIds.filter((id) => id !== item.id)
+                              : [...form.categoryIds, item.id],
+                          })
+                        }
+                        className={cn(
+                          "rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition",
+                          selected
+                            ? "border-[#0b2244] bg-[#0b2244] text-white"
+                            : "border-[#e7ecf3] bg-white text-navy hover:border-[#c9d5e4]",
+                        )}
+                      >
+                        {item.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                {errors.category ? <p className="text-[12px] text-[#c45b66]">{errors.category}</p> : null}
+              </div>
             ) : null}
 
             {form.targetType === "ALL_PRODUCTS" ? (
@@ -540,62 +505,21 @@ export function PromotionFormPage({
 
           {form.type === "BUNDLE" ? (
             <div className="space-y-3">
-              <Field label="Bundle Products *" error={errors.bundleProducts}>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    value={bundleQuery}
-                    onChange={(event) => setBundleQuery(event.target.value)}
-                    className={cn(inputClass, "pl-10")}
-                    placeholder="Search products to add to bundle..."
-                  />
-                </div>
-              </Field>
-              {bundleMatches.length > 0 ? (
-                <div className="overflow-hidden rounded-[14px] border border-[#e7ecf3] bg-white">
-                  {bundleMatches.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => {
-                        patch({ bundleProductIds: [...form.bundleProductIds, item.id] });
-                        setBundleQuery("");
-                      }}
-                      className="flex w-full px-3.5 py-2.5 text-left text-[13px] text-navy hover:bg-[#f5f8fc]"
-                    >
-                      {item.name}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-              {form.bundleProductIds.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {form.bundleProductIds.map((id) => {
-                    const product = getPromotionProduct(id);
-                    if (!product) return null;
-                    return (
-                      <span
-                        key={id}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-[#e7ecf3] bg-[#f8fafc] px-3 py-1.5 text-[12.5px] font-medium text-navy"
-                      >
-                        {product.name}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            patch({
-                              bundleProductIds: form.bundleProductIds.filter((item) => item !== id),
-                            })
-                          }
-                          className="text-slate-400 transition hover:text-navy"
-                          aria-label={`Remove ${product.name}`}
-                        >
-                          <X className="h-3.5 w-3.5" strokeWidth={2} />
-                        </button>
-                      </span>
-                    );
-                  })}
-                </div>
-              ) : null}
+              <ProductPicker
+                label="Bundle Products *"
+                query={bundleQuery}
+                onQuery={setBundleQuery}
+                matches={bundleMatches}
+                selectedIds={form.bundleProductIds}
+                error={errors.bundleProducts}
+                onAdd={(id) => {
+                  patch({ bundleProductIds: [...form.bundleProductIds, id] });
+                  setBundleQuery("");
+                }}
+                onRemove={(id) =>
+                  patch({ bundleProductIds: form.bundleProductIds.filter((item) => item !== id) })
+                }
+              />
               <Field label="Bundle Price * (TZS)" error={errors.bundlePrice}>
                 <input
                   inputMode="numeric"
@@ -671,10 +595,7 @@ export function PromotionFormPage({
                 type="button"
                 onClick={() =>
                   patch({
-                    tiers: [
-                      ...form.tiers,
-                      { id: createTierId(), minimumSpend: "", discountPercent: "" },
-                    ],
+                    tiers: [...form.tiers, { id: createTierId(), minimumSpend: "", discountPercent: "" }],
                   })
                 }
                 className={cn(secondaryButton, "gap-1.5")}
@@ -687,39 +608,47 @@ export function PromotionFormPage({
         </Section>
 
         <Section step={4} title="Validity Period">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Start Date *" error={errors.startDate}>
-              <input
-                type="date"
-                value={form.startDate}
-                onChange={(event) => patch({ startDate: event.target.value })}
-                className={inputClass}
-              />
-            </Field>
-            <Field label="End Date *" error={errors.endDate}>
-              <input
-                type="date"
-                value={form.endDate}
-                onChange={(event) => patch({ endDate: event.target.value })}
-                className={inputClass}
-              />
-            </Field>
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Start Date *" error={errors.startDate}>
+                <input
+                  type="date"
+                  value={form.startDate}
+                  onChange={(event) => patch({ startDate: event.target.value })}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="End Date *" error={errors.endDate}>
+                <input
+                  type="date"
+                  value={form.endDate}
+                  onChange={(event) => patch({ endDate: event.target.value })}
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+            <div className="rounded-[14px] border border-[#e7ecf3] bg-[#f8fafc] px-4 py-3 text-[13px] leading-relaxed text-slate-600">
+              Status is calculated automatically from these dates (today {todayIsoDate()}):
+              <span className="mt-1 block font-medium text-navy">
+                Before start → Scheduled · Within range → Active · After end → Expired
+              </span>
+              {form.startDate && form.endDate ? (
+                <span className="mt-1.5 block text-slate-500">
+                  Current preview:{" "}
+                  <span className="font-semibold text-navy">{promotionStatusLabel(previewStatus)}</span>
+                </span>
+              ) : null}
+            </div>
           </div>
         </Section>
 
         <Section step={5} title="Promotion Settings">
           <div className="space-y-3">
-            <Field label="Status">
-              <select
-                value={form.status}
-                onChange={(event) => patch({ status: event.target.value as PromotionStatus })}
-                className={inputClass}
-              >
-                <option value="ACTIVE">Active</option>
-                <option value="SCHEDULED">Scheduled</option>
-                <option value="INACTIVE">Inactive</option>
-              </select>
-            </Field>
+            <Checkbox
+              checked={form.paused}
+              onChange={(checked) => patch({ paused: checked })}
+              label="Pause promotion (Inactive) — does not override Expired when the end date has passed"
+            />
             <Checkbox
               checked={form.allowMultipleUse}
               onChange={(checked) => patch({ allowMultipleUse: checked })}
@@ -761,17 +690,9 @@ export function PromotionFormPage({
   );
 }
 
-function Section({
-  step,
-  title,
-  children,
-}: {
-  step: number;
-  title: string;
-  children: ReactNode;
-}) {
+function Section({ step, title, children }: { step: number; title: string; children: ReactNode }) {
   return (
-    <section className={cn(glassCard, "px-4 py-5 sm:px-5 sm:py-6")}>
+    <section className={formCard}>
       <div className="mb-4 flex items-center gap-2.5">
         <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#0b2244] text-[11px] font-semibold text-white">
           {step}
@@ -783,15 +704,7 @@ function Section({
   );
 }
 
-function Field({
-  label,
-  error,
-  children,
-}: {
-  label: string;
-  error?: string;
-  children: ReactNode;
-}) {
+function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-[12px] font-medium text-slate-500">{label}</span>
@@ -811,14 +724,88 @@ function Checkbox({
   label: string;
 }) {
   return (
-    <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-navy">
+    <label className="flex cursor-pointer items-start gap-2.5 text-[13px] text-navy">
       <input
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="h-4 w-4 rounded border-[#dbe4ef] text-[#0b2244] focus:ring-[#0b2244]/20"
+        className="mt-0.5 h-4 w-4 rounded border-[#dbe4ef] text-[#0b2244] focus:ring-[#0b2244]/20"
       />
-      {label}
+      <span>{label}</span>
     </label>
+  );
+}
+
+function ProductPicker({
+  label = "Search and select products *",
+  query,
+  onQuery,
+  matches,
+  selectedIds,
+  error,
+  onAdd,
+  onRemove,
+}: {
+  label?: string;
+  query: string;
+  onQuery: (value: string) => void;
+  matches: { id: string; name: string }[];
+  selectedIds: string[];
+  error?: string;
+  onAdd: (id: string) => void;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <Field label={label} error={error}>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            value={query}
+            onChange={(event) => onQuery(event.target.value)}
+            className={cn(inputClass, "pl-10")}
+            placeholder="Search products..."
+          />
+        </div>
+      </Field>
+      {matches.length > 0 ? (
+        <div className="overflow-hidden rounded-[14px] border border-[#e7ecf3] bg-white">
+          {matches.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onAdd(item.id)}
+              className="flex w-full px-3.5 py-2.5 text-left text-[13px] text-navy hover:bg-[#f5f8fc]"
+            >
+              {item.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {selectedIds.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {selectedIds.map((id) => {
+            const product = getPromotionProduct(id);
+            if (!product) return null;
+            return (
+              <span
+                key={id}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#e7ecf3] bg-[#f8fafc] px-3 py-1.5 text-[12.5px] font-medium text-navy"
+              >
+                {product.name}
+                <button
+                  type="button"
+                  onClick={() => onRemove(id)}
+                  className="text-slate-400 transition hover:text-navy"
+                  aria-label={`Remove ${product.name}`}
+                >
+                  <X className="h-3.5 w-3.5" strokeWidth={2} />
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 }

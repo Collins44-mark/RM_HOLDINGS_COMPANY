@@ -1,3 +1,5 @@
+import { APP_TIMEZONE } from "@/lib/config/app";
+
 export type PromotionStatus = "ACTIVE" | "SCHEDULED" | "EXPIRED" | "INACTIVE";
 
 export type PromotionType =
@@ -30,6 +32,7 @@ export type PromotionRule = {
   tiers?: PromotionTier[];
 };
 
+/** Stored status: ACTIVE (enabled) or INACTIVE (manually paused). Display status is date-derived. */
 export type Promotion = {
   id: string;
   name: string;
@@ -41,7 +44,7 @@ export type Promotion = {
   rule: PromotionRule;
   startDate: string;
   endDate: string;
-  status: PromotionStatus;
+  status: "ACTIVE" | "INACTIVE";
   allowMultipleUse: boolean;
   usageLimitEnabled: boolean;
   usageLimit: number | null;
@@ -58,15 +61,13 @@ export type MockPromotionCategory = {
   name: string;
 };
 
-export const PROMOTION_TYPE_OPTIONS: { value: PromotionType; label: string }[] = [
-  { value: "PERCENTAGE", label: "Percentage Discount" },
-  { value: "FIXED_AMOUNT", label: "Fixed Amount Discount" },
-  { value: "BUY_X_GET_Y", label: "Buy X Get Y" },
-  { value: "FIXED_PRICE", label: "Buy X for Fixed Price" },
-  { value: "BUNDLE", label: "Bundle / Combo" },
-  { value: "MINIMUM_SPEND", label: "Minimum Spend" },
-  { value: "TIERED", label: "Tiered Discount" },
-];
+export type PromotionTypeDefinition = {
+  id: string;
+  code: PromotionType;
+  name: string;
+  description: string;
+  isActive: boolean;
+};
 
 export const MOCK_PROMOTION_CATEGORIES: MockPromotionCategory[] = [
   { id: "category-beverages", name: "Beverages" },
@@ -82,6 +83,7 @@ export const MOCK_PROMOTION_PRODUCTS: MockPromotionProduct[] = [
   { id: "product-coca-cola-500", name: "Coca-Cola 500ml", categoryId: "category-beverages" },
   { id: "product-pepsi-500", name: "Pepsi 500ml", categoryId: "category-beverages" },
   { id: "product-fanta-500", name: "Fanta 500ml", categoryId: "category-beverages" },
+  { id: "product-sprite-500", name: "Sprite 500ml", categoryId: "category-beverages" },
   { id: "product-azam-sugar-1kg", name: "Azam Sugar 1kg", categoryId: "category-groceries" },
   { id: "product-milk-500", name: "Milk 500ml", categoryId: "category-dairy" },
   { id: "product-rice-5kg", name: "Rice 5kg", categoryId: "category-food" },
@@ -97,8 +99,88 @@ export const MOCK_PROMOTION_PRODUCTS: MockPromotionProduct[] = [
   { id: "product-lipstick", name: "Lipstick", categoryId: "category-personal-care" },
 ];
 
+function seedPromotionTypes(): PromotionTypeDefinition[] {
+  return [
+    {
+      id: "promotion-type-percentage",
+      code: "PERCENTAGE",
+      name: "Percentage Discount",
+      description: "Reduce the price by a percentage of the original amount.",
+      isActive: true,
+    },
+    {
+      id: "promotion-type-fixed-amount",
+      code: "FIXED_AMOUNT",
+      name: "Fixed Amount Discount",
+      description: "Subtract a fixed TZS amount from the purchase.",
+      isActive: true,
+    },
+    {
+      id: "promotion-type-buy-x-get-y",
+      code: "BUY_X_GET_Y",
+      name: "Buy X Get Y",
+      description: "Buy a specified quantity and receive additional units free.",
+      isActive: true,
+    },
+    {
+      id: "promotion-type-fixed-price",
+      code: "FIXED_PRICE",
+      name: "Buy X for Fixed Price",
+      description: "Purchase a required quantity for a fixed bundle price.",
+      isActive: true,
+    },
+    {
+      id: "promotion-type-bundle",
+      code: "BUNDLE",
+      name: "Bundle / Combo",
+      description: "Sell a set of products together at a special combo price.",
+      isActive: true,
+    },
+    {
+      id: "promotion-type-minimum-spend",
+      code: "MINIMUM_SPEND",
+      name: "Minimum Spend",
+      description: "Grant a discount when the basket reaches a minimum spend.",
+      isActive: true,
+    },
+    {
+      id: "promotion-type-tiered",
+      code: "TIERED",
+      name: "Tiered Discount",
+      description: "Apply increasing percentage discounts as spend thresholds rise.",
+      isActive: true,
+    },
+  ];
+}
+
+export function todayIsoDate(timeZone = APP_TIMEZONE) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone,
+  }).formatToParts(new Date());
+  const read = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${read("year")}-${read("month")}-${read("day")}`;
+}
+
+/**
+ * Display status from validity dates + manual pause.
+ * Expired always wins when end date is past.
+ */
+export function effectivePromotionStatus(
+  item: Pick<Promotion, "startDate" | "endDate" | "status">,
+  asOf = todayIsoDate(),
+): PromotionStatus {
+  if (item.endDate && asOf > item.endDate) return "EXPIRED";
+  if (item.startDate && asOf < item.startDate) return "SCHEDULED";
+  if (item.status === "INACTIVE") return "INACTIVE";
+  return "ACTIVE";
+}
+
 export function promotionTypeLabel(type: PromotionType) {
-  return PROMOTION_TYPE_OPTIONS.find((item) => item.value === type)?.label ?? type;
+  const fromStore = getPromotionTypesSnapshot().find((item) => item.code === type);
+  return fromStore?.name ?? type;
 }
 
 export function promotionTypeShortLabel(type: PromotionType) {
@@ -120,6 +202,13 @@ export function promotionTypeShortLabel(type: PromotionType) {
     default:
       return type;
   }
+}
+
+/** Active types available for new/edit forms. */
+export function getActivePromotionTypeOptions(): { value: PromotionType; label: string }[] {
+  return getPromotionTypesSnapshot()
+    .filter((item) => item.isActive)
+    .map((item) => ({ value: item.code, label: item.name }));
 }
 
 export function promotionStatusLabel(status: PromotionStatus) {
@@ -174,9 +263,9 @@ export function promotionAppliesLabel(item: Promotion) {
 export function promotionAppliesCount(item: Promotion) {
   if (item.targetType === "ALL_PRODUCTS") return null;
   if (item.targetType === "CATEGORY") {
-    const categoryId = item.categoryIds[0];
-    if (!categoryId) return null;
-    return MOCK_PROMOTION_PRODUCTS.filter((product) => product.categoryId === categoryId).length;
+    if (item.categoryIds.length === 0) return null;
+    const set = new Set(item.categoryIds);
+    return MOCK_PROMOTION_PRODUCTS.filter((product) => set.has(product.categoryId)).length;
   }
   return item.productIds.length || null;
 }
@@ -270,7 +359,7 @@ export function seedPromotions(): Promotion[] {
       rule: { requiredQuantity: 3, fixedPrice: 5000 },
       startDate: "2026-09-10",
       endDate: "2026-09-25",
-      status: "SCHEDULED",
+      status: "ACTIVE",
       allowMultipleUse: true,
       usageLimitEnabled: false,
       usageLimit: null,
@@ -286,7 +375,7 @@ export function seedPromotions(): Promotion[] {
       rule: { discountPercent: 15 },
       startDate: "2026-09-25",
       endDate: "2026-10-05",
-      status: "SCHEDULED",
+      status: "ACTIVE",
       allowMultipleUse: true,
       usageLimitEnabled: false,
       usageLimit: null,
@@ -318,7 +407,7 @@ export function seedPromotions(): Promotion[] {
       rule: { buyQuantity: 2, freeQuantity: 1 },
       startDate: "2026-09-01",
       endDate: "2026-09-10",
-      status: "EXPIRED",
+      status: "ACTIVE",
       allowMultipleUse: true,
       usageLimitEnabled: false,
       usageLimit: null,
@@ -334,7 +423,7 @@ export function seedPromotions(): Promotion[] {
       rule: { discountPercent: 20 },
       startDate: "2026-09-01",
       endDate: "2026-09-10",
-      status: "EXPIRED",
+      status: "ACTIVE",
       allowMultipleUse: true,
       usageLimitEnabled: false,
       usageLimit: null,
@@ -385,7 +474,7 @@ export function seedPromotions(): Promotion[] {
       rule: { buyQuantity: 5, freeQuantity: 1 },
       startDate: "2026-10-01",
       endDate: "2026-10-31",
-      status: "SCHEDULED",
+      status: "ACTIVE",
       allowMultipleUse: true,
       usageLimitEnabled: false,
       usageLimit: null,
@@ -401,7 +490,7 @@ export function seedPromotions(): Promotion[] {
       rule: { discountPercent: 10 },
       startDate: "2026-08-15",
       endDate: "2026-09-05",
-      status: "EXPIRED",
+      status: "ACTIVE",
       allowMultipleUse: true,
       usageLimitEnabled: false,
       usageLimit: null,
@@ -409,12 +498,13 @@ export function seedPromotions(): Promotion[] {
   ];
 }
 
-export function promotionKpis(items: Promotion[]) {
+export function promotionKpis(items: Promotion[], asOf = todayIsoDate()) {
+  const statuses = items.map((item) => effectivePromotionStatus(item, asOf));
   return {
     total: items.length,
-    active: items.filter((item) => item.status === "ACTIVE").length,
-    scheduled: items.filter((item) => item.status === "SCHEDULED").length,
-    expired: items.filter((item) => item.status === "EXPIRED").length,
+    active: statuses.filter((status) => status === "ACTIVE").length,
+    scheduled: statuses.filter((status) => status === "SCHEDULED").length,
+    expired: statuses.filter((status) => status === "EXPIRED").length,
   };
 }
 
@@ -426,13 +516,13 @@ export function createTierId() {
   return `tier-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
-/* ─── shared in-memory mock store ─── */
+/* ─── promotions store ─── */
 
 let promotionsSnapshot: Promotion[] = seedPromotions();
-const listeners = new Set<() => void>();
+const promotionListeners = new Set<() => void>();
 
-function emit() {
-  listeners.forEach((listener) => listener());
+function emitPromotions() {
+  promotionListeners.forEach((listener) => listener());
 }
 
 export function getPromotionsSnapshot() {
@@ -440,8 +530,8 @@ export function getPromotionsSnapshot() {
 }
 
 export function subscribePromotions(listener: () => void) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+  promotionListeners.add(listener);
+  return () => promotionListeners.delete(listener);
 }
 
 export function getPromotionById(id: string) {
@@ -457,18 +547,90 @@ export function upsertPromotion(promotion: Promotion) {
   } else {
     promotionsSnapshot = [promotion, ...promotionsSnapshot];
   }
-  emit();
+  emitPromotions();
   return promotion;
 }
 
 export function deletePromotion(id: string) {
   promotionsSnapshot = promotionsSnapshot.filter((item) => item.id !== id);
-  emit();
+  emitPromotions();
 }
 
-export function setPromotionStatus(id: string, status: PromotionStatus) {
+export function setPromotionStatus(id: string, status: "ACTIVE" | "INACTIVE") {
   promotionsSnapshot = promotionsSnapshot.map((item) =>
     item.id === id ? { ...item, status } : item,
   );
-  emit();
+  emitPromotions();
+}
+
+export function duplicatePromotion(id: string) {
+  const source = promotionsSnapshot.find((item) => item.id === id);
+  if (!source) return null;
+  const copy: Promotion = {
+    ...source,
+    id: createPromotionId(),
+    name: `${source.name} (Copy)`,
+    status: "ACTIVE",
+    productIds: [...source.productIds],
+    categoryIds: [...source.categoryIds],
+    rule: {
+      ...source.rule,
+      bundleProductIds: source.rule.bundleProductIds ? [...source.rule.bundleProductIds] : undefined,
+      tiers: source.rule.tiers?.map((tier) => ({ ...tier, id: createTierId() })),
+    },
+  };
+  promotionsSnapshot = [copy, ...promotionsSnapshot];
+  emitPromotions();
+  return copy;
+}
+
+export function countPromotionsUsingType(code: PromotionType) {
+  return promotionsSnapshot.filter((item) => item.type === code).length;
+}
+
+/* ─── promotion types store ─── */
+
+let typesSnapshot: PromotionTypeDefinition[] = seedPromotionTypes();
+const typeListeners = new Set<() => void>();
+
+function emitTypes() {
+  typeListeners.forEach((listener) => listener());
+}
+
+export function getPromotionTypesSnapshot() {
+  return typesSnapshot;
+}
+
+export function subscribePromotionTypes(listener: () => void) {
+  typeListeners.add(listener);
+  return () => typeListeners.delete(listener);
+}
+
+export function upsertPromotionType(definition: PromotionTypeDefinition) {
+  const index = typesSnapshot.findIndex((item) => item.id === definition.id);
+  if (index >= 0) {
+    const next = [...typesSnapshot];
+    next[index] = definition;
+    typesSnapshot = next;
+  } else {
+    typesSnapshot = [...typesSnapshot, definition];
+  }
+  emitTypes();
+  return definition;
+}
+
+export function setPromotionTypeActive(id: string, isActive: boolean) {
+  typesSnapshot = typesSnapshot.map((item) => (item.id === id ? { ...item, isActive } : item));
+  emitTypes();
+}
+
+export function deletePromotionType(id: string) {
+  const target = typesSnapshot.find((item) => item.id === id);
+  if (!target) return { ok: false as const, reason: "not_found" as const };
+  if (countPromotionsUsingType(target.code) > 0) {
+    return { ok: false as const, reason: "in_use" as const };
+  }
+  typesSnapshot = typesSnapshot.filter((item) => item.id !== id);
+  emitTypes();
+  return { ok: true as const };
 }

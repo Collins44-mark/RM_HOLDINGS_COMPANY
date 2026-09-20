@@ -2,11 +2,14 @@
 
 import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 import { glassCard, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
 import { PromotionConfirmDialog } from "@/components/supermarket/promotions/PromotionConfirmDialog";
 import {
+  duplicatePromotion,
+  effectivePromotionStatus,
   formatPromotionDate,
   getPromotionsSnapshot,
   promotionAppliesLabel,
@@ -27,10 +30,14 @@ function statusBadgeClass(status: PromotionStatus) {
   return "bg-[#f3f6fa] text-slate-500";
 }
 
+const detailCard =
+  "rounded-[24px] border border-white/80 bg-white/82 px-5 py-5 shadow-[0_12px_36px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-xl sm:px-6";
+
 export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
+  const router = useRouter();
   const items = useSyncExternalStore(subscribePromotions, getPromotionsSnapshot, getPromotionsSnapshot);
   const promotion = items.find((item) => item.id === promotionId) ?? null;
-  const [confirm, setConfirm] = useState<"deactivate" | "activate" | null>(null);
+  const [confirm, setConfirm] = useState<"deactivate" | "activate" | "cancel" | null>(null);
 
   if (!promotion) {
     return (
@@ -47,27 +54,20 @@ export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
     );
   }
 
+  const status = effectivePromotionStatus(promotion);
   const productNames = resolvePromotionProductNames(promotion.productIds);
   const categoryNames = resolvePromotionCategoryNames(promotion.categoryIds);
-  const canActivate = promotion.status === "SCHEDULED" || promotion.status === "INACTIVE";
-  const canDeactivate = promotion.status === "ACTIVE";
 
   return (
-    <div className="min-w-0 max-w-full space-y-5 pb-10 sm:space-y-6">
+    <div className="page-enter min-w-0 pb-10">
       <PageBackButton href="/supermarket/promotions" prefetch />
-
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <header className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[12px] font-medium text-slate-400">
-            Supermarket <span className="mx-1.5 text-slate-300">›</span>{" "}
-            <span className="text-slate-400">Promotions</span>
-            <span className="mx-1.5 text-slate-300">›</span>{" "}
-            <span className="text-slate-500">Promotion Details</span>
-          </p>
-          <h1 className="mt-2 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[28px]">
-            {promotion.name}
+          <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">
+            Promotion Details
           </h1>
-          <p className="mt-1.5 max-w-2xl text-[13.5px] text-slate-500">
+          <p className="mt-1.5 text-[15px] font-medium text-navy">{promotion.name}</p>
+          <p className="mt-1 max-w-2xl text-[13.5px] text-slate-500">
             {promotion.description || "Promotion details"}
           </p>
         </div>
@@ -79,40 +79,44 @@ export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
           >
             Edit
           </Link>
-          {canDeactivate ? (
+          {status === "EXPIRED" ? (
             <button
               type="button"
-              onClick={() => setConfirm("deactivate")}
+              onClick={() => {
+                const copy = duplicatePromotion(promotion.id);
+                if (copy) router.push(`/supermarket/promotions/${copy.id}/edit`);
+              }}
               className={cn(primaryButton, "w-full sm:w-auto")}
             >
+              Duplicate
+            </button>
+          ) : null}
+          {status === "ACTIVE" ? (
+            <button type="button" onClick={() => setConfirm("deactivate")} className={cn(primaryButton, "w-full sm:w-auto")}>
               Deactivate
             </button>
           ) : null}
-          {canActivate ? (
-            <button
-              type="button"
-              onClick={() => setConfirm("activate")}
-              className={cn(primaryButton, "w-full sm:w-auto")}
-            >
+          {status === "SCHEDULED" ? (
+            <button type="button" onClick={() => setConfirm("cancel")} className={cn(primaryButton, "w-full sm:w-auto")}>
+              Cancel
+            </button>
+          ) : null}
+          {status === "INACTIVE" ? (
+            <button type="button" onClick={() => setConfirm("activate")} className={cn(primaryButton, "w-full sm:w-auto")}>
               Activate
             </button>
           ) : null}
         </div>
       </header>
 
-      <div className="mx-auto grid w-full max-w-4xl gap-4">
-        <section className={cn(glassCard, "px-4 py-5 sm:px-5")}>
+      <div className="mx-auto mt-6 grid w-full max-w-[980px] gap-4">
+        <section className={detailCard}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Detail label="Promotion Type" value={promotionTypeLabel(promotion.type)} />
             <div>
               <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-400">Status</p>
-              <span
-                className={cn(
-                  "mt-1.5 inline-flex h-6 items-center rounded-full px-2.5 text-[11.5px] font-medium",
-                  statusBadgeClass(promotion.status),
-                )}
-              >
-                {promotionStatusLabel(promotion.status)}
+              <span className={cn("mt-1.5 inline-flex h-6 items-center rounded-full px-2.5 text-[11.5px] font-medium", statusBadgeClass(status))}>
+                {promotionStatusLabel(status)}
               </span>
             </div>
             <Detail label="Applies To" value={promotionAppliesLabel(promotion)} />
@@ -131,15 +135,12 @@ export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
           </div>
         </section>
 
-        <section className={cn(glassCard, "px-4 py-5 sm:px-5")}>
+        <section className={detailCard}>
           <h2 className="text-[14px] font-semibold tracking-[-0.02em] text-navy">Selected Products</h2>
           {productNames.length > 0 ? (
             <div className="mt-3 flex flex-wrap gap-2">
               {productNames.map((name) => (
-                <span
-                  key={name}
-                  className="inline-flex rounded-full border border-[#e7ecf3] bg-[#f8fafc] px-3 py-1.5 text-[12.5px] font-medium text-navy"
-                >
+                <span key={name} className="inline-flex rounded-full border border-[#e7ecf3] bg-[#f8fafc] px-3 py-1.5 text-[12.5px] font-medium text-navy">
                   {name}
                 </span>
               ))}
@@ -149,8 +150,8 @@ export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
           )}
         </section>
 
-        <section className={cn(glassCard, "px-4 py-5 sm:px-5")}>
-          <h2 className="text-[14px] font-semibold tracking-[-0.02em] text-navy">Selected Category</h2>
+        <section className={detailCard}>
+          <h2 className="text-[14px] font-semibold tracking-[-0.02em] text-navy">Selected Categories</h2>
           {categoryNames.length > 0 ? (
             <p className="mt-2 text-[13.5px] text-navy">{categoryNames.join(", ")}</p>
           ) : (
@@ -158,12 +159,12 @@ export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
           )}
         </section>
 
-        <section className={cn(glassCard, "px-4 py-5 sm:px-5")}>
+        <section className={detailCard}>
           <h2 className="text-[14px] font-semibold tracking-[-0.02em] text-navy">Promotion Rule</h2>
           <p className="mt-2 text-[13.5px] leading-relaxed text-navy">{promotionRuleSummary(promotion)}</p>
         </section>
 
-        <section className={cn(glassCard, "px-4 py-5 sm:px-5")}>
+        <section className={detailCard}>
           <h2 className="text-[14px] font-semibold tracking-[-0.02em] text-navy">Usage Settings</h2>
           <ul className="mt-2 space-y-1.5 text-[13.5px] text-navy">
             <li>
@@ -185,8 +186,19 @@ export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
       <PromotionConfirmDialog
         open={confirm === "deactivate"}
         title="Deactivate Promotion?"
-        message="This promotion will stop applying at POS until activated again."
+        message="This promotion will stop applying until activated again."
         confirmLabel="Deactivate"
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          setPromotionStatus(promotion.id, "INACTIVE");
+          setConfirm(null);
+        }}
+      />
+      <PromotionConfirmDialog
+        open={confirm === "cancel"}
+        title="Cancel Scheduled Promotion?"
+        message="This scheduled promotion will be deactivated and will not start automatically."
+        confirmLabel="Cancel Promotion"
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
           setPromotionStatus(promotion.id, "INACTIVE");
@@ -196,7 +208,7 @@ export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
       <PromotionConfirmDialog
         open={confirm === "activate"}
         title="Activate Promotion?"
-        message="This promotion will become active and apply according to its rules."
+        message="This promotion will become available again according to its validity dates."
         confirmLabel="Activate"
         tone="default"
         onCancel={() => setConfirm(null)}
