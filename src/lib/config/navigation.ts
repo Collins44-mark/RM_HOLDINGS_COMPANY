@@ -110,6 +110,11 @@ export const SUPERMARKET_NAV: NavItem[] = [
     ],
   },
   {
+    href: "/supermarket/promotions",
+    label: "Promotions",
+    icon: "money",
+  },
+  {
     href: "/supermarket/purchasing",
     label: "Purchasing",
     icon: "wallet",
