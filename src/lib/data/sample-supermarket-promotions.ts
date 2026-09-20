@@ -9,7 +9,7 @@ export type PromotionType =
   | "MINIMUM_SPEND"
   | "TIERED";
 
-export type PromotionTargetKind = "PRODUCT" | "CATEGORY" | "ALL";
+export type PromotionTargetType = "PRODUCTS" | "CATEGORY" | "ALL_PRODUCTS";
 
 export type PromotionTier = {
   id: string;
@@ -17,16 +17,15 @@ export type PromotionTier = {
   discountPercent: number;
 };
 
-export type PromotionRules = {
+export type PromotionRule = {
   buyQuantity?: number;
   freeQuantity?: number;
-  applyToAllVariants?: boolean;
   discountPercent?: number;
   discountAmount?: number;
   requiredQuantity?: number;
   fixedPrice?: number;
   bundlePrice?: number;
-  bundleProductLabels?: string[];
+  bundleProductIds?: string[];
   minimumSpend?: number;
   tiers?: PromotionTier[];
 };
@@ -36,17 +35,27 @@ export type Promotion = {
   name: string;
   description: string;
   type: PromotionType;
-  status: PromotionStatus;
-  applicableLabel: string;
-  applicableCount: number | null;
-  targetKind: PromotionTargetKind;
-  targetIds: string[];
+  targetType: PromotionTargetType;
+  productIds: string[];
+  categoryIds: string[];
+  rule: PromotionRule;
   startDate: string;
   endDate: string;
+  status: PromotionStatus;
   allowMultipleUse: boolean;
-  limitTotalUsage: boolean;
-  maximumUses: number | null;
-  rules: PromotionRules;
+  usageLimitEnabled: boolean;
+  usageLimit: number | null;
+};
+
+export type MockPromotionProduct = {
+  id: string;
+  name: string;
+  categoryId: string;
+};
+
+export type MockPromotionCategory = {
+  id: string;
+  name: string;
 };
 
 export const PROMOTION_TYPE_OPTIONS: { value: PromotionType; label: string }[] = [
@@ -59,19 +68,33 @@ export const PROMOTION_TYPE_OPTIONS: { value: PromotionType; label: string }[] =
   { value: "TIERED", label: "Tiered Discount" },
 ];
 
-export const MOCK_PROMOTION_PRODUCTS = [
-  { id: "prod-soda-500", label: "Soda 500ml", kind: "PRODUCT" as const },
-  { id: "prod-sugar-1kg", label: "Azam Sugar 1kg", kind: "PRODUCT" as const },
-  { id: "prod-milk-500", label: "Milk 500ml", kind: "PRODUCT" as const },
-  { id: "prod-rice-oil-beans", label: "Rice + Oil + Beans", kind: "PRODUCT" as const },
+export const MOCK_PROMOTION_CATEGORIES: MockPromotionCategory[] = [
+  { id: "category-beverages", name: "Beverages" },
+  { id: "category-food", name: "Food" },
+  { id: "category-personal-care", name: "Personal Care" },
+  { id: "category-household", name: "Household" },
+  { id: "category-snacks", name: "Snacks" },
+  { id: "category-dairy", name: "Dairy" },
+  { id: "category-groceries", name: "Groceries" },
 ];
 
-export const MOCK_PROMOTION_CATEGORIES = [
-  { id: "cat-chips", label: "All Chips", kind: "CATEGORY" as const },
-  { id: "cat-personal-care", label: "Personal Care", kind: "CATEGORY" as const },
-  { id: "cat-cosmetics", label: "Cosmetics", kind: "CATEGORY" as const },
-  { id: "cat-beverages", label: "Beverages", kind: "CATEGORY" as const },
-  { id: "cat-all", label: "All Products", kind: "ALL" as const },
+export const MOCK_PROMOTION_PRODUCTS: MockPromotionProduct[] = [
+  { id: "product-coca-cola-500", name: "Coca-Cola 500ml", categoryId: "category-beverages" },
+  { id: "product-pepsi-500", name: "Pepsi 500ml", categoryId: "category-beverages" },
+  { id: "product-fanta-500", name: "Fanta 500ml", categoryId: "category-beverages" },
+  { id: "product-azam-sugar-1kg", name: "Azam Sugar 1kg", categoryId: "category-groceries" },
+  { id: "product-milk-500", name: "Milk 500ml", categoryId: "category-dairy" },
+  { id: "product-rice-5kg", name: "Rice 5kg", categoryId: "category-food" },
+  { id: "product-cooking-oil-2l", name: "Cooking Oil 2L", categoryId: "category-groceries" },
+  { id: "product-beans-1kg", name: "Beans 1kg", categoryId: "category-food" },
+  { id: "product-bread", name: "Bread", categoryId: "category-food" },
+  { id: "product-eggs-6", name: "Eggs 6pcs", categoryId: "category-dairy" },
+  { id: "product-chips-classic", name: "Classic Chips", categoryId: "category-snacks" },
+  { id: "product-chips-bbq", name: "BBQ Chips", categoryId: "category-snacks" },
+  { id: "product-shampoo", name: "Shampoo 400ml", categoryId: "category-personal-care" },
+  { id: "product-soap", name: "Bath Soap", categoryId: "category-personal-care" },
+  { id: "product-detergent", name: "Detergent 1kg", categoryId: "category-household" },
+  { id: "product-lipstick", name: "Lipstick", categoryId: "category-personal-care" },
 ];
 
 export function promotionTypeLabel(type: PromotionType) {
@@ -116,6 +139,73 @@ export function formatPromotionDate(iso: string) {
   });
 }
 
+export function getPromotionProduct(id: string) {
+  return MOCK_PROMOTION_PRODUCTS.find((item) => item.id === id) ?? null;
+}
+
+export function getPromotionCategory(id: string) {
+  return MOCK_PROMOTION_CATEGORIES.find((item) => item.id === id) ?? null;
+}
+
+export function resolvePromotionProductNames(productIds: string[]) {
+  return productIds
+    .map((id) => getPromotionProduct(id)?.name)
+    .filter((name): name is string => Boolean(name));
+}
+
+export function resolvePromotionCategoryNames(categoryIds: string[]) {
+  return categoryIds
+    .map((id) => getPromotionCategory(id)?.name)
+    .filter((name): name is string => Boolean(name));
+}
+
+export function promotionAppliesLabel(item: Promotion) {
+  if (item.targetType === "ALL_PRODUCTS") return "All Products";
+  if (item.targetType === "CATEGORY") {
+    const names = resolvePromotionCategoryNames(item.categoryIds);
+    return names.join(", ") || "Category";
+  }
+  const names = resolvePromotionProductNames(item.productIds);
+  if (names.length === 0) return "Products";
+  if (names.length === 1) return names[0];
+  return `${names[0]} +${names.length - 1}`;
+}
+
+export function promotionAppliesCount(item: Promotion) {
+  if (item.targetType === "ALL_PRODUCTS") return null;
+  if (item.targetType === "CATEGORY") {
+    const categoryId = item.categoryIds[0];
+    if (!categoryId) return null;
+    return MOCK_PROMOTION_PRODUCTS.filter((product) => product.categoryId === categoryId).length;
+  }
+  return item.productIds.length || null;
+}
+
+export function promotionRuleSummary(item: Promotion) {
+  const { rule, type } = item;
+  if (type === "BUY_X_GET_Y") return `Buy ${rule.buyQuantity ?? 0} Get ${rule.freeQuantity ?? 0}`;
+  if (type === "PERCENTAGE") return `${rule.discountPercent ?? 0}% off`;
+  if (type === "FIXED_AMOUNT") {
+    return `TZS ${(rule.discountAmount ?? 0).toLocaleString("en-US")} off`;
+  }
+  if (type === "FIXED_PRICE") {
+    return `Buy ${rule.requiredQuantity ?? 0} for TZS ${(rule.fixedPrice ?? 0).toLocaleString("en-US")}`;
+  }
+  if (type === "BUNDLE") {
+    const names = resolvePromotionProductNames(rule.bundleProductIds ?? item.productIds);
+    return `Bundle${names.length ? `: ${names.join(", ")}` : ""} · TZS ${(rule.bundlePrice ?? 0).toLocaleString("en-US")}`;
+  }
+  if (type === "MINIMUM_SPEND") {
+    return `Spend TZS ${(rule.minimumSpend ?? 0).toLocaleString("en-US")} · Get TZS ${(rule.discountAmount ?? 0).toLocaleString("en-US")} off`;
+  }
+  if (type === "TIERED") {
+    return (rule.tiers ?? [])
+      .map((tier) => `TZS ${tier.minimumSpend.toLocaleString("en-US")} → ${tier.discountPercent}%`)
+      .join(" · ");
+  }
+  return item.description;
+}
+
 export function seedPromotions(): Promotion[] {
   return [
     {
@@ -123,210 +213,198 @@ export function seedPromotions(): Promotion[] {
       name: "Weekend Soda Offer",
       description: "Buy 2 Get 1 Free",
       type: "BUY_X_GET_Y",
-      status: "ACTIVE",
-      applicableLabel: "Soda 500ml",
-      applicableCount: 3,
-      targetKind: "PRODUCT",
-      targetIds: ["prod-soda-500"],
+      targetType: "PRODUCTS",
+      productIds: ["product-coca-cola-500", "product-pepsi-500", "product-fanta-500"],
+      categoryIds: [],
+      rule: { buyQuantity: 2, freeQuantity: 1 },
       startDate: "2026-09-20",
       endDate: "2026-09-22",
+      status: "ACTIVE",
       allowMultipleUse: true,
-      limitTotalUsage: false,
-      maximumUses: null,
-      rules: { buyQuantity: 2, freeQuantity: 1, applyToAllVariants: true },
+      usageLimitEnabled: false,
+      usageLimit: null,
     },
     {
       id: "promo-002",
       name: "Sugar Discount",
       description: "10% off on 1kg sugar",
       type: "PERCENTAGE",
-      status: "ACTIVE",
-      applicableLabel: "Azam Sugar 1kg",
-      applicableCount: null,
-      targetKind: "PRODUCT",
-      targetIds: ["prod-sugar-1kg"],
+      targetType: "PRODUCTS",
+      productIds: ["product-azam-sugar-1kg"],
+      categoryIds: [],
+      rule: { discountPercent: 10 },
       startDate: "2026-09-15",
       endDate: "2026-09-30",
+      status: "ACTIVE",
       allowMultipleUse: true,
-      limitTotalUsage: false,
-      maximumUses: null,
-      rules: { discountPercent: 10 },
+      usageLimitEnabled: false,
+      usageLimit: null,
     },
     {
       id: "promo-003",
       name: "Family Pack",
       description: "Special bundle price",
       type: "BUNDLE",
-      status: "ACTIVE",
-      applicableLabel: "Rice + Oil + Beans",
-      applicableCount: 3,
-      targetKind: "PRODUCT",
-      targetIds: ["prod-rice-oil-beans"],
+      targetType: "PRODUCTS",
+      productIds: ["product-rice-5kg", "product-cooking-oil-2l", "product-beans-1kg"],
+      categoryIds: [],
+      rule: {
+        bundlePrice: 45000,
+        bundleProductIds: ["product-rice-5kg", "product-cooking-oil-2l", "product-beans-1kg"],
+      },
       startDate: "2026-09-01",
       endDate: "2026-09-30",
+      status: "ACTIVE",
       allowMultipleUse: true,
-      limitTotalUsage: false,
-      maximumUses: null,
-      rules: {
-        bundlePrice: 45000,
-        bundleProductLabels: ["Rice 5kg", "Cooking Oil 2L", "Beans 1kg"],
-      },
+      usageLimitEnabled: false,
+      usageLimit: null,
     },
     {
       id: "promo-004",
       name: "Chips Special",
       description: "Buy 3 for TZS 5,000",
       type: "FIXED_PRICE",
-      status: "SCHEDULED",
-      applicableLabel: "All Chips",
-      applicableCount: 5,
-      targetKind: "CATEGORY",
-      targetIds: ["cat-chips"],
+      targetType: "CATEGORY",
+      productIds: [],
+      categoryIds: ["category-snacks"],
+      rule: { requiredQuantity: 3, fixedPrice: 5000 },
       startDate: "2026-09-10",
       endDate: "2026-09-25",
+      status: "SCHEDULED",
       allowMultipleUse: true,
-      limitTotalUsage: false,
-      maximumUses: null,
-      rules: { requiredQuantity: 3, fixedPrice: 5000 },
+      usageLimitEnabled: false,
+      usageLimit: null,
     },
     {
       id: "promo-005",
       name: "Personal Care Week",
       description: "15% off on selected items",
       type: "PERCENTAGE",
-      status: "SCHEDULED",
-      applicableLabel: "Personal Care",
-      applicableCount: 12,
-      targetKind: "CATEGORY",
-      targetIds: ["cat-personal-care"],
+      targetType: "CATEGORY",
+      productIds: [],
+      categoryIds: ["category-personal-care"],
+      rule: { discountPercent: 15 },
       startDate: "2026-09-25",
       endDate: "2026-10-05",
+      status: "SCHEDULED",
       allowMultipleUse: true,
-      limitTotalUsage: false,
-      maximumUses: null,
-      rules: { discountPercent: 15 },
+      usageLimitEnabled: false,
+      usageLimit: null,
     },
     {
       id: "promo-006",
       name: "Shopping Bonus",
       description: "Get TZS 5,000 off on purchases above 50,000",
       type: "MINIMUM_SPEND",
-      status: "ACTIVE",
-      applicableLabel: "All Products",
-      applicableCount: null,
-      targetKind: "ALL",
-      targetIds: ["cat-all"],
+      targetType: "ALL_PRODUCTS",
+      productIds: [],
+      categoryIds: [],
+      rule: { minimumSpend: 50000, discountAmount: 5000 },
       startDate: "2026-09-01",
       endDate: "2026-09-30",
+      status: "ACTIVE",
       allowMultipleUse: false,
-      limitTotalUsage: true,
-      maximumUses: 1000,
-      rules: { minimumSpend: 50000, discountAmount: 5000 },
+      usageLimitEnabled: true,
+      usageLimit: 1000,
     },
     {
       id: "promo-007",
       name: "Milk Madness",
       description: "Buy 2 Get 1 Free on milk",
       type: "BUY_X_GET_Y",
-      status: "EXPIRED",
-      applicableLabel: "Milk 500ml",
-      applicableCount: 2,
-      targetKind: "PRODUCT",
-      targetIds: ["prod-milk-500"],
+      targetType: "PRODUCTS",
+      productIds: ["product-milk-500"],
+      categoryIds: [],
+      rule: { buyQuantity: 2, freeQuantity: 1 },
       startDate: "2026-09-01",
       endDate: "2026-09-10",
+      status: "EXPIRED",
       allowMultipleUse: true,
-      limitTotalUsage: false,
-      maximumUses: null,
-      rules: { buyQuantity: 2, freeQuantity: 1, applyToAllVariants: true },
+      usageLimitEnabled: false,
+      usageLimit: null,
     },
     {
       id: "promo-008",
       name: "Beauty Sale",
       description: "20% off on cosmetics",
       type: "PERCENTAGE",
-      status: "EXPIRED",
-      applicableLabel: "Cosmetics",
-      applicableCount: 8,
-      targetKind: "CATEGORY",
-      targetIds: ["cat-cosmetics"],
+      targetType: "CATEGORY",
+      productIds: [],
+      categoryIds: ["category-personal-care"],
+      rule: { discountPercent: 20 },
       startDate: "2026-09-01",
       endDate: "2026-09-10",
+      status: "EXPIRED",
       allowMultipleUse: true,
-      limitTotalUsage: false,
-      maximumUses: null,
-      rules: { discountPercent: 20 },
+      usageLimitEnabled: false,
+      usageLimit: null,
     },
     {
       id: "promo-009",
       name: "Breakfast Combo",
       description: "Save on morning essentials",
       type: "BUNDLE",
-      status: "ACTIVE",
-      applicableLabel: "Bread + Milk + Eggs",
-      applicableCount: 3,
-      targetKind: "PRODUCT",
-      targetIds: ["prod-milk-500"],
+      targetType: "PRODUCTS",
+      productIds: ["product-bread", "product-milk-500", "product-eggs-6"],
+      categoryIds: [],
+      rule: {
+        bundlePrice: 12000,
+        bundleProductIds: ["product-bread", "product-milk-500", "product-eggs-6"],
+      },
       startDate: "2026-09-12",
       endDate: "2026-09-28",
+      status: "ACTIVE",
       allowMultipleUse: true,
-      limitTotalUsage: false,
-      maximumUses: null,
-      rules: {
-        bundlePrice: 12000,
-        bundleProductLabels: ["Bread", "Milk 500ml", "Eggs 6pcs"],
-      },
+      usageLimitEnabled: false,
+      usageLimit: null,
     },
     {
       id: "promo-010",
       name: "Cooking Oil Deal",
       description: "TZS 2,000 off selected oils",
       type: "FIXED_AMOUNT",
-      status: "ACTIVE",
-      applicableLabel: "Cooking Oil",
-      applicableCount: 4,
-      targetKind: "CATEGORY",
-      targetIds: ["cat-beverages"],
+      targetType: "PRODUCTS",
+      productIds: ["product-cooking-oil-2l"],
+      categoryIds: [],
+      rule: { discountAmount: 2000 },
       startDate: "2026-09-08",
       endDate: "2026-09-30",
+      status: "ACTIVE",
       allowMultipleUse: true,
-      limitTotalUsage: false,
-      maximumUses: null,
-      rules: { discountAmount: 2000 },
+      usageLimitEnabled: false,
+      usageLimit: null,
     },
     {
       id: "promo-011",
       name: "Soft Drinks Month",
       description: "Buy 5 Get 1 Free on beverages",
       type: "BUY_X_GET_Y",
-      status: "SCHEDULED",
-      applicableLabel: "Beverages",
-      applicableCount: 9,
-      targetKind: "CATEGORY",
-      targetIds: ["cat-beverages"],
+      targetType: "CATEGORY",
+      productIds: [],
+      categoryIds: ["category-beverages"],
+      rule: { buyQuantity: 5, freeQuantity: 1 },
       startDate: "2026-10-01",
       endDate: "2026-10-31",
+      status: "SCHEDULED",
       allowMultipleUse: true,
-      limitTotalUsage: false,
-      maximumUses: null,
-      rules: { buyQuantity: 5, freeQuantity: 1, applyToAllVariants: true },
+      usageLimitEnabled: false,
+      usageLimit: null,
     },
     {
       id: "promo-012",
-      name: "School Supplies Promo",
-      description: "10% off stationery packs",
+      name: "Household Essentials",
+      description: "10% off household items",
       type: "PERCENTAGE",
-      status: "EXPIRED",
-      applicableLabel: "Stationery",
-      applicableCount: 6,
-      targetKind: "CATEGORY",
-      targetIds: ["cat-personal-care"],
+      targetType: "CATEGORY",
+      productIds: [],
+      categoryIds: ["category-household"],
+      rule: { discountPercent: 10 },
       startDate: "2026-08-15",
       endDate: "2026-09-05",
+      status: "EXPIRED",
       allowMultipleUse: true,
-      limitTotalUsage: false,
-      maximumUses: null,
-      rules: { discountPercent: 10 },
+      usageLimitEnabled: false,
+      usageLimit: null,
     },
   ];
 }
@@ -342,4 +420,55 @@ export function promotionKpis(items: Promotion[]) {
 
 export function createPromotionId() {
   return `promo-${Date.now().toString(36)}`;
+}
+
+export function createTierId() {
+  return `tier-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/* ─── shared in-memory mock store ─── */
+
+let promotionsSnapshot: Promotion[] = seedPromotions();
+const listeners = new Set<() => void>();
+
+function emit() {
+  listeners.forEach((listener) => listener());
+}
+
+export function getPromotionsSnapshot() {
+  return promotionsSnapshot;
+}
+
+export function subscribePromotions(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export function getPromotionById(id: string) {
+  return promotionsSnapshot.find((item) => item.id === id) ?? null;
+}
+
+export function upsertPromotion(promotion: Promotion) {
+  const index = promotionsSnapshot.findIndex((item) => item.id === promotion.id);
+  if (index >= 0) {
+    const next = [...promotionsSnapshot];
+    next[index] = promotion;
+    promotionsSnapshot = next;
+  } else {
+    promotionsSnapshot = [promotion, ...promotionsSnapshot];
+  }
+  emit();
+  return promotion;
+}
+
+export function deletePromotion(id: string) {
+  promotionsSnapshot = promotionsSnapshot.filter((item) => item.id !== id);
+  emit();
+}
+
+export function setPromotionStatus(id: string, status: PromotionStatus) {
+  promotionsSnapshot = promotionsSnapshot.map((item) =>
+    item.id === id ? { ...item, status } : item,
+  );
+  emit();
 }

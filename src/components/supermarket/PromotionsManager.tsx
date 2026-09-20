@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode, useSyncExternalStore } from "react";
+import Link from "next/link";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import {
   Ban,
   Clock3,
@@ -14,13 +16,18 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
-  createPromotionId,
+  deletePromotion,
   formatPromotionDate,
+  getPromotionsSnapshot,
+  MOCK_PROMOTION_CATEGORIES,
+  promotionAppliesCount,
+  promotionAppliesLabel,
   promotionKpis,
   promotionStatusLabel,
   promotionTypeShortLabel,
-  seedPromotions,
   PROMOTION_TYPE_OPTIONS,
+  setPromotionStatus,
+  subscribePromotions,
   type Promotion,
   type PromotionStatus,
   type PromotionType,
@@ -31,28 +38,15 @@ import {
   primaryButton,
   tableHead,
 } from "@/components/supermarket/purchasing-ui";
-import { PromotionFormDrawer } from "@/components/supermarket/promotions/PromotionFormDrawer";
-import { PromotionViewDrawer } from "@/components/supermarket/promotions/PromotionViewDrawer";
+import { PromotionConfirmDialog } from "@/components/supermarket/promotions/PromotionConfirmDialog";
 
 type StatusTab = "ALL" | "ACTIVE" | "SCHEDULED" | "EXPIRED";
-
 type MenuState = { id: string; top: number; right: number } | null;
-
-const CATEGORY_OPTIONS = [
-  "All Categories",
-  "Soda 500ml",
-  "Azam Sugar 1kg",
-  "Rice + Oil + Beans",
-  "All Chips",
-  "Personal Care",
-  "All Products",
-  "Milk 500ml",
-  "Cosmetics",
-  "Beverages",
-  "Cooking Oil",
-  "Stationery",
-  "Bread + Milk + Eggs",
-];
+type ConfirmState =
+  | { type: "delete"; id: string }
+  | { type: "deactivate"; id: string }
+  | { type: "activate"; id: string }
+  | null;
 
 function statusBadgeClass(status: PromotionStatus) {
   if (status === "ACTIVE") return "bg-[#e7f4ea] text-[#3f8a5a]";
@@ -61,29 +55,28 @@ function statusBadgeClass(status: PromotionStatus) {
   return "bg-[#f3f6fa] text-slate-500";
 }
 
-function appliesToLabel(item: Promotion) {
-  if (item.applicableCount != null) {
-    return (
-      <>
-        <span className="block text-[13px] font-medium text-navy">{item.applicableLabel}</span>
-        <span className="block text-[12px] text-slate-400">{item.applicableCount} products</span>
-      </>
-    );
-  }
-  return <span className="text-[13px] font-medium text-navy">{item.applicableLabel}</span>;
+function AppliesToCell({ item }: { item: Promotion }) {
+  const count = promotionAppliesCount(item);
+  return (
+    <>
+      <span className="block text-[13px] font-medium text-navy">{promotionAppliesLabel(item)}</span>
+      {count != null ? (
+        <span className="block text-[12px] text-slate-400">{count} products</span>
+      ) : null}
+    </>
+  );
 }
 
 export function PromotionsManager() {
-  const [items, setItems] = useState<Promotion[]>(() => seedPromotions());
+  const router = useRouter();
+  const items = useSyncExternalStore(subscribePromotions, getPromotionsSnapshot, getPromotionsSnapshot);
   const [tab, setTab] = useState<StatusTab>("ALL");
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | PromotionType>("all");
   const [categoryFilter, setCategoryFilter] = useState("All Categories");
   const [statusFilter, setStatusFilter] = useState<"all" | PromotionStatus>("all");
   const [menu, setMenu] = useState<MenuState>(null);
-  const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
-  const [editing, setEditing] = useState<Promotion | null>(null);
-  const [viewing, setViewing] = useState<Promotion | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmState>(null);
 
   const kpis = useMemo(() => promotionKpis(items), [items]);
 
@@ -94,14 +87,14 @@ export function PromotionsManager() {
       if (typeFilter !== "all" && item.type !== typeFilter) return false;
       if (statusFilter !== "all" && item.status !== statusFilter) return false;
       if (categoryFilter !== "All Categories") {
-        const hay = `${item.applicableLabel}`.toLowerCase();
+        const hay = promotionAppliesLabel(item).toLowerCase();
         if (!hay.includes(categoryFilter.toLowerCase())) return false;
       }
       if (!needle) return true;
       return (
         item.name.toLowerCase().includes(needle) ||
         item.description.toLowerCase().includes(needle) ||
-        item.applicableLabel.toLowerCase().includes(needle)
+        promotionAppliesLabel(item).toLowerCase().includes(needle)
       );
     });
   }, [items, tab, query, typeFilter, categoryFilter, statusFilter]);
@@ -131,7 +124,7 @@ export function PromotionsManager() {
 
   function openMenu(id: string, button: HTMLButtonElement) {
     const rect = button.getBoundingClientRect();
-    const menuHeight = 140;
+    const menuHeight = 180;
     const fitsBelow = rect.bottom + 6 + menuHeight <= window.innerHeight - 8;
     setMenu((current) =>
       current?.id === id
@@ -142,51 +135,6 @@ export function PromotionsManager() {
             right: Math.max(8, window.innerWidth - rect.right),
           },
     );
-  }
-
-  function closeForm() {
-    setFormMode(null);
-    setEditing(null);
-  }
-
-  function handleSave(promotion: Promotion) {
-    setItems((current) => {
-      const index = current.findIndex((item) => item.id === promotion.id);
-      if (index >= 0) {
-        const next = [...current];
-        next[index] = promotion;
-        return next;
-      }
-      return [promotion, ...current];
-    });
-    closeForm();
-  }
-
-  function deactivate(id: string) {
-    setItems((current) =>
-      current.map((item) => (item.id === id ? { ...item, status: "INACTIVE" as const } : item)),
-    );
-    setMenu(null);
-  }
-
-  function cancelScheduled(id: string) {
-    setItems((current) =>
-      current.map((item) => (item.id === id ? { ...item, status: "INACTIVE" as const } : item)),
-    );
-    setMenu(null);
-  }
-
-  function duplicate(id: string) {
-    const source = items.find((item) => item.id === id);
-    if (!source) return;
-    const copy: Promotion = {
-      ...source,
-      id: createPromotionId(),
-      name: `${source.name} (Copy)`,
-      status: "SCHEDULED",
-    };
-    setItems((current) => [copy, ...current]);
-    setMenu(null);
   }
 
   const menuItem = menu ? items.find((item) => item.id === menu.id) : null;
@@ -206,10 +154,10 @@ export function PromotionsManager() {
             Create and manage offers, discounts and special deals for your supermarket.
           </p>
         </div>
-        <button type="button" onClick={() => setFormMode("create")} className={cn(primaryButton, "shrink-0")}>
+        <Link href="/supermarket/promotions/create" prefetch className={cn(primaryButton, "shrink-0")}>
           <Plus className="h-4 w-4" strokeWidth={2.2} />
           Create Promotion
-        </button>
+        </Link>
       </header>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -296,9 +244,10 @@ export function PromotionsManager() {
             onChange={(event) => setCategoryFilter(event.target.value)}
             className={cn(filterClass, "lg:w-[158px]")}
           >
-            {CATEGORY_OPTIONS.map((item) => (
-              <option key={item} value={item}>
-                {item}
+            <option value="All Categories">All Categories</option>
+            {MOCK_PROMOTION_CATEGORIES.map((item) => (
+              <option key={item.id} value={item.name}>
+                {item.name}
               </option>
             ))}
           </select>
@@ -355,7 +304,9 @@ export function PromotionsManager() {
                       <span className="mt-0.5 block text-[12px] text-slate-400">{item.description}</span>
                     </td>
                     <td className="px-4 py-3.5 text-[13px] text-navy">{promotionTypeShortLabel(item.type)}</td>
-                    <td className="px-4 py-3.5">{appliesToLabel(item)}</td>
+                    <td className="px-4 py-3.5">
+                      <AppliesToCell item={item} />
+                    </td>
                     <td className="px-4 py-3.5">
                       <span className="block text-[13px] text-navy">{formatPromotionDate(item.startDate)}</span>
                       <span className="block text-[12px] text-slate-400">{formatPromotionDate(item.endDate)}</span>
@@ -433,10 +384,7 @@ export function PromotionsManager() {
                   </div>
                   <div>
                     <p className="text-slate-400">Applies To</p>
-                    <p className="mt-0.5 font-medium text-navy">{item.applicableLabel}</p>
-                    {item.applicableCount != null ? (
-                      <p className="text-[11px] text-slate-400">{item.applicableCount} products</p>
-                    ) : null}
+                    <p className="mt-0.5 font-medium text-navy">{promotionAppliesLabel(item)}</p>
                   </div>
                   <div>
                     <p className="text-slate-400">Period</p>
@@ -453,52 +401,88 @@ export function PromotionsManager() {
       {menu && menuItem && typeof document !== "undefined"
         ? createPortal(
             <div
-              className="fixed z-[70] min-w-[148px] overflow-hidden rounded-[14px] border border-white/80 bg-white/95 py-1 shadow-[0_16px_40px_rgba(15,35,64,0.14)] backdrop-blur-xl"
+              className="fixed z-[70] min-w-[156px] overflow-hidden rounded-[14px] border border-white/80 bg-white/95 py-1 shadow-[0_16px_40px_rgba(15,35,64,0.14)] backdrop-blur-xl"
               style={{ top: menu.top, right: menu.right }}
               onClick={(event) => event.stopPropagation()}
             >
               <MenuButton
                 label="View"
                 onClick={() => {
-                  setViewing(menuItem);
                   setMenu(null);
+                  router.push(`/supermarket/promotions/${menuItem.id}`);
                 }}
               />
-              {menuItem.status === "EXPIRED" ? (
-                <MenuButton label="Duplicate" onClick={() => duplicate(menuItem.id)} />
-              ) : (
-                <>
-                  <MenuButton
-                    label="Edit"
-                    onClick={() => {
-                      setEditing(menuItem);
-                      setFormMode("edit");
-                      setMenu(null);
-                    }}
-                  />
-                  {menuItem.status === "ACTIVE" ? (
-                    <MenuButton label="Deactivate" onClick={() => deactivate(menuItem.id)} />
-                  ) : null}
-                  {menuItem.status === "SCHEDULED" ? (
-                    <MenuButton label="Cancel" onClick={() => cancelScheduled(menuItem.id)} />
-                  ) : null}
-                </>
-              )}
+              <MenuButton
+                label="Edit"
+                onClick={() => {
+                  setMenu(null);
+                  router.push(`/supermarket/promotions/${menuItem.id}/edit`);
+                }}
+              />
+              {menuItem.status === "ACTIVE" ? (
+                <MenuButton
+                  label="Deactivate"
+                  onClick={() => {
+                    setMenu(null);
+                    setConfirm({ type: "deactivate", id: menuItem.id });
+                  }}
+                />
+              ) : null}
+              {menuItem.status === "SCHEDULED" || menuItem.status === "INACTIVE" ? (
+                <MenuButton
+                  label="Activate"
+                  onClick={() => {
+                    setMenu(null);
+                    setConfirm({ type: "activate", id: menuItem.id });
+                  }}
+                />
+              ) : null}
+              <MenuButton
+                label="Delete"
+                onClick={() => {
+                  setMenu(null);
+                  setConfirm({ type: "delete", id: menuItem.id });
+                }}
+              />
             </div>,
             document.body,
           )
         : null}
 
-      {formMode ? (
-        <PromotionFormDrawer
-          mode={formMode}
-          initial={editing}
-          onClose={closeForm}
-          onSave={handleSave}
-        />
-      ) : null}
-
-      {viewing ? <PromotionViewDrawer promotion={viewing} onClose={() => setViewing(null)} /> : null}
+      <PromotionConfirmDialog
+        open={confirm?.type === "delete"}
+        title="Delete Promotion?"
+        message="Are you sure you want to delete this promotion? This action cannot be undone."
+        confirmLabel="Delete Promotion"
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          if (confirm?.type === "delete") deletePromotion(confirm.id);
+          setConfirm(null);
+        }}
+      />
+      <PromotionConfirmDialog
+        open={confirm?.type === "deactivate"}
+        title="Deactivate Promotion?"
+        message="This promotion will stop applying until activated again."
+        confirmLabel="Deactivate"
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          if (confirm?.type === "deactivate") setPromotionStatus(confirm.id, "INACTIVE");
+          setConfirm(null);
+        }}
+      />
+      <PromotionConfirmDialog
+        open={confirm?.type === "activate"}
+        title="Activate Promotion?"
+        message="This promotion will become active and apply according to its rules."
+        confirmLabel="Activate"
+        tone="default"
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          if (confirm?.type === "activate") setPromotionStatus(confirm.id, "ACTIVE");
+          setConfirm(null);
+        }}
+      />
     </div>
   );
 }
