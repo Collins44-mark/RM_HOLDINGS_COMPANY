@@ -301,14 +301,18 @@ export function PromotionFormPage({
         <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">
           {mode === "edit" ? "Edit Promotion" : "Create Promotion"}
         </h1>
-        <p className="mt-1.5 max-w-2xl text-[13.5px] text-slate-500">
+        <p className="mt-1.5 text-[13px] leading-5 text-slate-500">
           {mode === "edit"
             ? "Update this promotion’s products, rules, dates and settings."
             : "Create and configure a promotion for selected products or categories."}
         </p>
       </div>
 
-      <form onSubmit={onSubmit} className="mx-auto mt-6 w-full max-w-[980px] space-y-5">
+      <form
+        onSubmit={onSubmit}
+        className="mt-6 grid w-full min-w-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.8fr)] lg:items-start lg:gap-5"
+      >
+        <div className="min-w-0 space-y-4">
         <Section step={1} title="Basic Information">
           <div className="space-y-3">
             <Field label="Promotion Name *" error={errors.name}>
@@ -606,7 +610,9 @@ export function PromotionFormPage({
             </div>
           ) : null}
         </Section>
+        </div>
 
+        <div className="min-w-0 space-y-4 lg:sticky lg:top-4">
         <Section step={4} title="Validity Period">
           <div className="space-y-3">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -673,7 +679,33 @@ export function PromotionFormPage({
           </div>
         </Section>
 
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <section className={formCard}>
+          <h2 className="text-[15px] font-semibold tracking-[-0.02em] text-navy">Summary</h2>
+          <ul className="mt-3 space-y-2 text-[13px] text-slate-600">
+            <li>
+              Type: <span className="font-medium text-navy">{form.type ? typeOptions.find((item) => item.value === form.type)?.label ?? form.type : "Not selected"}</span>
+            </li>
+            <li>
+              Target:{" "}
+              <span className="font-medium text-navy">
+                {form.targetType === "ALL_PRODUCTS"
+                  ? "All Products"
+                  : form.targetType === "CATEGORY"
+                    ? `${form.categoryIds.length || 0} categor${form.categoryIds.length === 1 ? "y" : "ies"}`
+                    : `${form.productIds.length || 0} product${form.productIds.length === 1 ? "" : "s"}`}
+              </span>
+            </li>
+            <li>
+              Status preview:{" "}
+              <span className="font-medium text-navy">
+                {form.startDate && form.endDate ? promotionStatusLabel(previewStatus) : "Set dates"}
+              </span>
+            </li>
+          </ul>
+        </section>
+        </div>
+
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end lg:col-span-2">
           <button
             type="button"
             onClick={() => router.push("/supermarket/promotions")}

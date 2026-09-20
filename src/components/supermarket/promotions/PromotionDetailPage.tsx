@@ -59,15 +59,15 @@ export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
   const categoryNames = resolvePromotionCategoryNames(promotion.categoryIds);
 
   return (
-    <div className="page-enter min-w-0 pb-10">
+    <div className="page-enter min-w-0 space-y-3.5 pb-10 sm:space-y-4">
       <PageBackButton href="/supermarket/promotions" prefetch />
-      <header className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <header className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">
             Promotion Details
           </h1>
           <p className="mt-1.5 text-[15px] font-medium text-navy">{promotion.name}</p>
-          <p className="mt-1 max-w-2xl text-[13.5px] text-slate-500">
+          <p className="mt-1 text-[13px] leading-5 text-slate-500">
             {promotion.description || "Promotion details"}
           </p>
         </div>
@@ -109,78 +109,90 @@ export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
         </div>
       </header>
 
-      <div className="mx-auto mt-6 grid w-full max-w-[980px] gap-4">
-        <section className={detailCard}>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Detail label="Promotion Type" value={promotionTypeLabel(promotion.type)} />
-            <div>
-              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-400">Status</p>
-              <span className={cn("mt-1.5 inline-flex h-6 items-center rounded-full px-2.5 text-[11.5px] font-medium", statusBadgeClass(status))}>
-                {promotionStatusLabel(status)}
-              </span>
+      <div className="mt-2 grid w-full min-w-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.85fr)] lg:items-start">
+        <div className="min-w-0 space-y-4">
+          <section className={detailCard}>
+            <h2 className="text-[14px] font-semibold tracking-[-0.02em] text-navy">Promotion Information</h2>
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Detail label="Promotion Type" value={promotionTypeLabel(promotion.type)} />
+              <Detail label="Applies To" value={promotionAppliesLabel(promotion)} />
+              <Detail
+                label="Target Type"
+                value={
+                  promotion.targetType === "ALL_PRODUCTS"
+                    ? "All Products"
+                    : promotion.targetType === "CATEGORY"
+                      ? "Product Category"
+                      : "Specific Products"
+                }
+              />
             </div>
-            <Detail label="Applies To" value={promotionAppliesLabel(promotion)} />
-            <Detail
-              label="Target Type"
-              value={
-                promotion.targetType === "ALL_PRODUCTS"
-                  ? "All Products"
-                  : promotion.targetType === "CATEGORY"
-                    ? "Product Category"
-                    : "Specific Products"
-              }
-            />
-            <Detail label="Start Date" value={formatPromotionDate(promotion.startDate)} />
-            <Detail label="End Date" value={formatPromotionDate(promotion.endDate)} />
-          </div>
-        </section>
+          </section>
 
-        <section className={detailCard}>
-          <h2 className="text-[14px] font-semibold tracking-[-0.02em] text-navy">Selected Products</h2>
-          {productNames.length > 0 ? (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {productNames.map((name) => (
-                <span key={name} className="inline-flex rounded-full border border-[#e7ecf3] bg-[#f8fafc] px-3 py-1.5 text-[12.5px] font-medium text-navy">
-                  {name}
+          <section className={detailCard}>
+            <h2 className="text-[14px] font-semibold tracking-[-0.02em] text-navy">Selected Products</h2>
+            {productNames.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {productNames.map((name) => (
+                  <span key={name} className="inline-flex rounded-full border border-[#e7ecf3] bg-[#f8fafc] px-3 py-1.5 text-[12.5px] font-medium text-navy">
+                    {name}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-[13.5px] text-slate-400">No specific products selected.</p>
+            )}
+          </section>
+
+          <section className={detailCard}>
+            <h2 className="text-[14px] font-semibold tracking-[-0.02em] text-navy">Selected Categories</h2>
+            {categoryNames.length > 0 ? (
+              <p className="mt-2 text-[13.5px] text-navy">{categoryNames.join(", ")}</p>
+            ) : (
+              <p className="mt-2 text-[13.5px] text-slate-400">No category selected.</p>
+            )}
+          </section>
+
+          <section className={detailCard}>
+            <h2 className="text-[14px] font-semibold tracking-[-0.02em] text-navy">Promotion Rule</h2>
+            <p className="mt-2 text-[13.5px] leading-relaxed text-navy">{promotionRuleSummary(promotion)}</p>
+          </section>
+        </div>
+
+        <div className="min-w-0 space-y-4">
+          <section className={detailCard}>
+            <h2 className="text-[14px] font-semibold tracking-[-0.02em] text-navy">Status</h2>
+            <span className={cn("mt-3 inline-flex h-6 items-center rounded-full px-2.5 text-[11.5px] font-medium", statusBadgeClass(status))}>
+              {promotionStatusLabel(status)}
+            </span>
+          </section>
+
+          <section className={detailCard}>
+            <h2 className="text-[14px] font-semibold tracking-[-0.02em] text-navy">Validity</h2>
+            <div className="mt-3 grid grid-cols-1 gap-3">
+              <Detail label="Start Date" value={formatPromotionDate(promotion.startDate)} />
+              <Detail label="End Date" value={formatPromotionDate(promotion.endDate)} />
+            </div>
+          </section>
+
+          <section className={detailCard}>
+            <h2 className="text-[14px] font-semibold tracking-[-0.02em] text-navy">Usage Settings</h2>
+            <ul className="mt-2 space-y-1.5 text-[13.5px] text-navy">
+              <li>
+                Multiple use per customer:{" "}
+                <span className="font-medium">{promotion.allowMultipleUse ? "Allowed" : "Not allowed"}</span>
+              </li>
+              <li>
+                Limit total usage:{" "}
+                <span className="font-medium">
+                  {promotion.usageLimitEnabled
+                    ? `Yes · max ${promotion.usageLimit?.toLocaleString("en-US") ?? "—"}`
+                    : "No"}
                 </span>
-              ))}
-            </div>
-          ) : (
-            <p className="mt-2 text-[13.5px] text-slate-400">No specific products selected.</p>
-          )}
-        </section>
-
-        <section className={detailCard}>
-          <h2 className="text-[14px] font-semibold tracking-[-0.02em] text-navy">Selected Categories</h2>
-          {categoryNames.length > 0 ? (
-            <p className="mt-2 text-[13.5px] text-navy">{categoryNames.join(", ")}</p>
-          ) : (
-            <p className="mt-2 text-[13.5px] text-slate-400">No category selected.</p>
-          )}
-        </section>
-
-        <section className={detailCard}>
-          <h2 className="text-[14px] font-semibold tracking-[-0.02em] text-navy">Promotion Rule</h2>
-          <p className="mt-2 text-[13.5px] leading-relaxed text-navy">{promotionRuleSummary(promotion)}</p>
-        </section>
-
-        <section className={detailCard}>
-          <h2 className="text-[14px] font-semibold tracking-[-0.02em] text-navy">Usage Settings</h2>
-          <ul className="mt-2 space-y-1.5 text-[13.5px] text-navy">
-            <li>
-              Multiple use per customer:{" "}
-              <span className="font-medium">{promotion.allowMultipleUse ? "Allowed" : "Not allowed"}</span>
-            </li>
-            <li>
-              Limit total usage:{" "}
-              <span className="font-medium">
-                {promotion.usageLimitEnabled
-                  ? `Yes · max ${promotion.usageLimit?.toLocaleString("en-US") ?? "—"}`
-                  : "No"}
-              </span>
-            </li>
-          </ul>
-        </section>
+              </li>
+            </ul>
+          </section>
+        </div>
       </div>
 
       <PromotionConfirmDialog

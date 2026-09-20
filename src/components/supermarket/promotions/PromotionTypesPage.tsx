@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 import { inputClass, primaryButton, secondaryButton, glassCard, tableHead } from "@/components/supermarket/purchasing-ui";
@@ -57,24 +58,29 @@ export function PromotionTypesPage() {
   }
 
   return (
-    <div className="page-enter min-w-0 pb-10">
+    <div className="page-enter min-w-0 space-y-3.5 pb-10 sm:space-y-4">
       <PageBackButton href="/supermarket/promotions" prefetch />
-      <div className="mt-4">
-        <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Promotion Types</h1>
-        <p className="mt-1.5 max-w-2xl text-[13.5px] text-slate-500">
-          Manage the promotion rules available to your supermarket.
-        </p>
-      </div>
+      <header className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Promotion Types</h1>
+          <p className="mt-1.5 text-[13px] leading-5 text-slate-500">
+            Manage the promotion rules available to your supermarket.
+          </p>
+        </div>
+        <Link href="/supermarket/promotions/create" prefetch className={cn(primaryButton, "w-full sm:w-auto")}>
+          + Create Promotion
+        </Link>
+      </header>
 
-      <section className={cn(glassCard, "mx-auto mt-6 w-full max-w-[980px] overflow-hidden")}>
+      <section className={cn(glassCard, "mt-2 w-full min-w-0 overflow-hidden")}>
         <div className="rm-table-scroll hidden md:block">
           <table className="w-full min-w-[720px] border-collapse text-left">
             <thead>
               <tr className={tableHead}>
-                <th className="px-4 py-3 font-medium">Name</th>
+                <th className="px-4 py-3 font-medium">Type</th>
                 <th className="px-4 py-3 font-medium">Description</th>
                 <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Used by</th>
+                <th className="px-4 py-3 font-medium">Used By</th>
                 <th className="px-4 py-3 text-right font-medium">Actions</th>
               </tr>
             </thead>

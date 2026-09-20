@@ -144,26 +144,20 @@ export function PromotionsManager() {
   const menuStatus = menuItem ? effectivePromotionStatus(menuItem) : null;
 
   return (
-    <div className="min-w-0 max-w-full space-y-5 pb-10 sm:space-y-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="min-w-0 space-y-3.5 pb-10 sm:space-y-4">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[12px] font-medium text-slate-400">
-            Supermarket <span className="mx-1.5 text-slate-300">›</span>{" "}
-            <span className="text-slate-500">Promotions</span>
-          </p>
-          <h1 className="mt-2 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[28px]">
-            Promotions
-          </h1>
-          <p className="mt-1.5 max-w-xl text-[13.5px] text-slate-500">
+          <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Promotions</h1>
+          <p className="mt-1.5 text-[13px] leading-5 text-slate-500">
             Create and manage offers, discounts and special deals for your supermarket.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Link href="/supermarket/promotions/types" prefetch className={cn(secondaryButton, "shrink-0 gap-1.5")}>
+          <Link href="/supermarket/promotions/types" prefetch className={cn(secondaryButton, "w-full gap-1.5 sm:w-auto")}>
             <Settings2 className="h-4 w-4" strokeWidth={1.9} />
             Promotion Types
           </Link>
-          <Link href="/supermarket/promotions/create" prefetch className={cn(primaryButton, "shrink-0")}>
+          <Link href="/supermarket/promotions/create" prefetch className={cn(primaryButton, "w-full sm:w-auto")}>
             <Plus className="h-4 w-4" strokeWidth={2.2} />
             Create Promotion
           </Link>
