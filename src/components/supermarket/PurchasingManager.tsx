@@ -92,53 +92,55 @@ export function PurchasingManager() {
   }, [inventory.suppliers, query]);
 
   return (
-    <div className="min-w-0 space-y-3.5 sm:space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Purchasing</h1>
-          <p className="mt-1.5 max-w-xl text-[13px] leading-5 text-slate-500">
-            Manage supplier orders, received stock and purchasing activity.
-          </p>
-        </div>
-        {tab === "suppliers" ? (
-          <button type="button" onClick={() => setSupplierOpen(true)} className={cn(primaryButton, "w-full sm:w-auto")}>
-            <Plus className="h-4 w-4" strokeWidth={2.2} />
-            Add Supplier
-          </button>
-        ) : (
-          <Link href="/supermarket/purchasing/new" prefetch className={cn(primaryButton, "w-full sm:w-auto")}>
-            <Plus className="h-4 w-4" strokeWidth={2.2} />
-            New Purchase Order
-          </Link>
-        )}
-      </div>
-
-      <div
-        role="tablist"
-        aria-label="Purchasing views"
-        className="inline-flex w-full rounded-full border border-white/70 bg-white/55 p-1 shadow-[0_6px_18px_rgba(15,35,64,0.05)] backdrop-blur-xl sm:w-auto"
-      >
-        {TABS.map((item) => {
-          const active = tab === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => setTab(item.id)}
-              className={cn(
-                "h-9 flex-1 rounded-full px-4 text-[13px] font-semibold transition duration-150 sm:flex-none",
-                active ? "bg-[#0b2244] text-white shadow-[0_8px_16px_rgba(11,34,68,0.18)]" : "text-slate-500 hover:text-navy",
-              )}
-            >
-              {item.label}
+    <div className="flex min-w-0 flex-col">
+      <div className="flex flex-col gap-3.5 sm:gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Purchasing</h1>
+            <p className="mt-1.5 max-w-xl text-[13px] leading-5 text-slate-500">
+              Manage supplier orders, received stock and purchasing activity.
+            </p>
+          </div>
+          {tab === "suppliers" ? (
+            <button type="button" onClick={() => setSupplierOpen(true)} className={cn(primaryButton, "w-full sm:w-auto")}>
+              <Plus className="h-4 w-4" strokeWidth={2.2} />
+              Add Supplier
             </button>
-          );
-        })}
+          ) : (
+            <Link href="/supermarket/purchasing/new" prefetch className={cn(primaryButton, "w-full sm:w-auto")}>
+              <Plus className="h-4 w-4" strokeWidth={2.2} />
+              New Purchase Order
+            </Link>
+          )}
+        </div>
+
+        <div
+          role="tablist"
+          aria-label="Purchasing views"
+          className="inline-flex w-full rounded-full border border-white/70 bg-white/55 p-1 shadow-[0_6px_18px_rgba(15,35,64,0.05)] backdrop-blur-xl sm:w-auto"
+        >
+          {TABS.map((item) => {
+            const active = tab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setTab(item.id)}
+                className={cn(
+                  "h-9 flex-1 rounded-full px-4 text-[13px] font-semibold transition duration-150 sm:flex-none",
+                  active ? "bg-[#0b2244] text-white shadow-[0_8px_16px_rgba(11,34,68,0.18)]" : "text-slate-500 hover:text-navy",
+                )}
+              >
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div key={tab} className="page-enter min-w-0">
+      <div key={tab} className="page-enter mt-5 min-w-0 sm:mt-6">
         {tab === "orders" ? (
           <OrdersView
             kpis={kpis}
@@ -193,8 +195,8 @@ function OrdersView({
   orders: ReturnType<typeof useSupermarketInventory>["purchaseOrders"];
 }) {
   return (
-    <>
-      <section className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-5">
+    <div className="space-y-5">
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3.5 lg:grid-cols-3 xl:grid-cols-5">
         <KpiCard label="Open Orders" value={String(kpis.open)} active={focus === "open"} onClick={() => onFocus(focus === "open" ? "all" : "open")} />
         <KpiCard label="Pending Delivery" value={String(kpis.pending)} active={focus === "pending"} onClick={() => onFocus(focus === "pending" ? "all" : "pending")} />
         <KpiCard label="Partially Received" value={String(kpis.partial)} active={focus === "partial"} onClick={() => onFocus(focus === "partial" ? "all" : "partial")} />
@@ -267,7 +269,7 @@ function OrdersView({
           </p>
         ) : null}
       </section>
-    </>
+    </div>
   );
 }
 
@@ -281,7 +283,7 @@ function PurchasesView({
   purchases: ReturnType<typeof useSupermarketInventory>["purchases"];
 }) {
   return (
-    <>
+    <div className="space-y-5">
       <SearchField value={query} onChange={onQuery} placeholder="Search purchases..." />
       <section className={cn(glassCard, "overflow-hidden")}>
         <div className="hidden overflow-x-auto md:block">
@@ -344,7 +346,7 @@ function PurchasesView({
           </p>
         ) : null}
       </section>
-    </>
+    </div>
   );
 }
 
@@ -360,9 +362,9 @@ function SuppliersView({
   purchases: ReturnType<typeof useSupermarketInventory>["purchases"];
 }) {
   return (
-    <>
+    <div className="space-y-5">
       <SearchField value={query} onChange={onQuery} placeholder="Search suppliers..." />
-      <section className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3.5 xl:grid-cols-3">
         {suppliers.map((supplier) => (
           <Link key={supplier.id} href={`/supermarket/purchasing/suppliers/${supplier.id}`} className={cn(glassCard, "px-4 py-4 transition hover:bg-white/85")}>
             <div className="flex items-start justify-between gap-3">
@@ -394,7 +396,7 @@ function SuppliersView({
           {query ? "No suppliers match this search." : "No suppliers yet."}
         </p>
       ) : null}
-    </>
+    </div>
   );
 }
 
