@@ -28,15 +28,30 @@ import type {
 } from "@/lib/supermarket/types";
 import { refreshInventorySnapshot } from "@/lib/supermarket/inventory-store";
 
+/**
+ * CRITICAL: useSyncExternalStore requires getSnapshot to return a referentially
+ * stable value when data has not changed. Returning a fresh object literal on
+ * every call causes an infinite re-render loop → "Maximum update depth exceeded"
+ * → supermarket error.tsx ("This page could not be loaded").
+ */
+
 /* ---------------- Sales store ---------------- */
+
+type SalesSnapshot = {
+  sales: SupermarketSale[];
+  error: string | null;
+  loaded: boolean;
+};
 
 let sales: SupermarketSale[] = [];
 let salesError: string | null = null;
 let salesLoaded = false;
 let salesPromise: Promise<void> | null = null;
+let salesSnapshot: SalesSnapshot = { sales, error: salesError, loaded: salesLoaded };
 const salesListeners = new Set<() => void>();
 
 function emitSales() {
+  salesSnapshot = { sales, error: salesError, loaded: salesLoaded };
   salesListeners.forEach((l) => l());
 }
 
@@ -46,7 +61,7 @@ export function subscribeSales(listener: () => void) {
 }
 
 export function getSalesSnapshot() {
-  return { sales, error: salesError, loaded: salesLoaded };
+  return salesSnapshot;
 }
 
 export async function refreshSales(input?: { from?: string; to?: string }) {
@@ -116,13 +131,21 @@ export type LiveSalesReturn = {
   }[];
 };
 
+type ReturnsSnapshot = {
+  returns: LiveSalesReturn[];
+  error: string | null;
+  loaded: boolean;
+};
+
 let returns: LiveSalesReturn[] = [];
 let returnsError: string | null = null;
 let returnsLoaded = false;
 let returnsPromise: Promise<void> | null = null;
+let returnsSnapshot: ReturnsSnapshot = { returns, error: returnsError, loaded: returnsLoaded };
 const returnsListeners = new Set<() => void>();
 
 function emitReturns() {
+  returnsSnapshot = { returns, error: returnsError, loaded: returnsLoaded };
   returnsListeners.forEach((l) => l());
 }
 
@@ -132,7 +155,7 @@ export function subscribeReturnsStore(listener: () => void) {
 }
 
 export function getReturnsStoreSnapshot() {
-  return { returns, error: returnsError, loaded: returnsLoaded };
+  return returnsSnapshot;
 }
 
 export async function refreshReturns() {
@@ -188,14 +211,41 @@ export function useSupermarketReturns() {
 
 /* ---------------- Promotions store ---------------- */
 
+type PromotionTypeRow = {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  isActive: boolean;
+};
+
+type PromotionsSnapshot = {
+  promotions: Promotion[];
+  types: PromotionTypeRow[];
+  error: string | null;
+  loaded: boolean;
+};
+
 let promotions: Promotion[] = [];
-let promotionTypes: { id: string; code: string; name: string; description: string; isActive: boolean }[] = [];
+let promotionTypes: PromotionTypeRow[] = [];
 let promotionsError: string | null = null;
 let promotionsLoaded = false;
 let promotionsPromise: Promise<void> | null = null;
+let promotionsSnapshot: PromotionsSnapshot = {
+  promotions,
+  types: promotionTypes,
+  error: promotionsError,
+  loaded: promotionsLoaded,
+};
 const promotionListeners = new Set<() => void>();
 
 function emitPromotions() {
+  promotionsSnapshot = {
+    promotions,
+    types: promotionTypes,
+    error: promotionsError,
+    loaded: promotionsLoaded,
+  };
   promotionListeners.forEach((l) => l());
 }
 
@@ -205,19 +255,26 @@ export function subscribePromotionsStore(listener: () => void) {
 }
 
 export function getPromotionsStoreSnapshot() {
-  return { promotions, types: promotionTypes, error: promotionsError, loaded: promotionsLoaded };
+  return promotionsSnapshot;
 }
 
 export async function refreshPromotions() {
-  const [promoRes, typeRes] = await Promise.all([listPromotionsAction(), listPromotionTypesAction()]);
-  if (!promoRes.ok) {
-    promotionsError = promoRes.error;
+  try {
+    const [promoRes, typeRes] = await Promise.all([listPromotionsAction(), listPromotionTypesAction()]);
+    if (!promoRes.ok) {
+      promotionsError = promoRes.error;
+      promotions = [];
+    } else {
+      promotions = Array.isArray(promoRes.promotions) ? promoRes.promotions : [];
+      promotionsError = null;
+    }
+    if (typeRes.ok) {
+      promotionTypes = Array.isArray(typeRes.types) ? typeRes.types : [];
+    }
+  } catch (error) {
+    promotionsError = error instanceof Error ? error.message : "Failed to load promotions.";
     promotions = [];
-  } else {
-    promotions = promoRes.promotions;
-    promotionsError = null;
   }
-  if (typeRes.ok) promotionTypes = typeRes.types;
   promotionsLoaded = true;
   emitPromotions();
 }
@@ -262,14 +319,33 @@ export async function removePromotion(id: string) {
 
 /* ---------------- Finance store ---------------- */
 
+type FinanceSnapshot = {
+  expenses: ExpenseRecord[];
+  payments: PaymentRecord[];
+  error: string | null;
+  loaded: boolean;
+};
+
 let expenses: ExpenseRecord[] = [];
 let payments: PaymentRecord[] = [];
 let financeError: string | null = null;
 let financeLoaded = false;
 let financePromise: Promise<void> | null = null;
+let financeSnapshot: FinanceSnapshot = {
+  expenses,
+  payments,
+  error: financeError,
+  loaded: financeLoaded,
+};
 const financeListeners = new Set<() => void>();
 
 function emitFinance() {
+  financeSnapshot = {
+    expenses,
+    payments,
+    error: financeError,
+    loaded: financeLoaded,
+  };
   financeListeners.forEach((l) => l());
 }
 
@@ -279,23 +355,29 @@ export function subscribeFinanceStore(listener: () => void) {
 }
 
 export function getFinanceStoreSnapshot() {
-  return { expenses, payments, error: financeError, loaded: financeLoaded };
+  return financeSnapshot;
 }
 
 export async function refreshFinance() {
-  const [expRes, payRes] = await Promise.all([listExpensesAction(), listPaymentsAction()]);
-  if (!expRes.ok) {
-    financeError = expRes.error;
+  try {
+    const [expRes, payRes] = await Promise.all([listExpensesAction(), listPaymentsAction()]);
+    if (!expRes.ok) {
+      financeError = expRes.error;
+      expenses = [];
+    } else {
+      expenses = Array.isArray(expRes.expenses) ? expRes.expenses : [];
+      financeError = null;
+    }
+    if (!payRes.ok) {
+      financeError = payRes.error;
+      payments = [];
+    } else {
+      payments = Array.isArray(payRes.payments) ? payRes.payments : [];
+    }
+  } catch (error) {
+    financeError = error instanceof Error ? error.message : "Failed to load finance records.";
     expenses = [];
-  } else {
-    expenses = expRes.expenses;
-    financeError = null;
-  }
-  if (!payRes.ok) {
-    financeError = payRes.error;
     payments = [];
-  } else {
-    payments = payRes.payments;
   }
   financeLoaded = true;
   emitFinance();

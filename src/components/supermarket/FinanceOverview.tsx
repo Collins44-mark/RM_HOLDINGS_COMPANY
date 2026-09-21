@@ -44,6 +44,46 @@ const glass =
 
 type KpiTone = "revenue" | "profit" | "expenses" | "net";
 
+function asAmount(value: unknown) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Guarantee a complete FinanceSummary so empty DB / partial payloads never crash render. */
+function normalizeFinanceSummary(
+  input: Partial<FinanceSummary> | null | undefined,
+  from: string,
+  to: string,
+): FinanceSummary {
+  const cash = input?.cashBalance;
+  const outstanding = input?.supplierOutstanding;
+  const deltas = input?.deltas;
+  return {
+    revenue: asAmount(input?.revenue),
+    productProfit: asAmount(input?.productProfit),
+    expenses: asAmount(input?.expenses),
+    netProfit: asAmount(input?.netProfit),
+    cashBalance: {
+      cash: asAmount(cash?.cash),
+      mobileMoney: asAmount(cash?.mobileMoney),
+      card: asAmount(cash?.card),
+      bank: asAmount(cash?.bank),
+    },
+    supplierOutstanding: {
+      totalPurchases: asAmount(outstanding?.totalPurchases),
+      totalPaid: asAmount(outstanding?.totalPaid),
+      outstanding: asAmount(outstanding?.outstanding),
+    },
+    deltas: {
+      revenue: asAmount(deltas?.revenue),
+      productProfit: asAmount(deltas?.productProfit),
+      expenses: asAmount(deltas?.expenses),
+      netProfit: asAmount(deltas?.netProfit),
+    },
+    periodLabel: input?.periodLabel || `${from} – ${to}`,
+  };
+}
+
 const KPI_TONES: Record<KpiTone, { card: string; iconWrap: string; deltaUp: string; deltaDown: string }> = {
   revenue: {
     card: "border-emerald-200/35 bg-emerald-50/45",
@@ -82,7 +122,7 @@ export function FinanceOverview() {
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const finance = useSupermarketFinance();
-  const paymentCount = finance.payments.length;
+  const paymentCount = Array.isArray(finance.payments) ? finance.payments.length : 0;
 
   const period = useMemo(() => {
     const asOf = new Date().toISOString().slice(0, 10);
@@ -91,16 +131,23 @@ export function FinanceOverview() {
 
   useEffect(() => {
     let active = true;
-    void getFinanceSummaryAction({ from: period.start, to: period.end }).then((result) => {
-      if (!active) return;
-      if (!result.ok) {
-        setSummaryError(result.error);
+    void getFinanceSummaryAction({ from: period.start, to: period.end })
+      .then((result) => {
+        if (!active) return;
+        if (!result.ok) {
+          setSummaryError(result.error);
+          setSummary(null);
+          return;
+        }
+        setSummaryError(null);
+        setSummary(normalizeFinanceSummary(result.summary, period.start, period.end));
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        const message = error instanceof Error ? error.message : "Failed to load finance summary.";
+        setSummaryError(message);
         setSummary(null);
-        return;
-      }
-      setSummaryError(null);
-      setSummary(result.summary);
-    });
+      });
     return () => {
       active = false;
     };

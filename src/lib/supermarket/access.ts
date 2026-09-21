@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { unstable_rethrow } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth/session";
 import { isOwnerRole } from "@/lib/auth/rbac";
@@ -25,6 +26,65 @@ export class SupermarketError extends Error {
     super(message);
     this.name = "SupermarketError";
   }
+}
+
+export type SupermarketFailurePhase = "auth" | "rls" | "query" | "transform" | "unknown";
+
+export type SupermarketFailureLog = {
+  route?: string;
+  operation: string;
+  phase?: SupermarketFailurePhase;
+  code?: string;
+  message?: string;
+};
+
+/**
+ * Structured server log for supermarket failures (Vercel/runtime logs).
+ * Never logs credentials, service-role keys, or full SQL payloads.
+ */
+export function logSupermarketFailure(meta: SupermarketFailureLog, error?: unknown) {
+  const supermarketError = error instanceof SupermarketError ? error : null;
+  const rawMessage =
+    supermarketError?.message ??
+    (error instanceof Error ? error.message : meta.message) ??
+    "unknown";
+  const sanitized = sanitizeLogMessage(rawMessage);
+  const code =
+    meta.code ??
+    supermarketError?.code ??
+    (typeof error === "object" && error && "code" in error
+      ? String((error as { code?: string }).code ?? "")
+      : undefined) ??
+    undefined;
+
+  const phase =
+    meta.phase ??
+    (supermarketError?.code === "UNAUTHORIZED" || supermarketError?.code === "NOT_CONFIGURED"
+      ? "auth"
+      : supermarketError?.code === "PRIVILEGE"
+        ? "rls"
+        : supermarketError?.code === "DATABASE"
+          ? "query"
+          : "unknown");
+
+  console.error(
+    JSON.stringify({
+      scope: "supermarket",
+      route: meta.route ?? null,
+      operation: meta.operation,
+      phase,
+      code: code || null,
+      message: sanitized,
+    }),
+  );
+}
+
+function sanitizeLogMessage(message: string) {
+  return message
+    .replace(/service[_-]?role[^\s]*/gi, "[redacted]")
+    .replace(/eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/g, "[redacted-jwt]")
+    .replace(/Bearer\s+[^\s]+/gi, "Bearer [redacted]")
+    .slice(0, 400);
 }
 
 /** Process-local cache — supermarket is a single BU code per deployment. */
@@ -114,9 +174,25 @@ export function mapDbError(error: { message: string; code?: string } | null): ne
   throw new SupermarketError(message, "DATABASE");
 }
 
-export function actionErrorMessage(error: unknown): string {
+/**
+ * Convert caught action errors into a user-safe message.
+ * Always rethrows Next.js navigation control-flow errors first so soft-nav
+ * redirects are not swallowed into `{ ok: false }`.
+ */
+export function actionErrorMessage(error: unknown, meta?: SupermarketFailureLog): string {
+  unstable_rethrow(error);
+  const shouldLog =
+    !(error instanceof SupermarketError) ||
+    error.code === "DATABASE" ||
+    error.code === "PRIVILEGE" ||
+    error.code === "NOT_CONFIGURED" ||
+    error.code === "UNAUTHORIZED" ||
+    error.code === "NOT_FOUND";
+  if (shouldLog) {
+    logSupermarketFailure(meta ?? { operation: "supermarket.action", phase: "unknown" }, error);
+  }
   if (error instanceof SupermarketError) return error.message;
-  if (error instanceof Error) return error.message;
+  if (error instanceof Error) return sanitizeLogMessage(error.message);
   return "Something went wrong. Please try again.";
 }
 

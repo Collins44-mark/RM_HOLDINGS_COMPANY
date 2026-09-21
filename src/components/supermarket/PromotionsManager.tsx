@@ -74,16 +74,24 @@ export function PromotionsManager() {
   const router = useRouter();
   const live = useSupermarketPromotions();
   const inventory = useSupermarketInventory();
-  const items = useMemo(() => live.promotions.map(toUiPromotion), [live.promotions]);
+  const items = useMemo(
+    () => (Array.isArray(live.promotions) ? live.promotions : []).map(toUiPromotion),
+    [live.promotions],
+  );
   const typeOptions = useMemo(
     () =>
-      live.types
+      (Array.isArray(live.types) ? live.types : [])
         .filter((type) => type.isActive)
         .map((type) => ({ value: type.code as PromotionType, label: type.name })),
     [live.types],
   );
   const categoryOptions = useMemo(
-    () => ["All Categories", ...inventory.categories.filter((c) => c.isActive).map((c) => c.name)],
+    () => [
+      "All Categories",
+      ...(Array.isArray(inventory.categories) ? inventory.categories : [])
+        .filter((c) => c.isActive)
+        .map((c) => c.name),
+    ],
     [inventory.categories],
   );
   const [tab, setTab] = useState<StatusTab>("ALL");

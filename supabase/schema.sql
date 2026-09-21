@@ -168,9 +168,10 @@ on conflict (code) do nothing;
 -- Supermarket module (see migrations):
 --   20260921120000_supermarket_module.sql
 --   20260921120100_supermarket_receive_return_rpcs.sql
---   20260921120200_supermarket_seed_catalogue.sql
+--   20260921120200_supermarket_seed_catalogue.sql (historical/dev-only; cleaned by 20260921150000)
 --   20260921130000_supermarket_table_grants.sql
 --   20260921140000_supermarket_stable_access.sql
+--   20260921150000_supermarket_cleanup_demo_catalogue.sql
 -- Tables: sm_categories, sm_suppliers, sm_products, sm_stock_batches,
 -- sm_stock_movements, sm_stock_adjustments, sm_purchase_orders,
 -- sm_purchase_order_items, sm_goods_receipts, sm_goods_receipt_items,

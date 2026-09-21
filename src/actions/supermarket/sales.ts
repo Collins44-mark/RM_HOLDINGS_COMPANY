@@ -200,35 +200,91 @@ export async function listPromotionsAction(): Promise<
 > {
   try {
     const { supabase, businessUnitId } = await requireSupermarketContext();
+
+    // Flat select first — empty catalogue is a valid success state.
+    // Nested embeds are loaded only when promotion rows exist, avoiding
+    // PostgREST relationship/schema-cache failures on an empty table.
     const { data, error } = await supabase
       .from("sm_promotions")
-      .select(
-        "*, sm_promotion_types(code), sm_promotion_products(product_id), sm_promotion_categories(category_id), sm_promotion_tiers(*)",
-      )
+      .select("*")
       .eq("business_unit_id", businessUnitId)
       .order("created_at", { ascending: false });
     if (error) mapDbError(error);
 
-    const promotions = (data ?? []).map((row) => {
-      const typeCode = (row.sm_promotion_types as { code?: string } | null)?.code ?? "";
-      const productIds = ((row.sm_promotion_products ?? []) as { product_id: string }[]).map(
-        (p) => p.product_id,
+    const rows = data ?? [];
+    if (rows.length === 0) {
+      return { ok: true, promotions: [] };
+    }
+
+    const promotionIds = rows.map((row) => String(row.id));
+    const typeIds = [...new Set(rows.map((row) => String(row.type_id)).filter(Boolean))];
+
+    const [typesRes, productsRes, categoriesRes, tiersRes] = await Promise.all([
+      typeIds.length
+        ? supabase.from("sm_promotion_types").select("id, code").in("id", typeIds)
+        : Promise.resolve({ data: [] as { id: string; code: string }[], error: null }),
+      supabase.from("sm_promotion_products").select("promotion_id, product_id").in("promotion_id", promotionIds),
+      supabase
+        .from("sm_promotion_categories")
+        .select("promotion_id, category_id")
+        .in("promotion_id", promotionIds),
+      supabase.from("sm_promotion_tiers").select("*").in("promotion_id", promotionIds),
+    ]);
+
+    if (typesRes.error) mapDbError(typesRes.error);
+    if (productsRes.error) mapDbError(productsRes.error);
+    if (categoriesRes.error) mapDbError(categoriesRes.error);
+    if (tiersRes.error) mapDbError(tiersRes.error);
+
+    const typeCodeById = new Map(
+      ((typesRes.data ?? []) as { id: string; code: string }[]).map((row) => [row.id, row.code]),
+    );
+    const productIdsByPromo = new Map<string, string[]>();
+    for (const row of (productsRes.data ?? []) as { promotion_id: string; product_id: string }[]) {
+      const list = productIdsByPromo.get(row.promotion_id) ?? [];
+      list.push(row.product_id);
+      productIdsByPromo.set(row.promotion_id, list);
+    }
+    const categoryIdsByPromo = new Map<string, string[]>();
+    for (const row of (categoriesRes.data ?? []) as { promotion_id: string; category_id: string }[]) {
+      const list = categoryIdsByPromo.get(row.promotion_id) ?? [];
+      list.push(row.category_id);
+      categoryIdsByPromo.set(row.promotion_id, list);
+    }
+    const tiersByPromo = new Map<string, Promotion["tiers"]>();
+    for (const row of (tiersRes.data ?? []) as Record<string, unknown>[]) {
+      const promotionId = String(row.promotion_id);
+      const list = tiersByPromo.get(promotionId) ?? [];
+      list.push({
+        id: String(row.id),
+        minimumSpend: Number(row.minimum_spend) || 0,
+        discountPercent: Number(row.discount_percent) || 0,
+        sortOrder: Number(row.sort_order) || 0,
+      });
+      tiersByPromo.set(promotionId, list);
+    }
+
+    const promotions = rows.map((row) => {
+      const id = String(row.id);
+      return mapPromotion(
+        row as Record<string, unknown>,
+        typeCodeById.get(String(row.type_id)) ?? "",
+        productIdsByPromo.get(id) ?? [],
+        categoryIdsByPromo.get(id) ?? [],
+        tiersByPromo.get(id) ?? [],
       );
-      const categoryIds = ((row.sm_promotion_categories ?? []) as { category_id: string }[]).map(
-        (c) => c.category_id,
-      );
-      const tiers = ((row.sm_promotion_tiers ?? []) as Record<string, unknown>[]).map((t) => ({
-        id: String(t.id),
-        minimumSpend: Number(t.minimum_spend) || 0,
-        discountPercent: Number(t.discount_percent) || 0,
-        sortOrder: Number(t.sort_order) || 0,
-      }));
-      return mapPromotion(row as Record<string, unknown>, typeCode, productIds, categoryIds, tiers);
     });
 
     return { ok: true, promotions };
   } catch (error) {
-    return { ok: false, error: actionErrorMessage(error) };
+    return {
+      ok: false,
+      error: actionErrorMessage(error, {
+        route: "/supermarket/promotions",
+        operation: "listPromotionsAction",
+        phase: "query",
+      }),
+    };
   }
 }
 
@@ -252,7 +308,14 @@ export async function listPromotionTypesAction() {
       })),
     };
   } catch (error) {
-    return { ok: false as const, error: actionErrorMessage(error) };
+    return {
+      ok: false as const,
+      error: actionErrorMessage(error, {
+        route: "/supermarket/promotions",
+        operation: "listPromotionTypesAction",
+        phase: "query",
+      }),
+    };
   }
 }
 
@@ -542,7 +605,14 @@ export async function listExpensesAction(): Promise<
       expenses: (data ?? []).map((row) => mapExpense(row as Record<string, unknown>)),
     };
   } catch (error) {
-    return { ok: false, error: actionErrorMessage(error) };
+    return {
+      ok: false as const,
+      error: actionErrorMessage(error, {
+        route: "/supermarket/finance",
+        operation: "listExpensesAction",
+        phase: "query",
+      }),
+    };
   }
 }
 
@@ -563,7 +633,14 @@ export async function listPaymentsAction(): Promise<
       payments: (data ?? []).map((row) => mapPayment(row as Record<string, unknown>)),
     };
   } catch (error) {
-    return { ok: false, error: actionErrorMessage(error) };
+    return {
+      ok: false,
+      error: actionErrorMessage(error, {
+        route: "/supermarket/finance",
+        operation: "listPaymentsAction",
+        phase: "query",
+      }),
+    };
   }
 }
 

@@ -7,20 +7,22 @@ export function toUiPromotion(item: DbPromotion): UiPromotion {
   const targetType =
     item.targetType === "CATEGORIES" ? "CATEGORY" : item.targetType === "PRODUCTS" ? "PRODUCTS" : "ALL_PRODUCTS";
 
+  const tiers = Array.isArray(item.tiers) ? item.tiers : [];
+
   return {
     id: item.id,
-    name: item.name,
-    description: item.description,
-    type: item.type as PromotionType,
+    name: item.name ?? "",
+    description: item.description ?? "",
+    type: (item.type || "PERCENTAGE") as PromotionType,
     targetType,
-    productIds: item.productIds,
-    categoryIds: item.categoryIds,
-    startDate: item.startDate,
-    endDate: item.endDate,
+    productIds: Array.isArray(item.productIds) ? item.productIds : [],
+    categoryIds: Array.isArray(item.categoryIds) ? item.categoryIds : [],
+    startDate: item.startDate ?? "",
+    endDate: item.endDate ?? "",
     status: item.isPaused ? "INACTIVE" : "ACTIVE",
-    allowMultipleUse: item.allowMultipleUse,
-    usageLimitEnabled: item.usageLimitEnabled,
-    usageLimit: item.usageLimit,
+    allowMultipleUse: Boolean(item.allowMultipleUse),
+    usageLimitEnabled: Boolean(item.usageLimitEnabled),
+    usageLimit: item.usageLimit ?? null,
     rule: {
       buyQuantity: item.buyQuantity ?? undefined,
       freeQuantity: item.freeQuantity ?? undefined,
@@ -30,10 +32,10 @@ export function toUiPromotion(item: DbPromotion): UiPromotion {
       fixedPrice: item.fixedPrice ?? undefined,
       bundlePrice: item.bundlePrice ?? undefined,
       minimumSpend: item.minimumSpend ?? undefined,
-      tiers: item.tiers.map((tier) => ({
+      tiers: tiers.map((tier) => ({
         id: tier.id,
-        minimumSpend: tier.minimumSpend,
-        discountPercent: tier.discountPercent,
+        minimumSpend: Number(tier.minimumSpend) || 0,
+        discountPercent: Number(tier.discountPercent) || 0,
       })),
     },
   };

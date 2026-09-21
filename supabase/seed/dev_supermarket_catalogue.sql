@@ -1,11 +1,13 @@
--- HISTORICAL / DEVELOPMENT-ONLY catalogue seed (idempotent).
--- Already applied in environments that show the 6 demo SKUs.
--- Do NOT re-run against production. Do NOT edit this applied migration body
--- to "undo" data — use 20260921150000_supermarket_cleanup_demo_catalogue.sql.
--- Dev re-seed copy: supabase/seed/dev_supermarket_catalogue.sql
+-- DEVELOPMENT ONLY — demo supermarket catalogue.
 --
--- Does NOT seed fake sales/financial history.
--- Safe to run after 20260921120000_supermarket_module.sql (development only).
+-- Do NOT run against production.
+-- Do NOT include this file in production bootstrap / apply paths.
+--
+-- Historical source: supabase/migrations/20260921120200_supermarket_seed_catalogue.sql
+-- Production cleanup: supabase/migrations/20260921150000_supermarket_cleanup_demo_catalogue.sql
+--
+-- Creates the known demo supplier + 6 SKUs + OPENING stock batches used during
+-- early supermarket development. Inventory value at seed time ≈ TZS 1,379,000.
 
 do $$
 declare
@@ -48,7 +50,6 @@ begin
     (v_bu, v_cat_hh, v_sup, 'Omo Detergent 1kg', 'SKU-OMO-1', '6001001001006', 'Pack', 4500, 5800, 20, false, true)
   on conflict (business_unit_id, sku) do nothing;
 
-  -- Opening stock batches for seeded products (only if product has zero stock)
   insert into public.sm_stock_batches (
     business_unit_id, product_id, batch_number, quantity, location, buying_price, supplier_id
   )
