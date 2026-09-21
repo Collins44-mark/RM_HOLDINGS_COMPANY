@@ -104,12 +104,12 @@ export function CategoryCreateModal({
 
   if (!open || typeof document === "undefined") return null;
 
-  function save() {
+  async function save() {
     if (savingRef.current) return;
     savingRef.current = true;
     setSaving(true);
     if (category) {
-      const result = updateProductCategory(category.id, { name, description });
+      const result = await updateProductCategory(category.id, { name, description });
       if (result.error || !result.category) {
         savingRef.current = false;
         setSaving(false);
@@ -120,7 +120,7 @@ export function CategoryCreateModal({
       onClose();
       return;
     }
-    const result = addProductCategory({ name, description });
+    const result = await addProductCategory({ name, description });
     if (result.error || !result.category) {
       savingRef.current = false;
       setSaving(false);

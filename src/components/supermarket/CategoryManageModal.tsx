@@ -139,7 +139,7 @@ export function CategoryManageModal({
                       }}
                       onActivate={() => {
                         setMenuId(null);
-                        setProductCategoryActive(item.id, true);
+                        void setProductCategoryActive(item.id, true);
                       }}
                     />
                   </li>
@@ -164,14 +164,14 @@ export function CategoryManageModal({
           mode={confirm.type}
           used={categoryProductCount(confirm.category.name, inventory.products)}
           onCancel={() => setConfirm(null)}
-          onConfirm={() => {
+          onConfirm={async () => {
             if (confirm.type === "delete") {
               const usedNow = categoryProductCount(confirm.category.name, inventory.products);
               if (usedNow > 0) {
                 setConfirm({ type: "deactivate", category: confirm.category });
                 return;
               }
-              const result = deleteProductCategory(confirm.category.id);
+              const result = await deleteProductCategory(confirm.category.id);
               if (result.inUse) {
                 setConfirm({ type: "deactivate", category: confirm.category });
                 return;
@@ -180,7 +180,7 @@ export function CategoryManageModal({
               setConfirm(null);
               return;
             }
-            setProductCategoryActive(confirm.category.id, false);
+            await setProductCategoryActive(confirm.category.id, false);
             setConfirm(null);
           }}
         />

@@ -89,7 +89,7 @@ export function NewPurchaseOrderPage() {
     setProductQuery("");
   }
 
-  function save(status: "Draft" | "Sent") {
+  async function save(status: "Draft" | "Sent") {
     const nextErrors: Record<string, string> = {};
     if (!supplierId) nextErrors.supplier = "Select a supplier.";
     if (!orderDate) nextErrors.orderDate = "Enter the order date.";
@@ -99,7 +99,7 @@ export function NewPurchaseOrderPage() {
       setErrors(nextErrors);
       return;
     }
-    const result = inventory.createPurchaseOrder({
+    const result = await inventory.createPurchaseOrder({
       supplierId,
       orderDate,
       expectedDate,

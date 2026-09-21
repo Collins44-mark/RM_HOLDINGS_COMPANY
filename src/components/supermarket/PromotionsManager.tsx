@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
@@ -17,24 +17,24 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
-  deletePromotion,
-  duplicatePromotion,
   effectivePromotionStatus,
   formatPromotionDate,
-  getActivePromotionTypeOptions,
-  getPromotionsSnapshot,
-  MOCK_PROMOTION_CATEGORIES,
   promotionAppliesCount,
   promotionAppliesLabel,
   promotionKpis,
   promotionStatusLabel,
   promotionTypeShortLabel,
-  setPromotionStatus,
-  subscribePromotions,
   type Promotion,
   type PromotionStatus,
   type PromotionType,
 } from "@/lib/data/sample-supermarket-promotions";
+import { useSupermarketInventory } from "@/lib/data/supermarket-inventory";
+import {
+  pausePromotion,
+  removePromotion,
+  useSupermarketPromotions,
+} from "@/lib/supermarket/client-stores";
+import { toUiPromotion } from "@/lib/supermarket/promotion-ui";
 import {
   filterClass,
   glassCard,
@@ -72,8 +72,20 @@ function AppliesToCell({ item }: { item: Promotion }) {
 
 export function PromotionsManager() {
   const router = useRouter();
-  const items = useSyncExternalStore(subscribePromotions, getPromotionsSnapshot, getPromotionsSnapshot);
-  const typeOptions = getActivePromotionTypeOptions();
+  const live = useSupermarketPromotions();
+  const inventory = useSupermarketInventory();
+  const items = useMemo(() => live.promotions.map(toUiPromotion), [live.promotions]);
+  const typeOptions = useMemo(
+    () =>
+      live.types
+        .filter((type) => type.isActive)
+        .map((type) => ({ value: type.code as PromotionType, label: type.name })),
+    [live.types],
+  );
+  const categoryOptions = useMemo(
+    () => ["All Categories", ...inventory.categories.filter((c) => c.isActive).map((c) => c.name)],
+    [inventory.categories],
+  );
   const [tab, setTab] = useState<StatusTab>("ALL");
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | PromotionType>("all");
@@ -225,9 +237,9 @@ export function PromotionsManager() {
             className={cn(filterClass, "lg:w-[158px]")}
           >
             <option value="All Categories">All Categories</option>
-            {MOCK_PROMOTION_CATEGORIES.map((item) => (
-              <option key={item.id} value={item.name}>
-                {item.name}
+            {categoryOptions.filter((name) => name !== "All Categories").map((name) => (
+              <option key={name} value={name}>
+                {name}
               </option>
             ))}
           </select>
@@ -415,8 +427,7 @@ export function PromotionsManager() {
                 label="Duplicate"
                 onClick={() => {
                   setMenu(null);
-                  const copy = duplicatePromotion(menuItem.id);
-                  if (copy) router.push(`/supermarket/promotions/${copy.id}/edit`);
+                  router.push(`/supermarket/promotions/create?duplicate=${menuItem.id}`);
                 }}
               />
               <MenuButton
@@ -438,7 +449,7 @@ export function PromotionsManager() {
         confirmLabel="Delete Promotion"
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
-          if (confirm?.type === "delete") deletePromotion(confirm.id);
+          if (confirm?.type === "delete") void removePromotion(confirm.id);
           setConfirm(null);
         }}
       />
@@ -449,7 +460,7 @@ export function PromotionsManager() {
         confirmLabel="Deactivate"
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
-          if (confirm?.type === "deactivate") setPromotionStatus(confirm.id, "INACTIVE");
+          if (confirm?.type === "deactivate") void pausePromotion(confirm.id, true);
           setConfirm(null);
         }}
       />
@@ -460,7 +471,7 @@ export function PromotionsManager() {
         confirmLabel="Cancel Promotion"
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
-          if (confirm?.type === "cancel") setPromotionStatus(confirm.id, "INACTIVE");
+          if (confirm?.type === "cancel") void pausePromotion(confirm.id, true);
           setConfirm(null);
         }}
       />
@@ -472,7 +483,7 @@ export function PromotionsManager() {
         tone="default"
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
-          if (confirm?.type === "activate") setPromotionStatus(confirm.id, "ACTIVE");
+          if (confirm?.type === "activate") void pausePromotion(confirm.id, false);
           setConfirm(null);
         }}
       />

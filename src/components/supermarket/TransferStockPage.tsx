@@ -33,13 +33,13 @@ export function TransferStockPage() {
   const selected = rows.find((item) => item.id === selectedId) ?? null;
   const available = selected ? (from === "Main Store" ? selected.mainStore : selected.salesFloor) : 0;
 
-  function confirm() {
+  async function confirm() {
     const qty = Number(quantity);
     if (!selected) return setError("Select a product.");
     if (from === to) return setError("Choose two different locations.");
     if (!Number.isInteger(qty) || qty <= 0) return setError("Enter a quantity greater than zero.");
     if (qty > available) return setError(`Only ${available} units available in ${from}.`);
-    const result = inventory.transferStock({
+    const result = await inventory.transferStock({
       productId: selected.id,
       from,
       to,

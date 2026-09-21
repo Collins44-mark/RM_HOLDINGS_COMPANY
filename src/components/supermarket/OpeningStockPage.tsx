@@ -32,7 +32,7 @@ export function OpeningStockPage() {
   }).slice(0, 8);
   const selected = rows.find((item) => item.id === selectedId) ?? null;
 
-  function confirm() {
+  async function confirm() {
     const qty = Number(quantity);
     if (!selected) return setError("Select a product.");
     if (!Number.isInteger(qty) || qty <= 0) return setError("Enter a quantity greater than zero.");
@@ -49,7 +49,7 @@ export function OpeningStockPage() {
       }
       if (main + floor !== qty) return setError("Stock allocation must equal the received quantity.");
     }
-    const result = inventory.receiveStock({
+    const result = await inventory.receiveStock({
       productId: selected.id,
       quantity: qty,
       buyingPrice: selected.buyingPrice,

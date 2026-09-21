@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/cn";
@@ -8,20 +8,17 @@ import { PageBackButton } from "@/components/ui/PageBackButton";
 import { glassCard, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
 import { PromotionConfirmDialog } from "@/components/supermarket/promotions/PromotionConfirmDialog";
 import {
-  duplicatePromotion,
   effectivePromotionStatus,
   formatPromotionDate,
-  getPromotionsSnapshot,
   promotionAppliesLabel,
   promotionRuleSummary,
   promotionStatusLabel,
   promotionTypeLabel,
-  resolvePromotionCategoryNames,
-  resolvePromotionProductNames,
-  setPromotionStatus,
-  subscribePromotions,
   type PromotionStatus,
 } from "@/lib/data/sample-supermarket-promotions";
+import { useSupermarketInventory } from "@/lib/data/supermarket-inventory";
+import { pausePromotion, savePromotion, useSupermarketPromotions } from "@/lib/supermarket/client-stores";
+import { toUiPromotion } from "@/lib/supermarket/promotion-ui";
 
 function statusBadgeClass(status: PromotionStatus) {
   if (status === "ACTIVE") return "bg-[#e7f4ea] text-[#3f8a5a]";
@@ -35,9 +32,24 @@ const detailCard =
 
 export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
   const router = useRouter();
-  const items = useSyncExternalStore(subscribePromotions, getPromotionsSnapshot, getPromotionsSnapshot);
-  const promotion = items.find((item) => item.id === promotionId) ?? null;
+  const live = useSupermarketPromotions();
+  const inventory = useSupermarketInventory();
+  const promotion = useMemo(
+    () => live.promotions.map(toUiPromotion).find((item) => item.id === promotionId) ?? null,
+    [live.promotions, promotionId],
+  );
   const [confirm, setConfirm] = useState<"deactivate" | "activate" | "cancel" | null>(null);
+
+  if (!live.loaded) {
+    return (
+      <div className="space-y-5 pb-10">
+        <PageBackButton href="/supermarket/promotions" prefetch />
+        <div className={cn(glassCard, "px-5 py-10 text-center")}>
+          <p className="text-[13.5px] text-slate-500">Loading promotion…</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!promotion) {
     return (
@@ -45,7 +57,7 @@ export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
         <PageBackButton href="/supermarket/promotions" prefetch />
         <div className={cn(glassCard, "px-5 py-10 text-center")}>
           <p className="text-[15px] font-semibold text-navy">Promotion not found</p>
-          <p className="mt-1.5 text-[13.5px] text-slate-500">It may have been deleted from the local list.</p>
+          <p className="mt-1.5 text-[13.5px] text-slate-500">{live.error ?? "It may have been deleted."}</p>
           <Link href="/supermarket/promotions" className={cn(primaryButton, "mt-5 inline-flex")}>
             Back to Promotions
           </Link>
@@ -55,8 +67,12 @@ export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
   }
 
   const status = effectivePromotionStatus(promotion);
-  const productNames = resolvePromotionProductNames(promotion.productIds);
-  const categoryNames = resolvePromotionCategoryNames(promotion.categoryIds);
+  const productNames = promotion.productIds
+    .map((id) => inventory.products.find((p) => p.id === id)?.name)
+    .filter((name): name is string => Boolean(name));
+  const categoryNames = promotion.categoryIds
+    .map((id) => inventory.categories.find((c) => c.id === id)?.name)
+    .filter((name): name is string => Boolean(name));
 
   return (
     <div className="page-enter min-w-0 space-y-3.5 pb-10 sm:space-y-4">
@@ -83,8 +99,41 @@ export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
             <button
               type="button"
               onClick={() => {
-                const copy = duplicatePromotion(promotion.id);
-                if (copy) router.push(`/supermarket/promotions/${copy.id}/edit`);
+                void (async () => {
+                  const result = await savePromotion({
+                    name: `${promotion.name} (Copy)`,
+                    description: promotion.description,
+                    typeCode: promotion.type,
+                    targetType:
+                      promotion.targetType === "CATEGORY"
+                        ? "CATEGORIES"
+                        : promotion.targetType === "ALL_PRODUCTS"
+                          ? "ALL_PRODUCTS"
+                          : "PRODUCTS",
+                    productIds: promotion.productIds,
+                    categoryIds: promotion.categoryIds,
+                    startDate: promotion.startDate,
+                    endDate: promotion.endDate,
+                    isPaused: true,
+                    allowMultipleUse: promotion.allowMultipleUse,
+                    usageLimitEnabled: promotion.usageLimitEnabled,
+                    usageLimit: promotion.usageLimit,
+                    buyQuantity: promotion.rule.buyQuantity ?? null,
+                    freeQuantity: promotion.rule.freeQuantity ?? null,
+                    discountPercent: promotion.rule.discountPercent ?? null,
+                    discountAmount: promotion.rule.discountAmount ?? null,
+                    requiredQuantity: promotion.rule.requiredQuantity ?? null,
+                    fixedPrice: promotion.rule.fixedPrice ?? null,
+                    bundlePrice: promotion.rule.bundlePrice ?? null,
+                    minimumSpend: promotion.rule.minimumSpend ?? null,
+                    tiers: (promotion.rule.tiers ?? []).map((tier, index) => ({
+                      minimumSpend: tier.minimumSpend,
+                      discountPercent: tier.discountPercent,
+                      sortOrder: index,
+                    })),
+                  });
+                  if (result.ok) router.push(`/supermarket/promotions/${result.id}/edit`);
+                })();
               }}
               className={cn(primaryButton, "w-full sm:w-auto")}
             >
@@ -202,8 +251,7 @@ export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
         confirmLabel="Deactivate"
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
-          setPromotionStatus(promotion.id, "INACTIVE");
-          setConfirm(null);
+          void pausePromotion(promotion.id, true).then(() => setConfirm(null));
         }}
       />
       <PromotionConfirmDialog
@@ -213,8 +261,7 @@ export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
         confirmLabel="Cancel Promotion"
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
-          setPromotionStatus(promotion.id, "INACTIVE");
-          setConfirm(null);
+          void pausePromotion(promotion.id, true).then(() => setConfirm(null));
         }}
       />
       <PromotionConfirmDialog
@@ -225,7 +272,7 @@ export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
         tone="default"
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
-          setPromotionStatus(promotion.id, "ACTIVE");
+          void pausePromotion(promotion.id, false);
           setConfirm(null);
         }}
       />

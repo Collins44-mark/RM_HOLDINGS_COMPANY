@@ -19,27 +19,23 @@ import {
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import {
-  SUPERMARKET_SALES,
   formatSalesDate,
   resolveSalesPeriod,
   type SalesDateRange,
   type SalesPeriodPreset,
+  type SalesPayment,
+  type SalesStatus,
   type SupermarketSale,
 } from "@/lib/data/sample-supermarket-sales";
 import {
-  RETURN_CASHIERS,
   RETURN_CONDITIONS,
   RETURN_MOBILE_PROVIDERS,
   RETURN_REASONS,
   RETURN_REFUND_METHODS,
   RETURN_STATUSES,
-  RETURNS_STARTING_NUMBER,
-  SUPERMARKET_RETURNS,
   alreadyRefundedAmount,
   filterReturns,
-  formatReturnNumber,
   invoiceReturnLabel,
-  mockReturnsAsOfDate,
   movementsFromReturn,
   refundBreakdown,
   remainingSaleLines,
@@ -57,7 +53,69 @@ import {
   type ReturnStockMovement,
   type SupermarketReturn,
 } from "@/lib/data/sample-supermarket-returns";
+import {
+  processSaleReturn,
+  refreshReturns,
+  refreshSales,
+  useSupermarketReturns,
+  useSupermarketSales,
+} from "@/lib/supermarket/client-stores";
+import type { SupermarketSale as DbSale } from "@/lib/supermarket/types";
 
+function mapDbSale(sale: DbSale): SupermarketSale {
+  const soldAt = sale.date;
+  const payment: SalesPayment =
+    sale.payment === "Bank" || sale.payment === "Mixed" ? "Cash" : sale.payment;
+  const status: SalesStatus =
+    sale.status === "Refunded" || sale.status === "Partial Refund" ? "Refunded" : "Completed";
+  return {
+    id: sale.id,
+    soldAt,
+    dateLabel: formatSalesDate(soldAt),
+    timeLabel: soldAt.includes("T") ? soldAt.slice(11, 16) : "—",
+    customer: sale.customer,
+    cashier: sale.cashier,
+    store: "Main Store",
+    payment,
+    itemsCount: sale.items.reduce((sum, item) => sum + item.quantity, 0),
+    amount: sale.total,
+    status,
+    lines: sale.items.map((item) => ({
+      name: item.name,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+    })),
+    discount: sale.discount,
+  };
+}
+
+function mapConditionToDb(condition: ReturnCondition) {
+  if (condition === "Expired") return "EXPIRED";
+  if (condition === "Damaged") return "DAMAGED";
+  return "RESELLABLE";
+}
+
+function mapConditionFromDb(condition: string): ReturnCondition {
+  const upper = condition.toUpperCase();
+  if (upper === "EXPIRED") return "Expired";
+  if (upper === "DAMAGED") return "Damaged";
+  return "Resellable";
+}
+
+function mapRefundMethodToDb(method: ReturnRefundMethod) {
+  if (method === "Mobile Money") return "MOBILE_MONEY";
+  if (method === "Card") return "CARD";
+  if (method === "Store Credit") return "STORE_CREDIT";
+  return "CASH";
+}
+
+function mapRefundMethodFromDb(method: string): ReturnRefundMethod {
+  const upper = method.toUpperCase();
+  if (upper === "MOBILE_MONEY") return "Mobile Money";
+  if (upper === "CARD") return "Card";
+  if (upper === "STORE_CREDIT" || upper === "BANK") return "Store Credit";
+  return "Cash";
+}
 const glass =
   "rounded-[24px] border border-white/65 bg-white/76 shadow-[0_10px_28px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-xl";
 const filterClass =
@@ -129,15 +187,63 @@ function emptyDraft(sale: SupermarketSale, returns: SupermarketReturn[]): DraftL
 }
 
 export function ReturnsManager() {
-  const [returns, setReturns] = useState(SUPERMARKET_RETURNS);
-  const [movements, setMovements] = useState<ReturnStockMovement[]>(() =>
-    SUPERMARKET_RETURNS.flatMap(movementsFromReturn),
+  const salesState = useSupermarketSales();
+  const returnsState = useSupermarketReturns();
+  const liveSales = useMemo(() => salesState.sales.map(mapDbSale), [salesState.sales]);
+  const saleItemIdByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const sale of salesState.sales) {
+      for (const item of sale.items) {
+        map.set(`${sale.id}::${item.name}`, item.id);
+      }
+    }
+    return map;
+  }, [salesState.sales]);
+
+  const returns = useMemo<SupermarketReturn[]>(
+    () =>
+      returnsState.returns.map((row) => {
+        const stampDate = row.createdAt || new Date().toISOString();
+        return {
+          id: row.returnNumber || row.id,
+          invoiceId: row.saleId,
+          returnedAt: stampDate,
+          dateLabel: formatSalesDate(stampDate),
+          timeLabel: stampDate.includes("T") ? stampDate.slice(11, 16) : "—",
+          customer: row.customer,
+          cashier: "Staff",
+          method: mapRefundMethodFromDb(row.refundMethod),
+          status: "Refunded" as ReturnStatus,
+          items: row.items.map((item) => ({
+            name: item.name,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            condition: mapConditionFromDb(item.condition),
+            reason: (item.reason || "Other") as ReturnReason,
+            notes: "",
+          })),
+          itemsCount: row.items.reduce((sum, item) => sum + item.quantity, 0),
+          amount: row.refundAmount,
+          originalTotal:
+            liveSales.find((sale) => sale.id === row.saleId)?.amount ?? row.refundAmount,
+          discountAdjustment: 0,
+        };
+      }),
+    [returnsState.returns, liveSales],
   );
-  const [nextNumber, setNextNumber] = useState(RETURNS_STARTING_NUMBER);
+  const movements = useMemo(() => returns.flatMap(movementsFromReturn), [returns]);
+  const cashierOptions = useMemo(
+    () => [...new Set(liveSales.map((sale) => sale.cashier).filter(Boolean))].sort(),
+    [liveSales],
+  );
+
   const [view, setView] = useState<ViewMode>("list");
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
   const [periodPreset, setPeriodPreset] = useState<SalesPeriodPreset>("month");
-  const [customRange, setCustomRange] = useState<SalesDateRange>({ from: "2026-09-01", to: "2026-09-14" });
+  const [customRange, setCustomRange] = useState<SalesDateRange>(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return { from: today, to: today };
+  });
   const [cashier, setCashier] = useState("all");
   const [method, setMethod] = useState<"all" | ReturnRefundMethod>("all");
   const [status, setStatus] = useState<"all" | ReturnStatus>("all");
@@ -152,10 +258,17 @@ export function ReturnsManager() {
   const [provider, setProvider] = useState<ReturnMobileProvider>("M-Pesa");
   const [wizardError, setWizardError] = useState("");
   const [completed, setCompleted] = useState<SupermarketReturn | null>(null);
+  const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    void refreshSales();
+    void refreshReturns();
+  }, []);
+
+  const asOf = new Date().toISOString().slice(0, 10);
   const period = useMemo(
-    () => resolveSalesPeriod(periodPreset, customRange, mockReturnsAsOfDate(returns)),
-    [periodPreset, customRange, returns],
+    () => resolveSalesPeriod(periodPreset, customRange, asOf),
+    [periodPreset, customRange, asOf],
   );
   const filtered = useMemo(
     () =>
@@ -171,8 +284,13 @@ export function ReturnsManager() {
   );
   const kpis = useMemo(() => returnKpis(filtered), [filtered]);
   const selected = selectedId ? filtered.find((row) => row.id === selectedId) ?? null : null;
-  const selectedSaleRecord = selected ? SUPERMARKET_SALES.find((sale) => sale.id === selected.invoiceId) ?? null : null;
-  const invoiceMatches = useMemo(() => searchSalesInvoices(invoiceQuery), [invoiceQuery]);
+  const selectedSaleRecord = selected
+    ? liveSales.find((sale) => sale.id === selected.invoiceId) ?? null
+    : null;
+  const invoiceMatches = useMemo(
+    () => searchSalesInvoices(invoiceQuery, liveSales),
+    [invoiceQuery, liveSales],
+  );
   const selectedItems = draft.filter((line) => line.quantity > 0);
   const breakdown = selectedSale
     ? refundBreakdown(
@@ -209,7 +327,7 @@ export function ReturnsManager() {
   }
 
   function printReturn(row: SupermarketReturn) {
-    const sale = SUPERMARKET_SALES.find((item) => item.id === row.invoiceId) ?? null;
+    const sale = liveSales.find((item) => item.id === row.invoiceId) ?? null;
     const popup = window.open("", "_blank", "noopener,noreferrer,width=480,height=720");
     if (!popup) return;
     popup.document.write(returnReceiptMarkup(row, sale));
@@ -260,19 +378,40 @@ export function ReturnsManager() {
       if (!line.reason) return "Each returned item needs a reason.";
       if (!line.condition) return "Each returned item needs a condition.";
       if (line.reason === "Other" && !line.notes.trim()) return "Add notes for items marked Other.";
+      if (!saleItemIdByKey.get(`${selectedSale.id}::${line.name}`)) {
+        return `Could not resolve sale line for ${line.name}.`;
+      }
     }
     if (!refundMethod) return "Choose a refund method.";
     if (breakdown && breakdown.refundAmount <= 0) return "Refund amount must be greater than zero.";
     return "";
   }
 
-  function processRefund() {
+  async function processRefund() {
     const error = validateWizard();
     if (error) {
       setWizardError(error);
       return;
     }
-    if (!selectedSale || !breakdown) return;
+    if (!selectedSale || !breakdown || saving) return;
+    setSaving(true);
+    const result = await processSaleReturn({
+      saleId: selectedSale.id,
+      refundMethod: mapRefundMethodToDb(refundMethod),
+      reason: selectedItems.map((line) => line.reason).join("; "),
+      items: selectedItems.map((line) => ({
+        saleItemId: saleItemIdByKey.get(`${selectedSale.id}::${line.name}`)!,
+        quantity: line.quantity,
+        condition: mapConditionToDb(line.condition),
+        reason: line.reason === "Other" ? line.notes.trim() || line.reason : line.reason,
+      })),
+    });
+    setSaving(false);
+    if (!result.ok) {
+      setWizardError(result.error);
+      return;
+    }
+
     const items: ReturnLine[] = selectedItems.map((line) => ({
       name: line.name,
       quantity: line.quantity,
@@ -281,9 +420,8 @@ export function ReturnsManager() {
       reason: line.reason,
       notes: line.notes,
     }));
-    const nextReturns = [...returns];
     const statusLabel = invoiceReturnLabel(selectedSale, [
-      ...nextReturns,
+      ...returns,
       {
         id: "preview",
         invoiceId: selectedSale.id,
@@ -302,7 +440,7 @@ export function ReturnsManager() {
       },
     ]);
     const row: SupermarketReturn = {
-      id: formatReturnNumber(nextNumber),
+      id: String(result.id),
       invoiceId: selectedSale.id,
       returnedAt: new Date().toISOString(),
       dateLabel: formatSalesDate(new Date().toISOString()),
@@ -322,9 +460,6 @@ export function ReturnsManager() {
       originalTotal: selectedSale.amount,
       discountAdjustment: breakdown.discountAdjustment,
     };
-    setReturns((current) => [row, ...current]);
-    setMovements((current) => [...movementsFromReturn(row), ...current]);
-    setNextNumber((value) => value + 1);
     setCompleted(row);
     setSelectedId(row.id);
     setView("success");
@@ -370,7 +505,8 @@ export function ReturnsManager() {
           setWizardError("");
           setWizardStep(3);
         }}
-        onProcess={processRefund}
+        onProcess={() => void processRefund()}
+        saving={saving}
       />
     );
   }
@@ -424,9 +560,10 @@ export function ReturnsManager() {
           onRange={setCustomRange}
         />
         <select value={cashier} onChange={(event) => setCashier(event.target.value)} className={cn(filterClass, "lg:w-auto lg:min-w-[10.5rem]")}>
-          {RETURN_CASHIERS.map((item) => (
+          <option value="all">All Cashiers</option>
+          {cashierOptions.map((item) => (
             <option key={item} value={item}>
-              {item === "all" ? "All Cashiers" : item}
+              {item}
             </option>
           ))}
         </select>
@@ -672,6 +809,7 @@ function WizardView({
   onCancel,
   onContinue,
   onProcess,
+  saving,
 }: {
   step: 1 | 2 | 3;
   invoiceQuery: string;
@@ -692,6 +830,7 @@ function WizardView({
   onCancel: () => void;
   onContinue: () => void;
   onProcess: () => void;
+  saving?: boolean;
 }) {
   const selectedItems = draft.filter((line) => line.quantity > 0);
   const remainingAny = draft.some((line) => line.remaining > 0);
@@ -981,10 +1120,11 @@ function WizardView({
             </button>
             <button
               type="button"
+              disabled={saving}
               onClick={onProcess}
-              className="inline-flex h-11 items-center justify-center rounded-[14px] bg-[#0b2244] px-5 text-[14px] font-semibold text-white"
+              className="inline-flex h-11 items-center justify-center rounded-[14px] bg-[#0b2244] px-5 text-[14px] font-semibold text-white disabled:opacity-60"
             >
-              Process Refund
+              {saving ? "Processing…" : "Process Refund"}
             </button>
           </div>
         </section>

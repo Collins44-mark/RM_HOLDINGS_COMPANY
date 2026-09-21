@@ -26,8 +26,6 @@ import { formatTzs } from "@/lib/format/currency";
 import { downloadSalesReportPdf } from "@/lib/data/supermarket-sales-report";
 import {
   SALES_CASHIERS,
-  SALES_PAGE_KPIS,
-  SUPERMARKET_SALES,
   filterSales,
   formatSalesDate,
   resolveSalesPeriod,
@@ -39,6 +37,35 @@ import {
   type SalesStatus,
   type SupermarketSale,
 } from "@/lib/data/sample-supermarket-sales";
+import { refreshSales, useSupermarketSales } from "@/lib/supermarket/client-stores";
+import type { SupermarketSale as DbSale } from "@/lib/supermarket/types";
+
+function mapDbSale(sale: DbSale): SupermarketSale {
+  const soldAt = sale.date;
+  const payment: SalesPayment =
+    sale.payment === "Bank" || sale.payment === "Mixed" ? "Cash" : sale.payment;
+  const status: SalesStatus =
+    sale.status === "Refunded" || sale.status === "Partial Refund" ? "Refunded" : "Completed";
+  return {
+    id: sale.id,
+    soldAt,
+    dateLabel: formatSalesDate(soldAt),
+    timeLabel: soldAt.includes("T") ? soldAt.slice(11, 16) : "—",
+    customer: sale.customer,
+    cashier: sale.cashier,
+    store: "Main Store",
+    payment,
+    itemsCount: sale.items.reduce((sum, item) => sum + item.quantity, 0),
+    amount: sale.total,
+    status,
+    lines: sale.items.map((item) => ({
+      name: item.name,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+    })),
+    discount: sale.discount,
+  };
+}
 
 const PAGE_SIZES = [10, 20, 50] as const;
 const glass =
@@ -313,7 +340,7 @@ function PeriodControl({
 }
 
 export function SalesManager() {
-  const [periodPreset, setPeriodPreset] = useState<SalesPeriodPreset>("today");
+  const [periodPreset, setPeriodPreset] = useState<SalesPeriodPreset>("week");
   const [customRange, setCustomRange] = useState<SalesDateRange>({ from: "2026-09-01", to: "2026-09-14" });
   const [cashier, setCashier] = useState("all");
   const [payment, setPayment] = useState<"all" | SalesPayment>("all");
@@ -327,14 +354,25 @@ export function SalesManager() {
   const [fullDetails, setFullDetails] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  const period = useMemo(
-    () => resolveSalesPeriod(periodPreset, customRange),
-    [periodPreset, customRange],
+  const period = useMemo(() => {
+    const asOf = new Date().toISOString().slice(0, 10);
+    return resolveSalesPeriod(periodPreset, customRange, asOf);
+  }, [periodPreset, customRange]);
+
+  const salesState = useSupermarketSales({ from: period.start, to: period.end });
+
+  useEffect(() => {
+    void refreshSales({ from: period.start, to: period.end });
+  }, [period.start, period.end]);
+
+  const liveSales = useMemo(
+    () => salesState.sales.map(mapDbSale),
+    [salesState.sales],
   );
 
   const filtered = useMemo(
     () =>
-      filterSales(SUPERMARKET_SALES, {
+      filterSales(liveSales, {
         start: period.start,
         end: period.end,
         cashier,
@@ -342,7 +380,7 @@ export function SalesManager() {
         status,
         query,
       }),
-    [period.start, period.end, cashier, payment, status, query],
+    [liveSales, period.start, period.end, cashier, payment, status, query],
   );
   const kpis = useMemo(() => salesKpis(filtered), [filtered]);
 
@@ -423,28 +461,28 @@ export function SalesManager() {
         <KpiCard
           label="Total Sales"
           value={formatTzs(kpis.totalSales)}
-          delta={SALES_PAGE_KPIS.totalSalesDelta}
+          delta={0}
           icon={Coins}
           tone="blue"
         />
         <KpiCard
           label="Total Transactions"
           value={kpis.totalTransactions.toLocaleString("en-US")}
-          delta={SALES_PAGE_KPIS.totalTransactionsDelta}
+          delta={0}
           icon={FileText}
           tone="violet"
         />
         <KpiCard
           label="Items Sold"
           value={kpis.itemsSold.toLocaleString("en-US")}
-          delta={SALES_PAGE_KPIS.itemsSoldDelta}
+          delta={0}
           icon={Package}
           tone="green"
         />
         <KpiCard
           label="Average Sale"
           value={formatTzs(kpis.averageSale)}
-          delta={SALES_PAGE_KPIS.averageSaleDelta}
+          delta={0}
           icon={TrendingUp}
           tone="amber"
         />

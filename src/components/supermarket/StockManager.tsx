@@ -733,8 +733,8 @@ export function StockManager() {
             prefillProductId={prefillProductId}
             actorName={user?.name || "Storekeeper"}
             onCancel={closePanel}
-            onSubmit={(input) => {
-              const result = inventory.adjustStock(input);
+            onSubmit={async (input) => {
+              const result = await inventory.adjustStock(input);
               if (result.error) return result.error;
               closePanel();
               return null;
@@ -1371,7 +1371,7 @@ function AdjustStockForm({
   prefillProductId: string | null;
   actorName: string;
   onCancel: () => void;
-  onSubmit: (input: AdjustStockInput) => string | null;
+  onSubmit: (input: AdjustStockInput) => string | null | Promise<string | null>;
 }) {
   const prefilled = products.find((item) => item.id === prefillProductId) ?? null;
   const [productQuery, setProductQuery] = useState("");
@@ -1403,7 +1403,7 @@ function AdjustStockForm({
       .slice(0, 8);
   }, [productQuery, products]);
 
-  function submit() {
+  async function submit() {
     const nextErrors: Record<string, string> = {};
     if (!selected) nextErrors.product = "Select a product.";
     if (!direction) nextErrors.kind = "Select an adjustment type.";
@@ -1416,7 +1416,7 @@ function AdjustStockForm({
       setErrors(nextErrors);
       return;
     }
-    const submitError = onSubmit({
+    const submitError = await onSubmit({
       productId: selected!.id,
       kind: mapped.kind,
       quantity: qty,

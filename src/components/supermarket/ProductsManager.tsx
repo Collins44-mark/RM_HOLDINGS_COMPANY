@@ -283,9 +283,9 @@ export function ProductsManager() {
     setSort("name");
   }
 
-  function toggleActive(productId: string) {
+  async function toggleActive(productId: string) {
     setMenuId(null);
-    toggleProductActive(productId);
+    await toggleProductActive(productId);
   }
 
   function lookupBarcode(code: string) {
@@ -305,7 +305,7 @@ export function ProductsManager() {
     setForm((current) => ({ ...current, barcode: code.trim() }));
   }
 
-  function saveProduct() {
+  async function saveProduct() {
     const nextErrors: Record<string, string> = {};
     const name = form.name.trim();
     const sku = form.sku.trim().toUpperCase();
@@ -364,10 +364,14 @@ export function ProductsManager() {
       createdAt: selected?.createdAt ?? new Date().toISOString(),
     };
 
-    upsertProduct(payload);
+    const saved = await upsertProduct(payload);
+    if (saved.error || !saved.id) {
+      setErrors({ name: saved.error ?? "Unable to save product." });
+      return;
+    }
     if (!selected && stock > 0) {
-      receiveStock({
-        productId: payload.id,
+      const stockResult = await receiveStock({
+        productId: saved.id,
         quantity: stock,
         batchNumber: "OPENING",
         expiryDate: form.trackExpiry ? expiryDate : null,
@@ -376,6 +380,10 @@ export function ProductsManager() {
         reference: "OPENING",
         note: "Opening stock",
       });
+      if (stockResult.error) {
+        setErrors({ stock: stockResult.error });
+        return;
+      }
     }
     closePanel();
   }

@@ -40,7 +40,7 @@ export type PosProduct = {
   name: string;
   sku: string;
   barcode: string;
-  category: PosCategory;
+  category: string;
   price: number;
   stock: number;
   accent: string;
@@ -51,7 +51,7 @@ export type PosCartItem = {
   name: string;
   sku: string;
   barcode: string;
-  category: PosCategory;
+  category: string;
   unitPrice: number;
   quantity: number;
   stock: number;
@@ -168,7 +168,7 @@ export function posTotals(items: PosCartItem[], discountPercent: number) {
 export function filterPosProducts(
   products: PosProduct[],
   query: string,
-  category: "all" | PosCategory,
+  category: string,
 ) {
   const needle = query.trim().toLowerCase();
   return products.filter((product) => {

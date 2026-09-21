@@ -7,13 +7,14 @@ import { formatTzs } from "@/lib/format/currency";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
 import { primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
 import {
-  buildPurchaseReportData,
   type PurchaseReportFilters,
 } from "@/lib/data/sample-supermarket-reports";
-import { seedSuppliers } from "@/lib/data/supermarket-purchasing";
 import { downloadReportPdf } from "@/lib/data/supermarket-reports-pdf";
 import { useReportPeriod } from "@/components/supermarket/report-shell";
 import { PageBackButton } from "@/components/ui/PageBackButton";
+import { fetchPurchaseReportAction } from "@/actions/supermarket/reports";
+import { useLiveReport } from "@/lib/supermarket/use-live-report";
+import { useSupermarketInventory } from "@/lib/data/supermarket-inventory";
 
 const glass =
   "rounded-[18px] border border-[#e7ecf3] bg-white/90 shadow-[0_8px_24px_rgba(15,35,64,0.04)] backdrop-blur-xl";
@@ -159,26 +160,32 @@ export function PurchaseReportDetail() {
     [supplier, paymentStatus],
   );
 
-  const data = useMemo(
-    () => buildPurchaseReportData(preset, range, filters),
-    [preset, range, filters],
-  );
+  const inventory = useSupermarketInventory();
+  const { data, error, loading } = useLiveReport(fetchPurchaseReportAction, preset, range, filters);
 
   const purchaseRows = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    if (!needle) return data.purchases;
-    return data.purchases.filter(
+    const rows = data?.purchases ?? [];
+    if (!needle) return rows;
+    return rows.filter(
       (row) =>
         row.number.toLowerCase().includes(needle) ||
         row.supplier.toLowerCase().includes(needle) ||
         row.paymentStatus.toLowerCase().includes(needle) ||
         row.status.toLowerCase().includes(needle),
     );
-  }, [data.purchases, search]);
+  }, [data?.purchases, search]);
 
-  const supplierTotal = data.suppliers.reduce((sum, row) => sum + row.purchases, 0);
-  const paymentAmountTotal = data.paymentStatusSummary.reduce((sum, row) => sum + row.amount, 0);
-  const paymentCountTotal = data.paymentStatusSummary.reduce((sum, row) => sum + row.count, 0);
+  const supplierTotal = (data?.suppliers ?? []).reduce((sum, row) => sum + row.purchases, 0);
+  const paymentAmountTotal = (data?.paymentStatusSummary ?? []).reduce((sum, row) => sum + row.amount, 0);
+  const paymentCountTotal = (data?.paymentStatusSummary ?? []).reduce((sum, row) => sum + row.count, 0);
+
+  if (loading && !data) {
+    return <p className="px-1 py-8 text-[13px] text-slate-500">Loading purchase report…</p>;
+  }
+  if (error || !data) {
+    return <p className="px-1 py-8 text-[13px] text-[#c45b66]">{error || "Unable to load purchase report."}</p>;
+  }
 
   function resetFilters() {
     setSupplier("all");
@@ -258,7 +265,7 @@ export function PurchaseReportDetail() {
               onChange={setSupplier}
               options={[
                 { value: "all", label: "All Suppliers" },
-                ...seedSuppliers().map((item) => ({ value: item.name, label: item.name })),
+                ...inventory.suppliers.map((item) => ({ value: item.name, label: item.name })),
               ]}
             />
             <label className="block min-w-0 flex-1">

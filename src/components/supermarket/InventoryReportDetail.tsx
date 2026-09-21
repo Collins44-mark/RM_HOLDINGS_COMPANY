@@ -8,12 +8,13 @@ import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilte
 import { primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
 import { SUPERMARKET_PRODUCT_CATEGORIES } from "@/lib/data/supermarket-inventory";
 import {
-  buildInventoryReportData,
   type InventoryReportFilters,
 } from "@/lib/data/sample-supermarket-reports";
 import { downloadReportPdf } from "@/lib/data/supermarket-reports-pdf";
 import { useReportPeriod } from "@/components/supermarket/report-shell";
 import { PageBackButton } from "@/components/ui/PageBackButton";
+import { fetchInventoryReportAction } from "@/actions/supermarket/reports";
+import { useLiveReport } from "@/lib/supermarket/use-live-report";
 
 const glass =
   "rounded-[18px] border border-[#e7ecf3] bg-white/90 shadow-[0_8px_24px_rgba(15,35,64,0.04)] backdrop-blur-xl";
@@ -154,21 +155,26 @@ export function InventoryReportDetail() {
     [category, status],
   );
 
-  const data = useMemo(
-    () => buildInventoryReportData(preset, range, filters),
-    [preset, range, filters],
-  );
+  const { data, error, loading } = useLiveReport(fetchInventoryReportAction, preset, range, filters);
 
   const valuationRows = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    if (!needle) return data.valuation;
-    return data.valuation.filter((row) => row.name.toLowerCase().includes(needle));
-  }, [data.valuation, search]);
+    const rows = data?.valuation ?? [];
+    if (!needle) return rows;
+    return rows.filter((row) => row.name.toLowerCase().includes(needle));
+  }, [data?.valuation, search]);
 
   function resetFilters() {
     setCategory("all");
     setStatus("all");
     setSearch("");
+  }
+
+  if (loading && !data) {
+    return <p className="px-1 py-8 text-[13px] text-slate-500">Loading inventory report…</p>;
+  }
+  if (error || !data) {
+    return <p className="px-1 py-8 text-[13px] text-[#c45b66]">{error || "Unable to load inventory report."}</p>;
   }
 
   return (

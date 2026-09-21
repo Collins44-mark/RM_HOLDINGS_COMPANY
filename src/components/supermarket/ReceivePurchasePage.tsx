@@ -69,7 +69,7 @@ export function ReceivePurchasePage() {
     setLines((current) => current.map((line) => (line.productId === productId ? { ...line, ...patch } : line)));
   }
 
-  function confirm() {
+  async function confirm() {
     if (!order) return;
     const current = order;
     const nextErrors: Record<string, string> = {};
@@ -118,7 +118,7 @@ export function ReceivePurchasePage() {
       return;
     }
 
-    const result = inventory.receivePurchaseOrder({
+    const result = await inventory.receivePurchaseOrder({
       purchaseOrderId: current.id,
       lines: payload,
       user: user?.name || "Storekeeper",

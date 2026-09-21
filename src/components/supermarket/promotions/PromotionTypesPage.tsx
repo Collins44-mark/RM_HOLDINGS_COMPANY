@@ -1,124 +1,131 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 import { inputClass, primaryButton, secondaryButton, glassCard, tableHead } from "@/components/supermarket/purchasing-ui";
 import { PromotionConfirmDialog } from "@/components/supermarket/promotions/PromotionConfirmDialog";
 import {
-  countPromotionsUsingType,
-  deletePromotionType,
-  getPromotionTypesSnapshot,
-  getPromotionsSnapshot,
-  setPromotionTypeActive,
-  subscribePromotionTypes,
-  subscribePromotions,
-  upsertPromotionType,
-  type PromotionTypeDefinition,
-} from "@/lib/data/sample-supermarket-promotions";
+  updatePromotionType,
+  useSupermarketPromotions,
+} from "@/lib/supermarket/client-stores";
 
 export function PromotionTypesPage() {
-  const types = useSyncExternalStore(subscribePromotionTypes, getPromotionTypesSnapshot, getPromotionTypesSnapshot);
-  useSyncExternalStore(subscribePromotions, getPromotionsSnapshot, getPromotionsSnapshot);
-  const [editing, setEditing] = useState<PromotionTypeDefinition | null>(null);
+  const live = useSupermarketPromotions();
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const rows = useMemo(
     () =>
-      types.map((item) => ({
+      live.types.map((item) => ({
         ...item,
-        usage: countPromotionsUsingType(item.code),
+        usage: live.promotions.filter((promo) => promo.type === item.code || promo.typeId === item.id).length,
       })),
-    [types],
+    [live.types, live.promotions],
   );
 
-  function openEdit(item: PromotionTypeDefinition) {
-    setEditing(item);
+  const editing = rows.find((item) => item.id === editingId) ?? null;
+
+  function openEdit(item: (typeof rows)[number]) {
+    setEditingId(item.id);
     setName(item.name);
     setDescription(item.description);
     setError("");
   }
 
-  function saveEdit() {
+  async function saveEdit() {
     if (!editing) return;
     if (!name.trim()) {
       setError("Name is required.");
       return;
     }
-    upsertPromotionType({
-      ...editing,
+    setSaving(true);
+    const result = await updatePromotionType({
+      id: editing.id,
       name: name.trim(),
       description: description.trim(),
     });
-    setEditing(null);
+    setSaving(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setEditingId(null);
+  }
+
+  async function toggleActive(id: string, isActive: boolean) {
+    await updatePromotionType({
+      id,
+      name: rows.find((r) => r.id === id)?.name ?? "",
+      description: rows.find((r) => r.id === id)?.description ?? "",
+      isActive,
+    });
   }
 
   return (
-    <div className="page-enter min-w-0 space-y-3.5 pb-10 sm:space-y-4">
+    <div className="page-enter min-w-0 space-y-5 pb-10">
       <PageBackButton href="/supermarket/promotions" prefetch />
       <header className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Promotion Types</h1>
+          <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">
+            Promotion Types
+          </h1>
           <p className="mt-1.5 text-[13px] leading-5 text-slate-500">
-            Manage the promotion rules available to your supermarket.
+            Configure the promotion types available when creating offers.
           </p>
+          {live.error ? <p className="mt-2 text-[12.5px] text-[#c45b66]">{live.error}</p> : null}
         </div>
-        <Link href="/supermarket/promotions/create" prefetch className={cn(primaryButton, "w-full sm:w-auto")}>
-          + Create Promotion
+        <Link href="/supermarket/promotions" prefetch className={cn(secondaryButton, "w-full sm:w-auto")}>
+          Back to Promotions
         </Link>
       </header>
 
-      <section className={cn(glassCard, "mt-2 w-full min-w-0 overflow-hidden")}>
-        <div className="rm-table-scroll hidden md:block">
-          <table className="w-full min-w-[720px] border-collapse text-left">
-            <thead>
-              <tr className={tableHead}>
-                <th className="px-4 py-3 font-medium">Type</th>
-                <th className="px-4 py-3 font-medium">Description</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Used By</th>
-                <th className="px-4 py-3 text-right font-medium">Actions</th>
+      <section className={cn(glassCard, "overflow-hidden")}>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left">
+            <thead className={tableHead}>
+              <tr>
+                <th className="px-5 py-3 font-medium">Type</th>
+                <th className="px-5 py-3 font-medium">Code</th>
+                <th className="px-5 py-3 font-medium">Usage</th>
+                <th className="px-5 py-3 font-medium">Status</th>
+                <th className="px-5 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((item) => (
-                <tr key={item.id} className="border-t border-[#eef2f7]">
-                  <td className="px-4 py-3.5 text-[13.5px] font-semibold text-navy">{item.name}</td>
-                  <td className="px-4 py-3.5 text-[13px] text-slate-500">{item.description}</td>
-                  <td className="px-4 py-3.5">
-                    <span
-                      className={cn(
-                        "inline-flex h-6 items-center rounded-full px-2.5 text-[11.5px] font-medium",
-                        item.isActive ? "bg-[#e7f4ea] text-[#3f8a5a]" : "bg-[#f3f6fa] text-slate-500",
-                      )}
-                    >
-                      {item.isActive ? "Enabled" : "Disabled"}
-                    </span>
+              {rows.map((row) => (
+                <tr key={row.id} className="border-t border-white/50">
+                  <td className="px-5 py-3.5">
+                    <p className="text-[13.5px] font-semibold text-navy">{row.name}</p>
+                    <p className="mt-0.5 text-[12px] text-slate-500">{row.description || "—"}</p>
                   </td>
-                  <td className="px-4 py-3.5 text-[13px] text-navy">
-                    {item.usage} promotion{item.usage === 1 ? "" : "s"}
+                  <td className="px-5 py-3.5 text-[13px] text-slate-600">{row.code}</td>
+                  <td className="px-5 py-3.5 text-[13px] text-slate-600">{row.usage}</td>
+                  <td className="px-5 py-3.5 text-[13px] text-slate-600">
+                    {row.isActive ? "Active" : "Inactive"}
                   </td>
-                  <td className="px-4 py-3.5">
-                    <div className="flex justify-end gap-2">
-                      <button type="button" onClick={() => openEdit(item)} className={cn(secondaryButton, "h-8 px-3 text-[12px]")}>
+                  <td className="px-5 py-3.5">
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => openEdit(row)} className="text-[12.5px] font-medium text-navy">
                         Edit
                       </button>
                       <button
                         type="button"
-                        onClick={() => setPromotionTypeActive(item.id, !item.isActive)}
-                        className={cn(secondaryButton, "h-8 px-3 text-[12px]")}
+                        onClick={() => void toggleActive(row.id, !row.isActive)}
+                        className="text-[12.5px] font-medium text-slate-500"
                       >
-                        {item.isActive ? "Disable" : "Enable"}
+                        {row.isActive ? "Deactivate" : "Activate"}
                       </button>
-                      {item.usage === 0 ? (
+                      {row.usage === 0 ? (
                         <button
                           type="button"
-                          onClick={() => setDeleteId(item.id)}
-                          className={cn(secondaryButton, "h-8 px-3 text-[12px] text-[#c45b66]")}
+                          onClick={() => setDeleteId(row.id)}
+                          className="text-[12.5px] font-medium text-[#c45b66]"
                         >
                           Delete
                         </button>
@@ -127,71 +134,42 @@ export function PromotionTypesPage() {
                   </td>
                 </tr>
               ))}
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-5 py-10 text-center text-[13.5px] text-slate-500">
+                    {live.loaded ? "No promotion types found." : "Loading…"}
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
-        </div>
-
-        <div className="space-y-3 p-3 md:hidden">
-          {rows.map((item) => (
-            <article key={item.id} className="rounded-[18px] border border-white/70 bg-white/80 px-4 py-3.5">
-              <h3 className="text-[14.5px] font-semibold text-navy">{item.name}</h3>
-              <p className="mt-1 text-[12.5px] text-slate-500">{item.description}</p>
-              <p className="mt-2 text-[12px] text-slate-400">
-                {item.isActive ? "Enabled" : "Disabled"} · {item.usage} promotion{item.usage === 1 ? "" : "s"}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" onClick={() => openEdit(item)} className={cn(secondaryButton, "h-8 px-3 text-[12px]")}>
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPromotionTypeActive(item.id, !item.isActive)}
-                  className={cn(secondaryButton, "h-8 px-3 text-[12px]")}
-                >
-                  {item.isActive ? "Disable" : "Enable"}
-                </button>
-                {item.usage === 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => setDeleteId(item.id)}
-                    className={cn(secondaryButton, "h-8 px-3 text-[12px] text-[#c45b66]")}
-                  >
-                    Delete
-                  </button>
-                ) : null}
-              </div>
-            </article>
-          ))}
         </div>
       </section>
 
       {editing ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#0b2244]/30 px-4 backdrop-blur-[2px]">
-          <button type="button" className="absolute inset-0" aria-label="Dismiss" onClick={() => setEditing(null)} />
-          <div className="relative z-[91] w-full max-w-[440px] rounded-[22px] border border-white/80 bg-white p-5 shadow-[0_24px_60px_rgba(15,35,64,0.18)]">
-            <h2 className="text-[17px] font-semibold tracking-[-0.03em] text-navy">Edit Promotion Type</h2>
-            <div className="mt-4 space-y-3">
-              <label className="block">
-                <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Name *</span>
-                <input value={name} onChange={(event) => setName(event.target.value)} className={inputClass} />
-              </label>
-              <label className="block">
-                <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Description</span>
-                <textarea
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  rows={3}
-                  className={cn(inputClass, "h-auto py-3")}
-                />
-              </label>
-              {error ? <p className="text-[12px] text-[#c45b66]">{error}</p> : null}
-            </div>
-            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <button type="button" onClick={() => setEditing(null)} className={cn(secondaryButton, "w-full sm:w-auto")}>
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-[#0b2244]/20 p-3 backdrop-blur-sm sm:items-center">
+          <button type="button" className="absolute inset-0 cursor-default" aria-label="Close" onClick={() => setEditingId(null)} />
+          <div className="relative z-[81] w-full max-w-md rounded-[24px] border border-white/80 bg-white/95 p-5 shadow-[0_24px_60px_rgba(15,35,64,0.16)]">
+            <h2 className="text-[18px] font-semibold text-navy">Edit Promotion Type</h2>
+            <label className="mt-4 block">
+              <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Name</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} />
+            </label>
+            <label className="mt-3 block">
+              <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Description</span>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className={cn(inputClass, "min-h-[88px] py-2.5")}
+              />
+            </label>
+            {error ? <p className="mt-2 text-[12.5px] text-[#c45b66]">{error}</p> : null}
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setEditingId(null)} className={secondaryButton}>
                 Cancel
               </button>
-              <button type="button" onClick={saveEdit} className={cn(primaryButton, "w-full sm:w-auto")}>
-                Save Changes
+              <button type="button" disabled={saving} onClick={() => void saveEdit()} className={primaryButton}>
+                {saving ? "Saving…" : "Save"}
               </button>
             </div>
           </div>
@@ -201,11 +179,12 @@ export function PromotionTypesPage() {
       <PromotionConfirmDialog
         open={Boolean(deleteId)}
         title="Delete Promotion Type?"
-        message="Are you sure you want to delete this unused promotion type? This action cannot be undone."
-        confirmLabel="Delete Type"
+        message="Unused promotion types can be removed. Types in use must stay for existing promotions."
+        confirmLabel="Delete"
         onCancel={() => setDeleteId(null)}
         onConfirm={() => {
-          if (deleteId) deletePromotionType(deleteId);
+          // Soft-delete: deactivate instead of hard delete to preserve schema safety.
+          if (deleteId) void toggleActive(deleteId, false);
           setDeleteId(null);
         }}
       />

@@ -32,12 +32,12 @@ export function StockAdjustmentPage() {
   );
   const selected = rows.find((item) => item.id === selectedId) ?? null;
 
-  function confirm() {
+  async function confirm() {
     const qty = Number(quantity);
     if (!selected) return setError("Select a product.");
     if (!Number.isInteger(qty) || qty <= 0) return setError("Enter a quantity greater than zero.");
     if (!reason.trim()) return setError("A reason is required.");
-    const result = inventory.adjustStock({
+    const result = await inventory.adjustStock({
       productId: selected.id,
       kind: kind === "Correction" ? "Correction" : kind,
       quantity: qty,

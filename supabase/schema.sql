@@ -163,3 +163,21 @@ insert into public.business_units (code, slug, name, sort_order) values
   ('school', 'school', 'School Management', 6),
   ('beekeeping', 'beekeeping', 'Beekeeping', 7)
 on conflict (code) do nothing;
+
+-- ---------------------------------------------------------------------------
+-- Supermarket module (see migrations):
+--   20260921120000_supermarket_module.sql
+--   20260921120100_supermarket_receive_return_rpcs.sql
+--   20260921120200_supermarket_seed_catalogue.sql
+-- Tables: sm_categories, sm_suppliers, sm_products, sm_stock_batches,
+-- sm_stock_movements, sm_stock_adjustments, sm_purchase_orders,
+-- sm_purchase_order_items, sm_goods_receipts, sm_goods_receipt_items,
+-- sm_sales, sm_sale_items, sm_sale_payments, sm_sales_returns,
+-- sm_sales_return_items, sm_promotion_types, sm_promotions,
+-- sm_promotion_products, sm_promotion_categories, sm_promotion_tiers,
+-- sm_expenses, sm_payments, sm_document_counters
+-- RPCs: sm_complete_sale, sm_adjust_stock, sm_receive_purchase_order,
+-- sm_process_sales_return, sm_next_document_number, sm_product_stock
+-- Access helpers: has_business_unit_access, supermarket_business_unit_id,
+-- has_supermarket_access
+-- ---------------------------------------------------------------------------

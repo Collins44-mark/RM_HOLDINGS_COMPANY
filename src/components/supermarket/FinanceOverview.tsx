@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
   Banknote,
@@ -19,17 +19,16 @@ import {
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import {
-  getFinanceActivitySnapshot,
-  getSupermarketFinanceSummary,
-  recordedExpenseTotal,
-  subscribeFinanceActivity,
   totalCashOnHand,
   type FinanceSummary,
 } from "@/lib/data/sample-supermarket-finance";
 import {
+  resolveSalesPeriod,
   type SalesDateRange,
   type SalesPeriodPreset,
 } from "@/lib/data/sample-supermarket-sales";
+import { getFinanceSummaryAction } from "@/actions/supermarket/reports";
+import { useSupermarketFinance } from "@/lib/supermarket/client-stores";
 import {
   primaryButton,
   secondaryButton,
@@ -74,20 +73,51 @@ const KPI_TONES: Record<KpiTone, { card: string; iconWrap: string; deltaUp: stri
 
 export function FinanceOverview() {
   const [preset, setPreset] = useState<SalesPeriodPreset>("today");
-  const [customRange, setCustomRange] = useState<SalesDateRange>({ from: "2026-09-01", to: "2026-09-16" });
+  const [customRange, setCustomRange] = useState<SalesDateRange>(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return { from: today, to: today };
+  });
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [summary, setSummary] = useState<FinanceSummary | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const finance = useSupermarketFinance();
+  const paymentCount = finance.payments.length;
 
-  const activity = useSyncExternalStore(
-    subscribeFinanceActivity,
-    getFinanceActivitySnapshot,
-    getFinanceActivitySnapshot,
-  );
+  const period = useMemo(() => {
+    const asOf = new Date().toISOString().slice(0, 10);
+    return resolveSalesPeriod(preset, customRange, asOf);
+  }, [preset, customRange]);
 
-  const summary = useMemo(
-    () => getSupermarketFinanceSummary(preset, customRange, recordedExpenseTotal(activity.expenses)),
-    [preset, customRange, activity.expenses],
-  );
+  useEffect(() => {
+    let active = true;
+    void getFinanceSummaryAction({ from: period.start, to: period.end }).then((result) => {
+      if (!active) return;
+      if (!result.ok) {
+        setSummaryError(result.error);
+        setSummary(null);
+        return;
+      }
+      setSummaryError(null);
+      setSummary(result.summary);
+    });
+    return () => {
+      active = false;
+    };
+  }, [period.start, period.end]);
+
+  if (!summary) {
+    return (
+      <div className="min-w-0 max-w-full space-y-5 pb-10 sm:space-y-6">
+        <header>
+          <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[28px]">Finance</h1>
+          <p className="mt-1.5 text-[13.5px] text-slate-500">
+            {summaryError ? summaryError : "Loading financial overview…"}
+          </p>
+        </header>
+      </div>
+    );
+  }
 
   return (
     <div className="min-w-0 max-w-full space-y-5 pb-10 sm:space-y-6">
@@ -98,7 +128,7 @@ export function FinanceOverview() {
         </div>
         <FinancePeriodFilter
           preset={preset}
-          label={summary.periodLabel}
+          label={period.label}
           range={customRange}
           onPreset={setPreset}
           onRange={setCustomRange}
@@ -165,7 +195,7 @@ export function FinanceOverview() {
         <ActionCard
           title="Payments"
           description="Money received and money paid"
-          meta={`${activity.payments.length} recorded`}
+          meta={`${paymentCount} recorded`}
           icon={<Banknote className="h-4 w-4" strokeWidth={1.9} />}
           tone="border-sky-200/30 bg-sky-50/30"
           iconTone="border-sky-200/45 bg-white/70 text-sky-600"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Banknote,
   BarChart3,
@@ -29,12 +29,13 @@ import {
   SUPERMARKET_PRODUCT_CATEGORIES,
 } from "@/lib/data/supermarket-inventory";
 import {
-  buildSalesReportData,
+  type SalesReportData,
   type SalesReportFilters,
 } from "@/lib/data/sample-supermarket-reports";
 import { downloadSalesCenterReportPdf } from "@/lib/data/supermarket-reports-pdf";
-import { SALES_CASHIERS } from "@/lib/data/sample-supermarket-sales";
+import { fetchSalesReportAction } from "@/actions/supermarket/reports";
 import { useReportPeriod } from "@/components/supermarket/report-shell";
+import { useLiveReport } from "@/lib/supermarket/use-live-report";
 
 const glass =
   "rounded-[22px] border border-white/65 bg-white/70 shadow-[0_12px_36px_rgba(15,35,64,0.055),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl";
@@ -169,12 +170,23 @@ export function SalesReportDetail() {
     [cashier, payment, category],
   );
 
-  const data = useMemo(() => buildSalesReportData(preset, range, filters), [preset, range, filters]);
+  const { data, error, loading } = useLiveReport(fetchSalesReportAction, preset, range, filters);
+  const cashiers = useMemo(
+    () => ["all", ...new Set((data?.cashierPerformance ?? []).map((row) => row.cashier))],
+    [data],
+  );
 
   function resetFilters() {
     setCashier("all");
     setPayment("all");
     setCategory("all");
+  }
+
+  if (loading && !data) {
+    return <p className="px-1 py-8 text-[13px] text-slate-500">Loading sales report…</p>;
+  }
+  if (error || !data) {
+    return <p className="px-1 py-8 text-[13px] text-[#c45b66]">{error || "Unable to load sales report."}</p>;
   }
 
   return (
@@ -260,7 +272,7 @@ export function SalesReportDetail() {
               icon={Users}
               value={cashier}
               onChange={setCashier}
-              options={SALES_CASHIERS.map((name) => ({
+              options={cashiers.map((name) => ({
                 value: name,
                 label: name === "all" ? "All Cashiers" : name,
               }))}

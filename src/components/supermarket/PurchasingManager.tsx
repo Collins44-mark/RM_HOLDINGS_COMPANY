@@ -165,8 +165,8 @@ export function PurchasingManager() {
       {supplierOpen ? (
         <AddSupplierModal
           onClose={() => setSupplierOpen(false)}
-          onCreate={(input) => {
-            const result = inventory.createSupplierRecord(input);
+          onCreate={async (input) => {
+            const result = await inventory.createSupplierRecord(input);
             if (result.error) return result.error;
             setSupplierOpen(false);
             return null;
@@ -436,7 +436,13 @@ function AddSupplierModal({
   onCreate,
 }: {
   onClose: () => void;
-  onCreate: (input: { name: string; contactPerson: string; phone: string; email: string; address: string }) => string | null;
+  onCreate: (input: {
+    name: string;
+    contactPerson: string;
+    phone: string;
+    email: string;
+    address: string;
+  }) => string | null | Promise<string | null>;
 }) {
   const [name, setName] = useState("");
   const [contactPerson, setContactPerson] = useState("");
@@ -460,8 +466,10 @@ function AddSupplierModal({
         className="relative z-[81] w-full max-w-md rounded-[24px] border border-white/80 bg-white/95 p-5 shadow-[0_24px_60px_rgba(15,35,64,0.16)]"
         onSubmit={(event) => {
           event.preventDefault();
-          const nextError = onCreate({ name, contactPerson, phone, email, address });
-          if (nextError) setError(nextError);
+          void (async () => {
+            const nextError = await onCreate({ name, contactPerson, phone, email, address });
+            if (nextError) setError(nextError);
+          })();
         }}
       >
         <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">Add Supplier</h2>

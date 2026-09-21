@@ -7,9 +7,10 @@ import { formatTzs } from "@/lib/format/currency";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
 import { primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
 import {
-  buildProfitLossReportData,
   type ProfitLossReportFilters,
 } from "@/lib/data/sample-supermarket-reports";
+import { fetchProfitLossReportAction } from "@/actions/supermarket/reports";
+import { useLiveReport } from "@/lib/supermarket/use-live-report";
 import { downloadReportPdf } from "@/lib/data/supermarket-reports-pdf";
 import { useReportPeriod } from "@/components/supermarket/report-shell";
 import { PageBackButton } from "@/components/ui/PageBackButton";
@@ -141,10 +142,14 @@ export function ProfitLossReportDetail() {
     [branch, reportType],
   );
 
-  const data = useMemo(
-    () => buildProfitLossReportData(preset, range, filters),
-    [preset, range, filters],
-  );
+  const { data, error, loading } = useLiveReport(fetchProfitLossReportAction, preset, range, filters);
+  if (loading && !data) {
+    return <p className="px-1 py-8 text-[13px] text-slate-500">Loading profit & loss…</p>;
+  }
+  if (error || !data) {
+    return <p className="px-1 py-8 text-[13px] text-[#c45b66]">{error || "Unable to load profit & loss."}</p>;
+  }
+
 
   const summaryRows = [
     { label: "Revenue", amount: data.revenue, highlight: false as const },

@@ -133,7 +133,7 @@ export function AddProductPage() {
     patch("barcode", code.trim());
   }
 
-  function saveProduct() {
+  async function saveProduct() {
     if (busy || savingRef.current) return;
 
     const nextErrors: Record<string, string> = {};
@@ -197,10 +197,13 @@ export function AddProductPage() {
     };
 
     try {
-      upsertProduct(payload);
+      const saved = await upsertProduct(payload);
+      if (saved.error || !saved.id) {
+        throw new Error(saved.error ?? "Unable to save product.");
+      }
       if (stock > 0) {
-        receiveStock({
-          productId: payload.id,
+        const stockResult = await receiveStock({
+          productId: saved.id,
           quantity: stock,
           batchNumber: "OPENING",
           expiryDate: form.trackExpiry ? expiryDate : null,
@@ -210,6 +213,7 @@ export function AddProductPage() {
           note: form.notes.trim() || "Opening stock",
           supplier: form.supplier.trim() || undefined,
         });
+        if (stockResult.error) throw new Error(stockResult.error);
       }
       startTransition(() => {
         router.push("/supermarket/products");

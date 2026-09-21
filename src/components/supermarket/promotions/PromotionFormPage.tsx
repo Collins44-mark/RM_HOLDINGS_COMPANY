@@ -1,28 +1,22 @@
 "use client";
 
-import { useMemo, useState, type FormEvent, type ReactNode, useSyncExternalStore } from "react";
+import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Search, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 import { inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
 import {
-  MOCK_PROMOTION_CATEGORIES,
-  MOCK_PROMOTION_PRODUCTS,
-  createPromotionId,
   createTierId,
   effectivePromotionStatus,
-  getActivePromotionTypeOptions,
-  getPromotionProduct,
-  getPromotionTypesSnapshot,
   promotionStatusLabel,
-  subscribePromotionTypes,
   todayIsoDate,
-  upsertPromotion,
   type Promotion,
   type PromotionTargetType,
   type PromotionType,
 } from "@/lib/data/sample-supermarket-promotions";
+import { useSupermarketInventory } from "@/lib/data/supermarket-inventory";
+import { savePromotion, useSupermarketPromotions } from "@/lib/supermarket/client-stores";
 
 type Mode = "create" | "edit";
 
@@ -137,14 +131,31 @@ export function PromotionFormPage({
   initial?: Promotion | null;
 }) {
   const router = useRouter();
-  useSyncExternalStore(subscribePromotionTypes, getPromotionTypesSnapshot, getPromotionTypesSnapshot);
-  const typeOptions = getActivePromotionTypeOptions();
+  const live = useSupermarketPromotions();
+  const inventory = useSupermarketInventory();
+  const typeOptions = useMemo(
+    () =>
+      live.types
+        .filter((item) => item.isActive)
+        .map((item) => ({ value: item.code as PromotionType, label: item.name })),
+    [live.types],
+  );
+  const catalogProducts = useMemo(
+    () => inventory.products.map((p) => ({ id: p.id, name: p.name, categoryId: p.categoryId })),
+    [inventory.products],
+  );
+  const catalogCategories = useMemo(
+    () => inventory.categories.map((c) => ({ id: c.id, name: c.name })),
+    [inventory.categories],
+  );
   const [form, setForm] = useState<FormState>(() =>
     mode === "edit" && initial ? formFromPromotion(initial) : emptyForm(),
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [productQuery, setProductQuery] = useState("");
   const [bundleQuery, setBundleQuery] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   function patch(partial: Partial<FormState>) {
     setForm((current) => ({ ...current, ...partial }));
@@ -158,7 +169,7 @@ export function PromotionFormPage({
 
   const productMatches = useMemo(() => {
     const needle = productQuery.trim().toLowerCase();
-    return MOCK_PROMOTION_PRODUCTS.filter((item) => {
+    return catalogProducts.filter((item) => {
       if (form.productIds.includes(item.id)) return false;
       if (!needle) return true;
       return item.name.toLowerCase().includes(needle);
@@ -167,7 +178,7 @@ export function PromotionFormPage({
 
   const bundleMatches = useMemo(() => {
     const needle = bundleQuery.trim().toLowerCase();
-    return MOCK_PROMOTION_PRODUCTS.filter((item) => {
+    return catalogProducts.filter((item) => {
       if (form.bundleProductIds.includes(item.id)) return false;
       if (!needle) return true;
       return item.name.toLowerCase().includes(needle);
@@ -229,7 +240,7 @@ export function PromotionFormPage({
     if (Object.keys(nextErrors).length > 0 || !form.type) return null;
 
     const base: Promotion = {
-      id: mode === "edit" && initial ? initial.id : createPromotionId(),
+      id: mode === "edit" && initial ? initial.id : "new",
       name: form.name.trim(),
       description: form.description.trim(),
       type: form.type,
@@ -286,11 +297,54 @@ export function PromotionFormPage({
     return base;
   }
 
-  function onSubmit(event: FormEvent) {
+  async function onSubmit(event: FormEvent) {
     event.preventDefault();
     const promotion = buildPromotion();
     if (!promotion) return;
-    upsertPromotion(promotion);
+    setSaving(true);
+    setSubmitError("");
+    const targetType =
+      promotion.targetType === "CATEGORY"
+        ? "CATEGORIES"
+        : promotion.targetType === "ALL_PRODUCTS"
+          ? "ALL_PRODUCTS"
+          : "PRODUCTS";
+    const result = await savePromotion({
+      id: mode === "edit" ? promotion.id : undefined,
+      name: promotion.name,
+      description: promotion.description,
+      typeCode: promotion.type,
+      targetType,
+      productIds:
+        promotion.type === "BUNDLE"
+          ? promotion.rule.bundleProductIds ?? promotion.productIds
+          : promotion.productIds,
+      categoryIds: promotion.categoryIds,
+      startDate: promotion.startDate,
+      endDate: promotion.endDate,
+      isPaused: promotion.status === "INACTIVE",
+      allowMultipleUse: promotion.allowMultipleUse,
+      usageLimitEnabled: promotion.usageLimitEnabled,
+      usageLimit: promotion.usageLimit,
+      buyQuantity: promotion.rule.buyQuantity ?? null,
+      freeQuantity: promotion.rule.freeQuantity ?? null,
+      discountPercent: promotion.rule.discountPercent ?? null,
+      discountAmount: promotion.rule.discountAmount ?? null,
+      requiredQuantity: promotion.rule.requiredQuantity ?? null,
+      fixedPrice: promotion.rule.fixedPrice ?? null,
+      bundlePrice: promotion.rule.bundlePrice ?? null,
+      minimumSpend: promotion.rule.minimumSpend ?? null,
+      tiers: (promotion.rule.tiers ?? []).map((tier, index) => ({
+        minimumSpend: tier.minimumSpend,
+        discountPercent: tier.discountPercent,
+        sortOrder: index,
+      })),
+    });
+    setSaving(false);
+    if (!result.ok) {
+      setSubmitError(result.error);
+      return;
+    }
     router.push("/supermarket/promotions");
   }
 
@@ -386,6 +440,7 @@ export function PromotionFormPage({
                 onQuery={setProductQuery}
                 matches={productMatches}
                 selectedIds={form.productIds}
+                products={catalogProducts}
                 error={errors.products}
                 onAdd={(id) => {
                   patch({ productIds: [...form.productIds, id] });
@@ -399,7 +454,7 @@ export function PromotionFormPage({
               <div className="space-y-2">
                 <p className="text-[12px] font-medium text-slate-500">Select Category *</p>
                 <div className="flex flex-wrap gap-2">
-                  {MOCK_PROMOTION_CATEGORIES.map((item) => {
+                  {catalogCategories.map((item) => {
                     const selected = form.categoryIds.includes(item.id);
                     return (
                       <button
@@ -515,6 +570,7 @@ export function PromotionFormPage({
                 onQuery={setBundleQuery}
                 matches={bundleMatches}
                 selectedIds={form.bundleProductIds}
+                products={catalogProducts}
                 error={errors.bundleProducts}
                 onAdd={(id) => {
                   patch({ bundleProductIds: [...form.bundleProductIds, id] });
@@ -706,6 +762,9 @@ export function PromotionFormPage({
         </div>
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end lg:col-span-2">
+          {submitError ? (
+            <p className="mb-2 text-[12.5px] text-[#c45b66] lg:col-span-2">{submitError}</p>
+          ) : null}
           <button
             type="button"
             onClick={() => router.push("/supermarket/promotions")}
@@ -713,8 +772,8 @@ export function PromotionFormPage({
           >
             Cancel
           </button>
-          <button type="submit" className={cn(primaryButton, "w-full sm:w-auto")}>
-            {mode === "edit" ? "Save Changes" : "Create Promotion"}
+          <button type="submit" disabled={saving} className={cn(primaryButton, "w-full sm:w-auto")}>
+            {saving ? "Saving…" : mode === "edit" ? "Save Changes" : "Create Promotion"}
           </button>
         </div>
       </form>
@@ -774,6 +833,7 @@ function ProductPicker({
   onQuery,
   matches,
   selectedIds,
+  products,
   error,
   onAdd,
   onRemove,
@@ -783,6 +843,7 @@ function ProductPicker({
   onQuery: (value: string) => void;
   matches: { id: string; name: string }[];
   selectedIds: string[];
+  products: { id: string; name: string }[];
   error?: string;
   onAdd: (id: string) => void;
   onRemove: (id: string) => void;
@@ -817,7 +878,7 @@ function ProductPicker({
       {selectedIds.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {selectedIds.map((id) => {
-            const product = getPromotionProduct(id);
+            const product = products.find((p) => p.id === id) ?? null;
             if (!product) return null;
             return (
               <span

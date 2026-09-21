@@ -1,23 +1,20 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useState } from "react";
 import { Search, Trash2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import {
-  FINANCE_ACTIVITY_AS_OF,
   FINANCE_PAYMENT_METHODS,
   MONEY_IN_PAYMENT_TYPES,
   MONEY_OUT_PAYMENT_TYPES,
-  deleteMockPayment,
   filterMockPayments,
   formatFinanceDate,
-  getFinanceActivitySnapshot,
   paymentDirection,
   paymentDisplayDescription,
   paymentSummaryCards,
-  subscribeFinanceActivity,
   type FinancePaymentMethod,
+  type MockPayment,
   type PaymentType,
 } from "@/lib/data/sample-supermarket-finance";
 import {
@@ -29,9 +26,49 @@ import { FinanceBackLink } from "@/components/supermarket/FinanceBackLink";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
 import { RecordPaymentModal } from "@/components/supermarket/FinanceRecordModals";
 import { filterClass, primaryButton, tableHead } from "@/components/supermarket/purchasing-ui";
+import { removePayment, useSupermarketFinance } from "@/lib/supermarket/client-stores";
+import type { PaymentRecord } from "@/lib/supermarket/types";
 
 const glass =
   "rounded-[28px] border border-white/55 bg-white/58 shadow-[0_18px_50px_rgba(15,35,64,0.07),inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-2xl";
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function methodFromDb(method: string): FinancePaymentMethod {
+  const upper = method.toUpperCase();
+  if (upper === "MOBILE_MONEY" || method === "Mobile Money") return "Mobile Money";
+  if (upper === "CARD" || method === "Card") return "Card";
+  if (upper === "BANK" || method === "Bank") return "Bank";
+  return "Cash";
+}
+
+function paymentTypeFromRecord(payment: PaymentRecord): PaymentType {
+  const kind = payment.kind.toUpperCase();
+  if (kind === "SUPPLIER_PAYMENT") return "Supplier Payment";
+  if (kind === "EXPENSE_PAYMENT") return "Expense Payment";
+  if (kind === "REFUND") return "Customer Refund";
+  if (kind === "CUSTOMER_PAYMENT") {
+    return payment.direction === "OUT" ? "Customer Refund" : "Customer Receipt";
+  }
+  return payment.direction === "IN" ? "Other Income" : "Other Payment";
+}
+
+function mapPayment(payment: PaymentRecord): MockPayment {
+  return {
+    id: payment.id,
+    paymentType: paymentTypeFromRecord(payment),
+    description: payment.notes || payment.kind,
+    amount: payment.amount,
+    paymentMethod: methodFromDb(payment.method),
+    date: payment.paymentDate.slice(0, 10),
+    reference: payment.reference,
+    notes: payment.notes,
+    supplier: "",
+    linkedExpenseId: "",
+  };
+}
 
 export function FinancePaymentsPage() {
   const [paymentOpen, setPaymentOpen] = useState(false);
@@ -39,35 +76,40 @@ export function FinancePaymentsPage() {
   const [paymentType, setPaymentType] = useState<"all" | PaymentType>("all");
   const [paymentMethod, setPaymentMethod] = useState<"all" | FinancePaymentMethod>("all");
   const [preset, setPreset] = useState<SalesPeriodPreset>("week");
-  const [customRange, setCustomRange] = useState<SalesDateRange>({
-    from: "2026-09-01",
-    to: FINANCE_ACTIVITY_AS_OF,
+  const [customRange, setCustomRange] = useState<SalesDateRange>(() => {
+    const today = todayIso();
+    return { from: today, to: today };
   });
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const activity = useSyncExternalStore(
-    subscribeFinanceActivity,
-    getFinanceActivitySnapshot,
-    getFinanceActivitySnapshot,
-  );
-
+  const finance = useSupermarketFinance();
+  const asOf = todayIso();
   const period = useMemo(
-    () => resolveSalesPeriod(preset, customRange, FINANCE_ACTIVITY_AS_OF),
-    [preset, customRange],
+    () => resolveSalesPeriod(preset, customRange, asOf),
+    [preset, customRange, asOf],
   );
+
+  const mapped = useMemo(() => finance.payments.map(mapPayment), [finance.payments]);
 
   const rows = useMemo(
     () =>
-      filterMockPayments(activity.payments, {
+      filterMockPayments(mapped, {
         query,
         paymentType,
         paymentMethod,
         start: period.start,
         end: period.end,
       }),
-    [activity.payments, query, paymentType, paymentMethod, period.start, period.end],
+    [mapped, query, paymentType, paymentMethod, period.start, period.end],
   );
 
   const summary = useMemo(() => paymentSummaryCards(rows), [rows]);
+
+  async function onDelete(id: string) {
+    setDeletingId(id);
+    await removePayment(id);
+    setDeletingId(null);
+  }
 
   return (
     <div className="min-w-0 max-w-full space-y-5 pb-10 sm:space-y-6">
@@ -78,6 +120,9 @@ export function FinancePaymentsPage() {
           <p className="mt-1.5 max-w-2xl text-[13.5px] text-slate-500">
             Money movements only. Supplier payments settle outstanding payables and do not reduce Net Profit again.
           </p>
+          {finance.error ? (
+            <p className="mt-2 text-[12.5px] text-[#c45b66]">{finance.error}</p>
+          ) : null}
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           <FinancePeriodFilter
@@ -209,8 +254,9 @@ export function FinancePaymentsPage() {
                     <td className="px-5 py-3.5">
                       <button
                         type="button"
-                        onClick={() => deleteMockPayment(row.id)}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium text-[#c45b66] transition hover:bg-rose-50"
+                        disabled={deletingId === row.id}
+                        onClick={() => void onDelete(row.id)}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium text-[#c45b66] transition hover:bg-rose-50 disabled:opacity-50"
                         aria-label={`Delete ${paymentDisplayDescription(row)}`}
                       >
                         <Trash2 className="h-3.5 w-3.5" strokeWidth={1.9} />
@@ -272,8 +318,9 @@ export function FinancePaymentsPage() {
                 </dl>
                 <button
                   type="button"
-                  onClick={() => deleteMockPayment(row.id)}
-                  className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium text-[#c45b66] transition hover:bg-rose-50"
+                  disabled={deletingId === row.id}
+                  onClick={() => void onDelete(row.id)}
+                  className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium text-[#c45b66] transition hover:bg-rose-50 disabled:opacity-50"
                 >
                   <Trash2 className="h-3.5 w-3.5" strokeWidth={1.9} />
                   Delete

@@ -24,13 +24,9 @@ import {
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import {
-  POS_CATEGORIES,
   POS_CUSTOMERS,
   POS_MOBILE_PROVIDERS,
   POS_PAYMENT_METHODS,
-  POS_PRODUCTS,
-  POS_STARTING_INVOICE,
-  applyCompletedSaleStock,
   createCompletedSaleSnapshot,
   exactBarcodeMatch,
   filterPosProducts,
@@ -41,13 +37,14 @@ import {
   posTotals,
   remainingStock,
   type PosCartItem,
-  type PosCategory,
   type PosCompletedSale,
   type PosHeldSale,
   type PosMobileProvider,
   type PosPaymentMethod,
   type PosProduct,
 } from "@/lib/data/sample-supermarket-pos";
+import { attachStock, useSupermarketInventory } from "@/lib/data/supermarket-inventory";
+import { completePosSale } from "@/lib/supermarket/client-stores";
 import {
   connectEscPosPrinter,
   hasGrantedEscPosPrinter,
@@ -78,12 +75,32 @@ const PAYMENT_META: Record<
 };
 
 export function PosManager() {
+  const inventory = useSupermarketInventory();
   const searchRef = useRef<HTMLInputElement>(null);
-  const [products, setProducts] = useState(POS_PRODUCTS);
-  const [invoiceNumber, setInvoiceNumber] = useState(POS_STARTING_INVOICE);
+  const products = useMemo<PosProduct[]>(
+    () =>
+      inventory.products
+        .filter((product) => product.isActive)
+        .map((product) => {
+          const row = attachStock(product, inventory.batches);
+          return {
+            id: product.id,
+            name: product.name,
+            sku: product.sku,
+            barcode: product.barcode,
+            category: product.category,
+            unit: product.unit,
+            price: product.sellingPrice,
+            stock: row.stock,
+            accent: "from-[#eef3f8] to-[#e4ebf4]",
+          };
+        }),
+    [inventory.products, inventory.batches],
+  );
+  const [invoiceNumber, setInvoiceNumber] = useState(1);
   const [invoiceStamp, setInvoiceStamp] = useState<Date | null>(null);
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<"all" | PosCategory>("all");
+  const [category, setCategory] = useState<string>("all");
   const [items, setItems] = useState<PosCartItem[]>([]);
   const [customers, setCustomers] = useState<string[]>([...POS_CUSTOMERS]);
   const [customer, setCustomer] = useState("Walk-in Customer");
@@ -98,6 +115,8 @@ export function PosManager() {
   const [mixedMobile, setMixedMobile] = useState("");
   const [heldSales, setHeldSales] = useState<PosHeldSale[]>([]);
   const [completed, setCompleted] = useState<PosCompletedSale | null>(null);
+  const [saleError, setSaleError] = useState("");
+  const [completing, setCompleting] = useState(false);
   const [flashId, setFlashId] = useState<string | null>(null);
   const [flashKey, setFlashKey] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -142,7 +161,7 @@ export function PosManager() {
     return "";
   }, [items.length, payment, cashValue, totals.totalDue, mobilePaid, cardPaid, cardConfirmed, mixedTotal]);
 
-  const canComplete = !completed && validation === "";
+  const canComplete = !completed && validation === "" && !completing;
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -311,9 +330,41 @@ export function PosManager() {
     }
   }
 
-  function completeSale() {
-    if (!canComplete) return;
+  async function completeSale() {
+    if (!canComplete || completing) return;
+    setCompleting(true);
+    setSaleError("");
     const snapshotItems = items.map((item) => ({ ...item }));
+    const payments =
+      payment === "Mixed"
+        ? [
+            { method: "Cash", amount: parseMoneyInput(mixedCash) },
+            { method: "Mobile Money", amount: parseMoneyInput(mixedMobile), provider: mobileProvider },
+          ].filter((p) => p.amount > 0)
+        : payment === "Mobile Money"
+          ? [{ method: "Mobile Money", amount: mobilePaid, provider: mobileProvider }]
+          : payment === "Card"
+            ? [{ method: "Card", amount: cardPaid }]
+            : [{ method: "Cash", amount: totals.totalDue }];
+
+    const result = await completePosSale({
+      customerName: customer,
+      discount: totals.discount,
+      tax: totals.tax,
+      items: snapshotItems.map((item) => ({
+        productId: item.id,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+      })),
+      payments,
+    });
+
+    if (!result.ok) {
+      setSaleError(result.error);
+      setCompleting(false);
+      return;
+    }
+
     const sale = createCompletedSaleSnapshot({
       invoiceNumber,
       soldAt: new Date(),
@@ -332,9 +383,10 @@ export function PosManager() {
       mixedCash: parseMoneyInput(mixedCash),
       mixedMobile: parseMoneyInput(mixedMobile),
     });
-    setProducts((current) => applyCompletedSaleStock(current, snapshotItems));
     setCompleted(sale);
+    setInvoiceNumber((n) => n + 1);
     setPrinterNotice("none");
+    setCompleting(false);
   }
 
   async function printReceipt(mode: "auto" | "system" | "escpos" = "auto") {
@@ -488,13 +540,13 @@ export function PosManager() {
               <span className="relative block">
                 <select
                   value={category}
-                  onChange={(event) => setCategory(event.target.value as "all" | PosCategory)}
+                  onChange={(event) => setCategory(event.target.value)}
                   className={cn(control, "appearance-none pr-9")}
                 >
                   <option value="all">All Categories</option>
-                  {POS_CATEGORIES.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
+                  {inventory.categories.filter((c) => c.isActive).map((item) => (
+                    <option key={item.id} value={item.name}>
+                      {item.name}
                     </option>
                   ))}
                 </select>
@@ -516,19 +568,19 @@ export function PosManager() {
             >
               All
             </button>
-            {POS_CATEGORIES.map((item) => (
+            {inventory.categories.filter((c) => c.isActive).map((item) => (
               <button
-                key={item}
+                key={item.id}
                 type="button"
-                onClick={() => setCategory(item)}
+                onClick={() => setCategory(item.name)}
                 className={cn(
                   chip,
-                  category === item
+                  category === item.name
                     ? "bg-[#0b2244] text-white shadow-[0_6px_14px_rgba(11,34,68,0.18)]"
                     : "border border-white/80 bg-white/70 text-slate-500 hover:bg-white hover:text-navy",
                 )}
               >
-                {item}
+                {item.name}
               </button>
             ))}
           </div>
@@ -814,7 +866,7 @@ export function PosManager() {
               ) : null}
 
               {validation && items.length > 0 && (payment !== "Cash" || cashValue > 0) ? (
-                <p className="mt-3 text-[12px] text-[#c24646]">{validation}</p>
+                <p className="mt-3 text-[12px] text-[#c24646]">{saleError || validation || inventory.error}</p>
               ) : null}
 
               <button

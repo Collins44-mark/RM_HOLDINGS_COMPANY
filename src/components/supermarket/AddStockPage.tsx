@@ -202,20 +202,20 @@ export function AddStockPage() {
     searchRef.current?.focus();
   }
 
-  function addSupplier() {
-    const result = inventory.addInventorySupplier(newSupplier);
+  async function addSupplier() {
+    const result = await inventory.addInventorySupplier(newSupplier);
     if (result.error) {
       setSupplierError(result.error);
       return;
     }
-    setSupplier(result.name);
-    setSupplierQuery(result.name);
+    setSupplier(result.name ?? newSupplier);
+    setSupplierQuery(result.name ?? newSupplier);
     setNewSupplier("");
     setSupplierError("");
     setAddSupplierOpen(false);
   }
 
-  function receive() {
+  async function receive() {
     const nextErrors: Record<string, string> = {};
     const qty = Number(quantity);
     const price = parseAmount(buyingPrice);
@@ -246,7 +246,7 @@ export function AddStockPage() {
       return;
     }
 
-    const result = inventory.receiveStock({
+    const result = await inventory.receiveStock({
       productId: selected!.id,
       quantity: qty,
       buyingPrice: price,
