@@ -1,6 +1,8 @@
 import { cache } from "react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth/session";
+import { isOwnerRole } from "@/lib/auth/rbac";
+import { matchPermission } from "@/lib/config/permissions";
 
 export type SupermarketContext = {
   supabase: NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>;
@@ -127,4 +129,24 @@ export function isPrivilegeError(error: { message?: string; code?: string } | nu
     lower.includes("permission denied for table") ||
     lower.includes("permission denied for relation")
   );
+}
+
+/**
+ * Module access + fine-grained permission (existing catalog matchers).
+ * Throws UNAUTHORIZED — actions return `{ ok: false }` instead of redirecting.
+ */
+export async function requireSupermarketPermission(permission: string): Promise<SupermarketContext> {
+  const ctx = await requireSupermarketContext();
+  const user = await requireAuth();
+
+  if (isOwnerRole(user.roleCode) || user.permissions.includes("*") || user.modules.includes("*")) {
+    return ctx;
+  }
+
+  const allowed = user.permissions.some((matcher) => matchPermission(permission, matcher));
+  if (!allowed) {
+    throw new SupermarketError("You do not have permission for this action.", "UNAUTHORIZED");
+  }
+
+  return ctx;
 }

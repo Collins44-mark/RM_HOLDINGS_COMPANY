@@ -9,7 +9,7 @@ import { primaryButton, secondaryButton } from "@/components/supermarket/purchas
 import {
   type PurchaseReportFilters,
 } from "@/lib/data/sample-supermarket-reports";
-import { downloadReportPdf } from "@/lib/data/supermarket-reports-pdf";
+import { downloadPurchaseReportPdfFromData } from "@/lib/data/supermarket-reports-pdf";
 import { useReportPeriod } from "@/components/supermarket/report-shell";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 import { fetchPurchaseReportAction } from "@/actions/supermarket/reports";
@@ -218,7 +218,7 @@ export function PurchaseReportDetail() {
           />
           <button
             type="button"
-            onClick={() => downloadReportPdf("purchases", preset, range)}
+            onClick={() => downloadPurchaseReportPdfFromData(data)}
             className={cn(primaryButton, "w-full shrink-0 sm:w-auto")}
           >
             <Download className="h-3.5 w-3.5" strokeWidth={2} />

@@ -51,6 +51,16 @@ const PO_LIMIT = 100;
 const RECEIPT_LIMIT = 100;
 const MOVEMENT_LIMIT = 200;
 
+const PO_COLUMNS =
+  "id, po_number, supplier_id, order_date, expected_date, status, discount, tax, notes, created_at, total";
+const RECEIPT_COLUMNS =
+  "id, receipt_number, purchase_order_id, supplier_id, received_at, payment_status, total_cost, notes";
+const PO_ITEM_COLUMNS =
+  "id, purchase_order_id, product_id, quantity_ordered, quantity_received, unit_cost";
+const RECEIPT_ITEM_COLUMNS =
+  "id, goods_receipt_id, product_id, quantity, unit_cost, main_store_qty, sales_floor_qty";
+
+
 const PRODUCT_COLUMNS =
   "id, name, sku, barcode, category_id, unit, buying_price, selling_price, reorder_level, track_expiry, is_active, created_at, supplier_id";
 const CATEGORY_COLUMNS = "id, name, description, is_active";
@@ -152,13 +162,13 @@ export async function loadPurchasingWorkspace(input?: {
     const [poRes, receiptsRes] = await Promise.all([
       supabase
         .from("sm_purchase_orders")
-        .select("*")
+        .select(PO_COLUMNS)
         .eq("business_unit_id", businessUnitId)
         .order("created_at", { ascending: false })
         .limit(PO_LIMIT),
       supabase
         .from("sm_goods_receipts")
-        .select("*")
+        .select(RECEIPT_COLUMNS)
         .eq("business_unit_id", businessUnitId)
         .order("received_at", { ascending: false })
         .limit(RECEIPT_LIMIT),
@@ -192,10 +202,10 @@ export async function loadPurchasingWorkspace(input?: {
 
     const [poItemsRes, receiptItemsRes] = await Promise.all([
       poIds.length
-        ? supabase.from("sm_purchase_order_items").select("*").in("purchase_order_id", poIds)
+        ? supabase.from("sm_purchase_order_items").select(PO_ITEM_COLUMNS).in("purchase_order_id", poIds)
         : Promise.resolve({ data: [] as Record<string, unknown>[], error: null }),
       receiptIds.length
-        ? supabase.from("sm_goods_receipt_items").select("*").in("goods_receipt_id", receiptIds)
+        ? supabase.from("sm_goods_receipt_items").select(RECEIPT_ITEM_COLUMNS).in("goods_receipt_id", receiptIds)
         : Promise.resolve({ data: [] as Record<string, unknown>[], error: null }),
     ]);
     const itemsErr = firstQueryError(poItemsRes, receiptItemsRes);
@@ -323,9 +333,63 @@ export async function loadProductMovements(productId: string): Promise<{
   }
 }
 
+/** Products + live batches only — for inventory valuation reports (no POs/receipts/movements). */
+export async function loadInventoryValuation(): Promise<{
+  products: SupermarketProduct[];
+  batches: StockBatch[];
+  error: string | null;
+}> {
+  try {
+    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const [productsRes, categoriesRes, suppliersRes, batchesRes] = await Promise.all([
+      supabase
+        .from("sm_products")
+        .select(PRODUCT_COLUMNS)
+        .eq("business_unit_id", businessUnitId)
+        .order("name"),
+      supabase
+        .from("sm_categories")
+        .select(CATEGORY_COLUMNS)
+        .eq("business_unit_id", businessUnitId),
+      supabase
+        .from("sm_suppliers")
+        .select("id, name")
+        .eq("business_unit_id", businessUnitId),
+      supabase
+        .from("sm_stock_batches")
+        .select(BATCH_COLUMNS)
+        .eq("business_unit_id", businessUnitId)
+        .gt("quantity", 0),
+    ]);
+
+    const err = firstQueryError(productsRes, categoriesRes, suppliersRes, batchesRes);
+    if (err) {
+      return { products: [], batches: [], error: failMessage(err) };
+    }
+
+    const categories = (categoriesRes.data ?? []).map((row) =>
+      mapCategory(row as Record<string, unknown>),
+    );
+    const categoryNameById = new Map(categories.map((c) => [c.id, c.name]));
+    const supplierNameById = new Map(
+      (suppliersRes.data ?? []).map((s) => [s.id as string, String(s.name)]),
+    );
+    const products = (productsRes.data ?? []).map((row) =>
+      mapProduct(row as Record<string, unknown>, categoryNameById),
+    );
+    const batches = (batchesRes.data ?? []).map((row) =>
+      mapBatch(row as Record<string, unknown>, supplierNameById),
+    );
+
+    return { products, batches, error: null };
+  } catch (error) {
+    return { products: [], batches: [], error: queryErrorMessage(error) };
+  }
+}
+
 /**
- * Full snapshot for reports / rare full refresh.
- * Prefer scoped loaders for UI pages.
+ * Full snapshot for rare full refresh.
+ * Prefer scoped loaders / loadInventoryValuation for UI pages and reports.
  */
 export async function loadInventorySnapshot(): Promise<InventorySnapshot> {
   const productsWs = await loadProductsWorkspace();

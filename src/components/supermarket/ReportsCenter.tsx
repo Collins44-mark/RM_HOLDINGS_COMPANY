@@ -21,14 +21,23 @@ export function ReportsCenter() {
   const { preset, range, period, query, onPreset, onRange } = useReportPeriod("/supermarket/reports");
   const [selected, setSelected] = useState<ReportKind | null>(null);
   const [exportHint, setExportHint] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
-  function handleExport() {
+  async function handleExport() {
     if (!selected) {
       setExportHint(true);
       return;
     }
     setExportHint(false);
-    downloadReportPdf(selected, preset, range);
+    setExportError(null);
+    setExporting(true);
+    try {
+      const result = await downloadReportPdf(selected, preset, range);
+      if (!result.ok) setExportError(result.error);
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
@@ -49,16 +58,18 @@ export function ReportsCenter() {
           />
           <button
             type="button"
-            onClick={handleExport}
-            aria-disabled={!selected}
+            onClick={() => void handleExport()}
+            disabled={exporting}
+            aria-disabled={!selected || exporting}
             className={cn(
               primaryButton,
               "w-full shrink-0 sm:w-auto",
-              !selected && "cursor-not-allowed bg-[#0b2244]/45 opacity-55 shadow-none hover:bg-[#0b2244]/45",
+              (!selected || exporting) &&
+                "cursor-not-allowed bg-[#0b2244]/45 opacity-55 shadow-none hover:bg-[#0b2244]/45",
             )}
           >
             <Download className="h-3.5 w-3.5" strokeWidth={2} />
-            Export
+            {exporting ? "Exporting…" : "Export"}
           </button>
         </div>
       </header>
@@ -66,6 +77,11 @@ export function ReportsCenter() {
       {exportHint && !selected ? (
         <p className="text-[13px] font-medium text-amber-700/90" role="status">
           Select a report to export.
+        </p>
+      ) : null}
+      {exportError ? (
+        <p className="text-[13px] font-medium text-[#c45b66]" role="alert">
+          {exportError}
         </p>
       ) : null}
 

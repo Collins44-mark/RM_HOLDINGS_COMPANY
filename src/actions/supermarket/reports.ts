@@ -5,7 +5,7 @@ import {
   mapDbError,
   requireSupermarketContext,
 } from "@/lib/supermarket/access";
-import { loadInventorySnapshot } from "@/lib/supermarket/queries";
+import { loadInventoryValuation } from "@/lib/supermarket/queries";
 import { mapExpense } from "@/lib/supermarket/mappers";
 import {
   formatSalesDate,
@@ -69,7 +69,9 @@ export async function fetchSalesReportAction(
       await Promise.all([
         supabase
           .from("sm_sales")
-          .select("*, sm_sale_items(*), sm_sale_payments(*)")
+          .select(
+            "id, invoice_number, sale_date, cashier_id, customer_name, status, subtotal, discount, tax, total, cogs, sm_sale_items(id, product_id, quantity, unit_price, line_total, discount), sm_sale_payments(method, amount)",
+          )
           .eq("business_unit_id", businessUnitId)
           .gte("sale_date", fromIso)
           .lte("sale_date", toIso)
@@ -234,7 +236,7 @@ export async function fetchInventoryReportAction(
   _filters: InventoryReportFilters = {},
 ): Promise<{ ok: true; data: InventoryReportData } | { ok: false; error: string }> {
   try {
-    const inventory = await loadInventorySnapshot();
+    const inventory = await loadInventoryValuation();
     if (inventory.error) return { ok: false, error: inventory.error };
 
     const rows = inventory.products.map((product) => {
@@ -279,20 +281,11 @@ export async function fetchInventoryReportAction(
       }
     }
 
-    const movementGroups = new Map<string, { count: number; quantity: number }>();
-    for (const movement of inventory.movements) {
-      const entry = movementGroups.get(movement.type) ?? { count: 0, quantity: 0 };
-      entry.count += 1;
-      entry.quantity += Math.abs(movement.quantity);
-      movementGroups.set(movement.type, entry);
-    }
-
-    const todayDate = today;
     const expiryRows = inventory.batches
       .filter((batch) => batch.quantity > 0 && batch.expiryDate)
       .map((batch) => {
         const status =
-          (batch.expiryDate as string) < todayDate
+          (batch.expiryDate as string) < today
             ? ("Expired" as const)
             : (batch.expiryDate as string) <= soonIso
               ? ("Expiring Soon" as const)
@@ -322,11 +315,7 @@ export async function fetchInventoryReportAction(
       expiredItems: expiredUnits,
       expiredStockValue,
       deltas: { products: 0, stockUnits: 0, inventoryValue: 0, lowStock: 0 },
-      movements: [...movementGroups.entries()].map(([label, value]) => ({
-        label,
-        count: value.count,
-        quantity: value.quantity,
-      })),
+      movements: [],
       lowStockProducts: rows
         .filter((r) => r.status === "Low Stock")
         .slice(0, 20)
@@ -369,7 +358,9 @@ export async function fetchPurchaseReportAction(
     const [{ data: receipts, error }, { data: orders }] = await Promise.all([
       supabase
         .from("sm_goods_receipts")
-        .select("*, sm_goods_receipt_items(*)")
+        .select(
+          "id, receipt_number, supplier_id, received_at, payment_status, total_cost, purchase_order_id, sm_goods_receipt_items(id, product_id, quantity, unit_cost)",
+        )
         .eq("business_unit_id", businessUnitId)
         .gte("received_at", fromIso)
         .lte("received_at", toIso),
@@ -485,7 +476,7 @@ export async function fetchProfitLossReportAction(
         .lte("sale_date", toIso),
       supabase
         .from("sm_expenses")
-        .select("*")
+        .select("amount, category, expense_date, description")
         .eq("business_unit_id", businessUnitId)
         .gte("expense_date", period.start)
         .lte("expense_date", period.end),
@@ -655,10 +646,15 @@ export async function getFinanceSummaryAction(input: { from: string; to: string 
           .lte("payment_date", input.to),
         supabase
           .from("sm_goods_receipts")
-          .select("total_cost, payment_status")
-          .eq("business_unit_id", businessUnitId),
+          .select("total_cost, payment_status, received_at")
+          .eq("business_unit_id", businessUnitId)
+          .gte("received_at", fromIso)
+          .lte("received_at", toIso),
       ]);
       if (salesRes.error) mapDbError(salesRes.error);
+      if (expensesRes.error) mapDbError(expensesRes.error);
+      if (paymentsRes.error) mapDbError(paymentsRes.error);
+      if (receiptsRes.error) mapDbError(receiptsRes.error);
 
       const revenue = (salesRes.data ?? []).reduce((s, r) => s + Number(r.total || 0), 0);
       const cogs = (salesRes.data ?? []).reduce((s, r) => s + Number(r.cogs || 0), 0);

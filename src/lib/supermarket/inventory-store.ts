@@ -106,8 +106,9 @@ export async function refreshProductsWorkspace() {
   const next = await fetchProductsWorkspaceAction();
   if (next.error) {
     // Real DB/privilege error — keep empty lists, do not fake data.
-    // Allow retry on next ensure* call (do not permanently latch failure).
-    productsLoaded = false;
+    // Mark loaded so hooks do not spawn an infinite auto-retry loop.
+    // Explicit Retry / refreshProducts() still reloads.
+    productsLoaded = true;
     patchSnapshot({
       products: [],
       categories: [],
@@ -127,6 +128,12 @@ export async function refreshProductsWorkspace() {
     loadedAt: new Date().toISOString(),
     error: null,
   });
+}
+
+/** Force a products reload (Retry buttons / after privilege fix). */
+export async function retryProductsWorkspace() {
+  productsLoaded = false;
+  await refreshProductsWorkspace();
 }
 
 export async function refreshPurchasingWorkspace() {
@@ -172,7 +179,7 @@ export function ensureProductsWorkspaceLoaded() {
   if (productsLoaded || productsPromise) return productsPromise;
   productsPromise = refreshProductsWorkspace()
     .catch((error) => {
-      productsLoaded = false;
+      productsLoaded = true;
       patchSnapshot({
         loadedAt: new Date().toISOString(),
         error: error instanceof Error ? error.message : "Failed to load products",
@@ -537,7 +544,7 @@ export function useSupermarketInventory(options?: InventoryLoadOptions) {
     sendPurchaseOrder,
     receivePurchaseOrder,
     refresh: refreshInventorySnapshot,
-    refreshProducts: refreshProductsWorkspace,
+    refreshProducts: retryProductsWorkspace,
     ensurePurchasing: ensurePurchasingWorkspaceLoaded,
     ensureMovements: ensureMovementsWorkspaceLoaded,
     fetchProductMovements,

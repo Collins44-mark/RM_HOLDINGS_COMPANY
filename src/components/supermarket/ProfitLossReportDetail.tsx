@@ -11,7 +11,7 @@ import {
 } from "@/lib/data/sample-supermarket-reports";
 import { fetchProfitLossReportAction } from "@/actions/supermarket/reports";
 import { useLiveReport } from "@/lib/supermarket/use-live-report";
-import { downloadReportPdf } from "@/lib/data/supermarket-reports-pdf";
+import { downloadProfitLossReportPdfFromData } from "@/lib/data/supermarket-reports-pdf";
 import { useReportPeriod } from "@/components/supermarket/report-shell";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 
@@ -200,7 +200,7 @@ export function ProfitLossReportDetail() {
           />
           <button
             type="button"
-            onClick={() => downloadReportPdf("profit-loss", preset, range)}
+            onClick={() => downloadProfitLossReportPdfFromData(data)}
             className={cn(primaryButton, "w-full shrink-0 sm:w-auto")}
           >
             <Download className="h-3.5 w-3.5" strokeWidth={2} />

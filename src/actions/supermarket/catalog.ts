@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import {
   actionErrorMessage,
   mapDbError,
-  requireSupermarketContext,
+  requireSupermarketPermission,
   SupermarketError,
 } from "@/lib/supermarket/access";
 import {
@@ -72,7 +72,9 @@ export async function fetchCatalogOptionsAction(): Promise<{
 
 export async function createCategoryAction(input: { name: string; description?: string }) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireSupermarketPermission(
+      "supermarket.categories.create",
+    );
     const name = input.name.trim().replace(/\s+/g, " ");
     if (!name) throw new SupermarketError("Enter a category name.", "VALIDATION");
 
@@ -100,7 +102,9 @@ export async function updateCategoryAction(
   input: { name: string; description?: string },
 ) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireSupermarketPermission(
+      "supermarket.categories.edit",
+    );
     const name = input.name.trim().replace(/\s+/g, " ");
     if (!name) throw new SupermarketError("Enter a category name.", "VALIDATION");
 
@@ -126,7 +130,9 @@ export async function updateCategoryAction(
 
 export async function setCategoryActiveAction(id: string, isActive: boolean) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireSupermarketPermission(
+      "supermarket.categories.edit",
+    );
     const { error } = await supabase
       .from("sm_categories")
       .update({ is_active: isActive, updated_at: new Date().toISOString() })
@@ -142,7 +148,9 @@ export async function setCategoryActiveAction(id: string, isActive: boolean) {
 
 export async function deleteCategoryAction(id: string) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireSupermarketPermission(
+      "supermarket.categories.delete",
+    );
     const { count, error: countError } = await supabase
       .from("sm_products")
       .select("id", { count: "exact", head: true })
@@ -168,7 +176,14 @@ export async function deleteCategoryAction(id: string) {
 
 export async function upsertProductAction(product: SupermarketProduct & { categoryId?: string | null }) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const isNew =
+      !product.id ||
+      product.id.startsWith("tmp-") ||
+      product.id.startsWith("prd-") ||
+      product.id === "new";
+    const { supabase, businessUnitId } = await requireSupermarketPermission(
+      isNew ? "supermarket.products.create" : "supermarket.products.edit",
+    );
 
     let categoryId = product.categoryId ?? null;
     if (!categoryId && product.category) {
@@ -214,13 +229,11 @@ export async function upsertProductAction(product: SupermarketProduct & { catego
       throw new SupermarketError("Product name and SKU are required.", "VALIDATION");
     }
 
-    const isNew = !product.id || product.id.startsWith("prd-") || product.id.startsWith("tmp-");
-
     if (isNew) {
       const { data, error } = await supabase
         .from("sm_products")
         .insert(payload)
-        .select("*")
+        .select("id")
         .single();
       if (error) mapDbError(error);
       revalidateSupermarket();
@@ -242,7 +255,9 @@ export async function upsertProductAction(product: SupermarketProduct & { catego
 
 export async function toggleProductActiveAction(productId: string) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireSupermarketPermission(
+      "supermarket.products.edit",
+    );
     const { data, error } = await supabase
       .from("sm_products")
       .select("is_active")
@@ -274,7 +289,9 @@ export async function createSupplierAction(input: {
   notes?: string;
 }) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireSupermarketPermission(
+      "supermarket.suppliers.create",
+    );
     const name = input.name.trim();
     if (!name) throw new SupermarketError("Supplier name is required.", "VALIDATION");
 
@@ -310,7 +327,7 @@ export async function adjustStockAction(input: {
   correctionDirection?: "increase" | "decrease";
 }) {
   try {
-    const { supabase } = await requireSupermarketContext();
+    const { supabase } = await requireSupermarketPermission("supermarket.stock.edit");
     const { data, error } = await supabase.rpc("sm_adjust_stock", {
       p_product_id: input.productId,
       p_kind: input.kind,
@@ -338,7 +355,9 @@ export async function createPurchaseOrderAction(input: {
   lines: { productId: string; quantityOrdered: number; buyingPrice: number }[];
 }) {
   try {
-    const { supabase, businessUnitId, userId } = await requireSupermarketContext();
+    const { supabase, businessUnitId, userId } = await requireSupermarketPermission(
+      "supermarket.purchases.create",
+    );
     if (!input.supplierId) throw new SupermarketError("Select a supplier.", "VALIDATION");
     if (!input.lines.length) throw new SupermarketError("Add at least one line.", "VALIDATION");
 
@@ -397,7 +416,9 @@ export async function createPurchaseOrderAction(input: {
 
 export async function sendPurchaseOrderAction(orderId: string) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireSupermarketPermission(
+      "supermarket.purchases.create",
+    );
     const { error } = await supabase
       .from("sm_purchase_orders")
       .update({ status: "SENT", updated_at: new Date().toISOString() })
@@ -425,7 +446,7 @@ export async function receivePurchaseOrderAction(input: {
   }[];
 }) {
   try {
-    const { supabase } = await requireSupermarketContext();
+    const { supabase } = await requireSupermarketPermission("supermarket.purchases.create");
     const payload = input.lines.map((line) => ({
       purchase_order_item_id: line.purchaseOrderItemId,
       quantity: line.quantity,

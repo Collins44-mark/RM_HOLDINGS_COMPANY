@@ -10,18 +10,20 @@ import {
   CorporateReportDocument,
   CorporateSalesDocument,
 } from "@/lib/pdf/corporate-report-document";
-import {
-  buildInventoryReportData,
-  buildProfitLossReportData,
-  buildPurchaseReportData,
-  buildSalesReportData,
-  type InventoryReportData,
-  type ProfitLossReportData,
-  type PurchaseReportData,
-  type SalesReportData,
-  type SalesReportFilters,
+import type {
+  InventoryReportData,
+  ProfitLossReportData,
+  PurchaseReportData,
+  SalesReportData,
+  SalesReportFilters,
 } from "@/lib/data/sample-supermarket-reports";
 import type { SalesDateRange, SalesPeriodPreset } from "@/lib/data/sample-supermarket-sales";
+import {
+  fetchInventoryReportAction,
+  fetchProfitLossReportAction,
+  fetchPurchaseReportAction,
+  fetchSalesReportAction,
+} from "@/actions/supermarket/reports";
 
 const BUSINESS_UNIT = "Supermarket System";
 
@@ -407,65 +409,62 @@ function renderProfitLossPdf(data: ProfitLossReportData) {
   return doc.build();
 }
 
-export function downloadSalesCenterReportPdf(
-  preset: SalesPeriodPreset,
-  range: SalesDateRange,
-  filters: SalesReportFilters = {},
-) {
-  const data = buildSalesReportData(preset, range, filters);
+/** Export PDF from live report payload already loaded on screen. */
+export function downloadSalesReportPdfFromData(data: SalesReportData, filters: SalesReportFilters = {}) {
   downloadPdfBytes(renderSalesPdf(data, filters), salesReportFilename(data.periodLabel));
 }
 
-export function downloadInventoryCenterReportPdf(preset: SalesPeriodPreset, range: SalesDateRange) {
-  const data = buildInventoryReportData(preset, range);
+export function downloadInventoryReportPdfFromData(data: InventoryReportData) {
   downloadPdfBytes(renderInventoryPdf(data), inventoryReportFilename(data.periodLabel));
 }
 
-export function downloadPurchaseCenterReportPdf(preset: SalesPeriodPreset, range: SalesDateRange) {
-  downloadPdfBytes(
-    renderPurchasePdf(buildPurchaseReportData(preset, range)),
-    "RM-Supermarket-Purchase-Report.pdf",
-  );
+export function downloadPurchaseReportPdfFromData(data: PurchaseReportData) {
+  downloadPdfBytes(renderPurchasePdf(data), "RM-Supermarket-Purchase-Report.pdf");
 }
 
-export function downloadProfitLossCenterReportPdf(preset: SalesPeriodPreset, range: SalesDateRange) {
-  downloadPdfBytes(
-    renderProfitLossPdf(buildProfitLossReportData(preset, range)),
-    "RM-Supermarket-Profit-Loss-Report.pdf",
-  );
+export function downloadProfitLossReportPdfFromData(data: ProfitLossReportData) {
+  downloadPdfBytes(renderProfitLossPdf(data), "RM-Supermarket-Profit-Loss-Report.pdf");
 }
 
-export function downloadReportPdf(
+/**
+ * Fetch live Supabase report data, then export PDF.
+ * Never uses sample/mock report builders.
+ */
+export async function downloadReportPdf(
   kind: "sales" | "inventory" | "purchases" | "profit-loss",
   preset: SalesPeriodPreset,
   range: SalesDateRange,
-) {
-  if (kind === "sales") return downloadSalesCenterReportPdf(preset, range);
-  if (kind === "inventory") return downloadInventoryCenterReportPdf(preset, range);
-  if (kind === "purchases") return downloadPurchaseCenterReportPdf(preset, range);
-  return downloadProfitLossCenterReportPdf(preset, range);
+  filters: SalesReportFilters = {},
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (kind === "sales") {
+    const result = await fetchSalesReportAction(preset, range, filters);
+    if (!result.ok) return result;
+    downloadSalesReportPdfFromData(result.data, filters);
+    return { ok: true };
+  }
+  if (kind === "inventory") {
+    const result = await fetchInventoryReportAction(preset, range);
+    if (!result.ok) return result;
+    downloadInventoryReportPdfFromData(result.data);
+    return { ok: true };
+  }
+  if (kind === "purchases") {
+    const result = await fetchPurchaseReportAction(preset, range);
+    if (!result.ok) return result;
+    downloadPurchaseReportPdfFromData(result.data);
+    return { ok: true };
+  }
+  const result = await fetchProfitLossReportAction(preset, range);
+  if (!result.ok) return result;
+  downloadProfitLossReportPdfFromData(result.data);
+  return { ok: true };
 }
 
-/** Dev/test helper: returns Sales PDF bytes for the selected period/filters. */
-export function buildSalesReportPdfBytes(
+/** @deprecated Prefer downloadSalesReportPdfFromData with live report data. */
+export async function downloadSalesCenterReportPdf(
   preset: SalesPeriodPreset,
   range: SalesDateRange,
   filters: SalesReportFilters = {},
 ) {
-  return renderSalesPdf(buildSalesReportData(preset, range, filters), filters);
-}
-
-/** Dev/test helper: returns Inventory PDF bytes for the selected period. */
-export function buildInventoryReportPdfBytes(preset: SalesPeriodPreset, range: SalesDateRange) {
-  return renderInventoryPdf(buildInventoryReportData(preset, range));
-}
-
-/** Dev/test helper: returns Profit & Loss PDF bytes. */
-export function buildProfitLossReportPdfBytes(preset: SalesPeriodPreset, range: SalesDateRange) {
-  return renderProfitLossPdf(buildProfitLossReportData(preset, range));
-}
-
-/** Dev/test helper: returns Purchase PDF bytes. */
-export function buildPurchaseReportPdfBytes(preset: SalesPeriodPreset, range: SalesDateRange) {
-  return renderPurchasePdf(buildPurchaseReportData(preset, range));
+  return downloadReportPdf("sales", preset, range, filters);
 }

@@ -5,6 +5,7 @@ import {
   actionErrorMessage,
   mapDbError,
   requireSupermarketContext,
+  requireSupermarketPermission,
   SupermarketError,
 } from "@/lib/supermarket/access";
 import { mapExpense, mapPayment, mapPromotion, mapSale } from "@/lib/supermarket/mappers";
@@ -59,7 +60,7 @@ export async function completeSaleAction(input: {
   payments: { method: string; amount: number; provider?: string; reference?: string }[];
 }) {
   try {
-    const { supabase } = await requireSupermarketContext();
+    const { supabase } = await requireSupermarketPermission("supermarket.sales.create");
     if (!input.items.length) throw new SupermarketError("Cart is empty.", "VALIDATION");
     if (!input.payments.length) throw new SupermarketError("Add a payment.", "VALIDATION");
 
@@ -103,7 +104,10 @@ export async function listSalesAction(input?: {
 
     let query = supabase
       .from("sm_sales")
-      .select("*, sm_sale_items(*), sm_sale_payments(*)", { count: "exact" })
+      .select(
+        "id, invoice_number, sale_date, cashier_id, customer_name, status, subtotal, discount, tax, total, cogs, sm_sale_items(id, product_id, quantity, unit_price, line_total), sm_sale_payments(method, amount)",
+        { count: "exact" },
+      )
       .eq("business_unit_id", businessUnitId)
       .order("sale_date", { ascending: false })
       .range(offset, offset + limit - 1);
@@ -171,7 +175,7 @@ export async function processReturnAction(input: {
   }[];
 }) {
   try {
-    const { supabase } = await requireSupermarketContext();
+    const { supabase } = await requireSupermarketPermission("supermarket.sales.create");
     const { data, error } = await supabase.rpc("sm_process_sales_return", {
       p_sale_id: input.saleId,
       p_items: input.items.map((item) => ({
@@ -277,7 +281,9 @@ export async function upsertPromotionAction(input: {
   tiers?: { minimumSpend: number; discountPercent: number; sortOrder?: number }[];
 }) {
   try {
-    const { supabase, businessUnitId, userId } = await requireSupermarketContext();
+    const { supabase, businessUnitId, userId } = await requireSupermarketPermission(
+      "supermarket.products.edit",
+    );
     const { data: typeRow, error: typeError } = await supabase
       .from("sm_promotion_types")
       .select("id")
@@ -364,7 +370,9 @@ export async function upsertPromotionAction(input: {
 
 export async function setPromotionPausedAction(id: string, isPaused: boolean) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireSupermarketPermission(
+      "supermarket.products.edit",
+    );
     const { error } = await supabase
       .from("sm_promotions")
       .update({ is_paused: isPaused, updated_at: new Date().toISOString() })
@@ -380,7 +388,9 @@ export async function setPromotionPausedAction(id: string, isPaused: boolean) {
 
 export async function deletePromotionAction(id: string) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireSupermarketPermission(
+      "supermarket.products.edit",
+    );
     const { error } = await supabase
       .from("sm_promotions")
       .delete()
@@ -402,7 +412,9 @@ export async function createExpenseAction(input: {
   paymentStatus?: "PAID" | "UNPAID" | "PARTIAL";
 }) {
   try {
-    const { supabase, businessUnitId, userId } = await requireSupermarketContext();
+    const { supabase, businessUnitId, userId } = await requireSupermarketPermission(
+      "supermarket.purchases.create",
+    );
     if (!input.category.trim()) throw new SupermarketError("Category is required.", "VALIDATION");
     if (!(input.amount > 0)) throw new SupermarketError("Amount must be positive.", "VALIDATION");
 
@@ -439,7 +451,9 @@ export async function createPaymentAction(input: {
   supplierId?: string;
 }) {
   try {
-    const { supabase, businessUnitId, userId } = await requireSupermarketContext();
+    const { supabase, businessUnitId, userId } = await requireSupermarketPermission(
+      input.direction === "IN" ? "supermarket.sales.create" : "supermarket.purchases.create",
+    );
     if (!(input.amount > 0)) throw new SupermarketError("Amount must be positive.", "VALIDATION");
 
     const { data, error } = await supabase
@@ -469,7 +483,9 @@ export async function createPaymentAction(input: {
 
 export async function deletePaymentAction(id: string) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireSupermarketPermission(
+      "supermarket.purchases.create",
+    );
     const { error } = await supabase
       .from("sm_payments")
       .delete()
@@ -490,7 +506,9 @@ export async function updatePromotionTypeAction(input: {
   isActive?: boolean;
 }) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireSupermarketPermission(
+      "supermarket.products.edit",
+    );
     const { error } = await supabase
       .from("sm_promotion_types")
       .update({
