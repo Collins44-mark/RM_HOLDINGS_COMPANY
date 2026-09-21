@@ -269,7 +269,7 @@ export function FinancePaymentsPage() {
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-5 py-10 text-center text-[13.5px] text-slate-500">
-                    No payments found for these filters.
+                    No payments yet.
                   </td>
                 </tr>
               ) : null}
@@ -329,7 +329,7 @@ export function FinancePaymentsPage() {
             );
           })}
           {rows.length === 0 ? (
-            <p className="py-8 text-center text-[13.5px] text-slate-500">No payments found for these filters.</p>
+            <p className="py-8 text-center text-[13.5px] text-slate-500">No payments yet.</p>
           ) : null}
         </div>
       </section>

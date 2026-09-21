@@ -1,7 +1,6 @@
 import { SupermarketDashboard } from "@/components/supermarket/SupermarketDashboard";
 import type { SupermarketSampleDashboard } from "@/lib/data/sample-supermarket";
 import { getDashboardMetricsAction } from "@/actions/supermarket/sales";
-import { loadInventorySnapshot } from "@/lib/supermarket/queries";
 
 export const metadata = { title: "Supermarket" };
 
@@ -37,27 +36,13 @@ function emptyDashboard(error?: string): SupermarketSampleDashboard {
 
 export default async function SupermarketHomePage() {
   try {
-    const [metricsResult, inventory] = await Promise.all([
-      getDashboardMetricsAction(),
-      loadInventorySnapshot(),
-    ]);
+    const metricsResult = await getDashboardMetricsAction();
 
     if (!metricsResult.ok) {
       return <SupermarketDashboard data={emptyDashboard(metricsResult.error)} />;
     }
-    if (inventory.error) {
-      return <SupermarketDashboard data={emptyDashboard(inventory.error)} />;
-    }
 
     const { metrics } = metricsResult;
-    const stockByProduct = new Map<string, number>();
-    for (const batch of inventory.batches) {
-      stockByProduct.set(batch.productId, (stockByProduct.get(batch.productId) ?? 0) + batch.quantity);
-    }
-    const inventoryValue = inventory.products.reduce((sum, product) => {
-      const stock = stockByProduct.get(product.id) ?? 0;
-      return sum + stock * product.buyingPrice;
-    }, 0);
 
     const data: SupermarketSampleDashboard = {
       kpis: {
@@ -67,7 +52,7 @@ export default async function SupermarketHomePage() {
         todayOrdersDelta: 0,
         grossProfit: metrics.todayProfit,
         grossProfitDelta: 0,
-        inventoryValue,
+        inventoryValue: metrics.inventoryValue ?? 0,
       },
       salesOverview: {
         today: metrics.todayRevenue,

@@ -279,10 +279,18 @@ export function PromotionsManager() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {live.error ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-12 text-center text-[13.5px] text-[#c45b66]">
+                    {live.error}
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center text-[13.5px] text-slate-400">
-                    No promotions match your filters.
+                    {query || tab !== "ALL" || typeFilter !== "all" || statusFilter !== "all" || categoryFilter !== "All Categories"
+                      ? "No promotions match your filters."
+                      : "No promotions yet."}
                   </td>
                 </tr>
               ) : (
@@ -331,8 +339,14 @@ export function PromotionsManager() {
         </div>
 
         <div className="space-y-3 p-3 md:hidden">
-          {filtered.length === 0 ? (
-            <p className="px-2 py-10 text-center text-[13.5px] text-slate-400">No promotions match your filters.</p>
+          {live.error ? (
+            <p className="px-2 py-10 text-center text-[13.5px] text-[#c45b66]">{live.error}</p>
+          ) : filtered.length === 0 ? (
+            <p className="px-2 py-10 text-center text-[13.5px] text-slate-400">
+              {query || tab !== "ALL" || typeFilter !== "all" || statusFilter !== "all" || categoryFilter !== "All Categories"
+                ? "No promotions match your filters."
+                : "No promotions yet."}
+            </p>
           ) : (
             filtered.map((item, index) => {
               const status = effectivePromotionStatus(item);

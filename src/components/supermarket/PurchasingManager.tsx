@@ -42,7 +42,7 @@ function tabFromSearchParam(value: string | null): PurchasingTab {
 export function PurchasingManager() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const inventory = useSupermarketInventory();
+  const inventory = useSupermarketInventory({ purchasing: true });
   const [tab, setTabState] = useState<PurchasingTab>(() => tabFromSearchParam(searchParams.get("tab")));
   const [query, setQuery] = useState("");
   const [focus, setFocus] = useState<PurchaseOrderKpiFocus>("all");
@@ -261,7 +261,11 @@ function OrdersView({
             </Link>
           ))}
         </div>
-        {orders.length === 0 ? <p className="px-4 py-8 text-center text-[13px] text-slate-500">No purchase orders match this view.</p> : null}
+        {orders.length === 0 ? (
+          <p className="px-4 py-8 text-center text-[13px] text-slate-500">
+            {query || focus !== "all" ? "No purchase orders match this view." : "No purchase orders yet."}
+          </p>
+        ) : null}
       </section>
     </>
   );
@@ -334,7 +338,11 @@ function PurchasesView({
             </Link>
           ))}
         </div>
-        {purchases.length === 0 ? <p className="px-4 py-8 text-center text-[13px] text-slate-500">No purchases recorded yet.</p> : null}
+        {purchases.length === 0 ? (
+          <p className="px-4 py-8 text-center text-[13px] text-slate-500">
+            {query ? "No purchases match this search." : "No purchases yet."}
+          </p>
+        ) : null}
       </section>
     </>
   );
@@ -381,7 +389,11 @@ function SuppliersView({
           </Link>
         ))}
       </section>
-      {suppliers.length === 0 ? <p className="px-2 py-8 text-center text-[13px] text-slate-500">No suppliers match this search.</p> : null}
+      {suppliers.length === 0 ? (
+        <p className="px-2 py-8 text-center text-[13px] text-slate-500">
+          {query ? "No suppliers match this search." : "No suppliers yet."}
+        </p>
+      ) : null}
     </>
   );
 }

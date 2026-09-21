@@ -28,6 +28,8 @@ import {
   updateProductCategory,
   upsertProduct,
   useSupermarketInventory,
+  refreshInventorySnapshot,
+  fetchProductMovements,
   NEW_PRODUCT_BARCODE_KEY,
 } from "@/lib/supermarket/inventory-store";
 
@@ -418,6 +420,8 @@ export {
   updateProductCategory,
   upsertProduct,
   useSupermarketInventory,
+  refreshInventorySnapshot,
+  fetchProductMovements,
 };
 
 export type {

@@ -11,7 +11,7 @@ import { PageBackButton } from "@/components/ui/PageBackButton";
 
 export function SupplierDetailPage() {
   const params = useParams<{ supplierId: string }>();
-  const inventory = useSupermarketInventory();
+  const inventory = useSupermarketInventory({ purchasing: true });
   const supplier = inventory.suppliers.find((item) => item.id === params.supplierId);
   if (!supplier) {
     return (

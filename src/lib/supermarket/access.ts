@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth/session";
 
@@ -16,14 +17,22 @@ export class SupermarketError extends Error {
       | "NOT_FOUND"
       | "VALIDATION"
       | "CONFLICT"
-      | "DATABASE" = "DATABASE",
+      | "DATABASE"
+      | "PRIVILEGE" = "DATABASE",
   ) {
     super(message);
     this.name = "SupermarketError";
   }
 }
 
-export async function requireSupermarketContext(): Promise<SupermarketContext> {
+/** Process-local cache — supermarket is a single BU code per deployment. */
+let cachedSupermarketBuId: string | null = null;
+
+/**
+ * Request-scoped supermarket context (React cache).
+ * App-level auth first; RLS remains the data boundary.
+ */
+export const requireSupermarketContext = cache(async (): Promise<SupermarketContext> => {
   const user = await requireAuth();
 
   const supabase = await createSupabaseServerClient();
@@ -31,20 +40,26 @@ export async function requireSupermarketContext(): Promise<SupermarketContext> {
     throw new SupermarketError("Supabase is not configured.", "NOT_CONFIGURED");
   }
 
-  const { data: bu, error: buError } = await supabase
-    .from("business_units")
-    .select("id")
-    .eq("code", "supermarket")
-    .maybeSingle();
+  let businessUnitId = cachedSupermarketBuId;
+  if (!businessUnitId) {
+    const { data: bu, error: buError } = await supabase
+      .from("business_units")
+      .select("id")
+      .eq("code", "supermarket")
+      .maybeSingle();
 
-  if (buError) {
-    throw new SupermarketError(buError.message, "DATABASE");
-  }
-  if (!bu?.id) {
-    throw new SupermarketError("Supermarket business unit was not found.", "NOT_FOUND");
+    if (buError) {
+      throw new SupermarketError(classifyDbMessage(buError.message, buError.code), "DATABASE");
+    }
+    if (!bu?.id) {
+      throw new SupermarketError("Supermarket business unit was not found.", "NOT_FOUND");
+    }
+    cachedSupermarketBuId = bu.id as string;
+    businessUnitId = bu.id as string;
   }
 
-  const isOwner = user.modules.includes("*") || user.roleCode === "SUPER_ADMIN" || user.roleCode === "OWNER";
+  const isOwner =
+    user.modules.includes("*") || user.roleCode === "SUPER_ADMIN" || user.roleCode === "OWNER";
   const hasModule =
     isOwner ||
     user.modules.includes("supermarket") ||
@@ -56,21 +71,43 @@ export async function requireSupermarketContext(): Promise<SupermarketContext> {
 
   return {
     supabase,
-    businessUnitId: bu.id,
+    businessUnitId,
     userId: user.id,
   };
+});
+
+function classifyDbMessage(message: string, code?: string): string {
+  const lower = message.toLowerCase();
+  if (
+    code === "42501" ||
+    lower.includes("permission denied for table") ||
+    lower.includes("permission denied for relation")
+  ) {
+    return (
+      "Database privileges for supermarket tables are missing. " +
+      "Apply migration 20260921140000_supermarket_stable_access.sql in Supabase."
+    );
+  }
+  return message || "Database operation failed.";
 }
 
 export function mapDbError(error: { message: string; code?: string } | null): never {
   if (!error) {
     throw new SupermarketError("Unexpected database error.", "DATABASE");
   }
-  const message = error.message || "Database operation failed.";
-  if (message.includes("duplicate") || error.code === "23505") {
-    throw new SupermarketError(message.replace(/^.*?:\s*/, "") || "Duplicate record.", "CONFLICT");
+  const message = classifyDbMessage(error.message, error.code);
+  if (error.message.includes("duplicate") || error.code === "23505") {
+    throw new SupermarketError(error.message.replace(/^.*?:\s*/, "") || "Duplicate record.", "CONFLICT");
   }
-  if (message.includes("Insufficient stock") || message.includes("Cannot return") || message.includes("Cannot receive")) {
-    throw new SupermarketError(message, "VALIDATION");
+  if (
+    error.message.includes("Insufficient stock") ||
+    error.message.includes("Cannot return") ||
+    error.message.includes("Cannot receive")
+  ) {
+    throw new SupermarketError(error.message, "VALIDATION");
+  }
+  if (error.code === "42501" || error.message.toLowerCase().includes("permission denied")) {
+    throw new SupermarketError(message, "PRIVILEGE");
   }
   throw new SupermarketError(message, "DATABASE");
 }
@@ -79,4 +116,15 @@ export function actionErrorMessage(error: unknown): string {
   if (error instanceof SupermarketError) return error.message;
   if (error instanceof Error) return error.message;
   return "Something went wrong. Please try again.";
+}
+
+/** True when a PostgREST/Postgres error is a privilege failure (not empty data). */
+export function isPrivilegeError(error: { message?: string; code?: string } | null | undefined) {
+  if (!error) return false;
+  const lower = String(error.message ?? "").toLowerCase();
+  return (
+    error.code === "42501" ||
+    lower.includes("permission denied for table") ||
+    lower.includes("permission denied for relation")
+  );
 }

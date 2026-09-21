@@ -36,6 +36,7 @@ import {
   toggleProductActive,
   upsertProduct,
   useSupermarketInventory,
+  fetchProductMovements,
   type ProductStockRow,
   type SupermarketProduct,
   type SupermarketProductCategory,
@@ -165,6 +166,9 @@ export function ProductsManager() {
   const [barcodeNotice, setBarcodeNotice] = useState<string | null>(null);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
+  const [historyMovements, setHistoryMovements] = useState<ReturnType<typeof movementsForProduct>>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const categoryTargetRef = useRef<"filter" | "form">("filter");
   const formCategories = inventory.categories
     .filter((item) => item.isActive || item.name === form.category)
@@ -266,7 +270,19 @@ export function ProductsManager() {
     if (!product) return;
     setMenuId(null);
     setSelectedId(product.id);
+    setHistoryMovements([]);
+    setHistoryError(null);
+    setHistoryLoading(true);
     setDrawer("history");
+    void fetchProductMovements(product.id).then((result) => {
+      if (result.error) {
+        setHistoryError(result.error);
+        setHistoryMovements([]);
+      } else {
+        setHistoryMovements(movementsForProduct(product.id, result.movements));
+      }
+      setHistoryLoading(false);
+    });
   }
 
   function closePanel() {
@@ -274,6 +290,9 @@ export function ProductsManager() {
     setSelectedId(null);
     setErrors({});
     setBarcodeNotice(null);
+    setHistoryMovements([]);
+    setHistoryError(null);
+    setHistoryLoading(false);
   }
 
   function clearFilters() {
@@ -553,7 +572,19 @@ export function ProductsManager() {
       </div>
 
       <section className={cn(glass, "overflow-hidden")}>
-        {rows.length === 0 ? (
+        {inventory.error ? (
+          <div className="px-6 py-10 text-center">
+            <p className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Unable to load products</p>
+            <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[#c45b66]">{inventory.error}</p>
+            <button
+              type="button"
+              onClick={() => void inventory.refreshProducts()}
+              className="mt-5 inline-flex h-10 items-center justify-center rounded-full bg-[#0b2244] px-4 text-[14px] font-semibold text-white"
+            >
+              Retry
+            </button>
+          </div>
+        ) : rows.length === 0 ? (
           <EmptyProducts filtersActive={filtersActive} onClear={clearFilters} />
         ) : (
           <>
@@ -707,10 +738,13 @@ export function ProductsManager() {
 
       {drawer === "history" && selected ? (
         <ProductDrawer title="Stock History" onClose={closePanel}>
-          <StockHistoryPanel
-            product={selected}
-            movements={movementsForProduct(selected.id, inventory.movements)}
-          />
+          {historyLoading ? (
+            <p className="text-[13px] text-slate-500">Loading stock history…</p>
+          ) : historyError ? (
+            <p className="text-[13px] text-[#8a5a5a]">{historyError}</p>
+          ) : (
+            <StockHistoryPanel product={selected} movements={historyMovements} />
+          )}
         </ProductDrawer>
       ) : null}
 
@@ -755,7 +789,9 @@ function EmptyProducts({
 }) {
   return (
     <div className="px-6 py-10 text-center">
-      <p className="text-[16px] font-semibold tracking-[-0.03em] text-navy">No products found</p>
+      <p className="text-[16px] font-semibold tracking-[-0.03em] text-navy">
+        {filtersActive ? "No products found" : "No products yet"}
+      </p>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
         {filtersActive
           ? "Nothing matches the current search or filters."

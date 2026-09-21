@@ -1,13 +1,16 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import {
   adjustStockAction,
   createCategoryAction,
   createPurchaseOrderAction,
   createSupplierAction,
   deleteCategoryAction,
-  fetchInventorySnapshotAction,
+  fetchProductMovementsAction,
+  fetchProductsWorkspaceAction,
+  fetchPurchasingWorkspaceAction,
+  fetchStockMovementsAction,
   receivePurchaseOrderAction,
   sendPurchaseOrderAction,
   setCategoryActiveAction,
@@ -18,6 +21,7 @@ import {
 import {
   EMPTY_INVENTORY_SNAPSHOT,
   type InventorySnapshot,
+  type StockMovement,
   type SupermarketCategory,
   type SupermarketProduct,
 } from "@/lib/supermarket/types";
@@ -59,16 +63,28 @@ export type ReceiveStockInput = {
   salesFloor?: number;
 };
 
+export type InventoryLoadOptions = {
+  /** Load purchase orders + goods receipts. Default false. */
+  purchasing?: boolean;
+  /** Load recent stock movements list. Default false. */
+  movements?: boolean;
+};
+
 let snapshot: InventorySnapshot = { ...EMPTY_INVENTORY_SNAPSHOT };
-let loadPromise: Promise<void> | null = null;
+let productsPromise: Promise<void> | null = null;
+let purchasingPromise: Promise<void> | null = null;
+let movementsPromise: Promise<void> | null = null;
+let productsLoaded = false;
+let purchasingLoaded = false;
+let movementsLoaded = false;
 const listeners = new Set<() => void>();
 
 function emit() {
   listeners.forEach((listener) => listener());
 }
 
-function setSnapshot(next: InventorySnapshot) {
-  snapshot = next;
+function patchSnapshot(partial: Partial<InventorySnapshot>) {
+  snapshot = { ...snapshot, ...partial };
   emit();
 }
 
@@ -85,24 +101,129 @@ export function getInventoryServerSnapshot() {
   return EMPTY_INVENTORY_SNAPSHOT;
 }
 
-export async function refreshInventorySnapshot() {
-  const next = await fetchInventorySnapshotAction();
-  setSnapshot(next);
+/** Products + categories + suppliers + live batches (stock qty). No POs/receipts/movements. */
+export async function refreshProductsWorkspace() {
+  const next = await fetchProductsWorkspaceAction();
+  if (next.error) {
+    // Real DB/privilege error — keep empty lists, do not fake data.
+    // Allow retry on next ensure* call (do not permanently latch failure).
+    productsLoaded = false;
+    patchSnapshot({
+      products: [],
+      categories: [],
+      suppliers: [],
+      batches: [],
+      loadedAt: new Date().toISOString(),
+      error: next.error,
+    });
+    return;
+  }
+  productsLoaded = true;
+  patchSnapshot({
+    products: next.products,
+    categories: next.categories,
+    suppliers: next.suppliers,
+    batches: next.batches,
+    loadedAt: new Date().toISOString(),
+    error: null,
+  });
 }
 
-export function ensureInventoryLoaded() {
-  if (snapshot.loadedAt || loadPromise) return loadPromise;
-  loadPromise = refreshInventorySnapshot()
+export async function refreshPurchasingWorkspace() {
+  const next = await fetchPurchasingWorkspaceAction();
+  if (next.error) {
+    patchSnapshot({ error: next.error });
+    return;
+  }
+  purchasingLoaded = true;
+  patchSnapshot({
+    purchaseOrders: next.purchaseOrders,
+    purchases: next.purchases,
+    error: null,
+  });
+}
+
+export async function refreshMovementsWorkspace() {
+  const next = await fetchStockMovementsAction();
+  if (next.error) {
+    patchSnapshot({ error: next.error });
+    return;
+  }
+  movementsLoaded = true;
+  patchSnapshot({
+    movements: next.movements,
+    error: null,
+  });
+}
+
+/**
+ * Refresh only scopes that this session already loaded.
+ * Never pulls full PO/receipt/movement payload unless those scopes were requested.
+ */
+export async function refreshInventorySnapshot() {
+  await refreshProductsWorkspace();
+  const extras: Promise<void>[] = [];
+  if (purchasingLoaded) extras.push(refreshPurchasingWorkspace());
+  if (movementsLoaded) extras.push(refreshMovementsWorkspace());
+  if (extras.length) await Promise.all(extras);
+}
+
+export function ensureProductsWorkspaceLoaded() {
+  if (productsLoaded || productsPromise) return productsPromise;
+  productsPromise = refreshProductsWorkspace()
     .catch((error) => {
-      setSnapshot({
-        ...EMPTY_INVENTORY_SNAPSHOT,
-        error: error instanceof Error ? error.message : "Failed to load inventory",
+      productsLoaded = false;
+      patchSnapshot({
+        loadedAt: new Date().toISOString(),
+        error: error instanceof Error ? error.message : "Failed to load products",
       });
     })
     .finally(() => {
-      loadPromise = null;
+      productsPromise = null;
     });
-  return loadPromise;
+  return productsPromise;
+}
+
+export function ensurePurchasingWorkspaceLoaded() {
+  void ensureProductsWorkspaceLoaded();
+  if (purchasingLoaded || purchasingPromise) return purchasingPromise;
+  purchasingPromise = refreshPurchasingWorkspace()
+    .catch((error) => {
+      patchSnapshot({
+        error: error instanceof Error ? error.message : "Failed to load purchasing",
+      });
+    })
+    .finally(() => {
+      purchasingPromise = null;
+    });
+  return purchasingPromise;
+}
+
+export function ensureMovementsWorkspaceLoaded() {
+  void ensureProductsWorkspaceLoaded();
+  if (movementsLoaded || movementsPromise) return movementsPromise;
+  movementsPromise = refreshMovementsWorkspace()
+    .catch((error) => {
+      patchSnapshot({
+        error: error instanceof Error ? error.message : "Failed to load movements",
+      });
+    })
+    .finally(() => {
+      movementsPromise = null;
+    });
+  return movementsPromise;
+}
+
+/** @deprecated Prefer ensureProductsWorkspaceLoaded — kept as alias. */
+export function ensureInventoryLoaded() {
+  return ensureProductsWorkspaceLoaded();
+}
+
+export async function fetchProductMovements(productId: string): Promise<{
+  movements: StockMovement[];
+  error: string | null;
+}> {
+  return fetchProductMovementsAction(productId);
 }
 
 export function categoryProductCount(name: string, products = snapshot.products) {
@@ -313,7 +434,8 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
     await sendPurchaseOrderAction(result.id);
   }
 
-  await refreshInventorySnapshot();
+  await refreshProductsWorkspace();
+  await refreshPurchasingWorkspace();
   const order = snapshot.purchaseOrders.find((item) => item.id === result.id) ?? null;
   return { error: null, order };
 }
@@ -321,7 +443,8 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
 export async function sendPurchaseOrder(orderId: string) {
   const result = await sendPurchaseOrderAction(orderId);
   if (!result.ok) return { error: result.error };
-  await refreshInventorySnapshot();
+  await refreshProductsWorkspace();
+  await refreshPurchasingWorkspace();
   return { error: null };
 }
 
@@ -352,7 +475,9 @@ export async function receivePurchaseOrder(input: ReceivePurchaseOrderInput) {
   });
   if (!result.ok) return { error: result.error, purchase: null };
 
-  await refreshInventorySnapshot();
+  await refreshProductsWorkspace();
+  await refreshPurchasingWorkspace();
+  if (movementsLoaded) await refreshMovementsWorkspace();
   const purchase = snapshot.purchases.find((item) => item.id === result.id) ?? null;
   const updatedOrder = snapshot.purchaseOrders.find((item) => item.id === input.purchaseOrderId);
   return {
@@ -382,15 +507,22 @@ export function consumeNewProductBarcode() {
   }
 }
 
-export function useSupermarketInventory() {
+export function useSupermarketInventory(options?: InventoryLoadOptions) {
+  const purchasing = Boolean(options?.purchasing);
+  const movements = Boolean(options?.movements);
   const state = useSyncExternalStore(subscribeInventory, getInventorySnapshot, getInventoryServerSnapshot);
 
-  if (typeof window !== "undefined") {
-    ensureInventoryLoaded();
-  }
+  useEffect(() => {
+    void ensureProductsWorkspaceLoaded();
+    if (purchasing) void ensurePurchasingWorkspaceLoaded();
+    if (movements) void ensureMovementsWorkspaceLoaded();
+  }, [purchasing, movements]);
 
   return {
     ...state,
+    productsLoaded,
+    purchasingLoaded,
+    movementsLoaded,
     upsertProduct,
     receiveStock,
     adjustStock,
@@ -405,5 +537,9 @@ export function useSupermarketInventory() {
     sendPurchaseOrder,
     receivePurchaseOrder,
     refresh: refreshInventorySnapshot,
+    refreshProducts: refreshProductsWorkspace,
+    ensurePurchasing: ensurePurchasingWorkspaceLoaded,
+    ensureMovements: ensureMovementsWorkspaceLoaded,
+    fetchProductMovements,
   };
 }

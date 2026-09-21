@@ -169,6 +169,8 @@ on conflict (code) do nothing;
 --   20260921120000_supermarket_module.sql
 --   20260921120100_supermarket_receive_return_rpcs.sql
 --   20260921120200_supermarket_seed_catalogue.sql
+--   20260921130000_supermarket_table_grants.sql
+--   20260921140000_supermarket_stable_access.sql
 -- Tables: sm_categories, sm_suppliers, sm_products, sm_stock_batches,
 -- sm_stock_movements, sm_stock_adjustments, sm_purchase_orders,
 -- sm_purchase_order_items, sm_goods_receipts, sm_goods_receipt_items,
@@ -179,5 +181,5 @@ on conflict (code) do nothing;
 -- RPCs: sm_complete_sale, sm_adjust_stock, sm_receive_purchase_order,
 -- sm_process_sales_return, sm_next_document_number, sm_product_stock
 -- Access helpers: has_business_unit_access, supermarket_business_unit_id,
--- has_supermarket_access
+-- has_supermarket_access, jwt_is_platform_owner, jwt_has_supermarket_module
 -- ---------------------------------------------------------------------------

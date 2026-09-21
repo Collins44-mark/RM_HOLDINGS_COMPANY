@@ -160,7 +160,7 @@ export function PurchaseReportDetail() {
     [supplier, paymentStatus],
   );
 
-  const inventory = useSupermarketInventory();
+  const inventory = useSupermarketInventory({ purchasing: true });
   const { data, error, loading } = useLiveReport(fetchPurchaseReportAction, preset, range, filters);
 
   const purchaseRows = useMemo(() => {

@@ -9,18 +9,20 @@ import { CategoryCreateModal, ADD_CATEGORY_OPTION, canCreateSupermarketCategory 
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { matchPermission } from "@/lib/config/permissions";
 import { cn } from "@/lib/cn";
+import { fetchCatalogOptionsAction } from "@/actions/supermarket/catalog";
 import {
   SUPERMARKET_PRODUCT_UNITS,
   consumeNewProductBarcode,
   findProductByBarcode,
   receiveStock,
   upsertProduct,
-  useSupermarketInventory,
+  refreshInventorySnapshot,
   type SupermarketProduct,
   type SupermarketProductCategory,
   type SupermarketProductUnit,
 } from "@/lib/data/supermarket-inventory";
 import type { AuthUser } from "@/lib/auth/types";
+import type { SupermarketProduct as DbProduct, SupermarketCategory } from "@/lib/supermarket/types";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 
 type FormState = {
@@ -83,7 +85,6 @@ export function AddProductPage() {
   const { user, isSuperAdmin } = useAuth();
   const allowed = canCreateProduct(user, isSuperAdmin());
   const canAddCategory = canCreateSupermarketCategory(user, isSuperAdmin());
-  const inventory = useSupermarketInventory();
   const barcodeRef = useRef<HTMLInputElement>(null);
   const savingRef = useRef(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -92,14 +93,24 @@ export function AddProductPage() {
   const [saving, setSaving] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [catalogProducts, setCatalogProducts] = useState<DbProduct[]>([]);
+  const [catalogCategories, setCatalogCategories] = useState<SupermarketCategory[]>([]);
+  const [catalogSuppliers, setCatalogSuppliers] = useState<{ id: string; name: string }[]>([]);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const busy = saving || isPending;
-  const categories = inventory.categories
-    .filter((item) => item.isActive || item.name === form.category)
-    .map((item) => item.name);
 
-  const suppliers = useMemo(() => {
-    return [...new Set(inventory.batches.map((batch) => batch.supplier).filter(Boolean))].sort();
-  }, [inventory.batches]);
+  const categories = useMemo(
+    () =>
+      catalogCategories
+        .filter((item) => item.isActive || item.name === form.category)
+        .map((item) => item.name),
+    [catalogCategories, form.category],
+  );
+
+  const suppliers = useMemo(
+    () => catalogSuppliers.map((item) => item.name).sort((a, b) => a.localeCompare(b)),
+    [catalogSuppliers],
+  );
 
   useEffect(() => {
     router.prefetch("/supermarket/products");
@@ -116,13 +127,27 @@ export function AddProductPage() {
     }
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    void fetchCatalogOptionsAction().then((result) => {
+      if (!active) return;
+      setCatalogProducts(result.products);
+      setCatalogCategories(result.categories);
+      setCatalogSuppliers(result.suppliers);
+      setCatalogError(result.error);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   function patch<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
-    setBarcodeNotice(null);
+    if (key === "barcode") setBarcodeNotice(null);
   }
 
   function lookupBarcode(code: string) {
-    const match = findProductByBarcode(inventory.products, code);
+    const match = findProductByBarcode(catalogProducts, code);
     if (match) {
       setBarcodeNotice(`This barcode already belongs to ${match.name}.`);
       return;
@@ -164,10 +189,10 @@ export function AddProductPage() {
       nextErrors.expiryDate = "Enter an expiry date for the opening batch.";
     }
 
-    const skuTaken = inventory.products.some((item) => item.sku.toLowerCase() === sku.toLowerCase());
+    const skuTaken = catalogProducts.some((item) => item.sku.toLowerCase() === sku.toLowerCase());
     if (sku && skuTaken) nextErrors.sku = "This SKU is already in use.";
 
-    const barcodeTaken = findProductByBarcode(inventory.products, barcode);
+    const barcodeTaken = findProductByBarcode(catalogProducts, barcode);
     if (barcode && barcodeTaken) {
       nextErrors.barcode = `This barcode already belongs to ${barcodeTaken.name}.`;
     }
@@ -215,6 +240,7 @@ export function AddProductPage() {
         });
         if (stockResult.error) throw new Error(stockResult.error);
       }
+      void refreshInventorySnapshot();
       startTransition(() => {
         router.push("/supermarket/products");
       });
@@ -275,6 +301,11 @@ export function AddProductPage() {
           saveProduct();
         }}
       >
+        {catalogError ? (
+          <p className="rounded-[16px] border border-[#ead4d4] bg-[#fbf4f4] px-4 py-3 text-[13px] text-[#8a5a5a]">
+            {catalogError}
+          </p>
+        ) : null}
         {errors.form ? (
           <p className="rounded-[16px] border border-[#ead4d4] bg-[#fbf4f4] px-4 py-3 text-[13px] text-[#8a5a5a]">
             {errors.form}

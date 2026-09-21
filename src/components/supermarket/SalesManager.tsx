@@ -561,11 +561,22 @@ export function SalesManager() {
             <p className="mt-1 text-[12.5px] text-slate-400">Complete list of all sales made at the supermarket.</p>
           </div>
 
-          {pageRows.length === 0 ? (
+          {salesState.error ? (
             <div className="flex flex-1 items-center justify-center px-6 py-16 text-center">
               <div>
-                <p className="text-[16px] font-semibold tracking-[-0.03em] text-navy">No sales found</p>
-                <p className="mt-2 text-sm text-slate-500">No transactions match the current filters.</p>
+                <p className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Unable to load sales</p>
+                <p className="mt-2 max-w-lg text-sm text-[#c45b66]">{salesState.error}</p>
+              </div>
+            </div>
+          ) : pageRows.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center px-6 py-16 text-center">
+              <div>
+                <p className="text-[16px] font-semibold tracking-[-0.03em] text-navy">No sales yet</p>
+                <p className="mt-2 text-sm text-slate-500">
+                  {query || cashier !== "all" || payment !== "all" || status !== "all"
+                    ? "No transactions match the current filters."
+                    : "Completed POS sales will appear here."}
+                </p>
               </div>
             </div>
           ) : (

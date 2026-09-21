@@ -7,11 +7,21 @@ import {
   requireSupermarketContext,
   SupermarketError,
 } from "@/lib/supermarket/access";
-import { loadInventorySnapshot } from "@/lib/supermarket/queries";
-import type { InventorySnapshot, SupermarketProduct } from "@/lib/supermarket/types";
+import {
+  loadCatalogOptions,
+  loadInventorySnapshot,
+  loadProductMovements,
+  loadProductsWorkspace,
+  loadPurchasingWorkspace,
+  loadStockMovements,
+} from "@/lib/supermarket/queries";
+import type { InventorySnapshot, StockMovement, SupermarketProduct } from "@/lib/supermarket/types";
 
 function revalidateSupermarket() {
-  revalidatePath("/supermarket", "layout");
+  // Client stores refresh themselves after mutations. Avoid layout-wide
+  // revalidatePath("/supermarket", "layout") — it remounts AuthenticatedShell
+  // on every soft navigation and causes "This page couldn't load" under load.
+  revalidatePath("/supermarket", "page");
 }
 
 export async function fetchInventorySnapshotAction(): Promise<InventorySnapshot> {
@@ -26,10 +36,38 @@ export async function fetchInventorySnapshotAction(): Promise<InventorySnapshot>
       suppliers: [],
       purchaseOrders: [],
       purchases: [],
-      loadedAt: null,
+      loadedAt: new Date().toISOString(),
       error: actionErrorMessage(error),
     };
   }
+}
+
+export async function fetchProductsWorkspaceAction() {
+  return loadProductsWorkspace();
+}
+
+export async function fetchPurchasingWorkspaceAction() {
+  return loadPurchasingWorkspace();
+}
+
+export async function fetchStockMovementsAction() {
+  return loadStockMovements();
+}
+
+export async function fetchProductMovementsAction(productId: string): Promise<{
+  movements: StockMovement[];
+  error: string | null;
+}> {
+  return loadProductMovements(productId);
+}
+
+export async function fetchCatalogOptionsAction(): Promise<{
+  products: InventorySnapshot["products"];
+  categories: InventorySnapshot["categories"];
+  suppliers: InventorySnapshot["suppliers"];
+  error: string | null;
+}> {
+  return loadCatalogOptions();
 }
 
 export async function createCategoryAction(input: { name: string; description?: string }) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import {
   completeSaleAction,
   createExpenseAction,
@@ -72,9 +72,9 @@ export function ensureSalesLoaded(input?: { from?: string; to?: string }) {
 
 export function useSupermarketSales(period?: { from?: string; to?: string }) {
   const state = useSyncExternalStore(subscribeSales, getSalesSnapshot, getSalesSnapshot);
-  if (typeof window !== "undefined") {
-    ensureSalesLoaded(period);
-  }
+  useEffect(() => {
+    void ensureSalesLoaded(period);
+  }, [period?.from, period?.to]);
   return state;
 }
 
@@ -180,7 +180,9 @@ export function ensureReturnsLoaded() {
 
 export function useSupermarketReturns() {
   const state = useSyncExternalStore(subscribeReturnsStore, getReturnsStoreSnapshot, getReturnsStoreSnapshot);
-  if (typeof window !== "undefined") ensureReturnsLoaded();
+  useEffect(() => {
+    void ensureReturnsLoaded();
+  }, []);
   return state;
 }
 
@@ -234,7 +236,9 @@ export function useSupermarketPromotions() {
     getPromotionsStoreSnapshot,
     getPromotionsStoreSnapshot,
   );
-  if (typeof window !== "undefined") ensurePromotionsLoaded();
+  useEffect(() => {
+    void ensurePromotionsLoaded();
+  }, []);
   return state;
 }
 
@@ -307,7 +311,9 @@ export function ensureFinanceLoaded() {
 
 export function useSupermarketFinance() {
   const state = useSyncExternalStore(subscribeFinanceStore, getFinanceStoreSnapshot, getFinanceStoreSnapshot);
-  if (typeof window !== "undefined") ensureFinanceLoaded();
+  useEffect(() => {
+    void ensureFinanceLoaded();
+  }, []);
   return state;
 }
 

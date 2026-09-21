@@ -16,7 +16,11 @@ import type {
 } from "@/lib/supermarket/types";
 
 function revalidateSupermarket() {
-  revalidatePath("/supermarket", "layout");
+  // Client stores refresh after mutations. Avoid layout-wide revalidation —
+  // it remounts AuthenticatedShell and breaks soft navigation.
+  // Page-level invalidation keeps the dashboard RSC cache fresh without
+  // remounting the shared shell.
+  revalidatePath("/supermarket", "page");
 }
 
 function paymentMethodToDb(method: string) {
@@ -552,12 +556,7 @@ export async function getDashboardMetricsAction() {
     const start = new Date(today);
     start.setHours(0, 0, 0, 0);
 
-    const [
-      salesToday,
-      lowStock,
-      recentSales,
-      recentReceipts,
-    ] = await Promise.all([
+    const [salesToday, lowStock, recentSales, recentReceipts, batchesRes] = await Promise.all([
       supabase
         .from("sm_sales")
         .select("total, cogs")
@@ -580,25 +579,33 @@ export async function getDashboardMetricsAction() {
         .eq("business_unit_id", businessUnitId)
         .order("received_at", { ascending: false })
         .limit(8),
+      supabase
+        .from("sm_stock_batches")
+        .select("product_id, quantity, buying_price")
+        .eq("business_unit_id", businessUnitId),
     ]);
 
-    if (salesToday.error) mapDbError(salesToday.error);
+    const firstError =
+      salesToday.error ||
+      lowStock.error ||
+      recentSales.error ||
+      recentReceipts.error ||
+      batchesRes.error;
+    if (firstError) mapDbError(firstError);
 
+    // Zero rows are valid — empty supermarket starts with all metrics at 0.
     const revenue = (salesToday.data ?? []).reduce((sum, s) => sum + Number(s.total || 0), 0);
     const cogs = (salesToday.data ?? []).reduce((sum, s) => sum + Number(s.cogs || 0), 0);
 
-    // Low stock via batches sum — approximate server-side
-    const { data: batches } = await supabase
-      .from("sm_stock_batches")
-      .select("product_id, quantity")
-      .eq("business_unit_id", businessUnitId);
-
     const stockByProduct = new Map<string, number>();
-    for (const batch of batches ?? []) {
+    let inventoryValue = 0;
+    for (const batch of batchesRes.data ?? []) {
+      const qty = Number(batch.quantity || 0);
       stockByProduct.set(
         batch.product_id,
-        (stockByProduct.get(batch.product_id) ?? 0) + Number(batch.quantity || 0),
+        (stockByProduct.get(batch.product_id) ?? 0) + qty,
       );
+      inventoryValue += qty * Number(batch.buying_price || 0);
     }
 
     const low = (lowStock.data ?? []).filter((p) => {
@@ -613,6 +620,7 @@ export async function getDashboardMetricsAction() {
         todayRevenue: revenue,
         todaySalesCount: salesToday.data?.length ?? 0,
         todayProfit: revenue - cogs,
+        inventoryValue,
         lowStockCount: low.length,
         outOfStockCount: out.length,
         recentSales: recentSales.data ?? [],
@@ -664,6 +672,9 @@ export async function getReportAggregatesAction(input: { from: string; to: strin
     ]);
 
     if (salesRes.error) mapDbError(salesRes.error);
+    if (expensesRes.error) mapDbError(expensesRes.error);
+    if (receiptsRes.error) mapDbError(receiptsRes.error);
+    if (returnsRes.error) mapDbError(returnsRes.error);
 
     const revenue = (salesRes.data ?? []).reduce((s, r) => s + Number(r.total || 0), 0);
     const cogs = (salesRes.data ?? []).reduce((s, r) => s + Number(r.cogs || 0), 0);

@@ -12,7 +12,7 @@ import { PageBackButton } from "@/components/ui/PageBackButton";
 
 export function PurchaseOrderDetailPage() {
   const params = useParams<{ poId: string }>();
-  const inventory = useSupermarketInventory();
+  const inventory = useSupermarketInventory({ purchasing: true });
   const order = inventory.purchaseOrders.find((item) => item.id === params.poId);
   if (!order) {
     return (

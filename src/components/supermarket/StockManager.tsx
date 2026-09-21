@@ -111,7 +111,7 @@ export function StockManager() {
   const canReceive = isSuperAdmin() || canManageStock(user, "supermarket.stock.edit");
   const canAddCategory = canCreateSupermarketCategory(user, isSuperAdmin());
   const canManageCategories = canManageSupermarketCategories(user, isSuperAdmin());
-  const inventory = useSupermarketInventory();
+  const inventory = useSupermarketInventory({ movements: true });
   const categories = inventory.categories.map((item) => item.name);
 
   const [query, setQuery] = useState("");
@@ -1025,7 +1025,9 @@ function EmptyStock({
 }) {
   return (
     <div className="px-6 py-10 text-center">
-      <p className="text-[16px] font-semibold tracking-[-0.03em] text-navy">No products found</p>
+      <p className="text-[16px] font-semibold tracking-[-0.03em] text-navy">
+        {filtersActive ? "No products found" : "No stock records yet"}
+      </p>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
         {filtersActive
           ? "No products match the current inventory filter."

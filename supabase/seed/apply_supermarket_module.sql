@@ -1471,3 +1471,81 @@ grant execute on function public.sm_adjust_stock(uuid, text, integer, text, text
 grant execute on function public.sm_receive_purchase_order(uuid, jsonb, text) to authenticated, service_role;
 grant execute on function public.sm_process_sales_return(uuid, jsonb, text, text) to authenticated, service_role;
 -- grants appended
+
+-- ---------------------------------------------------------------------------
+-- Stable access (mirrors 20260921140000_supermarket_stable_access.sql)
+-- ---------------------------------------------------------------------------
+
+create or replace function public.jwt_has_supermarket_module()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from jsonb_array_elements_text(
+      case
+        when jsonb_typeof(coalesce(auth.jwt() -> 'app_metadata' -> 'modules', '[]'::jsonb)) = 'array'
+          then coalesce(auth.jwt() -> 'app_metadata' -> 'modules', '[]'::jsonb)
+        else '[]'::jsonb
+      end
+    ) as module(code)
+    where module.code in ('*', 'supermarket')
+  );
+$$;
+
+create or replace function public.jwt_is_platform_owner()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(auth.jwt() -> 'app_metadata' ->> 'role_code', '') in ('SUPER_ADMIN', 'OWNER');
+$$;
+
+create or replace function public.has_business_unit_access(p_business_unit_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    case
+      when p_business_unit_id is null then false
+      when public.is_owner() then true
+      when public.jwt_is_platform_owner() then true
+      when exists (
+        select 1
+        from public.user_business_units ubu
+        where ubu.user_id = auth.uid()
+          and ubu.business_unit_id = p_business_unit_id
+      ) then true
+      when p_business_unit_id = public.supermarket_business_unit_id()
+        and public.jwt_has_supermarket_module() then true
+      else false
+    end;
+$$;
+
+create or replace function public.has_supermarket_access()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    public.is_owner()
+    or public.jwt_is_platform_owner()
+    or public.jwt_has_supermarket_module()
+    or public.has_business_unit_access(public.supermarket_business_unit_id());
+$$;
+
+grant execute on function public.jwt_has_supermarket_module() to authenticated, service_role;
+grant execute on function public.jwt_is_platform_owner() to authenticated, service_role;
+grant execute on function public.has_business_unit_access(uuid) to authenticated, service_role;
+grant execute on function public.supermarket_business_unit_id() to authenticated, service_role;
+grant execute on function public.has_supermarket_access() to authenticated, service_role;

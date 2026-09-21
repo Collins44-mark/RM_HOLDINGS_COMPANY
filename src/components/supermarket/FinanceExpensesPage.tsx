@@ -191,7 +191,7 @@ export function FinanceExpensesPage() {
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-3 py-10 text-center text-slate-500">
-                    {finance.loaded ? "No expenses in this period." : "Loading expenses…"}
+                    {finance.loaded ? "No expenses recorded" : "Loading expenses…"}
                   </td>
                 </tr>
               ) : null}

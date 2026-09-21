@@ -23,7 +23,7 @@ type LineState = {
 export function ReceivePurchasePage() {
   const params = useParams<{ poId: string }>();
   const { user } = useAuth();
-  const inventory = useSupermarketInventory();
+  const inventory = useSupermarketInventory({ purchasing: true });
   const order = inventory.purchaseOrders.find((item) => item.id === params.poId);
   const [success, setSuccess] = useState<{
     number: string;

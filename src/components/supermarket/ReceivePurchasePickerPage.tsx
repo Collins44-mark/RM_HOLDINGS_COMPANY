@@ -9,7 +9,7 @@ import { StatusPill, glassCard, primaryButton, tableHead } from "@/components/su
 import { PageBackButton } from "@/components/ui/PageBackButton";
 
 export function ReceivePurchasePickerPage() {
-  const inventory = useSupermarketInventory();
+  const inventory = useSupermarketInventory({ purchasing: true });
   const orders = receivablePurchaseOrders(inventory.purchaseOrders);
 
   return (
