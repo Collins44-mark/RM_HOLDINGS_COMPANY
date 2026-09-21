@@ -198,6 +198,8 @@ export function applyCompletedSaleStock(products: PosProduct[], items: PosCartIt
 
 export function createCompletedSaleSnapshot(input: {
   invoiceNumber: number;
+  /** Prefer the database invoice when the sale RPC succeeds. */
+  invoiceLabel?: string;
   soldAt: Date;
   customer: string;
   items: PosCartItem[];
@@ -216,7 +218,7 @@ export function createCompletedSaleSnapshot(input: {
 }): PosCompletedSale {
   const items = input.items.map((item) => ({ ...item }));
   const sale: PosCompletedSale = {
-    invoice: formatInvoiceNumber(input.invoiceNumber),
+    invoice: input.invoiceLabel?.trim() || formatInvoiceNumber(input.invoiceNumber),
     soldAt: input.soldAt,
     store: POS_STORE,
     cashier: POS_CASHIER,

@@ -84,8 +84,19 @@ export async function completeSaleAction(input: {
       p_notes: input.notes ?? "",
     });
     if (error) mapDbError(error);
+    const saleId = data as string;
+    const { data: saleRow, error: saleLookupError } = await supabase
+      .from("sm_sales")
+      .select("invoice_number")
+      .eq("id", saleId)
+      .maybeSingle();
+    if (saleLookupError) mapDbError(saleLookupError);
     revalidateSupermarket();
-    return { ok: true as const, saleId: data as string };
+    return {
+      ok: true as const,
+      saleId,
+      invoiceNumber: (saleRow?.invoice_number as string | undefined) ?? undefined,
+    };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
   }

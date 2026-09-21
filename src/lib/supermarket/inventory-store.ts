@@ -290,10 +290,10 @@ export async function setProductCategoryActive(id: string, isActive: boolean) {
   return { error: null };
 }
 
-export async function upsertProduct(product: SupermarketProduct) {
+export async function upsertProduct(product: SupermarketProduct, options?: { refresh?: boolean }) {
   const result = await upsertProductAction(product);
   if (!result.ok) return { error: result.error };
-  await refreshInventorySnapshot();
+  if (options?.refresh !== false) await refreshInventorySnapshot();
   return { error: null, id: result.id };
 }
 
@@ -338,7 +338,7 @@ export async function createSupplierRecord(input: CreateSupplierInput) {
   return { error: null, supplier };
 }
 
-export async function receiveStock(input: ReceiveStockInput) {
+export async function receiveStock(input: ReceiveStockInput, options?: { refresh?: boolean }) {
   const kind = input.type === "Opening Stock" ? "Opening Balance" : "Increase";
   const before = snapshot.batches
     .filter((batch) => batch.productId === input.productId)
@@ -352,7 +352,7 @@ export async function receiveStock(input: ReceiveStockInput) {
     note: input.note ?? "",
   });
   if (!result.ok) return { error: result.error, movement: null, newStock: before };
-  await refreshInventorySnapshot();
+  if (options?.refresh !== false) await refreshInventorySnapshot();
   const newStock = before + input.quantity;
   return {
     error: null,

@@ -222,25 +222,29 @@ export function AddProductPage() {
     };
 
     try {
-      const saved = await upsertProduct(payload);
+      const saved = await upsertProduct(payload, { refresh: false });
       if (saved.error || !saved.id) {
         throw new Error(saved.error ?? "Unable to save product.");
       }
       if (stock > 0) {
-        const stockResult = await receiveStock({
-          productId: saved.id,
-          quantity: stock,
-          batchNumber: "OPENING",
-          expiryDate: form.trackExpiry ? expiryDate : null,
-          buyingPrice,
-          type: "Opening Stock",
-          reference: "OPENING",
-          note: form.notes.trim() || "Opening stock",
-          supplier: form.supplier.trim() || undefined,
-        });
+        const stockResult = await receiveStock(
+          {
+            productId: saved.id,
+            quantity: stock,
+            batchNumber: "OPENING",
+            expiryDate: form.trackExpiry ? expiryDate : null,
+            buyingPrice,
+            type: "Opening Stock",
+            reference: "OPENING",
+            note: form.notes.trim() || "Opening stock",
+            supplier: form.supplier.trim() || undefined,
+          },
+          { refresh: false },
+        );
         if (stockResult.error) throw new Error(stockResult.error);
       }
-      void refreshInventorySnapshot();
+      // One catalog refresh after all required writes — not after each mutation.
+      await refreshInventorySnapshot();
       startTransition(() => {
         router.push("/supermarket/products");
       });

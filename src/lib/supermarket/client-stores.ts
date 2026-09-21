@@ -96,7 +96,8 @@ export function useSupermarketSales(period?: { from?: string; to?: string }) {
 export async function completePosSale(input: Parameters<typeof completeSaleAction>[0]) {
   const result = await completeSaleAction(input);
   if (result.ok) {
-    await Promise.all([refreshInventorySnapshot(), refreshSales()]);
+    // Do not block the POS success UI on catalog/list refreshes.
+    void Promise.all([refreshInventorySnapshot(), refreshSales()]);
   }
   return result;
 }

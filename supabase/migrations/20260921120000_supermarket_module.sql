@@ -553,6 +553,16 @@ begin
 
   v_invoice := public.sm_next_document_number('SALE', 'INV-');
 
+  -- Sale header first so sm_sale_items / payments can satisfy FKs.
+  -- Totals updated after line processing.
+  insert into public.sm_sales (
+    id, business_unit_id, invoice_number, cashier_id, customer_name,
+    subtotal, discount, tax, total, cogs, status, notes
+  ) values (
+    v_sale_id, v_bu, v_invoice, auth.uid(), coalesce(nullif(p_customer_name, ''), 'Walk-in Customer'),
+    0, coalesce(p_discount, 0), coalesce(p_tax, 0), 0, 0, 'COMPLETED', coalesce(p_notes, '')
+  );
+
   for v_item in select * from jsonb_array_elements(p_items)
   loop
     select * into v_product
@@ -629,13 +639,11 @@ begin
 
   v_total := greatest(0, v_subtotal - coalesce(p_discount, 0) + coalesce(p_tax, 0));
 
-  insert into public.sm_sales (
-    id, business_unit_id, invoice_number, cashier_id, customer_name,
-    subtotal, discount, tax, total, cogs, status, notes
-  ) values (
-    v_sale_id, v_bu, v_invoice, auth.uid(), coalesce(nullif(p_customer_name, ''), 'Walk-in Customer'),
-    v_subtotal, coalesce(p_discount, 0), coalesce(p_tax, 0), v_total, v_cogs, 'COMPLETED', coalesce(p_notes, '')
-  );
+  update public.sm_sales
+  set subtotal = v_subtotal,
+      total = v_total,
+      cogs = v_cogs
+  where id = v_sale_id;
 
   for v_payment in select * from jsonb_array_elements(p_payments)
   loop

@@ -367,6 +367,7 @@ export function PosManager() {
 
     const sale = createCompletedSaleSnapshot({
       invoiceNumber,
+      invoiceLabel: result.invoiceNumber,
       soldAt: new Date(),
       customer,
       items: snapshotItems,
@@ -865,7 +866,7 @@ export function PosManager() {
                 </div>
               ) : null}
 
-              {validation && items.length > 0 && (payment !== "Cash" || cashValue > 0) ? (
+              {saleError || (validation && items.length > 0) ? (
                 <p className="mt-3 text-[12px] text-[#c24646]">{saleError || validation || inventory.error}</p>
               ) : null}
 
@@ -875,8 +876,8 @@ export function PosManager() {
                 onClick={completeSale}
                 className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-[16px] bg-[#0b2244] text-[14.5px] font-semibold text-white shadow-[0_12px_24px_rgba(11,34,68,0.2),inset_0_1px_0_rgba(255,255,255,0.12)] transition duration-200 hover:bg-[#102a52] hover:shadow-[0_14px_28px_rgba(11,34,68,0.24)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:shadow-[0_12px_24px_rgba(11,34,68,0.2)]"
               >
-                Complete Sale
-                <ArrowRight className="h-4 w-4" strokeWidth={2.2} />
+                {completing ? "Processing sale..." : "Complete Sale"}
+                {!completing ? <ArrowRight className="h-4 w-4" strokeWidth={2.2} /> : null}
               </button>
             </>
           )}
@@ -1047,8 +1048,8 @@ function SuccessState({
       <span className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#e8f6ee] text-[#1f8a4c]">
         <Check className="h-7 w-7" strokeWidth={2.4} />
       </span>
-      <h2 className="mt-4 text-[22px] font-semibold tracking-[-0.04em] text-navy">Sale Completed</h2>
-      <p className="mt-4 text-[12px] font-medium uppercase tracking-[0.14em] text-slate-400">Invoice</p>
+      <h2 className="mt-4 text-[22px] font-semibold tracking-[-0.04em] text-navy">Sale completed successfully</h2>
+      <p className="mt-4 text-[12px] font-medium uppercase tracking-[0.14em] text-slate-400">Invoice number</p>
       <p className="mt-1 text-[20px] font-semibold tracking-[-0.03em] text-navy">#{sale.invoice}</p>
       <p className="mt-4 text-[12px] font-medium uppercase tracking-[0.14em] text-slate-400">Amount</p>
       <p className="mt-1 text-[22px] font-semibold tracking-[-0.03em] text-navy">{formatTzs(sale.totalDue)}</p>
