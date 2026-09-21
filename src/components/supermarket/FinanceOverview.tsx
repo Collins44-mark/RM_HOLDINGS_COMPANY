@@ -27,8 +27,7 @@ import {
   type SalesDateRange,
   type SalesPeriodPreset,
 } from "@/lib/data/sample-supermarket-sales";
-import { getFinanceSummaryAction } from "@/actions/supermarket/reports";
-import { useSupermarketFinance } from "@/lib/supermarket/client-stores";
+import { getFinanceSummaryAction } from "@/actions/supermarket/finance";
 import {
   primaryButton,
   secondaryButton,
@@ -120,9 +119,10 @@ export function FinanceOverview() {
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
+  const [paymentCount, setPaymentCount] = useState(0);
   const [summaryError, setSummaryError] = useState<string | null>(null);
-  const finance = useSupermarketFinance();
-  const paymentCount = Array.isArray(finance.payments) ? finance.payments.length : 0;
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [reloadToken, setReloadToken] = useState(0);
 
   const period = useMemo(() => {
     const asOf = new Date().toISOString().slice(0, 10);
@@ -131,40 +131,39 @@ export function FinanceOverview() {
 
   useEffect(() => {
     let active = true;
+    setSummaryLoading(true);
+    setSummaryError(null);
     void getFinanceSummaryAction({ from: period.start, to: period.end })
       .then((result) => {
         if (!active) return;
         if (!result.ok) {
+          // Keep any prior successful summary visible; do not invent zeros on failure.
           setSummaryError(result.error);
-          setSummary(null);
+          setSummaryLoading(false);
           return;
         }
         setSummaryError(null);
         setSummary(normalizeFinanceSummary(result.summary, period.start, period.end));
+        setPaymentCount(Number(result.summary.paymentCount) || 0);
+        setSummaryLoading(false);
       })
       .catch((error: unknown) => {
         if (!active) return;
         const message = error instanceof Error ? error.message : "Failed to load finance summary.";
         setSummaryError(message);
-        setSummary(null);
+        setSummaryLoading(false);
       });
     return () => {
       active = false;
     };
-  }, [period.start, period.end]);
+  }, [period.start, period.end, reloadToken]);
 
-  if (!summary) {
-    return (
-      <div className="min-w-0 max-w-full space-y-5 pb-10 sm:space-y-6">
-        <header>
-          <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[28px]">Finance</h1>
-          <p className="mt-1.5 text-[13.5px] text-slate-500">
-            {summaryError ? summaryError : "Loading financial overview…"}
-          </p>
-        </header>
-      </div>
-    );
+  function retryLoad() {
+    setReloadToken((token) => token + 1);
   }
+
+  const showInitialLoading = summaryLoading && !summary;
+  const showContent = Boolean(summary);
 
   return (
     <div className="min-w-0 max-w-full space-y-5 pb-10 sm:space-y-6">
@@ -183,86 +182,139 @@ export function FinanceOverview() {
         />
       </header>
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:gap-4">
-        <KpiCard
-          tone="revenue"
-          title="Revenue"
-          description="Total sales (all payment methods)"
-          amount={summary.revenue}
-          delta={summary.deltas.revenue}
-          icon={<TrendingUp className="h-[18px] w-[18px]" strokeWidth={1.9} />}
-        />
-        <KpiCard
-          tone="profit"
-          title="Product Profit"
-          description="Profit from products sold"
-          amount={summary.productProfit}
-          delta={summary.deltas.productProfit}
-          icon={<CircleDollarSign className="h-[18px] w-[18px]" strokeWidth={1.9} />}
-          showProfitHint
-          actionHref="/supermarket/finance/product-profit"
-          actionLabel="View Product Profit →"
-        />
-        <KpiCard
-          tone="expenses"
-          title="Expenses"
-          description="Total operating expenses"
-          amount={summary.expenses}
-          delta={summary.deltas.expenses}
-          icon={<Wallet className="h-[18px] w-[18px]" strokeWidth={1.9} />}
-          invertDelta
-        />
-        <KpiCard
-          tone="net"
-          title="Net Profit"
-          description="Profit after expenses"
-          amount={summary.netProfit}
-          delta={summary.deltas.netProfit}
-          icon={<Clock3 className="h-[18px] w-[18px]" strokeWidth={1.9} />}
-        />
-      </section>
+      {summaryError ? (
+        <div
+          className={cn(
+            glass,
+            "flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5",
+          )}
+          role="alert"
+        >
+          <div className="min-w-0">
+            <p className="text-[13.5px] font-semibold text-navy">Could not load financial data</p>
+            <p className="mt-1 text-[12.5px] text-[#c45b66]">{summaryError}</p>
+          </div>
+          <button type="button" onClick={retryLoad} className={cn(primaryButton, "w-full shrink-0 sm:w-auto")}>
+            Retry
+          </button>
+        </div>
+      ) : null}
 
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <CashBalanceCard summary={summary} />
-        <SupplierOutstandingCard summary={summary} />
-      </section>
+      {showInitialLoading ? (
+        <FinanceDataSkeleton />
+      ) : showContent && summary ? (
+        <>
+          <section
+            className={cn(
+              "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:gap-4",
+              summaryLoading && "opacity-70",
+            )}
+            aria-busy={summaryLoading}
+          >
+            <KpiCard
+              tone="revenue"
+              title="Revenue"
+              description="Total sales (all payment methods)"
+              amount={summary.revenue}
+              delta={summary.deltas.revenue}
+              icon={<TrendingUp className="h-[18px] w-[18px]" strokeWidth={1.9} />}
+            />
+            <KpiCard
+              tone="profit"
+              title="Product Profit"
+              description="Profit from products sold"
+              amount={summary.productProfit}
+              delta={summary.deltas.productProfit}
+              icon={<CircleDollarSign className="h-[18px] w-[18px]" strokeWidth={1.9} />}
+              showProfitHint
+              actionHref="/supermarket/finance/product-profit"
+              actionLabel="View Product Profit →"
+            />
+            <KpiCard
+              tone="expenses"
+              title="Expenses"
+              description="Total operating expenses"
+              amount={summary.expenses}
+              delta={summary.deltas.expenses}
+              icon={<Wallet className="h-[18px] w-[18px]" strokeWidth={1.9} />}
+              invertDelta
+            />
+            <KpiCard
+              tone="net"
+              title="Net Profit"
+              description="Profit after expenses"
+              amount={summary.netProfit}
+              delta={summary.deltas.netProfit}
+              icon={<Clock3 className="h-[18px] w-[18px]" strokeWidth={1.9} />}
+            />
+          </section>
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <ActionCard
-          title="Expenses"
-          description="Operating expenses"
-          meta={formatTzs(summary.expenses)}
-          icon={<Wallet className="h-4 w-4" strokeWidth={1.9} />}
-          tone="border-rose-200/30 bg-rose-50/30"
-          iconTone="border-rose-200/45 bg-white/70 text-rose-500"
-          primaryAction={{ label: "+ Record Expense", onClick: () => setExpenseOpen(true) }}
-          secondaryHref="/supermarket/finance/expenses"
-          secondaryLabel="View Expenses →"
-        />
-        <ActionCard
-          title="Payments"
-          description="Money received and money paid"
-          meta={`${paymentCount} recorded`}
-          icon={<Banknote className="h-4 w-4" strokeWidth={1.9} />}
-          tone="border-sky-200/30 bg-sky-50/30"
-          iconTone="border-sky-200/45 bg-white/70 text-sky-600"
-          primaryAction={{ label: "+ Record Payment", onClick: () => setPaymentOpen(true) }}
-          secondaryHref="/supermarket/finance/payments"
-          secondaryLabel="View Payments →"
-        />
-        <ActionCard
-          title="Reports"
-          description="View detailed financial reports"
-          icon={<FileBarChart2 className="h-4 w-4" strokeWidth={1.9} />}
-          tone="border-violet-200/30 bg-violet-50/30"
-          iconTone="border-violet-200/45 bg-white/70 text-violet-600"
-          secondaryHref="/supermarket/reports"
-          secondaryLabel="Open Reports →"
-        />
-      </section>
+          <section className={cn("grid grid-cols-1 gap-4 lg:grid-cols-2", summaryLoading && "opacity-70")}>
+            <CashBalanceCard summary={summary} />
+            <SupplierOutstandingCard summary={summary} />
+          </section>
+
+          <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <ActionCard
+              title="Expenses"
+              description="Operating expenses"
+              meta={formatTzs(summary.expenses)}
+              icon={<Wallet className="h-4 w-4" strokeWidth={1.9} />}
+              tone="border-rose-200/30 bg-rose-50/30"
+              iconTone="border-rose-200/45 bg-white/70 text-rose-500"
+              primaryAction={{ label: "+ Record Expense", onClick: () => setExpenseOpen(true) }}
+              secondaryHref="/supermarket/finance/expenses"
+              secondaryLabel="View Expenses →"
+            />
+            <ActionCard
+              title="Payments"
+              description="Money received and money paid"
+              meta={`${paymentCount} recorded`}
+              icon={<Banknote className="h-4 w-4" strokeWidth={1.9} />}
+              tone="border-sky-200/30 bg-sky-50/30"
+              iconTone="border-sky-200/45 bg-white/70 text-sky-600"
+              primaryAction={{ label: "+ Record Payment", onClick: () => setPaymentOpen(true) }}
+              secondaryHref="/supermarket/finance/payments"
+              secondaryLabel="View Payments →"
+            />
+            <ActionCard
+              title="Reports"
+              description="View detailed financial reports"
+              icon={<FileBarChart2 className="h-4 w-4" strokeWidth={1.9} />}
+              tone="border-violet-200/30 bg-violet-50/30"
+              iconTone="border-violet-200/45 bg-white/70 text-violet-600"
+              secondaryHref="/supermarket/reports"
+              secondaryLabel="Open Reports →"
+            />
+          </section>
+        </>
+      ) : summaryError ? null : (
+        <FinanceDataSkeleton />
+      )}
 
       {expenseOpen ? <RecordExpenseModal onClose={() => setExpenseOpen(false)} /> : null}
       {paymentOpen ? <RecordPaymentModal onClose={() => setPaymentOpen(false)} /> : null}
+    </div>
+  );
+}
+
+function FinanceDataSkeleton() {
+  return (
+    <div className="space-y-5" aria-busy="true" aria-label="Loading financial overview">
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:gap-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className={cn(glass, "h-[132px] animate-pulse bg-white/50")} />
+        ))}
+      </section>
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className={cn(glass, "h-[280px] animate-pulse bg-white/50")} />
+        <div className={cn(glass, "h-[280px] animate-pulse bg-white/50")} />
+      </section>
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div key={index} className={cn(glass, "h-[120px] animate-pulse bg-white/50")} />
+        ))}
+      </section>
     </div>
   );
 }
