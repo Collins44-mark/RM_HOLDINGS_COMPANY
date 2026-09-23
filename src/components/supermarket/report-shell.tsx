@@ -39,7 +39,12 @@ export function useReportPeriod(basePath: string, controlled?: ControlledReportP
   const [localRange, setLocalRange] = useState<SalesDateRange>(initial.range);
 
   const preset = controlled?.preset ?? localPreset;
-  const range = controlled?.range ?? localRange;
+  const rangeFrom = controlled?.range.from ?? localRange.from;
+  const rangeTo = controlled?.range.to ?? localRange.to;
+  const range = useMemo(
+    () => ({ from: rangeFrom, to: rangeTo }),
+    [rangeFrom, rangeTo],
+  );
   const period = useMemo(() => resolveReportPeriod(preset, range), [preset, range]);
   const query = reportPeriodQuery(preset, range);
 
