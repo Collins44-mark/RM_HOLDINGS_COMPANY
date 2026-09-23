@@ -12,7 +12,7 @@ import {
 import { fetchProfitLossReportAction } from "@/actions/supermarket/reports";
 import { useLiveReport } from "@/lib/supermarket/use-live-report";
 import { downloadProfitLossReportPdfFromData } from "@/lib/data/supermarket-reports-pdf";
-import { useReportPeriod, type ControlledReportPeriod } from "@/components/supermarket/report-shell";
+import { useReportPeriod, type ControlledReportPeriod, ReportLoadingChrome } from "@/components/supermarket/report-shell";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 
 const glass =
@@ -153,7 +153,13 @@ export function ProfitLossReportDetail({
 
   const { data, error, loading } = useLiveReport(fetchProfitLossReportAction, preset, range, filters);
   if (loading && !data) {
-    return <p className="px-1 py-8 text-[13px] text-slate-500">Loading profit & loss…</p>;
+    return (
+      <ReportLoadingChrome
+        embedded={embedded}
+        title="Profit & Loss Report"
+        subtitle="Revenue, expenses and profitability for the selected period."
+      />
+    );
   }
   if (error || !data) {
     return <p className="px-1 py-8 text-[13px] text-[#c45b66]">{error || "Unable to load profit & loss."}</p>;

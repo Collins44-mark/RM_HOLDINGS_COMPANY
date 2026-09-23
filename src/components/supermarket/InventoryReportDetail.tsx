@@ -11,7 +11,7 @@ import {
   type InventoryReportFilters,
 } from "@/lib/data/sample-supermarket-reports";
 import { downloadInventoryReportPdfFromData } from "@/lib/data/supermarket-reports-pdf";
-import { useReportPeriod, type ControlledReportPeriod } from "@/components/supermarket/report-shell";
+import { useReportPeriod, type ControlledReportPeriod, ReportLoadingChrome } from "@/components/supermarket/report-shell";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 import { fetchInventoryReportAction } from "@/actions/supermarket/reports";
 import { useLiveReport } from "@/lib/supermarket/use-live-report";
@@ -180,7 +180,13 @@ export function InventoryReportDetail({
   }
 
   if (loading && !data) {
-    return <p className="px-1 py-8 text-[13px] text-slate-500">Loading inventory report…</p>;
+    return (
+      <ReportLoadingChrome
+        embedded={embedded}
+        title="Inventory Report"
+        subtitle="Stock levels, movement and valuation for the selected period."
+      />
+    );
   }
   if (error || !data) {
     return <p className="px-1 py-8 text-[13px] text-[#c45b66]">{error || "Unable to load inventory report."}</p>;

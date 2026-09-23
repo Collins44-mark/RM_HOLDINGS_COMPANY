@@ -10,7 +10,7 @@ import {
   type PurchaseReportFilters,
 } from "@/lib/data/sample-supermarket-reports";
 import { downloadPurchaseReportPdfFromData } from "@/lib/data/supermarket-reports-pdf";
-import { useReportPeriod, type ControlledReportPeriod } from "@/components/supermarket/report-shell";
+import { useReportPeriod, type ControlledReportPeriod, ReportLoadingChrome } from "@/components/supermarket/report-shell";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 import { fetchPurchaseReportAction } from "@/actions/supermarket/reports";
 import { useLiveReport } from "@/lib/supermarket/use-live-report";
@@ -190,7 +190,13 @@ export function PurchaseReportDetail({
   const paymentCountTotal = (data?.paymentStatusSummary ?? []).reduce((sum, row) => sum + row.count, 0);
 
   if (loading && !data) {
-    return <p className="px-1 py-8 text-[13px] text-slate-500">Loading purchase report…</p>;
+    return (
+      <ReportLoadingChrome
+        embedded={embedded}
+        title="Purchase Report"
+        subtitle="Purchase summary and supplier-wise details for the selected period."
+      />
+    );
   }
   if (error || !data) {
     return <p className="px-1 py-8 text-[13px] text-[#c45b66]">{error || "Unable to load purchase report."}</p>;

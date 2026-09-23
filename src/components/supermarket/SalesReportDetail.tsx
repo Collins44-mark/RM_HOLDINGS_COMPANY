@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   Banknote,
   BarChart3,
@@ -29,7 +29,6 @@ import {
   SUPERMARKET_PRODUCT_CATEGORIES,
 } from "@/lib/data/supermarket-inventory";
 import {
-  type SalesReportData,
   type SalesReportFilters,
 } from "@/lib/data/sample-supermarket-reports";
 import { downloadSalesReportPdfFromData } from "@/lib/data/supermarket-reports-pdf";
@@ -37,6 +36,7 @@ import { fetchSalesReportAction } from "@/actions/supermarket/reports";
 import {
   useReportPeriod,
   type ControlledReportPeriod,
+  ReportLoadingChrome,
 } from "@/components/supermarket/report-shell";
 import { useLiveReport } from "@/lib/supermarket/use-live-report";
 
@@ -195,7 +195,13 @@ export function SalesReportDetail({
   }
 
   if (loading && !data) {
-    return <p className="px-1 py-8 text-[13px] text-slate-500">Loading sales report…</p>;
+    return (
+      <ReportLoadingChrome
+        embedded={embedded}
+        title="Sales Report"
+        subtitle="Sales performance and product analysis for the selected period."
+      />
+    );
   }
   if (error || !data) {
     return <p className="px-1 py-8 text-[13px] text-[#c45b66]">{error || "Unable to load sales report."}</p>;

@@ -30,11 +30,23 @@ export type ControlledReportPeriod = {
 export function useReportPeriod(basePath: string, controlled?: ControlledReportPeriod) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initial = parseReportPeriodParams({
-    period: searchParams.get("period"),
-    from: searchParams.get("from"),
-    to: searchParams.get("to"),
-  });
+
+  // Owner workspace URLs use period=this-year etc. Those values are NOT valid
+  // supermarket presets — never seed local state from them when controlled.
+  const initial = parseReportPeriodParams(
+    controlled
+      ? {
+          period: controlled.preset,
+          from: controlled.range.from,
+          to: controlled.range.to,
+        }
+      : {
+          period: searchParams.get("period"),
+          from: searchParams.get("from"),
+          to: searchParams.get("to"),
+        },
+  );
+
   const [localPreset, setLocalPreset] = useState<SalesPeriodPreset>(initial.preset);
   const [localRange, setLocalRange] = useState<SalesDateRange>(initial.range);
 
@@ -222,5 +234,34 @@ export function StatusPill({ value }: { value: string }) {
     <span className={cn("inline-flex h-6 items-center rounded-full px-2.5 text-[11.5px] font-medium", tone)}>
       {value}
     </span>
+  );
+}
+
+/** Shared first-paint loading chrome so the report shell mounts before data resolves. */
+export function ReportLoadingChrome({
+  title,
+  subtitle,
+  embedded = false,
+}: {
+  title: string;
+  subtitle: string;
+  embedded?: boolean;
+}) {
+  return (
+    <div className="min-w-0 max-w-full space-y-4 pb-10 sm:space-y-5">
+      <header className="min-w-0">
+        <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[28px]">{title}</h1>
+        <p className="mt-1.5 text-[13.5px] text-slate-500">{subtitle}</p>
+      </header>
+      <div
+        className={cn(
+          reportGlass,
+          "px-5 py-10 text-center text-[13.5px] text-slate-500",
+          embedded ? "" : "",
+        )}
+      >
+        Loading report data…
+      </div>
+    </div>
   );
 }
