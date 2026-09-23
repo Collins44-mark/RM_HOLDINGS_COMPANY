@@ -18,6 +18,7 @@ export type {
 export {
   REPORT_PERIOD_OPTIONS,
   parseReportPeriod,
+  previousReportPeriodRange,
   reportPeriodRange,
 } from "@/lib/data/report-period";
 
@@ -187,6 +188,7 @@ function buildUnitRows(ledger: SupermarketPeriodLedger): ReportUnitRow[] {
     const expenses = unit.code === "supermarket" ? ledger.expenses : 0;
     const operatingPosition = unit.code === "supermarket" ? ledger.netProfit : 0;
     const margin = ratioPercent(operatingPosition, revenue);
+    const hasActivity = revenue !== 0 || expenses !== 0 || operatingPosition !== 0;
     return {
       code: unit.code,
       name: unit.name,
@@ -194,7 +196,7 @@ function buildUnitRows(ledger: SupermarketPeriodLedger): ReportUnitRow[] {
       expenses,
       operatingPosition,
       margin,
-      status: unitStatus(margin),
+      status: unitStatus(margin, hasActivity),
     };
   });
 }

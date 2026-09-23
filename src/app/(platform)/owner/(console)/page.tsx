@@ -2,8 +2,11 @@ import { BusinessPerformanceSection } from "@/components/dashboard/BusinessPerfo
 import { BusinessSnapshot } from "@/components/dashboard/BusinessSnapshot";
 import { GroupOverviewSection } from "@/components/dashboard/GroupOverviewSection";
 import { WelcomeBanner } from "@/components/dashboard/WelcomeBanner";
-import { getConsolidatedFinance, getExecutiveInsights } from "@/lib/data/finance";
-import { parsePeriod } from "@/lib/data/period";
+import {
+  getConsolidatedFinanceForReportPeriod,
+  getExecutiveInsights,
+} from "@/lib/data/finance";
+import { parseReportPeriod } from "@/lib/data/report-period";
 import { formatHeroDate, formatSnapshotUpdated, greetingForHour } from "@/lib/format/datetime";
 import { APP_TIMEZONE } from "@/lib/config/app";
 import { getMorogoroWeather } from "@/lib/weather";
@@ -16,7 +19,7 @@ export default async function OwnerDashboardPage({
   searchParams: Promise<{ period?: string; from?: string; to?: string }>;
 }) {
   const params = await searchParams;
-  const period = parsePeriod(typeof params.period === "string" ? params.period : undefined);
+  const period = parseReportPeriod(typeof params.period === "string" ? params.period : undefined);
   const from = typeof params.from === "string" ? params.from : undefined;
   const to = typeof params.to === "string" ? params.to : undefined;
 
@@ -31,7 +34,7 @@ export default async function OwnerDashboardPage({
   const heroDate = formatHeroDate(now);
 
   const [finance, weather] = await Promise.all([
-    getConsolidatedFinance({ period, from, to, now }),
+    getConsolidatedFinanceForReportPeriod({ period, from, to, now }),
     getMorogoroWeather(),
   ]);
 
@@ -58,6 +61,7 @@ export default async function OwnerDashboardPage({
         highestRevenue={insights.highestRevenue}
         highestMargin={insights.highestMargin}
         activeUnits={insights.activeUnits}
+        configuredUnits={insights.configuredUnits}
         lastUpdated={formatSnapshotUpdated(now)}
       />
     </div>

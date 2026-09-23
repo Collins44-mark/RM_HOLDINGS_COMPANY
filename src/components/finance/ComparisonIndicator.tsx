@@ -19,6 +19,9 @@ export function ComparisonIndicator({
   const positive = invert ? !up : up;
   const Icon = plainArrow ? (up ? ArrowUp : ArrowDown) : up ? ArrowUpRight : ArrowDownRight;
 
+  // Zero change is not a growth signal — omit rather than inventing a green 0%.
+  if (value === 0) return null;
+
   return (
     <p
       className={cn(

@@ -4,7 +4,7 @@ import { OverviewSummaryCard, PercentMark } from "@/components/dashboard/Overvie
 import { formatTzs } from "@/lib/format/currency";
 import { formatPercent } from "@/lib/format/percent";
 import type { FinanceDelta } from "@/lib/data/finance";
-import type { RevenuePeriod } from "@/lib/data/period";
+import type { ReportPeriod } from "@/lib/data/report-period";
 
 export function GroupOverviewSection({
   totals,
@@ -16,7 +16,7 @@ export function GroupOverviewSection({
   totals: { revenue: number; expenses: number; operatingPosition: number; margin: number };
   comparison: FinanceDelta;
   comparisonLabel: string;
-  period: RevenuePeriod;
+  period: ReportPeriod;
   label: string;
 }) {
   return (

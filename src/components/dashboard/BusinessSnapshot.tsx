@@ -8,15 +8,15 @@ export function BusinessSnapshot({
   highestRevenue,
   highestMargin,
   activeUnits,
+  configuredUnits,
   lastUpdated,
 }: {
   highestRevenue?: UnitFinanceRow;
   highestMargin?: UnitFinanceRow;
   activeUnits: number;
+  configuredUnits: number;
   lastUpdated: string;
 }) {
-  if (!highestRevenue || !highestMargin) return null;
-
   return (
     <section className="rounded-[20px] border border-white/90 bg-white/92 px-5 py-5 shadow-[0_8px_28px_rgba(20,40,70,0.045)] sm:px-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -25,7 +25,7 @@ export function BusinessSnapshot({
             Business Snapshot
           </h2>
           <p className="mt-1 text-[13.5px] leading-5 text-slate-500">
-            Key highlights across all business units
+            Key highlights from live consolidated ledgers
           </p>
         </div>
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-slate-400 sm:justify-end">
@@ -41,22 +41,30 @@ export function BusinessSnapshot({
         <SnapshotCard
           label="Highest Revenue"
           icon={BarChart3}
-          title={highestRevenue.name}
-          value={formatTzs(highestRevenue.revenue)}
-          trend={highestRevenue.revenueChange}
+          title={highestRevenue?.name}
+          value={highestRevenue ? formatTzs(highestRevenue.revenue) : "Not available"}
+          trend={
+            highestRevenue && highestRevenue.revenueChange !== 0
+              ? highestRevenue.revenueChange
+              : undefined
+          }
         />
         <SnapshotCard
           label="Highest Margin"
           icon={PercentMark}
-          title={highestMargin.name}
-          value={formatPercent(highestMargin.margin)}
-          trend={highestMargin.marginChange}
+          title={highestMargin?.name}
+          value={highestMargin ? formatPercent(highestMargin.margin) : "Not available"}
+          trend={
+            highestMargin && highestMargin.marginChange !== 0
+              ? highestMargin.marginChange
+              : undefined
+          }
         />
         <SnapshotCard
           label="Active Business Units"
           icon={Building2}
           value={String(activeUnits)}
-          detail="Operating across the group"
+          detail={`${configuredUnits} configured · ${activeUnits} with activity this period`}
         />
       </div>
     </section>

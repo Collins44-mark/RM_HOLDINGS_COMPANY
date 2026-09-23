@@ -5,6 +5,11 @@ import {
   previousPeriodRange,
   type RevenuePeriod,
 } from "@/lib/data/period";
+import {
+  previousReportPeriodRange,
+  reportPeriodRange,
+  type ReportPeriod,
+} from "@/lib/data/report-period";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const FINANCE_DETAIL_HREF: Record<string, string> = {
@@ -17,7 +22,7 @@ export const FINANCE_DETAIL_HREF: Record<string, string> = {
   beekeeping: "/beekeeping/sales",
 };
 
-export type PerformanceStatus = "strong" | "healthy" | "watch";
+export type PerformanceStatus = "strong" | "healthy" | "watch" | "idle";
 
 export type UnitFinanceRow = {
   code: string;
@@ -37,7 +42,9 @@ export type UnitFinanceRow = {
   marginChange: number;
 };
 
-export function unitStatus(margin: number): PerformanceStatus {
+/** Factual status — idle when the unit has no operational activity in the period. */
+export function unitStatus(margin: number, hasActivity = true): PerformanceStatus {
+  if (!hasActivity) return "idle";
   if (margin >= 50) return "strong";
   if (margin >= 30) return "healthy";
   return "watch";
@@ -49,20 +56,33 @@ export function getExecutiveInsights(rows: UnitFinanceRow[]) {
       highestRevenue: undefined,
       highestMargin: undefined,
       activeUnits: 0,
+      configuredUnits: 0,
     };
   }
-  const highestRevenue = rows.reduce(
-    (best, row) => (row.revenue > best.revenue ? row : best),
-    rows[0],
+  const activeRows = rows.filter(
+    (row) => row.revenue !== 0 || row.expenses !== 0 || row.operatingPosition !== 0,
   );
-  const highestMargin = rows.reduce(
+  if (activeRows.length === 0) {
+    return {
+      highestRevenue: undefined,
+      highestMargin: undefined,
+      activeUnits: 0,
+      configuredUnits: rows.length,
+    };
+  }
+  const highestRevenue = activeRows.reduce(
+    (best, row) => (row.revenue > best.revenue ? row : best),
+    activeRows[0],
+  );
+  const highestMargin = activeRows.reduce(
     (best, row) => (row.margin > best.margin ? row : best),
-    rows[0],
+    activeRows[0],
   );
   return {
     highestRevenue,
     highestMargin,
-    activeUnits: rows.length,
+    activeUnits: activeRows.length,
+    configuredUnits: rows.length,
   };
 }
 
@@ -255,6 +275,7 @@ function buildUnitRow(
   const expenses = unit.code === "supermarket" ? current.expenses : 0;
   const operatingPosition = unit.code === "supermarket" ? current.netProfit : 0;
   const margin = ratioPercent(operatingPosition, revenue);
+  const hasActivity = revenue !== 0 || expenses !== 0 || operatingPosition !== 0;
 
   const prevRevenue = unit.code === "supermarket" ? previous.revenue : 0;
   const prevNet = unit.code === "supermarket" ? previous.netProfit : 0;
@@ -271,7 +292,7 @@ function buildUnitRow(
     expenses,
     operatingPosition,
     margin,
-    status: unitStatus(margin),
+    status: unitStatus(margin, hasActivity),
     href: FINANCE_DETAIL_HREF[unit.code] ?? homePathForModule(unit.code),
     moduleHref: homePathForModule(unit.code),
     revenueChange: deltaOrZero(revenue, prevRevenue),
@@ -279,28 +300,10 @@ function buildUnitRow(
   };
 }
 
-/**
- * Single consolidated finance source for Super Admin Dashboard and Owner Finance.
- *
- * Phase 1: supermarket = live sm_sales / sm_expenses; all other units = 0.
- * Never falls back to sample-finance or Prisma FinanceTransaction.
- */
-export async function getConsolidatedFinance(input: {
-  period: RevenuePeriod;
-  from?: string;
-  to?: string;
-  now?: Date;
-}) {
-  const now = input.now ?? new Date();
-  const range = periodRange(input.period, now, {
-    from: input.from,
-    to: input.to,
-  });
-  const previous = previousPeriodRange(input.period, now, {
-    from: input.from,
-    to: input.to,
-  });
-
+async function consolidateLedgers(
+  range: { from: Date; to: Date; label: string },
+  previous: { from: Date; to: Date; label: string },
+) {
   const [currentLedger, previousLedger] = await Promise.all([
     loadSupermarketPeriodLedger(range.from, range.to),
     loadSupermarketPeriodLedger(previous.from, previous.to),
@@ -326,8 +329,7 @@ export async function getConsolidatedFinance(input: {
     revenue: deltaOrZero(totals.revenue, previousTotals.revenue),
     expenses: deltaOrZero(totals.expenses, previousTotals.expenses),
     operatingPosition: deltaOrZero(totals.operatingPosition, previousTotals.operatingPosition),
-    margin:
-      previousTotals.revenue === 0 ? 0 : totals.margin - previousTotals.margin,
+    margin: previousTotals.revenue === 0 ? 0 : totals.margin - previousTotals.margin,
   };
 
   return {
@@ -339,4 +341,50 @@ export async function getConsolidatedFinance(input: {
     from: range.from,
     to: range.to,
   };
+}
+
+/**
+ * Single consolidated finance source for Super Admin Dashboard and Owner Finance.
+ *
+ * Phase 1: supermarket = live sm_sales / sm_expenses; all other units = 0.
+ * Never falls back to sample-finance or Prisma FinanceTransaction.
+ */
+export async function getConsolidatedFinance(input: {
+  period: RevenuePeriod;
+  from?: string;
+  to?: string;
+  now?: Date;
+}) {
+  const now = input.now ?? new Date();
+  const range = periodRange(input.period, now, {
+    from: input.from,
+    to: input.to,
+  });
+  const previous = previousPeriodRange(input.period, now, {
+    from: input.from,
+    to: input.to,
+  });
+  return consolidateLedgers(range, previous);
+}
+
+/**
+ * Same Phase 1 ledger formulas as getConsolidatedFinance, using Phase 2 report periods
+ * (Today / Yesterday / This Week / This Month / This Year / Custom).
+ */
+export async function getConsolidatedFinanceForReportPeriod(input: {
+  period: ReportPeriod;
+  from?: string;
+  to?: string;
+  now?: Date;
+}) {
+  const now = input.now ?? new Date();
+  const range = reportPeriodRange(input.period, now, {
+    from: input.from,
+    to: input.to,
+  });
+  const previous = previousReportPeriodRange(input.period, now, {
+    from: input.from,
+    to: input.to,
+  });
+  return consolidateLedgers(range, previous);
 }

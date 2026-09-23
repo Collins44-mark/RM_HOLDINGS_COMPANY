@@ -3,15 +3,15 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Calendar, ChevronDown } from "lucide-react";
 import {
-  DASHBOARD_PERIOD_OPTIONS,
-  type RevenuePeriod,
-} from "@/lib/data/period";
+  REPORT_PERIOD_OPTIONS,
+  type ReportPeriod,
+} from "@/lib/data/report-period";
 
 export function OverviewPeriodSelector({
   period,
   label,
 }: {
-  period: RevenuePeriod;
+  period: ReportPeriod;
   label: string;
 }) {
   const router = useRouter();
@@ -43,7 +43,7 @@ export function OverviewPeriodSelector({
           }}
           className="h-10 appearance-none rounded-[12px] border border-black/[0.06] bg-white py-2 pl-10 pr-10 text-[13px] font-medium text-navy outline-none transition duration-200 focus:border-[#9bb6e0] focus:ring-4 focus:ring-[#5b82c4]/10"
         >
-          {DASHBOARD_PERIOD_OPTIONS.map((option) => (
+          {REPORT_PERIOD_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
               {option.value === period ? label : option.label}
             </option>
