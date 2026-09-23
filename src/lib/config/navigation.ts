@@ -12,15 +12,8 @@ export const OWNER_NAV: NavItem[] = [
     href: "/owner/business-units",
     label: "Business Units",
     icon: "grid",
-    children: [
-      { href: "/rice", label: "Rice Mill & Warehouse", icon: "wheat" },
-      { href: "/farm", label: "Farm & Tractor Services", icon: "tractor" },
-      { href: "/supermarket", label: "Supermarket", icon: "cart" },
-      { href: "/property", label: "Properties & Rentals", icon: "building" },
-      { href: "/livestock", label: "Livestock Farm", icon: "paw" },
-      { href: "/school", label: "School Management", icon: "school" },
-      { href: "/beekeeping", label: "Beekeeping", icon: "hexagon" },
-    ],
+    // Children are filled at runtime from Supabase business_units via buildOwnerNav().
+    children: [],
   },
   { href: "/owner/finance", label: "Finance", icon: "file" },
   { href: "/owner/reports", label: "Reports", icon: "chart" },
@@ -28,6 +21,35 @@ export const OWNER_NAV: NavItem[] = [
   { href: "/owner/audit-logs", label: "Audit Logs", icon: "clipboard-list" },
   { href: "/owner/settings", label: "System Settings", icon: "settings" },
 ];
+
+const DEFAULT_UNIT_NAV: NavItem[] = [
+  { href: "/rice", label: "Rice Mill & Warehouse", icon: "wheat" },
+  { href: "/farm", label: "Farm & Tractor Services", icon: "tractor" },
+  { href: "/supermarket", label: "Supermarket", icon: "cart" },
+  { href: "/property", label: "Properties & Rentals", icon: "building" },
+  { href: "/livestock", label: "Livestock Farm", icon: "paw" },
+  { href: "/school", label: "School Management", icon: "school" },
+  { href: "/beekeeping", label: "Beekeeping", icon: "hexagon" },
+];
+
+/** Build Owner sidebar nav with Business Units children from the shared BU source. */
+export function buildOwnerNav(
+  units?: { code: string; name: string; slug?: string }[],
+): NavItem[] {
+  const children =
+    units && units.length > 0
+      ? units.map((unit) => ({
+          href: `/${unit.slug || unit.code}`,
+          label: unit.name,
+          icon:
+            DEFAULT_UNIT_NAV.find((item) => item.href === `/${unit.code}`)?.icon ?? "building",
+        }))
+      : DEFAULT_UNIT_NAV;
+
+  return OWNER_NAV.map((item) =>
+    item.href === "/owner/business-units" ? { ...item, children } : item,
+  );
+}
 
 export const SCHOOL_NAV: NavItem[] = [
   { href: "/school", label: "School Dashboard", icon: "dashboard", exact: true },
@@ -166,7 +188,7 @@ export const BEEKEEPING_NAV: NavItem[] = [
 ];
 
 export const MODULE_NAV: Record<string, NavItem[]> = {
-  owner: OWNER_NAV,
+  owner: buildOwnerNav(),
   school: SCHOOL_NAV,
   rice: RICE_NAV,
   farm: FARM_NAV,
@@ -177,7 +199,7 @@ export const MODULE_NAV: Record<string, NavItem[]> = {
 };
 
 export const SEARCH_INDEX = [
-  ...OWNER_NAV.flatMap((item) => [
+  ...buildOwnerNav().flatMap((item) => [
     { label: item.label, href: item.href, group: "Platform" },
     ...(item.children ?? []).map((child) => ({
       label: child.label,

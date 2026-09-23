@@ -1,4 +1,4 @@
-import { BUSINESS_UNITS, homePathForModule } from "@/lib/config/app";
+import { homePathForModule } from "@/lib/config/app";
 import { percentChange, ratioPercent } from "@/lib/format/percent";
 import {
   periodRange,
@@ -10,6 +10,7 @@ import {
   reportPeriodRange,
   type ReportPeriod,
 } from "@/lib/data/report-period";
+import { listBusinessUnits, type BusinessUnitView } from "@/lib/data/business-units";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const FINANCE_DETAIL_HREF: Record<string, string> = {
@@ -267,7 +268,7 @@ export async function loadSupermarketPeriodLedger(
 }
 
 function buildUnitRow(
-  unit: (typeof BUSINESS_UNITS)[number],
+  unit: BusinessUnitView,
   current: SupermarketPeriodLedger,
   previous: SupermarketPeriodLedger,
 ): UnitFinanceRow {
@@ -304,12 +305,13 @@ async function consolidateLedgers(
   range: { from: Date; to: Date; label: string },
   previous: { from: Date; to: Date; label: string },
 ) {
-  const [currentLedger, previousLedger] = await Promise.all([
+  const [currentLedger, previousLedger, units] = await Promise.all([
     loadSupermarketPeriodLedger(range.from, range.to),
     loadSupermarketPeriodLedger(previous.from, previous.to),
+    listBusinessUnits(),
   ]);
 
-  const rows: UnitFinanceRow[] = BUSINESS_UNITS.map((unit) =>
+  const rows: UnitFinanceRow[] = units.map((unit) =>
     buildUnitRow(unit, currentLedger, previousLedger),
   );
 

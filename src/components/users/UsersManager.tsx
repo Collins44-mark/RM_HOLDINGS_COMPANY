@@ -20,6 +20,8 @@ import {
   type UsersActionState,
 } from "@/actions/users";
 
+type UnitOption = { code: string; name: string };
+
 const STATUS_LABEL: Record<ManagedUserStatus, string> = {
   active: "Active",
   pending_password: "Pending Password Change",
@@ -51,8 +53,8 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
-function moduleCountsFromUsers(users: ManagedUser[]) {
-  const counts = Object.fromEntries(BUSINESS_UNITS.map((unit) => [unit.code, 0])) as Record<string, number>;
+function moduleCountsFromUsers(users: ManagedUser[], units: UnitOption[]) {
+  const counts = Object.fromEntries(units.map((unit) => [unit.code, 0])) as Record<string, number>;
   for (const user of users) {
     if (user.modules.includes("*")) {
       for (const code of Object.keys(counts)) counts[code] += 1;
@@ -68,10 +70,15 @@ function moduleCountsFromUsers(users: ManagedUser[]) {
 export function UsersManager({
   users,
   currentUserId,
+  businessUnits,
 }: {
   users: ManagedUser[];
   currentUserId: string;
+  businessUnits?: UnitOption[];
 }) {
+  const units = businessUnits?.length
+    ? businessUnits
+    : BUSINESS_UNITS.map((unit) => ({ code: unit.code, name: unit.name }));
   const [rows, setRows] = useState(users);
   const [moduleFilter, setModuleFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -83,7 +90,7 @@ export function UsersManager({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const counts = moduleCountsFromUsers(rows);
+  const counts = moduleCountsFromUsers(rows, units);
   const roles = useMemo(
     () => Array.from(new Map(rows.map((user) => [user.roleCode, user.roleName])).entries()),
     [rows],
@@ -120,7 +127,7 @@ export function UsersManager({
       />
 
       <section className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
-        {BUSINESS_UNITS.map((unit) => (
+        {units.map((unit) => (
           <button
             key={unit.code}
             type="button"
@@ -135,7 +142,7 @@ export function UsersManager({
             </span>
             <span className="min-w-0">
               <span className="block truncate text-[12px] font-semibold text-navy sm:text-[13.5px]">
-                {unit.shortName}
+                {unit.name}
               </span>
               <span className="mt-0.5 block text-[11px] text-slate-500 sm:text-[12px]">
                 {counts[unit.code] ?? 0} Users
@@ -150,13 +157,13 @@ export function UsersManager({
           <FilterChip active={moduleFilter === "all"} onClick={() => setModuleFilter("all")}>
             All
           </FilterChip>
-          {BUSINESS_UNITS.map((unit) => (
+          {units.map((unit) => (
             <FilterChip
               key={unit.code}
               active={moduleFilter === unit.code}
               onClick={() => setModuleFilter(unit.code)}
             >
-              {unit.shortName}
+              {unit.name}
             </FilterChip>
           ))}
         </div>
@@ -280,6 +287,7 @@ export function UsersManager({
         <UserFormDialog
           title="Add User"
           currentUserId={currentUserId}
+          businessUnits={units}
           pending={pending}
           onClose={() => setAddOpen(false)}
           onSubmit={(formData) => {
@@ -296,6 +304,7 @@ export function UsersManager({
         <UserDetails
           user={selected}
           currentUserId={currentUserId}
+          businessUnits={units}
           pending={pending}
           onClose={() => setSelected(null)}
           onUnlock={() =>
@@ -424,6 +433,7 @@ function UserFormDialog({
   title,
   user,
   currentUserId,
+  businessUnits,
   pending,
   onClose,
   onSubmit,
@@ -431,6 +441,7 @@ function UserFormDialog({
   title: string;
   user?: ManagedUser;
   currentUserId: string;
+  businessUnits: UnitOption[];
   pending: boolean;
   onClose: () => void;
   onSubmit: (formData: FormData) => void;
@@ -480,7 +491,7 @@ function UserFormDialog({
               />
               All Modules
             </label>
-            {BUSINESS_UNITS.map((unit) => (
+            {businessUnits.map((unit) => (
               <label key={unit.code} className="flex items-center gap-2 rounded-[12px] bg-[#f8fafc] px-3 py-2 text-[13px]">
                 <input
                   type="checkbox"
@@ -533,6 +544,7 @@ function UserFormDialog({
 function UserDetails({
   user,
   currentUserId,
+  businessUnits,
   pending,
   onClose,
   onUnlock,
@@ -543,6 +555,7 @@ function UserDetails({
 }: {
   user: ManagedUser;
   currentUserId: string;
+  businessUnits: UnitOption[];
   pending: boolean;
   onClose: () => void;
   onUnlock: () => void;
@@ -561,6 +574,7 @@ function UserDetails({
         title="Edit User"
         user={user}
         currentUserId={currentUserId}
+        businessUnits={businessUnits}
         pending={pending}
         onClose={() => setEditing(false)}
         onSubmit={onSave}

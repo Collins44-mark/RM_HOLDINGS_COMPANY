@@ -8,10 +8,10 @@ import {
   type ReportPeriod,
 } from "@/lib/data/report-period";
 import {
-  REPORT_MODULE_OPTIONS,
   defaultReportId,
   reportsForModule,
   type ReportModuleId,
+  type ReportModuleOption,
 } from "@/lib/reports/registry";
 import { ReportSurface } from "@/components/reports/report-ui";
 
@@ -20,9 +20,16 @@ type Props = {
   reportId: string | null;
   period: ReportPeriod;
   label: string;
+  moduleOptions: ReportModuleOption[];
 };
 
-export function ReportSelectionBar({ moduleId, reportId, period, label }: Props) {
+export function ReportSelectionBar({
+  moduleId,
+  reportId,
+  period,
+  label,
+  moduleOptions,
+}: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const availableReports = useMemo(() => reportsForModule(moduleId), [moduleId]);
@@ -100,7 +107,7 @@ export function ReportSelectionBar({ moduleId, reportId, period, label }: Props)
               onChange={(event) => onModuleChange(event.target.value as ReportModuleId)}
               className={selectClass}
             >
-              {REPORT_MODULE_OPTIONS.map((option) => (
+              {moduleOptions.map((option) => (
                 <option key={option.id} value={option.id}>
                   {option.label}
                 </option>

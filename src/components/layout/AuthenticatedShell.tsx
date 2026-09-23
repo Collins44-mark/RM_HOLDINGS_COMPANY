@@ -3,6 +3,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { isAppDatabaseAvailable, prisma } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/session";
+import { listBusinessUnits } from "@/lib/data/business-units";
 
 const loadUnreadNotifications = unstable_cache(
   async (userId: string) => {
@@ -28,12 +29,20 @@ const loadUnreadNotifications = unstable_cache(
  */
 export async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   const user = await requireAuth();
-  const notifications = await loadUnreadNotifications(user.id);
+  const [notifications, businessUnits] = await Promise.all([
+    loadUnreadNotifications(user.id),
+    listBusinessUnits(),
+  ]);
 
   return (
     <AuthProvider user={user}>
       <AppShell
         user={user}
+        businessUnits={businessUnits.map((unit) => ({
+          code: unit.code,
+          name: unit.name,
+          slug: unit.slug,
+        }))}
         notifications={notifications.map((item) => ({
           id: item.id,
           title: item.title,

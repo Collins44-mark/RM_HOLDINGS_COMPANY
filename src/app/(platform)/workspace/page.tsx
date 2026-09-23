@@ -1,15 +1,14 @@
 import { BusinessUnitCard } from "@/components/dashboard/BusinessUnitCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { getConsolidatedFinance } from "@/lib/data/finance";
-import { parsePeriod } from "@/lib/data/period";
+import { listAccessibleBusinessUnits } from "@/lib/data/business-units";
 import { requireAuth } from "@/lib/auth/session";
+import { identityFromUser } from "@/lib/auth/types";
 
 export const metadata = { title: "Your workspaces" };
 
 export default async function WorkspacePage() {
   const user = await requireAuth();
-  const finance = await getConsolidatedFinance({ period: parsePeriod(undefined) });
-  const units = finance.rows.filter((row) => user.modules.includes(row.code));
+  const units = await listAccessibleBusinessUnits(identityFromUser(user));
 
   return (
     <section>

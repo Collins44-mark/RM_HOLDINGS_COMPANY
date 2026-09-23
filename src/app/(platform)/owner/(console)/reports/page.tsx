@@ -8,10 +8,12 @@ import {
   parseReportPeriod,
   reportPeriodRange,
 } from "@/lib/data/reports";
+import { listBusinessUnits } from "@/lib/data/business-units";
 import { formatHeroDate } from "@/lib/format/datetime";
 import {
   parseReportId,
   parseReportModuleId,
+  reportModuleOptionsFromUnits,
   reportsForModule,
 } from "@/lib/reports/registry";
 
@@ -30,7 +32,11 @@ export default async function ReportsPage({
   }>;
 }) {
   const params = await searchParams;
-  const moduleId = parseReportModuleId(params.module);
+  const units = await listBusinessUnits();
+  const moduleOptions = reportModuleOptionsFromUnits(units);
+  const knownCodes = units.map((unit) => unit.code);
+
+  const moduleId = parseReportModuleId(params.module, knownCodes);
   const reportId = parseReportId(params.report, moduleId);
   const period = parseReportPeriod(params.period);
   const from = typeof params.from === "string" ? params.from : undefined;
@@ -75,6 +81,7 @@ export default async function ReportsPage({
           reportId={reportId}
           period={period}
           label={periodMeta.label}
+          moduleOptions={moduleOptions}
         />
       </Suspense>
 

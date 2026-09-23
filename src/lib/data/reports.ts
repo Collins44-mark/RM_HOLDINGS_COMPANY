@@ -1,4 +1,3 @@
-import { BUSINESS_UNITS } from "@/lib/config/app";
 import { ratioPercent } from "@/lib/format/percent";
 import {
   loadSupermarketPeriodLedger,
@@ -10,6 +9,7 @@ import {
   reportPeriodRange,
   type ReportPeriod,
 } from "@/lib/data/report-period";
+import { listBusinessUnits } from "@/lib/data/business-units";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type {
@@ -182,8 +182,9 @@ async function loadSupermarketCashSummary(from: Date, to: Date): Promise<ReportC
   }
 }
 
-function buildUnitRows(ledger: SupermarketPeriodLedger): ReportUnitRow[] {
-  return BUSINESS_UNITS.map((unit) => {
+async function buildUnitRows(ledger: SupermarketPeriodLedger): Promise<ReportUnitRow[]> {
+  const units = await listBusinessUnits();
+  return units.map((unit) => {
     const revenue = unit.code === "supermarket" ? ledger.revenue : 0;
     const expenses = unit.code === "supermarket" ? ledger.expenses : 0;
     const operatingPosition = unit.code === "supermarket" ? ledger.netProfit : 0;
@@ -222,7 +223,7 @@ export async function getConsolidatedReport(input: {
     loadSupermarketCashSummary(range.from, range.to),
   ]);
 
-  const businessUnits = buildUnitRows(ledger);
+  const businessUnits = await buildUnitRows(ledger);
   const margin = ratioPercent(ledger.netProfit, ledger.revenue);
 
   return {

@@ -50,6 +50,11 @@ export type BusinessUnitDefinition = {
   sortOrder: number;
 };
 
+/**
+ * Presentation catalog (theme, location, short labels) keyed by stable unit code.
+ * Production existence / active status / sort order come from Supabase
+ * `business_units` via `src/lib/data/business-units.ts` — not this array.
+ */
 export const BUSINESS_UNITS: BusinessUnitDefinition[] = [
   {
     code: "rice",

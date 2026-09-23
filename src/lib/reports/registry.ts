@@ -1,7 +1,9 @@
 import { BUSINESS_UNITS, type BusinessUnitCode } from "@/lib/config/app";
+import type { BusinessUnitView } from "@/lib/data/business-units";
+import { isKnownBusinessUnitCode } from "@/lib/data/business-units";
 
 /** Group scope or a configured business-unit code. */
-export type ReportModuleId = "group" | BusinessUnitCode;
+export type ReportModuleId = "group" | BusinessUnitCode | string;
 
 export type ReportExportFormat = "pdf";
 
@@ -75,13 +77,23 @@ export type ReportModuleOption = {
   label: string;
 };
 
-export const REPORT_MODULE_OPTIONS: ReportModuleOption[] = [
-  { id: "group", label: "All Business Units / Group" },
-  ...BUSINESS_UNITS.map((unit) => ({
-    id: unit.code as ReportModuleId,
-    label: unit.name,
-  })),
-];
+/** Build report module options from the shared business-unit foundation. */
+export function reportModuleOptionsFromUnits(
+  units: Pick<BusinessUnitView, "code" | "name">[],
+): ReportModuleOption[] {
+  return [
+    { id: "group", label: "All Business Units / Group" },
+    ...units.map((unit) => ({
+      id: unit.code as ReportModuleId,
+      label: unit.name,
+    })),
+  ];
+}
+
+/** @deprecated Prefer reportModuleOptionsFromUnits(listBusinessUnits()). */
+export const REPORT_MODULE_OPTIONS: ReportModuleOption[] = reportModuleOptionsFromUnits(
+  BUSINESS_UNITS.map((unit) => ({ code: unit.code, name: unit.name })),
+);
 
 export function reportsForModule(moduleId: ReportModuleId): ReportDefinition[] {
   return REPORT_DEFINITIONS.filter((report) => report.module === moduleId);
@@ -96,10 +108,14 @@ export function defaultReportId(moduleId: ReportModuleId): string | null {
   return reportsForModule(moduleId)[0]?.id ?? null;
 }
 
-export function parseReportModuleId(value: string | string[] | undefined): ReportModuleId {
+export function parseReportModuleId(
+  value: string | string[] | undefined,
+  knownCodes?: string[],
+): ReportModuleId {
   const raw = Array.isArray(value) ? value[0] : value;
   if (raw === "group") return "group";
-  if (BUSINESS_UNITS.some((unit) => unit.code === raw)) return raw as ReportModuleId;
+  if (raw && knownCodes?.includes(raw)) return raw;
+  if (raw && isKnownBusinessUnitCode(raw)) return raw;
   return "group";
 }
 
@@ -113,7 +129,12 @@ export function parseReportId(
   return defaultReportId(moduleId);
 }
 
-export function moduleLabel(moduleId: ReportModuleId): string {
+export function moduleLabel(
+  moduleId: ReportModuleId,
+  units?: Pick<BusinessUnitView, "code" | "name">[],
+): string {
   if (moduleId === "group") return "All Business Units / Group";
-  return BUSINESS_UNITS.find((unit) => unit.code === moduleId)?.name ?? moduleId;
+  const fromUnits = units?.find((unit) => unit.code === moduleId)?.name;
+  if (fromUnits) return fromUnits;
+  return BUSINESS_UNITS.find((unit) => unit.code === moduleId)?.name ?? String(moduleId);
 }
