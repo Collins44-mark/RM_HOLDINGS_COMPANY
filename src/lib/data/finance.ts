@@ -81,20 +81,24 @@ export function parseFinanceTab(value: string | string[] | undefined): FinanceTa
   return "units";
 }
 
-type PeriodLedger = {
+/** Shared Phase 1 supermarket ledger — reused by Group Finance and Group Reports. */
+export type SupermarketPeriodLedger = {
   revenue: number;
   cogs: number;
   expenses: number;
   productProfit: number;
   netProfit: number;
+  /** Count of sm_sales rows in the period (zeros when empty). */
+  salesCount: number;
 };
 
-const EMPTY_LEDGER: PeriodLedger = {
+const EMPTY_LEDGER: SupermarketPeriodLedger = {
   revenue: 0,
   cogs: 0,
   expenses: 0,
   productProfit: 0,
   netProfit: 0,
+  salesCount: 0,
 };
 
 function formatLocalDate(date: Date) {
@@ -118,22 +122,25 @@ function deltaOrZero(current: number, previous: number) {
 }
 
 /**
- * Live supermarket ledger for a period.
+ * Live supermarket ledger for a period (Phase 1 formula).
  * Revenue = Σ sm_sales.total
  * Expenses = Σ sm_expenses.amount
  * Product profit = revenue − COGS
- * Net profit = product profit − expenses
+ * Net profit / operating position = product profit − expenses
  *
  * Empty rows → zeros. Query failures → zeros + server log (never sample data).
  */
-async function loadSupermarketLedger(from: Date, to: Date): Promise<PeriodLedger> {
+export async function loadSupermarketPeriodLedger(
+  from: Date,
+  to: Date,
+): Promise<SupermarketPeriodLedger> {
   try {
     const supabase = await createSupabaseServerClient();
     if (!supabase) {
       console.error(
         JSON.stringify({
           scope: "consolidated-finance",
-          operation: "loadSupermarketLedger",
+          operation: "loadSupermarketPeriodLedger",
           phase: "auth",
           message: "Supabase is not configured.",
         }),
@@ -151,7 +158,7 @@ async function loadSupermarketLedger(from: Date, to: Date): Promise<PeriodLedger
       console.error(
         JSON.stringify({
           scope: "consolidated-finance",
-          operation: "loadSupermarketLedger",
+          operation: "loadSupermarketPeriodLedger",
           phase: "query",
           message: buError.message,
         }),
@@ -187,7 +194,7 @@ async function loadSupermarketLedger(from: Date, to: Date): Promise<PeriodLedger
       console.error(
         JSON.stringify({
           scope: "consolidated-finance",
-          operation: "loadSupermarketLedger",
+          operation: "loadSupermarketPeriodLedger",
           phase: "query",
           table: "sm_sales",
           message: salesRes.error.message,
@@ -199,7 +206,7 @@ async function loadSupermarketLedger(from: Date, to: Date): Promise<PeriodLedger
       console.error(
         JSON.stringify({
           scope: "consolidated-finance",
-          operation: "loadSupermarketLedger",
+          operation: "loadSupermarketPeriodLedger",
           phase: "query",
           table: "sm_expenses",
           message: expensesRes.error.message,
@@ -208,8 +215,9 @@ async function loadSupermarketLedger(from: Date, to: Date): Promise<PeriodLedger
       return EMPTY_LEDGER;
     }
 
-    const revenue = (salesRes.data ?? []).reduce((sum, row) => sum + Number(row.total || 0), 0);
-    const cogs = (salesRes.data ?? []).reduce((sum, row) => sum + Number(row.cogs || 0), 0);
+    const salesRows = salesRes.data ?? [];
+    const revenue = salesRows.reduce((sum, row) => sum + Number(row.total || 0), 0);
+    const cogs = salesRows.reduce((sum, row) => sum + Number(row.cogs || 0), 0);
     const expenses = (expensesRes.data ?? []).reduce(
       (sum, row) => sum + Number(row.amount || 0),
       0,
@@ -217,12 +225,19 @@ async function loadSupermarketLedger(from: Date, to: Date): Promise<PeriodLedger
     const productProfit = revenue - cogs;
     const netProfit = productProfit - expenses;
 
-    return { revenue, cogs, expenses, productProfit, netProfit };
+    return {
+      revenue,
+      cogs,
+      expenses,
+      productProfit,
+      netProfit,
+      salesCount: salesRows.length,
+    };
   } catch (error) {
     console.error(
       JSON.stringify({
         scope: "consolidated-finance",
-        operation: "loadSupermarketLedger",
+        operation: "loadSupermarketPeriodLedger",
         phase: "unknown",
         message: error instanceof Error ? error.message : "Failed to load supermarket ledger.",
       }),
@@ -233,8 +248,8 @@ async function loadSupermarketLedger(from: Date, to: Date): Promise<PeriodLedger
 
 function buildUnitRow(
   unit: (typeof BUSINESS_UNITS)[number],
-  current: PeriodLedger,
-  previous: PeriodLedger,
+  current: SupermarketPeriodLedger,
+  previous: SupermarketPeriodLedger,
 ): UnitFinanceRow {
   const revenue = unit.code === "supermarket" ? current.revenue : 0;
   const expenses = unit.code === "supermarket" ? current.expenses : 0;
@@ -287,8 +302,8 @@ export async function getConsolidatedFinance(input: {
   });
 
   const [currentLedger, previousLedger] = await Promise.all([
-    loadSupermarketLedger(range.from, range.to),
-    loadSupermarketLedger(previous.from, previous.to),
+    loadSupermarketPeriodLedger(range.from, range.to),
+    loadSupermarketPeriodLedger(previous.from, previous.to),
   ]);
 
   const rows: UnitFinanceRow[] = BUSINESS_UNITS.map((unit) =>
