@@ -34,7 +34,10 @@ import {
 } from "@/lib/data/sample-supermarket-reports";
 import { downloadSalesReportPdfFromData } from "@/lib/data/supermarket-reports-pdf";
 import { fetchSalesReportAction } from "@/actions/supermarket/reports";
-import { useReportPeriod } from "@/components/supermarket/report-shell";
+import {
+  useReportPeriod,
+  type ControlledReportPeriod,
+} from "@/components/supermarket/report-shell";
 import { useLiveReport } from "@/lib/supermarket/use-live-report";
 
 const glass =
@@ -159,8 +162,17 @@ function FilterField({
   );
 }
 
-export function SalesReportDetail() {
-  const { preset, range, period, query, onPreset, onRange } = useReportPeriod("/supermarket/reports/sales");
+export function SalesReportDetail({
+  embedded = false,
+  controlledPeriod,
+}: {
+  embedded?: boolean;
+  controlledPeriod?: ControlledReportPeriod;
+} = {}) {
+  const { preset, range, period, query, onPreset, onRange } = useReportPeriod(
+    "/supermarket/reports/sales",
+    controlledPeriod,
+  );
   const [cashier, setCashier] = useState("all");
   const [payment, setPayment] = useState("all");
   const [category, setCategory] = useState("all");
@@ -193,8 +205,8 @@ export function SalesReportDetail() {
     <div className="min-w-0 max-w-full space-y-4 pb-10 sm:space-y-5">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
-          <PageBackButton href={`/supermarket/reports?${query}`} prefetch />
-          <div className="mt-4 flex items-start gap-3">
+          {!embedded ? <PageBackButton href={`/supermarket/reports?${query}`} prefetch /> : null}
+          <div className={cn("flex items-start gap-3", embedded ? "" : "mt-4")}>
             <span className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#0b2244] text-white shadow-[0_8px_18px_rgba(11,34,68,0.22)]">
               <BarChart3 className="h-4 w-4" strokeWidth={1.9} />
             </span>
@@ -209,14 +221,16 @@ export function SalesReportDetail() {
           </div>
         </div>
         <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-          <FinancePeriodFilter
-            preset={preset}
-            label={period.label}
-            range={range}
-            onPreset={onPreset}
-            onRange={onRange}
-            ariaLabel="Sales report period"
-          />
+          {!embedded ? (
+            <FinancePeriodFilter
+              preset={preset}
+              label={period.label}
+              range={range}
+              onPreset={onPreset}
+              onRange={onRange}
+              ariaLabel="Sales report period"
+            />
+          ) : null}
           <button
             type="button"
             onClick={() => downloadSalesReportPdfFromData(data, filters)}

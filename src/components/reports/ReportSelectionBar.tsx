@@ -64,11 +64,12 @@ export function ReportSelectionBar({ moduleId, reportId, period, label }: Props)
   }
 
   function onModuleChange(value: ReportModuleId) {
-    pushParams({ module: value, report: defaultReportId(value), view: false });
+    const nextReport = defaultReportId(value);
+    pushParams({ module: value, report: nextReport, view: Boolean(nextReport) });
   }
 
   function onReportChange(value: string) {
-    pushParams({ report: value, view: false });
+    pushParams({ report: value, view: true });
   }
 
   function onPeriodChange(value: ReportPeriod) {
@@ -76,7 +77,7 @@ export function ReportSelectionBar({ moduleId, reportId, period, label }: Props)
       period: value,
       from: value === "custom" ? searchParams.get("from") ?? "" : null,
       to: value === "custom" ? searchParams.get("to") ?? "" : null,
-      view: false,
+      view: Boolean(reportId),
     });
   }
 
@@ -160,7 +161,7 @@ export function ReportSelectionBar({ moduleId, reportId, period, label }: Props)
                       period: "custom",
                       from: event.target.value,
                       to: searchParams.get("to"),
-                      view: false,
+                      view: Boolean(reportId),
                     })
                   }
                   className="h-11 rounded-[12px] border border-white/80 bg-white/85 px-3 text-[13px] text-navy outline-none"
@@ -174,7 +175,7 @@ export function ReportSelectionBar({ moduleId, reportId, period, label }: Props)
                       period: "custom",
                       from: searchParams.get("from"),
                       to: event.target.value,
-                      view: false,
+                      view: Boolean(reportId),
                     })
                   }
                   className="h-11 rounded-[12px] border border-white/80 bg-white/85 px-3 text-[13px] text-navy outline-none"

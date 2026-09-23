@@ -17,7 +17,17 @@ import { PageBackButton } from "@/components/ui/PageBackButton";
 export const reportGlass =
   "rounded-[22px] border border-white/60 bg-white/62 shadow-[0_12px_36px_rgba(15,35,64,0.055),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-2xl";
 
-export function useReportPeriod(basePath: string) {
+export type ControlledReportPeriod = {
+  preset: SalesPeriodPreset;
+  range: SalesDateRange;
+};
+
+/**
+ * Period state for supermarket report detail pages.
+ * When `controlled` is provided (owner Reports workspace), period comes from the parent
+ * and local URL sync is disabled so the universal selector remains the source of truth.
+ */
+export function useReportPeriod(basePath: string, controlled?: ControlledReportPeriod) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initial = parseReportPeriodParams({
@@ -25,27 +35,33 @@ export function useReportPeriod(basePath: string) {
     from: searchParams.get("from"),
     to: searchParams.get("to"),
   });
-  const [preset, setPreset] = useState<SalesPeriodPreset>(initial.preset);
-  const [range, setRange] = useState<SalesDateRange>(initial.range);
+  const [localPreset, setLocalPreset] = useState<SalesPeriodPreset>(initial.preset);
+  const [localRange, setLocalRange] = useState<SalesDateRange>(initial.range);
+
+  const preset = controlled?.preset ?? localPreset;
+  const range = controlled?.range ?? localRange;
   const period = useMemo(() => resolveReportPeriod(preset, range), [preset, range]);
   const query = reportPeriodQuery(preset, range);
 
   function syncUrl(nextPreset: SalesPeriodPreset, nextRange: SalesDateRange) {
+    if (controlled) return;
     router.replace(`${basePath}?${reportPeriodQuery(nextPreset, nextRange)}`, { scroll: false });
   }
 
   function onPreset(next: SalesPeriodPreset) {
-    setPreset(next);
-    syncUrl(next, range);
+    if (controlled) return;
+    setLocalPreset(next);
+    syncUrl(next, localRange);
   }
 
   function onRange(next: SalesDateRange) {
-    setRange(next);
-    setPreset("range");
+    if (controlled) return;
+    setLocalRange(next);
+    setLocalPreset("range");
     syncUrl("range", next);
   }
 
-  return { preset, range, period, query, onPreset, onRange };
+  return { preset, range, period, query, onPreset, onRange, controlled: Boolean(controlled) };
 }
 
 export function ReportPageHeader({

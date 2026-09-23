@@ -12,7 +12,7 @@ import {
 import { fetchProfitLossReportAction } from "@/actions/supermarket/reports";
 import { useLiveReport } from "@/lib/supermarket/use-live-report";
 import { downloadProfitLossReportPdfFromData } from "@/lib/data/supermarket-reports-pdf";
-import { useReportPeriod } from "@/components/supermarket/report-shell";
+import { useReportPeriod, type ControlledReportPeriod } from "@/components/supermarket/report-shell";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 
 const glass =
@@ -132,8 +132,17 @@ function formatAmount(value: number) {
   return value.toLocaleString("en-US");
 }
 
-export function ProfitLossReportDetail() {
-  const { preset, range, period, query, onPreset, onRange } = useReportPeriod("/supermarket/reports/profit-loss");
+export function ProfitLossReportDetail({
+  embedded = false,
+  controlledPeriod,
+}: {
+  embedded?: boolean;
+  controlledPeriod?: ControlledReportPeriod;
+} = {}) {
+  const { preset, range, period, query, onPreset, onRange } = useReportPeriod(
+    "/supermarket/reports/profit-loss",
+    controlledPeriod,
+  );
   const [branch, setBranch] = useState("all");
   const [reportType, setReportType] = useState("standard");
 
@@ -179,8 +188,8 @@ export function ProfitLossReportDetail() {
     <div className="min-w-0 max-w-full space-y-4 pb-10 sm:space-y-5">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="min-w-0">
-          <PageBackButton href={`/supermarket/reports?${query}`} prefetch />
-          <div className="mt-4 min-w-0">
+          {!embedded ? <PageBackButton href={`/supermarket/reports?${query}`} prefetch /> : null}
+          <div className={cn("min-w-0", embedded ? "" : "mt-4")}>
             <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[28px]">
               Profit & Loss Report
             </h1>
@@ -190,14 +199,16 @@ export function ProfitLossReportDetail() {
           </div>
         </div>
         <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center md:justify-end">
-          <FinancePeriodFilter
-            preset={preset}
-            label={period.label}
-            range={range}
-            onPreset={onPreset}
-            onRange={onRange}
-            ariaLabel="Profit and loss report period"
-          />
+          {!embedded ? (
+            <FinancePeriodFilter
+              preset={preset}
+              label={period.label}
+              range={range}
+              onPreset={onPreset}
+              onRange={onRange}
+              ariaLabel="Profit and loss report period"
+            />
+          ) : null}
           <button
             type="button"
             onClick={() => downloadProfitLossReportPdfFromData(data)}

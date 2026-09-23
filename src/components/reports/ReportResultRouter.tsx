@@ -1,17 +1,17 @@
+import { Suspense } from "react";
 import {
   GroupFinancialReport,
   GroupOverviewReport,
   GroupPerformanceReport,
 } from "@/components/reports/group/GroupReportPanels";
-import { ReportEmptyState } from "@/components/reports/report-ui";
-import {
-  SupermarketInventoryWorkspaceReport,
-  SupermarketProfitLossWorkspaceReport,
-  SupermarketPurchasesWorkspaceReport,
-  SupermarketSalesWorkspaceReport,
-} from "@/components/reports/supermarket/SupermarketWorkspaceReports";
+import { ReportEmptyState, ReportSurface } from "@/components/reports/report-ui";
+import { SalesReportDetail } from "@/components/supermarket/SalesReportDetail";
+import { PurchaseReportDetail } from "@/components/supermarket/PurchaseReportDetail";
+import { InventoryReportDetail } from "@/components/supermarket/InventoryReportDetail";
+import { ProfitLossReportDetail } from "@/components/supermarket/ProfitLossReportDetail";
 import type { ConsolidatedReport } from "@/lib/data/reports";
 import type { ReportPeriod } from "@/lib/data/report-period";
+import { reportPeriodToSalesInput } from "@/lib/reports/period-bridge";
 import {
   getReportDefinition,
   moduleLabel,
@@ -28,6 +28,46 @@ type Props = {
   showResult: boolean;
   consolidated: ConsolidatedReport | null;
 };
+
+function ReportLoading() {
+  return (
+    <ReportSurface className="px-6 py-14 text-center text-[13.5px] text-slate-500">
+      Loading report…
+    </ReportSurface>
+  );
+}
+
+function EmbeddedSupermarketReport({
+  reportId,
+  period,
+  from,
+  to,
+}: {
+  reportId: string;
+  period: ReportPeriod;
+  from?: string;
+  to?: string;
+}) {
+  const controlledPeriod = reportPeriodToSalesInput(period, { from, to });
+  const controlled = {
+    preset: controlledPeriod.preset,
+    range: controlledPeriod.range,
+  };
+
+  if (reportId === "sm-sales") {
+    return <SalesReportDetail embedded controlledPeriod={controlled} />;
+  }
+  if (reportId === "sm-purchases") {
+    return <PurchaseReportDetail embedded controlledPeriod={controlled} />;
+  }
+  if (reportId === "sm-inventory") {
+    return <InventoryReportDetail embedded controlledPeriod={controlled} />;
+  }
+  if (reportId === "sm-profit-loss") {
+    return <ProfitLossReportDetail embedded controlledPeriod={controlled} />;
+  }
+  return null;
+}
 
 export function ReportResultRouter({
   moduleId,
@@ -78,30 +118,22 @@ export function ReportResultRouter({
       );
     }
 
-    if (reportId === "group-overview") {
-      return <GroupOverviewReport report={consolidated} />;
-    }
-    if (reportId === "group-financial") {
-      return <GroupFinancialReport report={consolidated} />;
-    }
-    if (reportId === "group-performance") {
-      return <GroupPerformanceReport report={consolidated} />;
-    }
+    if (reportId === "group-overview") return <GroupOverviewReport report={consolidated} />;
+    if (reportId === "group-financial") return <GroupFinancialReport report={consolidated} />;
+    if (reportId === "group-performance") return <GroupPerformanceReport report={consolidated} />;
   }
 
   if (moduleId === "supermarket") {
-    if (reportId === "sm-sales") {
-      return <SupermarketSalesWorkspaceReport period={period} from={from} to={to} />;
-    }
-    if (reportId === "sm-purchases") {
-      return <SupermarketPurchasesWorkspaceReport period={period} from={from} to={to} />;
-    }
-    if (reportId === "sm-inventory") {
-      return <SupermarketInventoryWorkspaceReport period={period} from={from} to={to} />;
-    }
-    if (reportId === "sm-profit-loss") {
-      return <SupermarketProfitLossWorkspaceReport period={period} from={from} to={to} />;
-    }
+    return (
+      <Suspense fallback={<ReportLoading />}>
+        <EmbeddedSupermarketReport
+          reportId={reportId}
+          period={period}
+          from={from}
+          to={to}
+        />
+      </Suspense>
+    );
   }
 
   return (

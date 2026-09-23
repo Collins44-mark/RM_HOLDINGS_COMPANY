@@ -11,7 +11,7 @@ import {
   type InventoryReportFilters,
 } from "@/lib/data/sample-supermarket-reports";
 import { downloadInventoryReportPdfFromData } from "@/lib/data/supermarket-reports-pdf";
-import { useReportPeriod } from "@/components/supermarket/report-shell";
+import { useReportPeriod, type ControlledReportPeriod } from "@/components/supermarket/report-shell";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 import { fetchInventoryReportAction } from "@/actions/supermarket/reports";
 import { useLiveReport } from "@/lib/supermarket/use-live-report";
@@ -144,8 +144,17 @@ function FilterField({
   );
 }
 
-export function InventoryReportDetail() {
-  const { preset, range, period, query, onPreset, onRange } = useReportPeriod("/supermarket/reports/inventory");
+export function InventoryReportDetail({
+  embedded = false,
+  controlledPeriod,
+}: {
+  embedded?: boolean;
+  controlledPeriod?: ControlledReportPeriod;
+} = {}) {
+  const { preset, range, period, query, onPreset, onRange } = useReportPeriod(
+    "/supermarket/reports/inventory",
+    controlledPeriod,
+  );
   const [category, setCategory] = useState("all");
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
@@ -181,8 +190,8 @@ export function InventoryReportDetail() {
     <div className="min-w-0 max-w-full space-y-4 pb-10 sm:space-y-5">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="min-w-0">
-          <PageBackButton href={`/supermarket/reports?${query}`} prefetch />
-          <div className="mt-4 flex items-start gap-3">
+          {!embedded ? <PageBackButton href={`/supermarket/reports?${query}`} prefetch /> : null}
+          <div className={cn("flex items-start gap-3", embedded ? "" : "mt-4")}>
             <span className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-[#e7ecf3] bg-[#f7f9fc] text-navy/55 shadow-[0_4px_12px_rgba(15,35,64,0.04)]">
               <Boxes className="h-4 w-4" strokeWidth={1.9} />
             </span>
@@ -197,14 +206,16 @@ export function InventoryReportDetail() {
           </div>
         </div>
         <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center md:justify-end">
-          <FinancePeriodFilter
-            preset={preset}
-            label={period.label}
-            range={range}
-            onPreset={onPreset}
-            onRange={onRange}
-            ariaLabel="Inventory report period"
-          />
+          {!embedded ? (
+            <FinancePeriodFilter
+              preset={preset}
+              label={period.label}
+              range={range}
+              onPreset={onPreset}
+              onRange={onRange}
+              ariaLabel="Inventory report period"
+            />
+          ) : null}
           <button
             type="button"
             onClick={() => downloadInventoryReportPdfFromData(data)}

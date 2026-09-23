@@ -12,6 +12,7 @@ import { formatHeroDate } from "@/lib/format/datetime";
 import {
   parseReportId,
   parseReportModuleId,
+  reportsForModule,
 } from "@/lib/reports/registry";
 
 export const metadata = { title: "Reports" };
@@ -35,11 +36,11 @@ export default async function ReportsPage({
   const from = typeof params.from === "string" ? params.from : undefined;
   const to = typeof params.to === "string" ? params.to : undefined;
 
-  const isDefaultLanding =
-    params.module === undefined &&
-    params.report === undefined &&
-    params.view === undefined;
-  const showResult = params.view === "1" || isDefaultLanding;
+  const available = reportsForModule(moduleId);
+
+  // Always render when a real report is selected. Default landing resolves to
+  // Group Overview; selector changes keep view=1 so results never blank out.
+  const showResult = Boolean(reportId) && available.length > 0;
 
   const now = new Date();
   const periodMeta = reportPeriodRange(period, now, { from, to });
