@@ -1,18 +1,11 @@
-import { isAppDatabaseAvailable, prisma } from "@/lib/db";
 import { BUSINESS_UNITS, homePathForModule } from "@/lib/config/app";
-import { asNumber } from "@/lib/format/currency";
 import { percentChange, ratioPercent } from "@/lib/format/percent";
 import {
   periodRange,
   previousPeriodRange,
   type RevenuePeriod,
 } from "@/lib/data/period";
-import {
-  EXPENSE_RATIO,
-  SAMPLE_FINANCE_YEAR,
-  YEARLY_REVENUE,
-  splitYear,
-} from "@/lib/data/sample-finance";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const FINANCE_DETAIL_HREF: Record<string, string> = {
   rice: "/rice/sales",
@@ -22,18 +15,6 @@ export const FINANCE_DETAIL_HREF: Record<string, string> = {
   livestock: "/livestock/sales",
   school: "/school/fees",
   beekeeping: "/beekeeping/sales",
-};
-
-const DEMO_DELTA = {
-  revenue: 12.5,
-  expenses: 8.3,
-  operatingPosition: 19.7,
-  margin: 4.2,
-};
-
-const SNAPSHOT_DELTA = {
-  revenue: 18.4,
-  margin: 12.3,
 };
 
 export type PerformanceStatus = "strong" | "healthy" | "watch";
@@ -100,106 +81,195 @@ export function parseFinanceTab(value: string | string[] | undefined): FinanceTa
   return "units";
 }
 
-async function totalsByUnit(from: Date, to: Date, type: "REVENUE" | "EXPENSE") {
-  const rows = await prisma.financeTransaction.groupBy({
-    by: ["businessUnitId"],
-    where: {
-      type,
-      occurredAt: { gte: from, lte: to },
-    },
-    _sum: { amount: true },
-  });
+type PeriodLedger = {
+  revenue: number;
+  cogs: number;
+  expenses: number;
+  productProfit: number;
+  netProfit: number;
+};
 
-  return new Map(rows.map((row) => [row.businessUnitId, asNumber(row._sum.amount)]));
+const EMPTY_LEDGER: PeriodLedger = {
+  revenue: 0,
+  cogs: 0,
+  expenses: 0,
+  productProfit: 0,
+  netProfit: 0,
+};
+
+function formatLocalDate(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
-function snapshot(revenue: number, expenses: number) {
-  const operatingPosition = revenue - expenses;
+function snapshot(revenue: number, expenses: number, netProfit: number) {
   return {
     revenue,
     expenses,
-    operatingPosition,
-    margin: ratioPercent(operatingPosition, revenue),
+    operatingPosition: netProfit,
+    margin: ratioPercent(netProfit, revenue),
   };
 }
 
-function sampleAmount(code: string, type: "REVENUE" | "EXPENSE", from: Date, to: Date) {
-  const annual =
-    type === "REVENUE"
-      ? (YEARLY_REVENUE[code] ?? 0)
-      : Math.round((YEARLY_REVENUE[code] ?? 0) * (EXPENSE_RATIO[code] ?? 0.6));
-  return splitYear(annual, SAMPLE_FINANCE_YEAR)
-    .filter((item) => item.occurredAt >= from && item.occurredAt <= to)
-    .reduce((sum, item) => sum + item.amount, 0);
+function deltaOrZero(current: number, previous: number) {
+  return percentChange(current, previous) ?? 0;
 }
 
-function sampleConsolidatedFinance(
-  range: { from: Date; to: Date; label: string },
-  previous: { from: Date; to: Date; label: string },
-) {
-  const rows: UnitFinanceRow[] = BUSINESS_UNITS.map((unit) => {
-    const revenue = sampleAmount(unit.code, "REVENUE", range.from, range.to);
-    const expenses = sampleAmount(unit.code, "EXPENSE", range.from, range.to);
-    const operatingPosition = revenue - expenses;
-    const margin = ratioPercent(operatingPosition, revenue);
-    const prevRevenue = sampleAmount(unit.code, "REVENUE", previous.from, previous.to);
-    const prevExpenses = sampleAmount(unit.code, "EXPENSE", previous.from, previous.to);
-    const prevMargin = ratioPercent(prevRevenue - prevExpenses, prevRevenue);
-    return {
-      code: unit.code,
-      name: unit.name,
-      location: unit.location,
-      subtitle: unit.subtitle,
-      accent: unit.accent,
-      tint: unit.tint,
-      revenue,
-      expenses,
-      operatingPosition,
-      margin,
-      status: unitStatus(margin),
-      href: FINANCE_DETAIL_HREF[unit.code] ?? homePathForModule(unit.code),
-      moduleHref: homePathForModule(unit.code),
-      revenueChange: percentChange(revenue, prevRevenue) ?? SNAPSHOT_DELTA.revenue,
-      marginChange: prevRevenue === 0 ? SNAPSHOT_DELTA.margin : margin - prevMargin,
-    };
-  });
+/**
+ * Live supermarket ledger for a period.
+ * Revenue = Σ sm_sales.total
+ * Expenses = Σ sm_expenses.amount
+ * Product profit = revenue − COGS
+ * Net profit = product profit − expenses
+ *
+ * Empty rows → zeros. Query failures → zeros + server log (never sample data).
+ */
+async function loadSupermarketLedger(from: Date, to: Date): Promise<PeriodLedger> {
+  try {
+    const supabase = await createSupabaseServerClient();
+    if (!supabase) {
+      console.error(
+        JSON.stringify({
+          scope: "consolidated-finance",
+          operation: "loadSupermarketLedger",
+          phase: "auth",
+          message: "Supabase is not configured.",
+        }),
+      );
+      return EMPTY_LEDGER;
+    }
 
-  const totals = snapshot(
-    rows.reduce((sum, row) => sum + row.revenue, 0),
-    rows.reduce((sum, row) => sum + row.expenses, 0),
-  );
-  const previousTotals = snapshot(
-    BUSINESS_UNITS.reduce(
-      (sum, unit) => sum + sampleAmount(unit.code, "REVENUE", previous.from, previous.to),
+    const { data: bu, error: buError } = await supabase
+      .from("business_units")
+      .select("id")
+      .eq("code", "supermarket")
+      .maybeSingle();
+
+    if (buError) {
+      console.error(
+        JSON.stringify({
+          scope: "consolidated-finance",
+          operation: "loadSupermarketLedger",
+          phase: "query",
+          message: buError.message,
+        }),
+      );
+      return EMPTY_LEDGER;
+    }
+
+    if (!bu?.id) {
+      return EMPTY_LEDGER;
+    }
+
+    const fromDate = formatLocalDate(from);
+    const toDate = formatLocalDate(to);
+    const fromIso = `${fromDate}T00:00:00`;
+    const toIso = `${toDate}T23:59:59`;
+
+    const [salesRes, expensesRes] = await Promise.all([
+      supabase
+        .from("sm_sales")
+        .select("total, cogs")
+        .eq("business_unit_id", bu.id)
+        .gte("sale_date", fromIso)
+        .lte("sale_date", toIso),
+      supabase
+        .from("sm_expenses")
+        .select("amount")
+        .eq("business_unit_id", bu.id)
+        .gte("expense_date", fromDate)
+        .lte("expense_date", toDate),
+    ]);
+
+    if (salesRes.error) {
+      console.error(
+        JSON.stringify({
+          scope: "consolidated-finance",
+          operation: "loadSupermarketLedger",
+          phase: "query",
+          table: "sm_sales",
+          message: salesRes.error.message,
+        }),
+      );
+      return EMPTY_LEDGER;
+    }
+    if (expensesRes.error) {
+      console.error(
+        JSON.stringify({
+          scope: "consolidated-finance",
+          operation: "loadSupermarketLedger",
+          phase: "query",
+          table: "sm_expenses",
+          message: expensesRes.error.message,
+        }),
+      );
+      return EMPTY_LEDGER;
+    }
+
+    const revenue = (salesRes.data ?? []).reduce((sum, row) => sum + Number(row.total || 0), 0);
+    const cogs = (salesRes.data ?? []).reduce((sum, row) => sum + Number(row.cogs || 0), 0);
+    const expenses = (expensesRes.data ?? []).reduce(
+      (sum, row) => sum + Number(row.amount || 0),
       0,
-    ),
-    BUSINESS_UNITS.reduce(
-      (sum, unit) => sum + sampleAmount(unit.code, "EXPENSE", previous.from, previous.to),
-      0,
-    ),
-  );
+    );
+    const productProfit = revenue - cogs;
+    const netProfit = productProfit - expenses;
+
+    return { revenue, cogs, expenses, productProfit, netProfit };
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        scope: "consolidated-finance",
+        operation: "loadSupermarketLedger",
+        phase: "unknown",
+        message: error instanceof Error ? error.message : "Failed to load supermarket ledger.",
+      }),
+    );
+    return EMPTY_LEDGER;
+  }
+}
+
+function buildUnitRow(
+  unit: (typeof BUSINESS_UNITS)[number],
+  current: PeriodLedger,
+  previous: PeriodLedger,
+): UnitFinanceRow {
+  const revenue = unit.code === "supermarket" ? current.revenue : 0;
+  const expenses = unit.code === "supermarket" ? current.expenses : 0;
+  const operatingPosition = unit.code === "supermarket" ? current.netProfit : 0;
+  const margin = ratioPercent(operatingPosition, revenue);
+
+  const prevRevenue = unit.code === "supermarket" ? previous.revenue : 0;
+  const prevNet = unit.code === "supermarket" ? previous.netProfit : 0;
+  const prevMargin = ratioPercent(prevNet, prevRevenue);
 
   return {
-    rows,
-    totals,
-    comparison: {
-      revenue: percentChange(totals.revenue, previousTotals.revenue) ?? DEMO_DELTA.revenue,
-      expenses: percentChange(totals.expenses, previousTotals.expenses) ?? DEMO_DELTA.expenses,
-      operatingPosition:
-        percentChange(totals.operatingPosition, previousTotals.operatingPosition) ??
-        DEMO_DELTA.operatingPosition,
-      margin:
-        previousTotals.revenue === 0
-          ? DEMO_DELTA.margin
-          : totals.margin - previousTotals.margin,
-    } satisfies FinanceDelta,
-    comparisonLabel: previous.label,
-    label: range.label,
-    from: range.from,
-    to: range.to,
+    code: unit.code,
+    name: unit.name,
+    location: unit.location,
+    subtitle: unit.subtitle,
+    accent: unit.accent,
+    tint: unit.tint,
+    revenue,
+    expenses,
+    operatingPosition,
+    margin,
+    status: unitStatus(margin),
+    href: FINANCE_DETAIL_HREF[unit.code] ?? homePathForModule(unit.code),
+    moduleHref: homePathForModule(unit.code),
+    revenueChange: deltaOrZero(revenue, prevRevenue),
+    marginChange: prevRevenue === 0 ? 0 : margin - prevMargin,
   };
 }
 
+/**
+ * Single consolidated finance source for Super Admin Dashboard and Owner Finance.
+ *
+ * Phase 1: supermarket = live sm_sales / sm_expenses; all other units = 0.
+ * Never falls back to sample-finance or Prisma FinanceTransaction.
+ */
 export async function getConsolidatedFinance(input: {
   period: RevenuePeriod;
   from?: string;
@@ -216,83 +286,42 @@ export async function getConsolidatedFinance(input: {
     to: input.to,
   });
 
-  if (!isAppDatabaseAvailable()) {
-    return sampleConsolidatedFinance(range, previous);
-  }
+  const [currentLedger, previousLedger] = await Promise.all([
+    loadSupermarketLedger(range.from, range.to),
+    loadSupermarketLedger(previous.from, previous.to),
+  ]);
 
-  try {
-    const units = await prisma.businessUnit.findMany({
-      where: { isActive: true },
-      orderBy: { sortOrder: "asc" },
-    });
+  const rows: UnitFinanceRow[] = BUSINESS_UNITS.map((unit) =>
+    buildUnitRow(unit, currentLedger, previousLedger),
+  );
 
-    const [revenueMap, expenseMap, prevRevenueMap, prevExpenseMap] = await Promise.all([
-      totalsByUnit(range.from, range.to, "REVENUE"),
-      totalsByUnit(range.from, range.to, "EXPENSE"),
-      totalsByUnit(previous.from, previous.to, "REVENUE"),
-      totalsByUnit(previous.from, previous.to, "EXPENSE"),
-    ]);
+  const totals = snapshot(
+    rows.reduce((sum, row) => sum + row.revenue, 0),
+    rows.reduce((sum, row) => sum + row.expenses, 0),
+    rows.reduce((sum, row) => sum + row.operatingPosition, 0),
+  );
 
-    const rows: UnitFinanceRow[] = units.map((unit) => {
-      const meta = BUSINESS_UNITS.find((item) => item.code === unit.code);
-      const revenue = revenueMap.get(unit.id) ?? 0;
-      const expenses = expenseMap.get(unit.id) ?? 0;
-      const operatingPosition = revenue - expenses;
-      const margin = ratioPercent(operatingPosition, revenue);
-      const prevRevenue = prevRevenueMap.get(unit.id) ?? 0;
-      const prevExpenses = prevExpenseMap.get(unit.id) ?? 0;
-      const prevMargin = ratioPercent(prevRevenue - prevExpenses, prevRevenue);
-      return {
-        code: unit.code,
-        name: unit.name,
-        location: meta?.location ?? "",
-        subtitle: meta?.subtitle,
-        accent: meta?.accent ?? unit.accent,
-        tint: meta?.tint ?? "rgba(90, 122, 160, 0.12)",
-        revenue,
-        expenses,
-        operatingPosition,
-        margin,
-        status: unitStatus(margin),
-        href: FINANCE_DETAIL_HREF[unit.code] ?? homePathForModule(unit.code),
-        moduleHref: homePathForModule(unit.code),
-        revenueChange: percentChange(revenue, prevRevenue) ?? SNAPSHOT_DELTA.revenue,
-        marginChange: prevRevenue === 0 ? SNAPSHOT_DELTA.margin : margin - prevMargin,
-      };
-    });
+  const previousTotals = snapshot(
+    previousLedger.revenue,
+    previousLedger.expenses,
+    previousLedger.netProfit,
+  );
 
-    const totals = snapshot(
-      rows.reduce((sum, row) => sum + row.revenue, 0),
-      rows.reduce((sum, row) => sum + row.expenses, 0),
-    );
+  const comparison: FinanceDelta = {
+    revenue: deltaOrZero(totals.revenue, previousTotals.revenue),
+    expenses: deltaOrZero(totals.expenses, previousTotals.expenses),
+    operatingPosition: deltaOrZero(totals.operatingPosition, previousTotals.operatingPosition),
+    margin:
+      previousTotals.revenue === 0 ? 0 : totals.margin - previousTotals.margin,
+  };
 
-    const previousTotals = snapshot(
-      [...prevRevenueMap.values()].reduce((sum, value) => sum + value, 0),
-      [...prevExpenseMap.values()].reduce((sum, value) => sum + value, 0),
-    );
-
-    const computed: FinanceDelta = {
-      revenue: percentChange(totals.revenue, previousTotals.revenue) ?? DEMO_DELTA.revenue,
-      expenses: percentChange(totals.expenses, previousTotals.expenses) ?? DEMO_DELTA.expenses,
-      operatingPosition:
-        percentChange(totals.operatingPosition, previousTotals.operatingPosition) ??
-        DEMO_DELTA.operatingPosition,
-      margin:
-        previousTotals.revenue === 0
-          ? DEMO_DELTA.margin
-          : totals.margin - previousTotals.margin,
-    };
-
-    return {
-      rows,
-      totals,
-      comparison: computed,
-      comparisonLabel: previous.label,
-      label: range.label,
-      from: range.from,
-      to: range.to,
-    };
-  } catch {
-    return sampleConsolidatedFinance(range, previous);
-  }
+  return {
+    rows,
+    totals,
+    comparison,
+    comparisonLabel: previous.label,
+    label: range.label,
+    from: range.from,
+    to: range.to,
+  };
 }
