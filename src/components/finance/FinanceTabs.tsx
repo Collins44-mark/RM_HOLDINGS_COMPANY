@@ -2,13 +2,8 @@
 
 import { Building2, PieChart, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useT } from "@/components/i18n/LocaleProvider";
 import type { FinanceTab } from "@/lib/data/finance";
-
-const TABS: { id: FinanceTab; label: string; icon: typeof Building2 }[] = [
-  { id: "units", label: "By Business Unit", icon: Building2 },
-  { id: "trend", label: "Trend Analysis", icon: TrendingUp },
-  { id: "category", label: "Category Breakdown", icon: PieChart },
-];
 
 export function FinanceTabs({
   active,
@@ -17,9 +12,15 @@ export function FinanceTabs({
   active: FinanceTab;
   onChange: (tab: FinanceTab) => void;
 }) {
+  const t = useT();
+  const tabs: { id: FinanceTab; label: string; icon: typeof Building2 }[] = [
+    { id: "units", label: t("finance.tab.units"), icon: Building2 },
+    { id: "trend", label: t("finance.tab.trend"), icon: TrendingUp },
+    { id: "category", label: t("finance.tab.category"), icon: PieChart },
+  ];
   return (
     <nav aria-label="Finance views" className="flex flex-wrap gap-2">
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const Icon = tab.icon;
         const isActive = tab.id === active;
         return (

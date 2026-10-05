@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/cn";
+import { useT } from "@/components/i18n/LocaleProvider";
 
 export type UsersWorkspaceTab = "all" | "business" | "roles";
 
@@ -11,10 +12,11 @@ export function UsersWorkspaceTabs({
   view: UsersWorkspaceTab;
   onChange: (view: UsersWorkspaceTab) => void;
 }) {
+  const t = useT();
   const items: Array<{ id: UsersWorkspaceTab; label: string }> = [
-    { id: "all", label: "All Users" },
-    { id: "business", label: "By Business Unit" },
-    { id: "roles", label: "Roles & Permissions" },
+    { id: "all", label: t("users.tab.all") },
+    { id: "business", label: t("users.tab.business") },
+    { id: "roles", label: t("users.tab.roles") },
   ];
 
   return (

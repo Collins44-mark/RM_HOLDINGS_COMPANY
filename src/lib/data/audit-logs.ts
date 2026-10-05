@@ -46,6 +46,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "user.unlocked": "Account unlocked",
   "profile.updated": "Profile updated",
   "business_unit.location_updated": "Updated business unit location",
+  "organisation.setting_updated": "Updated organisation settings",
+  "language.setting_updated": "Updated language setting",
   "report.exported": "Report exported",
   "sale.created": "Sale created",
   "return.created": "Return created",

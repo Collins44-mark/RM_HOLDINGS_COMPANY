@@ -4,21 +4,25 @@ import { useActionState, useId, useState } from "react";
 import { ArrowRight, Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { loginAction, type LoginState } from "@/actions/auth";
 import { Logo } from "@/components/branding/Logo";
-import { APP_NAME } from "@/lib/config/app";
+import { useLocale } from "@/components/i18n/LocaleProvider";
 import { cn } from "@/lib/cn";
 
 const fieldClass =
   "h-[60px] w-full rounded-[16px] border border-white/80 bg-white/78 pl-12 pr-4 text-[15px] font-medium text-navy shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] outline-none transition duration-200 placeholder:font-normal placeholder:text-slate-400 focus:border-white focus:bg-white/90 focus:ring-4 focus:ring-white/40";
 
 export function LoginForm({
-  title,
-  subtitle,
+  title: _title,
+  subtitle: _subtitle,
   nextPath,
 }: {
-  title: string;
-  subtitle: string;
+  title?: string;
+  subtitle?: string;
   nextPath?: string;
 }) {
+  void _title;
+  void _subtitle;
+  const t = useLocale().t;
+  const { organisationName } = useLocale();
   const [state, action, pending] = useActionState<LoginState, FormData>(loginAction, null);
   const [showPassword, setShowPassword] = useState(false);
   const emailId = useId();
@@ -42,12 +46,14 @@ export function LoginForm({
         <div className="flex flex-col items-center text-center">
           <Logo markOnly size="lg" />
           <p className="mt-3 text-[13px] font-medium tracking-[0.18em] text-navy/80 uppercase">
-            {APP_NAME}
+            {organisationName}
           </p>
           <h1 className="mt-9 text-[28px] font-bold leading-tight tracking-[-0.03em] text-navy sm:text-[30px]">
-            {title}
+            {t("login.title")}
           </h1>
-          <p className="mt-2 text-[14px] font-normal leading-5 text-slate-500">{subtitle}</p>
+          <p className="mt-2 text-[14px] font-normal leading-5 text-slate-500">
+            {t("login.subtitle")}
+          </p>
         </div>
 
         <form action={action} className="mt-8">
@@ -55,7 +61,7 @@ export function LoginForm({
 
           <div className="relative">
             <label htmlFor={emailId} className="sr-only">
-              Email or phone
+              {t("login.identifier")}
             </label>
             <Mail
               className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-400"
@@ -68,14 +74,14 @@ export function LoginForm({
               type="text"
               required
               autoComplete="username"
-              placeholder="Email or phone"
+              placeholder={t("login.identifier")}
               className={fieldClass}
             />
           </div>
 
           <div className="relative mt-4">
             <label htmlFor={passwordId} className="sr-only">
-              Password
+              {t("login.password")}
             </label>
             <Lock
               className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-400"
@@ -88,7 +94,7 @@ export function LoginForm({
               type={showPassword ? "text" : "password"}
               required
               autoComplete="current-password"
-              placeholder="Password"
+              placeholder={t("login.password")}
               className={cn(fieldClass, "pr-12")}
             />
             <button
@@ -120,7 +126,7 @@ export function LoginForm({
             disabled={pending}
             className="mt-6 inline-flex h-[58px] w-full items-center justify-center gap-2 rounded-[16px] bg-navy text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(15,35,64,0.22)] transition duration-200 hover:-translate-y-px hover:bg-[#132844] hover:shadow-[0_14px_28px_rgba(15,35,64,0.26)] active:translate-y-0 active:bg-[#0c1c33] disabled:translate-y-0 disabled:opacity-70"
           >
-            {pending ? "Signing in..." : "Sign in"}
+            {pending ? t("login.submitting") : t("login.submit")}
             {pending ? null : <ArrowRight className="h-4 w-4" strokeWidth={2.2} />}
           </button>
         </form>

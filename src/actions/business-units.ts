@@ -49,12 +49,16 @@ export async function saveBusinessUnitLocationAction(
     await writeAuditEvent({
       action: "business_unit.location_updated",
       module: "settings",
-      description: `Changed ${result.name} location from "${previous}" to "${next}"`,
+      description: `Updated business unit location. Business Unit: ${result.name}. Old: ${previous}. New: ${next}`,
       severity: "medium",
       entityType: "business_unit",
       entityId: parsed.data.businessUnitId,
       businessUnitId: parsed.data.businessUnitId,
-      metadata: { previous_location: previous, next_location: next },
+      metadata: {
+        business_unit: result.name,
+        previous_location: previous,
+        next_location: next,
+      },
     });
   }
 

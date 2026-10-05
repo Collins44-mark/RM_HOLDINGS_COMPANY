@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { ArrowLeft, Plus, Search } from "lucide-react";
 import { PageHeader, Surface } from "@/components/ui/PageHeader";
+import { useT } from "@/components/i18n/LocaleProvider";
 import { ModuleIcon } from "@/components/icons/ModuleIcon";
 import { UsersBusinessUnitCard } from "@/components/users/UsersBusinessUnitCard";
 import { UsersWorkspaceTabs, type UsersWorkspaceTab } from "@/components/users/UsersWorkspaceTabs";
@@ -14,11 +15,7 @@ import { cn } from "@/lib/cn";
 import { ALL_MODULES_VALUE, displayRoleName, rolesForSelectedModules } from "@/lib/auth/role-options";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import type { ManagedUser, ManagedUserStatus } from "@/lib/data/app-users";
-import type { RoleSummary, UserCustomization } from "@/lib/auth/rbac-types";
-import {
-  loadRolePermissionStateAction,
-  loadUserCustomizationAction,
-} from "@/actions/rbac";
+import type { RoleSummary } from "@/lib/auth/rbac-types";
 import {
   createUserAction,
   disableUserAction,
@@ -79,7 +76,7 @@ function displayEmail(user: ManagedUser) {
 export function UsersManager({
   initialView,
   initialUnitCode,
-  initialRoleState,
+  initialRoleSlug,
   users,
   roles,
   currentUserId,
@@ -87,12 +84,13 @@ export function UsersManager({
 }: {
   initialView: UsersWorkspaceView;
   initialUnitCode?: string | null;
-  initialRoleState?: { role: RoleSummary; permissionCodes: string[] } | null;
+  initialRoleSlug?: string | null;
   users: ManagedUser[];
   roles: RoleSummary[];
   currentUserId: string;
   businessUnits: UsersUnitOption[];
 }) {
+  const t = useT();
   const units = businessUnits;
   const [tab, setTab] = useState<UsersWorkspaceTab>(initialView);
   const [unitCode, setUnitCode] = useState<string | null>(initialUnitCode ?? null);
@@ -104,9 +102,8 @@ export function UsersManager({
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState<ManagedUser | null>(null);
   const [customizeUser, setCustomizeUser] = useState<ManagedUser | null>(null);
-  const [customization, setCustomization] = useState<UserCustomization | null>(null);
-  const [editingRole, setEditingRole] = useState<{ role: RoleSummary; permissionCodes: string[] } | null>(
-    initialRoleState ?? null,
+  const [editingRole, setEditingRole] = useState<RoleSummary | null>(
+    () => roles.find((role) => role.slug === initialRoleSlug) ?? null,
   );
   const [credentials, setCredentials] = useState<CredentialsPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -144,19 +141,19 @@ export function UsersManager({
     return true;
   });
 
-  const showingRoleEditor = tab === "roles" && Boolean(editingRole);
-
   const writeUrl = useCallback(
     (
       nextTab: UsersWorkspaceTab,
       nextUnit: string | null,
       mode: "replace" | "push",
       nextRole: string | null = null,
+      nextCustomize: string | null = null,
     ) => {
       const params = new URLSearchParams();
       if (nextTab !== "all") params.set("view", nextTab);
       if (nextTab === "business" && nextUnit) params.set("unit", nextUnit);
       if (nextTab === "roles" && nextRole) params.set("role", nextRole);
+      if (nextCustomize) params.set("customize", nextCustomize);
       const queryString = params.toString();
       const href = queryString ? `/owner/users?${queryString}` : "/owner/users";
       if (mode === "push") window.history.pushState(window.history.state, "", href);
@@ -170,6 +167,7 @@ export function UsersManager({
       setTab(next);
       setUnitCode(null);
       setEditingRole(null);
+      setCustomizeUser(null);
       writeUrl(next, null, "replace");
     },
     [writeUrl],
@@ -184,13 +182,13 @@ export function UsersManager({
       setTab(nextTab);
       setUnitCode(nextTab === "business" ? params.get("unit") : null);
       const roleParam = nextTab === "roles" ? params.get("role") : null;
-      if (!roleParam) {
-        setEditingRole(null);
-      }
+      setEditingRole(roleParam ? roleCards.find((role) => role.slug === roleParam) ?? null : null);
+      const customizeId = params.get("customize");
+      setCustomizeUser(customizeId ? rows.find((user) => user.id === customizeId) ?? null : null);
     }
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+  }, [roleCards, rows]);
 
   const addButton = (
     <button
@@ -246,38 +244,25 @@ export function UsersManager({
 
   function openCustomize(user: ManagedUser) {
     setError(null);
-    startTransition(async () => {
-      const data = await loadUserCustomizationAction(user.id);
-      if (!data) {
-        setError("Unable to load access for this user.");
-        return;
-      }
-      setCustomizeUser(user);
-      setCustomization(data);
-    });
+    setCustomizeUser(user);
+    writeUrl(tab, unitCode, "replace", editingRole?.slug ?? null, user.id);
+  }
+
+  function closeCustomize() {
+    setCustomizeUser(null);
+    writeUrl(tab, unitCode, "replace", editingRole?.slug ?? null);
   }
 
   function openRole(role: RoleSummary) {
     setError(null);
-    if (role.locked) {
-      setEditingRole({ role, permissionCodes: [] });
-      writeUrl("roles", null, "push", role.slug);
-      return;
-    }
-    startTransition(async () => {
-      const data = await loadRolePermissionStateAction(role.id);
-      if (!data) {
-        setError("Unable to load role permissions.");
-        return;
-      }
-      setEditingRole(data);
-      writeUrl("roles", null, "push", data.role.slug);
-    });
+    setTab("roles");
+    setEditingRole(role);
+    writeUrl("roles", null, "push", role.slug, customizeUser?.id ?? null);
   }
 
   function closeRoleEditor() {
     setEditingRole(null);
-    writeUrl("roles", null, "replace");
+    writeUrl("roles", null, "replace", null, customizeUser?.id ?? null);
   }
 
   return (
@@ -293,7 +278,7 @@ export function UsersManager({
             className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-500 transition hover:text-navy"
           >
             <ArrowLeft className="h-4 w-4" strokeWidth={1.9} />
-            All Business Units
+            {t("users.allBusinessUnits")}
           </button>
           <div className="mb-5 flex min-w-0 flex-col gap-3 sm:mb-6 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
@@ -325,13 +310,13 @@ export function UsersManager({
         </div>
       ) : (
         <PageHeader
-          title="Users & Permissions"
-          description="Manage users, roles and business access."
+          title={t("users.title")}
+          description={t("users.description")}
           action={addButton}
         />
       )}
 
-      {!showingUnitUsers && !showingRoleEditor ? <UsersWorkspaceTabs view={tab} onChange={changeTab} /> : null}
+      {!showingUnitUsers ? <UsersWorkspaceTabs view={tab} onChange={changeTab} /> : null}
 
       {error ? (
         <p className="rounded-[14px] border border-red-200/70 bg-red-50/80 px-3 py-2.5 text-sm text-[#9b2c2c]">{error}</p>
@@ -354,20 +339,6 @@ export function UsersManager({
             />
           ))}
         </div>
-      ) : tab === "roles" && editingRole ? (
-        <RolePermissionEditor
-          role={editingRole.role}
-          permissionCodes={editingRole.permissionCodes}
-          onClose={closeRoleEditor}
-          onSaved={(codes) => {
-            setRoleCards((current) =>
-              current.map((role) =>
-                role.id === editingRole.role.id ? { ...role, permissionCount: codes.length } : role,
-              ),
-            );
-            closeRoleEditor();
-          }}
-        />
       ) : tab === "roles" ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {roleCards.map((role) => (
@@ -546,16 +517,15 @@ export function UsersManager({
         <CredentialsDialog credentials={credentials} onClose={() => setCredentials(null)} />
       ) : null}
 
-      {customizeUser && customization ? (
+      {customizeUser ? (
         <CustomizeAccessDrawer
+          key={customizeUser.id}
           userId={customizeUser.id}
           userName={customizeUser.name}
-          initial={customization}
+          seedModules={customizeUser.modules}
+          seedRoleCode={customizeUser.roleCode}
           businessUnits={units}
-          onClose={() => {
-            setCustomizeUser(null);
-            setCustomization(null);
-          }}
+          onClose={closeCustomize}
           onSaved={({ modules, roleName }) => {
             const unitName = (code: string) => units.find((unit) => unit.code === code)?.name ?? code;
             setRows((current) =>
@@ -570,8 +540,22 @@ export function UsersManager({
                   : user,
               ),
             );
-            setCustomizeUser(null);
-            setCustomization(null);
+            closeCustomize();
+          }}
+        />
+      ) : null}
+      {editingRole ? (
+        <RolePermissionEditor
+          key={editingRole.id}
+          role={editingRole}
+          onClose={closeRoleEditor}
+          onSaved={(codes) => {
+            setRoleCards((current) =>
+              current.map((role) =>
+                role.id === editingRole.id ? { ...role, permissionCount: codes.length } : role,
+              ),
+            );
+            closeRoleEditor();
           }}
         />
       ) : null}

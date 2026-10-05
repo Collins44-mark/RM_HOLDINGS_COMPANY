@@ -1,5 +1,8 @@
-import { APP_NAME, APP_TAGLINE } from "@/lib/config/app";
+"use client";
+
+import { APP_TAGLINE } from "@/lib/config/app";
 import { cn } from "@/lib/cn";
+import { useLocale } from "@/components/i18n/LocaleProvider";
 
 export function Logo({
   compact = false,
@@ -15,6 +18,7 @@ export function Logo({
   size?: "sm" | "md" | "lg";
 }) {
   const markSize = size ?? (compact || markOnly || stacked ? "sm" : "md");
+  const { organisationName } = useLocale();
 
   return (
     <div
@@ -54,7 +58,7 @@ export function Logo({
               light ? "text-white" : "text-navy",
             )}
           >
-            {APP_NAME}
+            {organisationName}
           </p>
           {!compact && !stacked ? (
             <p

@@ -10,6 +10,7 @@ import {
 } from "@/lib/data/reports";
 import { listBusinessUnits } from "@/lib/data/business-units";
 import { formatHeroDate } from "@/lib/format/datetime";
+import { getTranslator } from "@/lib/i18n/server";
 import {
   parseReportId,
   parseReportModuleId,
@@ -32,7 +33,7 @@ export default async function ReportsPage({
   }>;
 }) {
   const params = await searchParams;
-  const units = await listBusinessUnits();
+  const [units, t] = await Promise.all([listBusinessUnits(), getTranslator()]);
   const moduleOptions = reportModuleOptionsFromUnits(units);
   const knownCodes = units.map((unit) => unit.code);
 
@@ -60,8 +61,8 @@ export default async function ReportsPage({
   return (
     <div className="space-y-5 pb-8">
       <PageHeader
-        title="Reports"
-        description="Generate and download operational, financial and management reports for any business unit."
+        title={t("reports.title")}
+        description={t("reports.description")}
         action={
           <p className="rounded-full border border-white/70 bg-white/70 px-3.5 py-1.5 text-[12.5px] font-medium text-slate-500 shadow-[0_4px_14px_rgba(15,35,64,0.04)] backdrop-blur-xl">
             {heroDate.weekday}, {heroDate.date}
@@ -72,7 +73,7 @@ export default async function ReportsPage({
       <Suspense
         fallback={
           <ReportSurface className="px-5 py-6 text-[13.5px] text-slate-500">
-            Loading selectors…
+            {t("reports.loadingSelectors")}
           </ReportSurface>
         }
       >

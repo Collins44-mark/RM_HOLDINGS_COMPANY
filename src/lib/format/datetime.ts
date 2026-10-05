@@ -1,7 +1,12 @@
 import { APP_TIMEZONE } from "@/lib/config/app";
+import { getRuntimeTimezone } from "@/lib/config/runtime-settings";
 
-export function zonedNow(timeZone = APP_TIMEZONE) {
-  return new Date(new Date().toLocaleString("en-US", { timeZone }));
+function zone(timeZone?: string) {
+  return timeZone ?? getRuntimeTimezone() ?? APP_TIMEZONE;
+}
+
+export function zonedNow(timeZone?: string) {
+  return new Date(new Date().toLocaleString("en-US", { timeZone: zone(timeZone) }));
 }
 
 export function greetingForHour(hour: number) {
@@ -10,40 +15,41 @@ export function greetingForHour(hour: number) {
   return "Good Evening";
 }
 
-export function formatLongDate(date: Date, timeZone = APP_TIMEZONE) {
+export function formatLongDate(date: Date, timeZone?: string) {
   return new Intl.DateTimeFormat("en-GB", {
     weekday: "long",
     day: "2-digit",
     month: "short",
     year: "numeric",
-    timeZone,
+    timeZone: zone(timeZone),
   }).format(date);
 }
 
-export function formatHeroDate(date: Date, timeZone = APP_TIMEZONE) {
+export function formatHeroDate(date: Date, timeZone?: string) {
+  const tz = zone(timeZone);
   return {
-    weekday: new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone }).format(date),
+    weekday: new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone: tz }).format(date),
     date: new Intl.DateTimeFormat("en-GB", {
       day: "2-digit",
       month: "short",
       year: "numeric",
-      timeZone,
+      timeZone: tz,
     }).format(date),
   };
 }
 
-export function formatDateTime(date: Date, timeZone = APP_TIMEZONE) {
+export function formatDateTime(date: Date, timeZone?: string) {
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-    timeZone,
+    timeZone: zone(timeZone),
   }).format(date);
 }
 
-export function formatSnapshotUpdated(date: Date, timeZone = APP_TIMEZONE) {
+export function formatSnapshotUpdated(date: Date, timeZone?: string) {
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     month: "short",
@@ -51,7 +57,7 @@ export function formatSnapshotUpdated(date: Date, timeZone = APP_TIMEZONE) {
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
-    timeZone,
+    timeZone: zone(timeZone),
   })
     .format(date)
     .replace(/\bSept\b/, "Sep")

@@ -12,6 +12,8 @@ import { navigationForPath, type NavBusinessUnit } from "@/lib/auth/nav";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { SIDEBAR_WIDTH } from "@/lib/config/app";
 import type { AuthUser } from "@/lib/auth/types";
+import { useT } from "@/components/i18n/LocaleProvider";
+import { localizeNavItems } from "@/lib/i18n";
 
 export function AppShell({
   user,
@@ -30,7 +32,12 @@ export function AppShell({
   const sidebarWidth = collapsed ? SIDEBAR_WIDTH.collapsed : SIDEBAR_WIDTH.expanded;
   const isAddProductPage = pathname === "/supermarket/products/new";
   const showFooter = pathname !== "/owner" && pathname !== "/dashboard" && !isAddProductPage;
+  const t = useT();
   const { nav, workspace, moduleCode } = navigationForPath(user, pathname, businessUnits);
+  const localizedNav = localizeNavItems(nav, t);
+  const localizedWorkspace = workspace
+    ? { ...workspace, items: localizeNavItems(workspace.items, t) }
+    : undefined;
 
   return (
     <div className="relative min-h-screen overflow-x-clip bg-[#eef3f8]">
@@ -38,7 +45,7 @@ export function AppShell({
         className="hidden overflow-visible lg:fixed lg:bottom-3 lg:left-3 lg:top-3 lg:z-20 lg:flex transition-[width] duration-300 ease-out"
         style={{ width: sidebarWidth }}
       >
-        <Sidebar items={nav} workspace={workspace} collapsed={collapsed} />
+        <Sidebar items={localizedNav} workspace={localizedWorkspace} collapsed={collapsed} />
       </div>
 
       {mobileOpen ? (
@@ -51,8 +58,8 @@ export function AppShell({
           />
           <div className="relative h-full max-w-[85vw] overflow-hidden rounded-r-[28px] shadow-2xl" style={{ width: SIDEBAR_WIDTH.expanded }}>
             <Sidebar
-              items={nav}
-              workspace={workspace}
+              items={localizedNav}
+              workspace={localizedWorkspace}
               onNavigate={() => setMobileOpen(false)}
             />
           </div>

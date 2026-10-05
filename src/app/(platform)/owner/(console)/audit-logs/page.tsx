@@ -11,6 +11,7 @@ import {
   type AuditSeverity,
 } from "@/lib/data/audit-logs";
 import { formatDateTime } from "@/lib/format/datetime";
+import { getTranslator } from "@/lib/i18n/server";
 import { cn } from "@/lib/cn";
 
 export const metadata = { title: "Audit Logs" };
@@ -47,6 +48,7 @@ export default async function AuditLogsPage({
   }>;
 }) {
   await requirePermission("platform.audit.view");
+  const t = await getTranslator();
   const params = await searchParams;
   const severity =
     params.severity === "low" || params.severity === "medium" || params.severity === "high"
@@ -78,8 +80,8 @@ export default async function AuditLogsPage({
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Audit Logs"
-        description="A record of important actions across RM Holdings."
+        title={t("audit.title")}
+        description={t("audit.description")}
       />
 
       <div className="grid grid-cols-2 gap-2.5 xl:grid-cols-4">

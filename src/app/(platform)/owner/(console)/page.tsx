@@ -7,8 +7,10 @@ import {
   getExecutiveInsights,
 } from "@/lib/data/finance";
 import { parseReportPeriod } from "@/lib/data/report-period";
-import { formatHeroDate, formatSnapshotUpdated, greetingForHour } from "@/lib/format/datetime";
-import { APP_TIMEZONE } from "@/lib/config/app";
+import { formatHeroDate, formatSnapshotUpdated } from "@/lib/format/datetime";
+import { getOrganizationSettings } from "@/lib/data/organization-settings";
+import { getTranslator } from "@/lib/i18n/server";
+import { greetingKeyForHour } from "@/lib/i18n";
 import { getMorogoroWeather } from "@/lib/weather";
 
 export const metadata = { title: "Owner Dashboard" };
@@ -23,15 +25,16 @@ export default async function OwnerDashboardPage({
   const from = typeof params.from === "string" ? params.from : undefined;
   const to = typeof params.to === "string" ? params.to : undefined;
 
+  const [settings, t] = await Promise.all([getOrganizationSettings(), getTranslator()]);
   const now = new Date();
   const hour = Number(
     new Intl.DateTimeFormat("en-GB", {
       hour: "numeric",
       hourCycle: "h23",
-      timeZone: APP_TIMEZONE,
+      timeZone: settings.timezone,
     }).format(now),
   );
-  const heroDate = formatHeroDate(now);
+  const heroDate = formatHeroDate(now, settings.timezone);
 
   const [finance, weather] = await Promise.all([
     getConsolidatedFinanceForReportPeriod({ period, from, to, now }),
@@ -43,7 +46,7 @@ export default async function OwnerDashboardPage({
   return (
     <div className="space-y-6">
       <WelcomeBanner
-        greeting={greetingForHour(hour)}
+        greeting={t(greetingKeyForHour(hour))}
         name="Owner"
         weekday={heroDate.weekday}
         date={heroDate.date}
@@ -62,7 +65,7 @@ export default async function OwnerDashboardPage({
         highestMargin={insights.highestMargin}
         activeUnits={insights.activeUnits}
         configuredUnits={insights.configuredUnits}
-        lastUpdated={formatSnapshotUpdated(now)}
+        lastUpdated={formatSnapshotUpdated(now, settings.timezone)}
       />
     </div>
   );

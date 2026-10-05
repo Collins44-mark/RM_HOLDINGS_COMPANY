@@ -1,22 +1,22 @@
 import { BusinessUnitOverviewCard } from "@/components/dashboard/BusinessUnitOverviewCard";
 import { PageHeader, Surface } from "@/components/ui/PageHeader";
 import { listBusinessUnits } from "@/lib/data/business-units";
+import { getTranslator } from "@/lib/i18n/server";
 
 export const metadata = { title: "Business Units" };
 
 export default async function BusinessUnitsPage() {
-  const units = await listBusinessUnits();
+  const [units, t] = await Promise.all([listBusinessUnits(), getTranslator()]);
 
   return (
     <div>
       <PageHeader
-        title="Business Units"
-        description="Manage RM Holdings business units."
+        title={t("dashboard.businessUnits")}
+        description={t("dashboard.businessUnitsDescription")}
       />
       {units.length === 0 ? (
         <Surface className="px-5 py-4 text-sm leading-6 text-slate-500">
-          No business units were returned from Supabase. Confirm `business_units` is configured and
-          accessible.
+          {t("dashboard.unitsEmpty")}
         </Surface>
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">

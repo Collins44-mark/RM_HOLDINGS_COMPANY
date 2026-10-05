@@ -195,6 +195,27 @@ const listAssignmentCountsCached = unstable_cache(
   { revalidate: 120, tags: [BUSINESS_UNITS_CACHE_TAG] },
 );
 
+/** Nav-only projection — no assignment counts or operational data. */
+export async function listBusinessUnitsForNav() {
+  const records = await listBusinessUnitRecordsCached();
+  return records.map((record) => ({
+    code: record.code,
+    name: record.name,
+    slug: record.slug,
+  }));
+}
+
+/** Settings location editor — records + stored location only. */
+export async function listBusinessUnitLocationRows() {
+  const records = await listBusinessUnitRecordsCached();
+  return records.map((record) => ({
+    id: record.id,
+    code: record.code,
+    name: record.name,
+    storedLocation: record.storedLocation,
+  }));
+}
+
 /** All configured business units from Supabase, with presentation overlay. */
 export async function listBusinessUnits(): Promise<BusinessUnitView[]> {
   const [records, counts] = await Promise.all([

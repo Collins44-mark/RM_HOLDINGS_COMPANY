@@ -8,6 +8,8 @@ import { logoutAction } from "@/actions/auth";
 import { SEARCH_INDEX } from "@/lib/config/navigation";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import type { AuthUser } from "@/lib/auth/types";
+import { useLocale } from "@/components/i18n/LocaleProvider";
+import { navKeyForHref } from "@/lib/i18n";
 
 function initials(name: string) {
   const cleaned = name
@@ -20,8 +22,8 @@ function initials(name: string) {
   return name.slice(0, 2).toUpperCase();
 }
 
-function profileCaption(user: AuthUser) {
-  if (isOwnerRole(user.roleCode)) return "Owner / Group Administrator";
+function profileCaption(user: AuthUser, ownerCaption: string) {
+  if (isOwnerRole(user.roleCode)) return ownerCaption;
   return user.roleName;
 }
 
@@ -33,6 +35,7 @@ function profileImage(user: AuthUser) {
 
 function SignOutButton() {
   const { pending } = useFormStatus();
+  const t = useLocale().t;
   return (
     <button
       type="submit"
@@ -40,7 +43,7 @@ function SignOutButton() {
       className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-[#b42318] hover:bg-red-50 disabled:opacity-60"
     >
       <LogOut className="h-4 w-4" />
-      {pending ? "Signing out..." : "Sign out"}
+      {pending ? t("chrome.signingOut") : t("chrome.signOut")}
     </button>
   );
 }
@@ -87,19 +90,24 @@ export function Header({
   notifications: { id: string; title: string; body: string; href: string | null; createdAt: string }[];
   hideUtilities?: boolean;
 }) {
+  const t = useLocale().t;
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const avatar = profileImage(user);
-  const caption = profileCaption(user);
+  const caption = profileCaption(user, t("chrome.ownerCaption"));
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return SEARCH_INDEX.slice(0, 6);
-    return SEARCH_INDEX.filter((item) => item.label.toLowerCase().includes(q)).slice(0, 8);
-  }, [query]);
+    return SEARCH_INDEX.filter((item) => {
+      const key = navKeyForHref(item.href);
+      const label = key ? t(key, item.label) : item.label;
+      return `${label} ${item.label} ${item.group}`.toLowerCase().includes(q);
+    }).slice(0, 8);
+  }, [query, t]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -120,9 +128,9 @@ export function Header({
           type="button"
           onClick={onMenuClick}
           className="inline-flex h-10 w-10 items-center justify-center rounded-[12px] border border-white/80 bg-white/90 text-navy shadow-[0_1px_2px_rgba(15,35,64,0.04)]"
-          aria-label="Open navigation"
+          aria-label={t("chrome.openMenu")}
         >
-          <span className="sr-only">Open menu</span>
+          <span className="sr-only">{t("chrome.openMenu")}</span>
           <MenuLines className="h-3.5 w-4" />
         </button>
       </header>
@@ -135,16 +143,16 @@ export function Header({
         type="button"
         onClick={onMenuClick}
         className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-white/80 bg-white/90 text-navy shadow-[0_1px_2px_rgba(15,35,64,0.04)] lg:hidden"
-        aria-label="Open navigation"
+        aria-label={t("chrome.openMenu")}
       >
-        <span className="sr-only">Open menu</span>
+        <span className="sr-only">{t("chrome.openMenu")}</span>
         <MenuLines className="h-3.5 w-4" />
       </button>
       <button
         type="button"
         onClick={onToggleSidebar}
         className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-white/80 bg-white/90 text-navy shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition duration-200 hover:bg-white lg:inline-flex"
-        aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        aria-label={sidebarCollapsed ? t("chrome.expandSidebar") : t("chrome.collapseSidebar")}
         aria-expanded={!sidebarCollapsed}
       >
         <MenuLines className="h-3.5 w-4" />
@@ -163,7 +171,7 @@ export function Header({
             setSearchOpen(true);
           }}
           onFocus={() => setSearchOpen(true)}
-          placeholder="Search modules, reports, users..."
+          placeholder={t("chrome.searchPlaceholder")}
           className="h-10 w-full min-w-0 rounded-full border border-white/80 bg-white/75 pl-9 pr-3 text-sm text-navy shadow-[0_1px_2px_rgba(15,35,64,0.04)] outline-none backdrop-blur-xl transition placeholder:truncate placeholder:text-slate-400 focus:border-[#c5d4ea] focus:bg-white sm:h-11 sm:pl-10 sm:pr-16"
         />
         <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 items-center rounded-full border border-white/80 bg-white/70 px-2 py-0.5 text-[11px] font-medium text-slate-400 md:inline-flex">
@@ -172,9 +180,21 @@ export function Header({
         {searchOpen ? (
           <div className="absolute left-0 right-0 top-[calc(100%+8px)] overflow-hidden rounded-2xl border border-black/6 bg-white shadow-[0_16px_40px_rgba(16,24,40,0.12)]">
             {results.length === 0 ? (
-              <p className="px-4 py-3 text-sm text-slate-500">No matching modules or pages.</p>
+              <p className="px-4 py-3 text-sm text-slate-500">{t("chrome.searchEmpty")}</p>
             ) : (
-              results.map((item) => (
+              results.map((item) => {
+                const key = navKeyForHref(item.href);
+                const groupKey =
+                  item.group === "Platform"
+                    ? "nav.group.platform"
+                    : item.group === "Business Units"
+                      ? "nav.group.businessUnits"
+                      : item.group === "School"
+                        ? "nav.group.school"
+                        : item.group === "School Transport"
+                          ? "nav.group.schoolTransport"
+                          : null;
+                return (
                 <Link
                   key={`${item.group}-${item.href}`}
                   href={item.href}
@@ -184,10 +204,13 @@ export function Header({
                   }}
                   className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-slate-50"
                 >
-                  <span className="text-navy">{item.label}</span>
-                  <span className="text-xs text-slate-400">{item.group}</span>
+                  <span className="text-navy">{key ? t(key, item.label) : item.label}</span>
+                  <span className="text-xs text-slate-400">
+                    {groupKey ? t(groupKey, item.group) : item.group}
+                  </span>
                 </Link>
-              ))
+                );
+              })
             )}
           </div>
         ) : null}
@@ -202,7 +225,7 @@ export function Header({
             type="button"
             onClick={() => setAlertsOpen((value) => !value)}
             className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white/75 text-slate-500 shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition hover:bg-white hover:text-navy sm:h-11 sm:w-11"
-            aria-label="Notifications"
+            aria-label={t("chrome.notifications")}
           >
             <Bell className="h-5 w-5" strokeWidth={1.75} />
             {notifications.length > 0 ? (
@@ -212,10 +235,10 @@ export function Header({
           {alertsOpen ? (
             <div className="absolute right-0 top-[calc(100%+8px)] w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-black/6 bg-white shadow-[0_16px_40px_rgba(16,24,40,0.12)]">
               <div className="border-b border-black/5 px-4 py-3 text-sm font-semibold text-navy">
-                Notifications
+                {t("chrome.notifications")}
               </div>
               {notifications.length === 0 ? (
-                <p className="px-4 py-6 text-sm text-slate-500">No new notifications.</p>
+                <p className="px-4 py-6 text-sm text-slate-500">{t("chrome.notificationsEmpty")}</p>
               ) : (
                 notifications.map((item) => (
                   <Link
@@ -271,7 +294,7 @@ export function Header({
                 onClick={() => setProfileOpen(false)}
               >
                 <UserRound className="h-4 w-4" />
-                Profile Settings
+                {t("chrome.profileSettings")}
               </Link>
               <form action={logoutAction}>
                 <SignOutButton />

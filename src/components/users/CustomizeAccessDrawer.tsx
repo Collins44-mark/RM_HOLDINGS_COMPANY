@@ -1,13 +1,12 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { saveUserCustomizationAction } from "@/actions/rbac";
+import { AccessModal, PermissionSkeleton } from "@/components/users/AccessModal";
+import { PermissionTile } from "@/components/users/PermissionTile";
 import { ALL_MODULES_VALUE, displayRoleName, roleDefaultPermissions, rolesForSelectedModules } from "@/lib/auth/role-options";
 import { isOwnerRole } from "@/lib/auth/rbac";
-import {
-  catalogForModule,
-  groupPermissions,
-} from "@/lib/config/permissions";
+import { catalogForModule, groupPermissions, isImplementedBusinessModule } from "@/lib/config/permissions";
 import type { UserCustomization } from "@/lib/auth/rbac-types";
 
 type UnitOption = { code: string; name: string };
@@ -33,50 +32,80 @@ function overridesFromChecks(
   return next;
 }
 
+function grantedSet(unitCode: string, roleCode: string, overrides: UserCustomization["overrides"]) {
+  const granted = new Set(
+    roleDefaultPermissions(roleCode).filter((item) => item.split(".")[0] === unitCode),
+  );
+  for (const override of overrides) {
+    if (override.businessUnitCode !== unitCode) continue;
+    if (override.effect === "allow") granted.add(override.permissionCode);
+    if (override.effect === "deny") granted.delete(override.permissionCode);
+  }
+  return granted;
+}
+
 export function CustomizeAccessDrawer({
   userId,
   userName,
-  initial,
+  seedModules,
+  seedRoleCode,
   businessUnits,
   onClose,
   onSaved,
 }: {
   userId: string;
   userName: string;
-  initial: UserCustomization;
+  seedModules?: string[];
+  seedRoleCode?: string;
   businessUnits: UnitOption[];
   onClose: () => void;
   onSaved: (input: { modules: string[]; roleName?: string }) => void;
 }) {
-  const [units, setUnits] = useState<string[]>(initial.assignedUnitCodes);
-  const [moduleRoles, setModuleRoles] = useState<Record<string, string>>(initial.moduleRoles);
-  const [checkedByUnit, setCheckedByUnit] = useState<Record<string, Set<string>>>(() => {
-    const next: Record<string, Set<string>> = {};
-    for (const code of initial.assignedUnitCodes) {
-      const roleCode = initial.moduleRoles[code] ?? initial.roleCode;
-      const granted = new Set(
-        roleDefaultPermissions(roleCode).filter((item) => item.split(".")[0] === code),
-      );
-      for (const override of initial.overrides) {
-        if (override.businessUnitCode !== code) continue;
-        if (override.effect === "allow") granted.add(override.permissionCode);
-        if (override.effect === "deny") granted.delete(override.permissionCode);
-      }
-      next[code] = granted;
-    }
-    return next;
-  });
+  const [loaded, setLoaded] = useState<UserCustomization | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [units, setUnits] = useState<string[]>(seedModules?.filter((code) => code !== "*") ?? []);
+  const [moduleRoles, setModuleRoles] = useState<Record<string, string>>({});
+  const [checkedByUnit, setCheckedByUnit] = useState<Record<string, Set<string>>>({});
+  const [activeModule, setActiveModule] = useState(units[0] ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const groupsByModule = useMemo(() => {
-    const grouped = groupPermissions(catalogForModule("supermarket"));
-    return Object.fromEntries(grouped.map((group) => [group.module, group]));
-  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const response = await fetch(`/owner/users/access?userId=${encodeURIComponent(userId)}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        if (!cancelled) setLoadError("Unable to load access for this user.");
+        return;
+      }
+      const data = (await response.json()) as UserCustomization;
+      if (cancelled) return;
+      setLoaded(data);
+      setUnits(data.assignedUnitCodes);
+      setModuleRoles(data.moduleRoles);
+      const nextChecks: Record<string, Set<string>> = {};
+      for (const code of data.assignedUnitCodes) {
+        const roleCode = data.moduleRoles[code] ?? data.roleCode;
+        nextChecks[code] = grantedSet(code, roleCode, data.overrides);
+      }
+      setCheckedByUnit(nextChecks);
+      setActiveModule((current) =>
+        data.assignedUnitCodes.includes(current) ? current : (data.assignedUnitCodes[0] ?? ""),
+      );
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
   function toggleUnit(code: string) {
     setUnits((current) => {
-      const next = current.includes(code) ? current.filter((item) => item !== code) : [...current, code];
-      if (!current.includes(code)) {
+      const assigning = !current.includes(code);
+      const next = assigning ? [...current, code] : current.filter((item) => item !== code);
+      if (assigning) {
         const defaultRole = rolesForSelectedModules([code])[0]?.code ?? "STAFF";
         setModuleRoles((roles) => ({ ...roles, [code]: roles[code] ?? defaultRole }));
         setCheckedByUnit((checks) => ({
@@ -85,6 +114,9 @@ export function CustomizeAccessDrawer({
             checks[code] ??
             new Set(roleDefaultPermissions(defaultRole).filter((item) => item.split(".")[0] === code)),
         }));
+        setActiveModule(code);
+      } else {
+        setActiveModule((active) => (active === code ? (next[0] ?? "") : active));
       }
       return next;
     });
@@ -107,123 +139,49 @@ export function CustomizeAccessDrawer({
     });
   }
 
+  const selectedModule = units.includes(activeModule) ? activeModule : (units[0] ?? "");
+  const selectedIsImplemented = isImplementedBusinessModule(selectedModule);
+  const roleCode = selectedModule
+    ? (moduleRoles[selectedModule] ?? loaded?.roleCode ?? seedRoleCode ?? "STAFF")
+    : (loaded?.roleCode ?? seedRoleCode ?? "STAFF");
+  const roles = useMemo(() => {
+    if (!selectedModule || !selectedIsImplemented) return [];
+    const list = rolesForSelectedModules([selectedModule]).filter((role) => !isOwnerRole(role.code));
+    if (roleCode && !list.some((role) => role.code === roleCode)) {
+      const current = rolesForSelectedModules([ALL_MODULES_VALUE]).find((role) => role.code === roleCode);
+      if (current && !isOwnerRole(current.code)) list.unshift(current);
+    }
+    return list;
+  }, [roleCode, selectedIsImplemented, selectedModule]);
+
+  const group = selectedIsImplemented ? groupPermissions(catalogForModule(selectedModule))[0] : null;
+  const defaults = new Set(
+    roleDefaultPermissions(roleCode).filter((code) => code.split(".")[0] === selectedModule),
+  );
+  const granted = checkedByUnit[selectedModule] ?? new Set<string>();
+  const selectedName = businessUnits.find((unit) => unit.code === selectedModule)?.name ?? selectedModule;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-navy/30 p-0 sm:items-center sm:p-4">
-      <button type="button" className="absolute inset-0" aria-label="Close" onClick={onClose} />
-      <div className="relative max-h-[92vh] w-full overflow-y-auto rounded-t-[24px] border border-white/70 bg-white/92 p-5 shadow-2xl backdrop-blur-xl sm:max-w-[680px] sm:rounded-[24px] sm:p-6">
-        <div className="mb-5">
-          <h2 className="text-[20px] font-semibold tracking-[-0.03em] text-navy">Customize Access</h2>
-          <p className="mt-1 text-[13.5px] text-slate-500">
-            User: <span className="font-medium text-navy">{userName}</span>
-          </p>
-        </div>
-        {error ? (
-          <p className="mb-3 rounded-[14px] border border-red-200/70 bg-red-50/80 px-3 py-2.5 text-sm text-[#9b2c2c]">
-            {error}
-          </p>
-        ) : null}
-
-        <section className="mb-6">
-          <h3 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-slate-400">Business Modules</h3>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {businessUnits.map((unit) => (
-              <label key={unit.code} className="flex items-center gap-2 rounded-[14px] bg-[#f8fafc]/90 px-3 py-2.5 text-[13.5px] text-navy">
-                <input
-                  type="checkbox"
-                  checked={units.includes(unit.code)}
-                  onChange={() => toggleUnit(unit.code)}
-                />
-                {unit.name}
-              </label>
-            ))}
-          </div>
-        </section>
-
-        {units.map((unitCode) => {
-          const unit = businessUnits.find((item) => item.code === unitCode);
-          const roleCode = moduleRoles[unitCode] ?? initial.roleCode;
-          const roles = rolesForSelectedModules([unitCode]).filter((role) => !isOwnerRole(role.code));
-          if (roleCode && !roles.some((role) => role.code === roleCode)) {
-            const current = rolesForSelectedModules([ALL_MODULES_VALUE]).find((role) => role.code === roleCode);
-            if (current) roles.unshift(current);
-          }
-          const group = groupsByModule[unitCode];
-          const defaults = new Set(
-            roleDefaultPermissions(roleCode).filter((code) => code.split(".")[0] === unitCode),
-          );
-          const granted = checkedByUnit[unitCode] ?? new Set<string>();
-          return (
-            <section key={unitCode} className="mb-6 border-t border-black/5 pt-5">
-              <h3 className="text-[15px] font-semibold text-navy">Module: {unit?.name ?? unitCode}</h3>
-              <label className="mt-3 block">
-                <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Role</span>
-                <select
-                  value={roleCode}
-                  onChange={(event) => setRole(unitCode, event.target.value)}
-                  className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
-                >
-                  {roles.map((role) => (
-                    <option key={role.code} value={role.code}>
-                      {displayRoleName(role.code, role.name)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {group ? (
-                <div className="mt-4 space-y-4">
-                  <p className="text-[13px] font-semibold uppercase tracking-wide text-slate-400">Permissions</p>
-                  {group.resources.map((resource) => (
-                    <div key={resource.resource}>
-                      <p className="mb-1.5 text-[13px] font-semibold text-navy">{resource.label}</p>
-                      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                        {resource.permissions.map((permission) => {
-                          const action = permission.code.split(".")[2] ?? permission.name;
-                          const isOn = granted.has(permission.code);
-                          const isDefault = defaults.has(permission.code);
-                          const custom = isOn !== isDefault;
-                          return (
-                            <label
-                              key={permission.code}
-                              className="flex items-center justify-between gap-2 rounded-[12px] bg-[#f8fafc]/80 px-3 py-2 text-[13px] text-navy"
-                            >
-                              <span className="flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={isOn}
-                                  onChange={() => togglePermission(unitCode, permission.code)}
-                                />
-                                {action.charAt(0).toUpperCase() + action.slice(1)}
-                              </span>
-                              <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
-                                {custom ? "Custom" : "Default"}
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-3 text-[13px] text-slate-500">
-                  Operational permissions for this module will appear when the module is implemented.
-                </p>
-              )}
-            </section>
-          );
-        })}
-
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 text-[14px] font-medium text-slate-600">
+    <AccessModal
+      title="Customize Access"
+      subtitle={
+        <>
+          User: <span className="font-medium text-navy">{userName}</span>
+        </>
+      }
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="h-10 rounded-[12px] px-4 text-[13.5px] font-medium text-slate-600">
             Cancel
           </button>
           <button
             type="button"
-            disabled={pending}
+            disabled={pending || !loaded}
             onClick={() => {
               setError(null);
               const overrides = units.flatMap((code) =>
-                overridesFromChecks(code, moduleRoles[code] ?? initial.roleCode, checkedByUnit[code] ?? new Set()),
+                overridesFromChecks(code, moduleRoles[code] ?? loaded?.roleCode ?? "STAFF", checkedByUnit[code] ?? new Set()),
               );
               startTransition(async () => {
                 const result = await saveUserCustomizationAction({
@@ -239,12 +197,119 @@ export function CustomizeAccessDrawer({
                 onSaved({ modules: result.modules ?? units, roleName: result.roleName });
               });
             }}
-            className="h-11 rounded-[14px] bg-navy px-4 text-[14px] font-semibold text-white disabled:opacity-60"
+            className="h-10 rounded-[12px] bg-navy px-4 text-[13.5px] font-semibold text-white disabled:opacity-60"
           >
             {pending ? "Saving..." : "Save Changes"}
           </button>
+        </>
+      }
+    >
+      {error || loadError ? (
+        <p className="mb-3 rounded-[14px] border border-red-200/70 bg-red-50/80 px-3 py-2.5 text-sm text-[#9b2c2c]">
+          {error ?? loadError}
+        </p>
+      ) : null}
+
+      <section>
+        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+          Business Modules
+        </h3>
+        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+          {businessUnits.map((unit) => (
+            <label
+              key={unit.code}
+              className="flex items-center gap-2 rounded-[12px] border border-black/[0.04] bg-[#f8fafc]/90 px-3 py-2 text-[13px] text-navy"
+            >
+              <input
+                type="checkbox"
+                checked={units.includes(unit.code)}
+                onChange={() => toggleUnit(unit.code)}
+                className="h-3.5 w-3.5 accent-navy"
+              />
+              {unit.name}
+            </label>
+          ))}
         </div>
-      </div>
-    </div>
+      </section>
+
+      {!loaded ? (
+        <div className="mt-5">
+          <PermissionSkeleton />
+        </div>
+      ) : units.length === 0 ? (
+        <p className="mt-5 text-[13.5px] text-slate-500">Assign at least one business module to configure access.</p>
+      ) : (
+        <section className="mt-5">
+          <label className="block">
+            <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+              Configure Module
+            </span>
+            <select
+              value={selectedModule}
+              onChange={(event) => setActiveModule(event.target.value)}
+              className="h-10 w-full rounded-[12px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
+            >
+              {units.map((code) => (
+                <option key={code} value={code}>
+                  {businessUnits.find((unit) => unit.code === code)?.name ?? code}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {selectedIsImplemented ? (
+            <>
+              <label className="mt-4 block">
+                <span className="mb-1.5 block text-[13px] font-medium text-slate-500">
+                  Role · {selectedName}
+                </span>
+                <select
+                  value={roleCode}
+                  onChange={(event) => setRole(selectedModule, event.target.value)}
+                  className="h-10 w-full rounded-[12px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
+                >
+                  {roles.map((role) => (
+                    <option key={role.code} value={role.code}>
+                      {displayRoleName(role.code, role.name)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {group ? (
+                <div className="mt-4 space-y-3">
+                  {group.resources.map((resource) => (
+                    <div key={resource.resource}>
+                      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                        {resource.label}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {resource.permissions.map((permission) => {
+                          const action = permission.code.split(".")[2] ?? permission.name;
+                          const isOn = granted.has(permission.code);
+                          const isDefault = defaults.has(permission.code);
+                          return (
+                            <PermissionTile
+                              key={permission.code}
+                              label={action.charAt(0).toUpperCase() + action.slice(1)}
+                              checked={isOn}
+                              hint={isOn === isDefault ? "Default" : "Custom"}
+                              onChange={() => togglePermission(selectedModule, permission.code)}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <p className="mt-4 text-[13.5px] text-slate-500">
+              Operational permissions for {selectedName} will appear when the module is implemented.
+            </p>
+          )}
+        </section>
+      )}
+    </AccessModal>
   );
 }
