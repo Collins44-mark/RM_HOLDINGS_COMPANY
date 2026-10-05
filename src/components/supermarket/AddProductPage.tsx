@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Save, ScanLine } from "lucide-react";
+import { Save } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { CategoryCreateModal, ADD_CATEGORY_OPTION, canCreateSupermarketCategory } from "@/components/supermarket/CategoryCreateModal";
+import { BarcodeScanButton } from "@/components/supermarket/barcode/BarcodeScannerModal";
+import { useHardwareBarcodeScan } from "@/components/supermarket/barcode/useHardwareBarcodeScan";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { matchPermission } from "@/lib/config/permissions";
 import { cn } from "@/lib/cn";
-import { fetchCatalogOptionsAction } from "@/actions/supermarket/catalog";
+import { fetchCatalogOptionsAction, lookupProductByBarcodeAction } from "@/actions/supermarket/catalog";
+import { normalizeBarcode } from "@/lib/supermarket/barcode";
 import {
   SUPERMARKET_PRODUCT_UNITS,
   consumeNewProductBarcode,
@@ -123,6 +126,8 @@ export function AddProductPage() {
   useEffect(() => {
     const barcode = consumeNewProductBarcode();
     if (barcode) {
+      // Prefill from POS "Add Product" handoff after mount.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sessionStorage is an external store
       setForm((current) => ({ ...current, barcode }));
     }
   }, []);
@@ -146,17 +151,35 @@ export function AddProductPage() {
     if (key === "barcode") setBarcodeNotice(null);
   }
 
-  function lookupBarcode(code: string) {
-    const match = findProductByBarcode(catalogProducts, code);
-    if (match) {
-      setBarcodeNotice(`This barcode already belongs to ${match.name}.`);
+  const lookupBarcode = useCallback(async (code: string) => {
+    const barcode = normalizeBarcode(code);
+    setForm((current) => ({ ...current, barcode }));
+    setErrors((current) => {
+      if (!current.barcode) return current;
+      const next = { ...current };
+      delete next.barcode;
+      return next;
+    });
+    if (!barcode) {
+      setBarcodeNotice(null);
       return;
     }
-    if (code.trim()) {
-      setBarcodeNotice("No matching product. You can create a new product with this barcode.");
+    const result = await lookupProductByBarcodeAction(barcode);
+    if (result.error) {
+      setBarcodeNotice("Unable to look up barcode.");
+      return;
     }
-    patch("barcode", code.trim());
-  }
+    if (result.product) {
+      setBarcodeNotice(`Barcode already assigned to ${result.product.name}.`);
+      return;
+    }
+    setBarcodeNotice("No matching product. You can create a new product with this barcode.");
+  }, []);
+
+  useHardwareBarcodeScan({
+    inputRef: barcodeRef,
+    onScan: lookupBarcode,
+  });
 
   async function saveProduct() {
     if (busy || savingRef.current) return;
@@ -343,26 +366,15 @@ export function AddProductPage() {
                   ref={barcodeRef}
                   value={form.barcode}
                   onChange={(event) => patch("barcode", event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      lookupBarcode(form.barcode);
-                    }
-                  }}
                   placeholder="Enter barcode (optional)"
                   className={cn(inputClass, "pr-11")}
+                  autoComplete="off"
+                  inputMode="numeric"
                 />
-                <button
-                  type="button"
-                  onClick={() => {
-                    barcodeRef.current?.focus();
-                    if (form.barcode.trim()) lookupBarcode(form.barcode);
-                  }}
+                <BarcodeScanButton
+                  onDetected={lookupBarcode}
                   className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-[10px] text-slate-400 transition hover:bg-[#f4f7fb] hover:text-navy"
-                  aria-label="Look up barcode"
-                >
-                  <ScanLine className="h-4 w-4" strokeWidth={1.8} />
-                </button>
+                />
               </div>
               {errors.barcode ? <p className="mt-1.5 text-[12px] text-[#8a5a5a]">{errors.barcode}</p> : null}
               {barcodeNotice ? <p className="mt-1.5 text-[12px] text-slate-500">{barcodeNotice}</p> : null}

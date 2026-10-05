@@ -18,6 +18,10 @@ import {
 import { useAuth } from "@/components/auth/AuthProvider";
 import { CategoryCreateModal, CategoryDropdownActions, ADD_CATEGORY_OPTION, MANAGE_CATEGORIES_OPTION, canCreateSupermarketCategory, canManageSupermarketCategories } from "@/components/supermarket/CategoryCreateModal";
 import { CategoryManageModal } from "@/components/supermarket/CategoryManageModal";
+import { BarcodeScanButton } from "@/components/supermarket/barcode/BarcodeScannerModal";
+import { useHardwareBarcodeScan } from "@/components/supermarket/barcode/useHardwareBarcodeScan";
+import { lookupProductByBarcodeAction } from "@/actions/supermarket/catalog";
+import { normalizeBarcode } from "@/lib/supermarket/barcode";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { APP_TIMEZONE } from "@/lib/config/app";
 import { matchPermission } from "@/lib/config/permissions";
@@ -200,6 +204,7 @@ export function ProductsManager() {
   }, [products, query, category, status, sort]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset paging when filters change
     setPage(1);
   }, [query, category, status, sort, pageSize]);
 
@@ -307,21 +312,27 @@ export function ProductsManager() {
     await toggleProductActive(productId);
   }
 
-  function lookupBarcode(code: string) {
-    const match = findProductByBarcode(inventory.products, code, selectedId);
-    if (match) {
+  async function lookupBarcode(code: string) {
+    const barcode = normalizeBarcode(code);
+    setForm((current) => ({ ...current, barcode }));
+    if (!barcode) {
       setBarcodeNotice(null);
-      openView(match.id);
       return;
     }
-    if (code.trim()) {
-      setBarcodeNotice("No matching product. You can create a new product with this barcode.");
-      if (drawer !== "add" && drawer !== "edit") {
-        openAdd({ barcode: code.trim() });
-        return;
-      }
+    const result = await lookupProductByBarcodeAction(barcode);
+    if (result.error) {
+      setBarcodeNotice("Unable to look up barcode.");
+      return;
     }
-    setForm((current) => ({ ...current, barcode: code.trim() }));
+    const match = result.product && result.product.id !== selectedId ? result.product : null;
+    if (match) {
+      setBarcodeNotice(`Barcode already assigned to ${match.name}.`);
+      return;
+    }
+    setBarcodeNotice("No matching product. You can create a new product with this barcode.");
+    if (drawer !== "add" && drawer !== "edit") {
+      openAdd({ barcode });
+    }
   }
 
   async function saveProduct() {
@@ -1175,6 +1186,10 @@ function ProductForm({
   onSubmit: () => void;
 }) {
   const barcodeRef = useRef<HTMLInputElement>(null);
+  useHardwareBarcodeScan({
+    inputRef: barcodeRef,
+    onScan: onLookupBarcode,
+  });
 
   function patch<K extends keyof ProductFormState>(key: K, value: ProductFormState[K]) {
     onChange({ ...form, [key]: value });
@@ -1219,26 +1234,17 @@ function ProductForm({
                 ref={barcodeRef}
                 value={form.barcode}
                 onChange={(event) => patch("barcode", event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    onLookupBarcode(form.barcode);
-                  }
-                }}
                 placeholder="Optional"
                 className={inputClass}
+                autoComplete="off"
               />
-              <button
-                type="button"
-                onClick={() => {
-                  barcodeRef.current?.focus();
-                  if (form.barcode.trim()) onLookupBarcode(form.barcode);
-                }}
+              <BarcodeScanButton
+                onDetected={onLookupBarcode}
                 className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13px] font-semibold text-navy transition hover:bg-[#f8fafc]"
               >
                 <ScanLine className="h-4 w-4" strokeWidth={1.8} />
                 Scan
-              </button>
+              </BarcodeScanButton>
             </div>
             <p className="mt-1.5 text-[12px] text-slate-400">
               Optional scanner field. Scanning focuses this input and looks up an existing product.

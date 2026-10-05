@@ -479,6 +479,38 @@ export async function getSupermarketBusinessUnitId() {
   return businessUnitId;
 }
 
+export async function loadProductByBarcode(barcode: string): Promise<{
+  product: SupermarketProduct | null;
+  error: string | null;
+}> {
+  const code = barcode.replace(/[\r\n\t]/g, "").trim();
+  if (!code) return { product: null, error: null };
+  try {
+    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { data, error } = await supabase
+      .from("sm_products")
+      .select(PRODUCT_COLUMNS)
+      .eq("business_unit_id", businessUnitId)
+      .eq("barcode", code)
+      .maybeSingle();
+    if (error) mapDbError(error);
+    if (!data) return { product: null, error: null };
+    const categoryId = data.category_id ? String(data.category_id) : null;
+    const names = new Map<string, string>();
+    if (categoryId) {
+      const { data: category } = await supabase
+        .from("sm_categories")
+        .select("id, name")
+        .eq("id", categoryId)
+        .maybeSingle();
+      if (category?.id && category.name) names.set(String(category.id), String(category.name));
+    }
+    return { product: mapProduct(data as Record<string, unknown>, names), error: null };
+  } catch (error) {
+    return { product: null, error: queryErrorMessage(error) };
+  }
+}
+
 /** Lightweight check used by UI loaders. */
 export async function pingSupermarketTables() {
   try {

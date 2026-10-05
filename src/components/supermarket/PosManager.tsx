@@ -15,7 +15,6 @@ import {
   Pause,
   Plus,
   Printer,
-  ScanLine,
   Search,
   Smartphone,
   Trash2,
@@ -43,8 +42,11 @@ import {
   type PosPaymentMethod,
   type PosProduct,
 } from "@/lib/data/sample-supermarket-pos";
-import { attachStock, useSupermarketInventory } from "@/lib/data/supermarket-inventory";
+import { attachStock, rememberNewProductBarcode, useSupermarketInventory } from "@/lib/data/supermarket-inventory";
 import { completePosSale } from "@/lib/supermarket/client-stores";
+import { normalizeBarcode } from "@/lib/supermarket/barcode";
+import { BarcodeScanButton } from "@/components/supermarket/barcode/BarcodeScannerModal";
+import { useHardwareBarcodeScan } from "@/components/supermarket/barcode/useHardwareBarcodeScan";
 import {
   connectEscPosPrinter,
   hasGrantedEscPosPrinter,
@@ -100,6 +102,7 @@ export function PosManager() {
   const [invoiceNumber, setInvoiceNumber] = useState(1);
   const [invoiceStamp, setInvoiceStamp] = useState<Date | null>(null);
   const [query, setQuery] = useState("");
+  const [scanNotice, setScanNotice] = useState("");
   const [category, setCategory] = useState<string>("all");
   const [items, setItems] = useState<PosCartItem[]>([]);
   const [customers, setCustomers] = useState<string[]>([...POS_CUSTOMERS]);
@@ -136,6 +139,7 @@ export function PosManager() {
   const stamp = completed?.soldAt ?? invoiceStamp;
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- stamp is client-only
     setInvoiceStamp((current) => current ?? new Date());
   }, []);
 
@@ -323,12 +327,49 @@ export function PosManager() {
   }
 
   function submitSearch() {
-    const match = exactBarcodeMatch(products, query);
+    const barcode = normalizeBarcode(query);
+    if (!barcode) return;
+    const match = exactBarcodeMatch(products, barcode);
     if (match) {
+      if (remainingStock(match, items) <= 0) {
+        setScanNotice(`Insufficient stock for ${match.name}.`);
+        return;
+      }
+      setScanNotice("");
       addProduct(match);
       setQuery("");
     }
   }
+
+  function applyBarcode(code: string) {
+    const barcode = normalizeBarcode(code);
+    if (!barcode) return;
+    const match = exactBarcodeMatch(products, barcode);
+    if (!match) {
+      setScanNotice("Product not found");
+      setQuery(barcode);
+      return;
+    }
+    if (remainingStock(match, items) <= 0) {
+      setScanNotice(`Insufficient stock for ${match.name}.`);
+      setQuery("");
+      return;
+    }
+    setScanNotice("");
+    addProduct(match);
+    setQuery("");
+  }
+
+  const applyBarcodeRef = useRef(applyBarcode);
+  applyBarcodeRef.current = applyBarcode;
+
+  useHardwareBarcodeScan({
+    inputRef: searchRef,
+    onScan: (code) => applyBarcodeRef.current(code),
+    enabled: !completed,
+    captureUnfocused: !completed,
+    handleFocusedEnter: false,
+  });
 
   async function completeSale() {
     if (!canComplete || completing) return;
@@ -528,14 +569,10 @@ export function PosManager() {
                 autoComplete="off"
               />
             </label>
-            <button
-              type="button"
-              aria-label="Scan barcode"
-              onClick={() => searchRef.current?.focus()}
-              className={cn(glassBtn, "h-11 w-11 shrink-0 rounded-[16px]")}
-            >
-              <ScanLine className="h-4 w-4 text-slate-500" strokeWidth={1.9} />
-            </button>
+            <BarcodeScanButton
+              onDetected={applyBarcode}
+              className={cn(glassBtn, "h-11 w-11 shrink-0 rounded-[16px] text-slate-500")}
+            />
             <label className="sm:w-[11.5rem]">
               <span className="sr-only">All Categories</span>
               <span className="relative block">
@@ -555,6 +592,23 @@ export function PosManager() {
               </span>
             </label>
           </div>
+          {scanNotice ? (
+            <p className="mt-2 text-[13px] text-[#8a5a5a]" role="status">
+              {scanNotice}
+              {scanNotice === "Product not found" && query.trim() ? (
+                <>
+                  {" "}
+                  <Link
+                    href="/supermarket/products/new"
+                    onClick={() => rememberNewProductBarcode(query)}
+                    className="font-semibold text-navy underline-offset-2 hover:underline"
+                  >
+                    Add Product
+                  </Link>
+                </>
+              ) : null}
+            </p>
+          ) : null}
 
           <div className="mt-3.5 flex flex-wrap gap-1.5">
             <button
@@ -1126,6 +1180,7 @@ function MoreMenu({
   const [coords, setCoords] = useState({ top: 0, left: 0 });
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- portal needs document
     setMounted(true);
   }, []);
 

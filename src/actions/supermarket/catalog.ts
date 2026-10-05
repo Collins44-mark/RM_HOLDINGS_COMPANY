@@ -11,6 +11,7 @@ import { writeSupermarketAudit } from "@/lib/audit";
 import {
   loadCatalogOptions,
   loadInventorySnapshot,
+  loadProductByBarcode,
   loadProductMovements,
   loadProductsWorkspace,
   loadPurchasingWorkspace,
@@ -69,6 +70,13 @@ export async function fetchCatalogOptionsAction(): Promise<{
   error: string | null;
 }> {
   return loadCatalogOptions();
+}
+
+export async function lookupProductByBarcodeAction(barcode: string): Promise<{
+  product: SupermarketProduct | null;
+  error: string | null;
+}> {
+  return loadProductByBarcode(barcode);
 }
 
 export async function createCategoryAction(input: { name: string; description?: string }) {
