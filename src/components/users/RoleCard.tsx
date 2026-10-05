@@ -22,8 +22,9 @@ export function RoleCard({
           <span className="mt-1 block line-clamp-2 text-[12.5px] leading-5 text-slate-500">{role.description}</span>
         ) : null}
         <span className="mt-2 block text-[12.5px] text-slate-500">
-          {role.moduleCount} {role.moduleCount === 1 ? "module" : "modules"} · {role.permissionCount}{" "}
-          {role.permissionCount === 1 ? "permission" : "permissions"}
+          {role.locked
+            ? "All modules · All permissions"
+            : `${role.moduleLabel} · ${role.permissionCount} ${role.permissionCount === 1 ? "permission" : "permissions"}`}
         </span>
       </span>
       <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/80 bg-white/75 text-navy transition duration-200 ease-out group-hover:translate-x-0.5 group-hover:bg-white sm:h-10 sm:w-10">

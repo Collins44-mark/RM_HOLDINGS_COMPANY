@@ -2,7 +2,7 @@ import { UsersManager, type UsersWorkspaceView } from "@/components/users/UsersM
 import { requireOwner } from "@/lib/auth/session";
 import { listManagedUsers } from "@/lib/data/app-users";
 import { listBusinessUnits } from "@/lib/data/business-units";
-import { listRoleSummaries } from "@/lib/data/rbac";
+import { getRolePermissionStateBySlug, listRoleSummaries } from "@/lib/data/rbac";
 
 export const metadata = { title: "Users & Permissions" };
 export const dynamic = "force-dynamic";
@@ -17,23 +17,26 @@ function parseView(value: string | undefined): UsersWorkspaceView {
 export default async function UsersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; unit?: string }>;
+  searchParams: Promise<{ view?: string; unit?: string; role?: string }>;
 }) {
   const actor = await requireOwner();
   const params = await searchParams;
-  const [users, units, roles] = await Promise.all([
+  const view = parseView(params.view);
+  const roleSlug = typeof params.role === "string" ? params.role : "";
+  const [users, units, roles, initialRoleState] = await Promise.all([
     listManagedUsers(),
     listBusinessUnits(),
     listRoleSummaries(),
+    view === "roles" && roleSlug ? getRolePermissionStateBySlug(roleSlug) : Promise.resolve(null),
   ]);
   const unitCode = typeof params.unit === "string" ? params.unit : "";
   const selectedUnit = units.find((unit) => unit.code === unitCode) ?? null;
-  const view = parseView(params.view);
 
   return (
     <UsersManager
       initialView={view}
       initialUnitCode={selectedUnit?.code ?? null}
+      initialRoleState={initialRoleState}
       users={users}
       roles={roles}
       currentUserId={actor.id}

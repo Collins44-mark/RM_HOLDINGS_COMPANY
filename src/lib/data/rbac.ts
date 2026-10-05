@@ -2,13 +2,18 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { applyOverrides, resolveEffectiveAccess } from "@/lib/auth/effective-access";
+import { displayRoleName, roleDefaultPermissions, roleDefinition } from "@/lib/auth/role-options";
 import {
   OPERABLE_PERMISSION_CATALOG,
   ROLE_DEFINITIONS,
+  catalogForModule,
   groupPermissions,
+  isVisibleRbacRole,
+  moduleScopeForRole,
+  permissionModuleLabel,
   permissionsForRole,
+  roleSlug,
 } from "@/lib/config/permissions";
-import { roleDefaultPermissions, roleDefinition } from "@/lib/auth/role-options";
 import type { RoleSummary, UserCustomization } from "@/lib/auth/rbac-types";
 
 export type { RoleSummary, UserCustomization };
@@ -46,38 +51,55 @@ export async function listRoleSummaries(): Promise<RoleSummary[]> {
     byRole.set(String(row.role_id), list);
   }
 
-  const liveCount = OPERABLE_PERMISSION_CATALOG.length;
-  const liveModules = new Set(OPERABLE_PERMISSION_CATALOG.map((item) => item.module)).size;
+  const ownerRows = (
+    roles as Array<{ id: string; code: string; name: string; description: string | null }>
+  ).filter((role) => isOwnerRole(role.code));
+  const canonicalOwner =
+    ownerRows.find((role) => role.code === "OWNER") ?? ownerRows[0] ?? null;
 
-  return (roles as Array<{ id: string; code: string; name: string; description: string | null }>).map(
-    (role) => {
-      if (isOwnerRole(role.code)) {
-        return {
-          id: role.id,
-          code: role.code,
-          name: role.name,
-          description: descriptionFor(role.code, role.description),
-          moduleCount: liveModules,
-          permissionCount: liveCount,
-        };
-      }
-      const stored = byRole.get(role.id);
-      const codes =
-        stored ??
-        (ROLE_DEFINITIONS.find((item) => item.code === role.code)
-          ? permissionsForRole(ROLE_DEFINITIONS.find((item) => item.code === role.code)!)
-          : []);
-      const modules = new Set(codes.map((code) => code.split(".")[0]).filter(Boolean));
-      return {
+  const summaries: RoleSummary[] = [];
+  for (const role of roles as Array<{ id: string; code: string; name: string; description: string | null }>) {
+    const definition = ROLE_DEFINITIONS.find((item) => item.code === role.code);
+    if (!definition || !isVisibleRbacRole(definition)) continue;
+    if (isOwnerRole(role.code)) {
+      if (!canonicalOwner || role.id !== canonicalOwner.id) continue;
+      summaries.push({
         id: role.id,
         code: role.code,
-        name: role.name,
-        description: descriptionFor(role.code, role.description),
-        moduleCount: modules.size,
-        permissionCount: codes.length,
-      };
-    },
-  );
+        name: displayRoleName(role.code),
+        description: "Full system access across RM Holdings.",
+        moduleCount: 0,
+        permissionCount: 0,
+        moduleLabel: "All modules",
+        locked: true,
+        slug: "owner",
+      });
+      continue;
+    }
+
+    const scope = moduleScopeForRole(definition);
+    const scopedCatalog = scope && scope !== "*" ? catalogForModule(scope) : OPERABLE_PERMISSION_CATALOG;
+    const stored = byRole.get(role.id);
+    const codes = (stored ?? permissionsForRole(definition)).filter((code) =>
+      scopedCatalog.some((item) => item.code === code),
+    );
+    summaries.push({
+      id: role.id,
+      code: role.code,
+      name: displayRoleName(role.code, role.name),
+      description: descriptionFor(role.code, role.description),
+      moduleCount: scope ? 1 : 0,
+      permissionCount: codes.length,
+      moduleLabel: scope ? permissionModuleLabel(scope) : "Platform",
+      locked: false,
+      slug: roleSlug(role.code),
+    });
+  }
+
+  return summaries.sort((a, b) => {
+    if (a.locked !== b.locked) return a.locked ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
 }
 
 export async function getRolePermissionState(roleId: string): Promise<RolePermissionState | null> {
@@ -89,26 +111,38 @@ export async function getRolePermissionState(roleId: string): Promise<RolePermis
 
   if (isOwnerRole(role.code)) {
     return {
-      role: { ...role, permissionCount: OPERABLE_PERMISSION_CATALOG.length },
-      permissionCodes: OPERABLE_PERMISSION_CATALOG.map((item) => item.code),
+      role,
+      permissionCodes: [],
     };
   }
+
+  const definition = roleDefinition(role.code);
+  const scope = definition ? moduleScopeForRole(definition) : null;
+  const scoped = new Set((scope ? catalogForModule(scope) : []).map((item) => item.code));
 
   const { data, error } = await db
     .from("role_permissions")
     .select("permission_code")
     .eq("role_id", roleId);
   if (error) {
-    const definition = roleDefinition(role.code);
     return {
       role,
-      permissionCodes: definition ? permissionsForRole(definition) : [],
+      permissionCodes: definition ? permissionsForRole(definition).filter((code) => scoped.has(code)) : [],
     };
   }
   return {
     role,
-    permissionCodes: (data ?? []).map((row) => String(row.permission_code)),
+    permissionCodes: (data ?? [])
+      .map((row) => String(row.permission_code))
+      .filter((code) => scoped.has(code)),
   };
+}
+
+export async function getRolePermissionStateBySlug(slug: string) {
+  const summaries = await listRoleSummaries();
+  const role = summaries.find((item) => item.slug === slug);
+  if (!role) return null;
+  return getRolePermissionState(role.id);
 }
 
 export async function getUserCustomization(userId: string): Promise<UserCustomization | null> {
@@ -127,7 +161,10 @@ export async function getUserCustomization(userId: string): Promise<UserCustomiz
     userId,
     name: profile.full_name as string,
     roleCode: access?.roleCode ?? (role as { code?: string } | null)?.code ?? "STAFF",
-    roleName: access?.roleName ?? (role as { name?: string } | null)?.name ?? "Staff",
+    roleName: displayRoleName(
+      access?.roleCode ?? (role as { code?: string } | null)?.code ?? "STAFF",
+      access?.roleName ?? (role as { name?: string } | null)?.name ?? "Staff",
+    ),
     assignedUnitCodes: access?.modules.filter((code) => code !== "*") ?? [],
     moduleRoles: Object.fromEntries(
       (access?.moduleRoles ?? []).map((item) => [item.businessUnitCode, item.roleCode]),

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isOwnerRole } from "@/lib/auth/rbac";
-import { permissionsForRoleCode } from "@/lib/auth/role-options";
+import { displayRoleName, permissionsForRoleCode } from "@/lib/auth/role-options";
 import {
   OPERABLE_PERMISSION_CATALOG,
   isOperablePermission,
@@ -47,7 +47,7 @@ function permissionModule(code: string) {
 
 function fallbackRolePermissions(roleCode: string) {
   if (isOwnerRole(roleCode)) return ["*"];
-  return permissionsForRoleCode(roleCode).filter((code) => code === "*" || isOperablePermission(code));
+  return permissionsForRoleCode(roleCode).filter((code) => code !== "*" && isOperablePermission(code));
 }
 
 async function loadRolePermissionMap(client: SupabaseClient) {
@@ -111,7 +111,7 @@ export async function resolveEffectiveAccess(
   if (isOwnerRole(role.code)) {
     return {
       roleCode: role.code,
-      roleName: role.name,
+      roleName: displayRoleName(role.code, role.name),
       modules: ["*"],
       permissions: ["*"],
       moduleRoles: [],
@@ -171,16 +171,16 @@ export async function resolveEffectiveAccess(
       businessUnitName: unit.name,
       roleId: assigned.id,
       roleCode: assigned.code,
-      roleName: assigned.name,
+      roleName: displayRoleName(assigned.code, assigned.name),
     };
   });
 
   const live = new Set(OPERABLE_PERMISSION_CATALOG.map((item) => item.code));
-  const permissions = [...granted].filter((code) => code === "*" || live.has(code));
+  const permissions = [...granted].filter((code) => code !== "*" && live.has(code));
 
   return {
     roleCode: role.code,
-    roleName: role.name,
+    roleName: displayRoleName(role.code, role.name),
     modules: units.map((unit) => unit.code),
     permissions,
     moduleRoles,

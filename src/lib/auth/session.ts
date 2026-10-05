@@ -12,7 +12,7 @@ import { canAccessPath, defaultHomeFor } from "@/lib/auth/access";
 import { hasPermission, isOwnerRole } from "@/lib/auth/rbac";
 import { resolveEffectiveAccess } from "@/lib/auth/effective-access";
 import { identityFromAppMetadata } from "@/lib/auth/identity-from-claims";
-import { roleDefinition } from "@/lib/auth/role-options";
+import { displayRoleName, roleDefinition } from "@/lib/auth/role-options";
 import { identityFromUser, type AuthUser } from "@/lib/auth/types";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -55,11 +55,11 @@ function authUserFromClaims(user: User, profile?: LightProfileRecord | null): Au
     authUid: user.id,
     email: profile?.email ?? user.email?.toLowerCase() ?? "",
     name: displayNameFromAuth(user, profile?.full_name || user.email?.split("@")[0] || "User"),
-    title: role?.name ?? claims.role,
+    title: displayRoleName(claims.role, role?.name),
     phone: profile?.phone ?? (typeof user.user_metadata?.phone === "string" ? user.user_metadata.phone : null),
     avatarUrl: profile?.avatar_url ?? null,
     roleCode: claims.role,
-    roleName: role?.name ?? claims.role,
+    roleName: displayRoleName(claims.role, role?.name),
     modules: claims.modules,
     businessUnits: unitsFromModules(claims.modules),
     permissions: claims.permissions,
@@ -74,7 +74,7 @@ function legacyOwnerFromAuth(user: User): AuthUser {
   const metadata = user.user_metadata ?? {};
   const fullName = displayNameFromAuth(
     user,
-    user.email?.split("@")[0] || "Super Admin",
+    user.email?.split("@")[0] || "Owner",
   );
 
   return {
@@ -82,11 +82,11 @@ function legacyOwnerFromAuth(user: User): AuthUser {
     authUid: user.id,
     email: user.email?.toLowerCase() ?? "",
     name: fullName,
-    title: typeof metadata.title === "string" ? metadata.title : "Super Admin",
+    title: typeof metadata.title === "string" ? metadata.title : "Owner",
     phone: typeof metadata.phone === "string" ? metadata.phone : null,
     avatarUrl: typeof metadata.avatar_url === "string" ? metadata.avatar_url : null,
     roleCode: "SUPER_ADMIN",
-    roleName: "Super Admin",
+    roleName: "Owner",
     modules: ["*"],
     businessUnits: [],
     permissions: ["*"],

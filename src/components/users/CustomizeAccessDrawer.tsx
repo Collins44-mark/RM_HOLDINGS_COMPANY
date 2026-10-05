@@ -2,10 +2,10 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { saveUserCustomizationAction } from "@/actions/rbac";
-import { ALL_MODULES_VALUE, roleDefaultPermissions, rolesForSelectedModules } from "@/lib/auth/role-options";
+import { ALL_MODULES_VALUE, displayRoleName, roleDefaultPermissions, rolesForSelectedModules } from "@/lib/auth/role-options";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import {
-  OPERABLE_PERMISSION_CATALOG,
+  catalogForModule,
   groupPermissions,
 } from "@/lib/config/permissions";
 import type { UserCustomization } from "@/lib/auth/rbac-types";
@@ -22,7 +22,7 @@ function overridesFromChecks(
   const defaults = new Set(
     roleDefaultPermissions(roleCode).filter((code) => code.split(".")[0] === unitCode),
   );
-  const live = OPERABLE_PERMISSION_CATALOG.filter((item) => item.module === unitCode);
+  const live = catalogForModule(unitCode);
   const next: Override[] = [];
   for (const item of live) {
     const isOn = checked.has(item.code);
@@ -69,7 +69,7 @@ export function CustomizeAccessDrawer({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const groupsByModule = useMemo(() => {
-    const grouped = groupPermissions(OPERABLE_PERMISSION_CATALOG);
+    const grouped = groupPermissions(catalogForModule("supermarket"));
     return Object.fromEntries(grouped.map((group) => [group.module, group]));
   }, []);
 
@@ -164,7 +164,7 @@ export function CustomizeAccessDrawer({
                 >
                   {roles.map((role) => (
                     <option key={role.code} value={role.code}>
-                      {role.name}
+                      {displayRoleName(role.code, role.name)}
                     </option>
                   ))}
                 </select>

@@ -120,8 +120,7 @@ export const requireSupermarketContext = cache(async (): Promise<SupermarketCont
     businessUnitId = bu.id as string;
   }
 
-  const isOwner =
-    user.modules.includes("*") || user.roleCode === "SUPER_ADMIN" || user.roleCode === "OWNER";
+  const isOwner = isOwnerRole(user.roleCode);
   const hasModule =
     isOwner ||
     user.modules.includes("supermarket") ||
@@ -215,7 +214,7 @@ export async function requireSupermarketPermission(permission: string): Promise<
   const ctx = await requireSupermarketContext();
   const user = await requireAuth();
 
-  if (isOwnerRole(user.roleCode) || user.permissions.includes("*") || user.modules.includes("*")) {
+  if (isOwnerRole(user.roleCode)) {
     return ctx;
   }
 

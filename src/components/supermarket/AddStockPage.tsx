@@ -33,7 +33,7 @@ type SuccessState = {
 function canReceiveStock(user: AuthUser | null, isSuperAdmin: boolean) {
   if (isSuperAdmin) return true;
   if (!user) return false;
-  if (isOwnerRole(user.roleCode) || user.permissions.includes("*") || user.modules.includes("*")) {
+  if (isOwnerRole(user.roleCode)) {
     return true;
   }
   return user.permissions.some((matcher) => matchPermission("supermarket.stock.edit", matcher));
@@ -42,7 +42,7 @@ function canReceiveStock(user: AuthUser | null, isSuperAdmin: boolean) {
 function canEditSellingPrice(user: AuthUser | null, isSuperAdmin: boolean) {
   if (isSuperAdmin) return true;
   if (!user) return false;
-  if (isOwnerRole(user.roleCode) || user.permissions.includes("*") || user.modules.includes("*")) {
+  if (isOwnerRole(user.roleCode)) {
     return true;
   }
   return user.permissions.some((matcher) => matchPermission("supermarket.products.edit", matcher));

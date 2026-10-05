@@ -11,7 +11,7 @@ import { RoleCard } from "@/components/users/RoleCard";
 import { RolePermissionEditor } from "@/components/users/RolePermissionEditor";
 import { CustomizeAccessDrawer } from "@/components/users/CustomizeAccessDrawer";
 import { cn } from "@/lib/cn";
-import { ALL_MODULES_VALUE, rolesForSelectedModules } from "@/lib/auth/role-options";
+import { ALL_MODULES_VALUE, displayRoleName, rolesForSelectedModules } from "@/lib/auth/role-options";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import type { ManagedUser, ManagedUserStatus } from "@/lib/data/app-users";
 import type { RoleSummary, UserCustomization } from "@/lib/auth/rbac-types";
@@ -79,6 +79,7 @@ function displayEmail(user: ManagedUser) {
 export function UsersManager({
   initialView,
   initialUnitCode,
+  initialRoleState,
   users,
   roles,
   currentUserId,
@@ -86,6 +87,7 @@ export function UsersManager({
 }: {
   initialView: UsersWorkspaceView;
   initialUnitCode?: string | null;
+  initialRoleState?: { role: RoleSummary; permissionCodes: string[] } | null;
   users: ManagedUser[];
   roles: RoleSummary[];
   currentUserId: string;
@@ -103,7 +105,9 @@ export function UsersManager({
   const [selected, setSelected] = useState<ManagedUser | null>(null);
   const [customizeUser, setCustomizeUser] = useState<ManagedUser | null>(null);
   const [customization, setCustomization] = useState<UserCustomization | null>(null);
-  const [editingRole, setEditingRole] = useState<{ role: RoleSummary; permissionCodes: string[] } | null>(null);
+  const [editingRole, setEditingRole] = useState<{ role: RoleSummary; permissionCodes: string[] } | null>(
+    initialRoleState ?? null,
+  );
   const [credentials, setCredentials] = useState<CredentialsPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -111,17 +115,27 @@ export function UsersManager({
   const selectedUnit = unitCode ? units.find((unit) => unit.code === unitCode) ?? null : null;
   const showingUnitUsers = tab === "business" && Boolean(selectedUnit);
   const showModulesColumn = tab === "all";
-  const roleOptions = useMemo(
-    () => Array.from(new Map(rows.map((user) => [user.roleCode, user.roleName])).entries()),
-    [rows],
-  );
+  const roleOptions = useMemo(() => {
+    const labels = new Map<string, string>();
+    for (const user of rows) {
+      const key = isOwnerRole(user.roleCode) ? "OWNER" : user.roleCode;
+      labels.set(key, displayRoleName(user.roleCode, user.roleName));
+    }
+    return Array.from(labels.entries());
+  }, [rows]);
 
   const scopedRows = showingUnitUsers
     ? rows.filter((user) => user.modules.includes(selectedUnit!.code))
     : rows;
 
   const filtered = scopedRows.filter((user) => {
-    if (roleFilter !== "all" && user.roleCode !== roleFilter) return false;
+    if (roleFilter !== "all") {
+      if (roleFilter === "OWNER") {
+        if (!isOwnerRole(user.roleCode)) return false;
+      } else if (user.roleCode !== roleFilter) {
+        return false;
+      }
+    }
     if (statusFilter !== "all" && user.status !== statusFilter) return false;
     if (query.trim()) {
       const haystack = `${user.name} ${user.email ?? ""} ${user.phone ?? ""}`.toLowerCase();
@@ -130,20 +144,32 @@ export function UsersManager({
     return true;
   });
 
-  const writeUrl = useCallback((nextTab: UsersWorkspaceTab, nextUnit: string | null, mode: "replace" | "push") => {
-    const params = new URLSearchParams();
-    if (nextTab !== "all") params.set("view", nextTab);
-    if (nextTab === "business" && nextUnit) params.set("unit", nextUnit);
-    const queryString = params.toString();
-    const href = queryString ? `/owner/users?${queryString}` : "/owner/users";
-    if (mode === "push") window.history.pushState(window.history.state, "", href);
-    else window.history.replaceState(window.history.state, "", href);
-  }, []);
+  const showingRoleEditor = tab === "roles" && Boolean(editingRole);
+
+  const writeUrl = useCallback(
+    (
+      nextTab: UsersWorkspaceTab,
+      nextUnit: string | null,
+      mode: "replace" | "push",
+      nextRole: string | null = null,
+    ) => {
+      const params = new URLSearchParams();
+      if (nextTab !== "all") params.set("view", nextTab);
+      if (nextTab === "business" && nextUnit) params.set("unit", nextUnit);
+      if (nextTab === "roles" && nextRole) params.set("role", nextRole);
+      const queryString = params.toString();
+      const href = queryString ? `/owner/users?${queryString}` : "/owner/users";
+      if (mode === "push") window.history.pushState(window.history.state, "", href);
+      else window.history.replaceState(window.history.state, "", href);
+    },
+    [],
+  );
 
   const changeTab = useCallback(
     (next: UsersWorkspaceTab) => {
       setTab(next);
       setUnitCode(null);
+      setEditingRole(null);
       writeUrl(next, null, "replace");
     },
     [writeUrl],
@@ -157,6 +183,10 @@ export function UsersManager({
         raw === "business" || raw === "business-units" ? "business" : raw === "roles" ? "roles" : "all";
       setTab(nextTab);
       setUnitCode(nextTab === "business" ? params.get("unit") : null);
+      const roleParam = nextTab === "roles" ? params.get("role") : null;
+      if (!roleParam) {
+        setEditingRole(null);
+      }
     }
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -229,6 +259,11 @@ export function UsersManager({
 
   function openRole(role: RoleSummary) {
     setError(null);
+    if (role.locked) {
+      setEditingRole({ role, permissionCodes: [] });
+      writeUrl("roles", null, "push", role.slug);
+      return;
+    }
     startTransition(async () => {
       const data = await loadRolePermissionStateAction(role.id);
       if (!data) {
@@ -236,7 +271,13 @@ export function UsersManager({
         return;
       }
       setEditingRole(data);
+      writeUrl("roles", null, "push", data.role.slug);
     });
+  }
+
+  function closeRoleEditor() {
+    setEditingRole(null);
+    writeUrl("roles", null, "replace");
   }
 
   return (
@@ -290,7 +331,7 @@ export function UsersManager({
         />
       )}
 
-      {!showingUnitUsers ? <UsersWorkspaceTabs view={tab} onChange={changeTab} /> : null}
+      {!showingUnitUsers && !showingRoleEditor ? <UsersWorkspaceTabs view={tab} onChange={changeTab} /> : null}
 
       {error ? (
         <p className="rounded-[14px] border border-red-200/70 bg-red-50/80 px-3 py-2.5 text-sm text-[#9b2c2c]">{error}</p>
@@ -313,6 +354,20 @@ export function UsersManager({
             />
           ))}
         </div>
+      ) : tab === "roles" && editingRole ? (
+        <RolePermissionEditor
+          role={editingRole.role}
+          permissionCodes={editingRole.permissionCodes}
+          onClose={closeRoleEditor}
+          onSaved={(codes) => {
+            setRoleCards((current) =>
+              current.map((role) =>
+                role.id === editingRole.role.id ? { ...role, permissionCount: codes.length } : role,
+              ),
+            );
+            closeRoleEditor();
+          }}
+        />
       ) : tab === "roles" ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {roleCards.map((role) => (
@@ -520,25 +575,6 @@ export function UsersManager({
           }}
         />
       ) : null}
-
-      {editingRole ? (
-        <RolePermissionEditor
-          role={editingRole.role}
-          permissionCodes={editingRole.permissionCodes}
-          onClose={() => setEditingRole(null)}
-          onSaved={(codes) => {
-            const modules = new Set(codes.map((code) => code.split(".")[0]).filter(Boolean));
-            setRoleCards((current) =>
-              current.map((role) =>
-                role.id === editingRole.role.id
-                  ? { ...role, permissionCount: codes.length, moduleCount: modules.size }
-                  : role,
-              ),
-            );
-            setEditingRole(null);
-          }}
-        />
-      ) : null}
     </div>
   );
 }
@@ -661,7 +697,7 @@ function UserFormDialog({
             <option value="">Select a role for the module</option>
             {availableRoles.map((role) => (
               <option key={role.code} value={role.code}>
-                {role.name}
+                {displayRoleName(role.code, role.name)}
               </option>
             ))}
           </select>

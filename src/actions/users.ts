@@ -7,8 +7,10 @@ import { requireVerifiedOwner } from "@/lib/auth/session";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import {
   ALL_MODULES_VALUE,
+  assignedCodesForRole,
+  displayRoleName,
   isRoleAllowedForModules,
-  modulesForAssignment,
+  metadataModulesForRole,
   roleDefinition,
 } from "@/lib/auth/role-options";
 import { generateTemporaryPassword } from "@/lib/auth/temp-password";
@@ -90,7 +92,7 @@ async function setUserAccess(input: {
   if (!ready.ok) return { error: ready.error };
   const { admin } = ready;
 
-  const assignedCodes = modulesForAssignment(input.moduleCodes);
+  const assignedCodes = assignedCodesForRole(input.roleCode, input.moduleCodes);
   const [roleResult, unitsResult] = await Promise.all([
     admin.from("roles").select("id, name, code").eq("code", input.roleCode).maybeSingle(),
     assignedCodes.length
@@ -136,14 +138,14 @@ async function setUserAccess(input: {
 
   const claims = await syncUserAccessClaims(admin, input.userId);
   if ("error" in claims) {
-    const modules = input.moduleCodes.includes(ALL_MODULES_VALUE) ? ["*"] : assignedCodes;
+    const modules = metadataModulesForRole(input.roleCode, input.moduleCodes);
     await admin.auth.admin.updateUserById(input.userId, {
       app_metadata: { role_code: input.roleCode, modules },
     });
-    return { roleName: role.name as string, modules };
+    return { roleName: displayRoleName(input.roleCode, role.name as string), modules };
   }
 
-  return { roleName: role.name as string, modules: claims.modules };
+  return { roleName: displayRoleName(input.roleCode, role.name as string), modules: claims.modules };
 }
 
 export async function createUserAction(
@@ -179,8 +181,8 @@ export async function createUserAction(
 
   const authEmail = emailValue || syntheticEmailForPhone(phoneValue!);
   const temporaryPassword = generateTemporaryPassword();
-  const assignedCodes = modulesForAssignment(parsed.data.modules);
-  const metadataModules = parsed.data.modules.includes(ALL_MODULES_VALUE) ? ["*"] : assignedCodes;
+  const assignedCodes = assignedCodesForRole(parsed.data.roleCode, parsed.data.modules);
+  const metadataModules = metadataModulesForRole(parsed.data.roleCode, parsed.data.modules);
   const { admin } = ready;
 
   const catalog = await getAccessCatalog();
@@ -256,7 +258,10 @@ export async function createUserAction(
 
   await syncUserAccessClaims(admin, created.data.user.id);
 
-  const roleName = role.name || roleDefinition(parsed.data.roleCode)?.name || parsed.data.roleCode;
+  const roleName = displayRoleName(
+    parsed.data.roleCode,
+    role.name || roleDefinition(parsed.data.roleCode)?.name || parsed.data.roleCode,
+  );
   const createdUser: ManagedUser = {
     id: created.data.user.id,
     name: parsed.data.name,

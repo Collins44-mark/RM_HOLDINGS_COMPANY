@@ -27,13 +27,13 @@ export function identityFromAppMetadata(
 
   const rawPermissions = metadata?.permissions;
   const claimedPermissions = Array.isArray(rawPermissions)
-    ? rawPermissions.filter((item): item is string => typeof item === "string")
+    ? rawPermissions.filter((item): item is string => typeof item === "string" && item !== "*")
     : null;
 
   return {
     role,
-    modules,
-    permissions: claimedPermissions ?? permissionsForRoleCode(role),
+    modules: modules.filter((item) => item !== "*"),
+    permissions: claimedPermissions ?? permissionsForRoleCode(role).filter((item) => item !== "*"),
   };
 }
 

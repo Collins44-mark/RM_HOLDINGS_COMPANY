@@ -74,7 +74,7 @@ const selectClass = cn(inputClass, "appearance-none pr-9");
 function canCreateProduct(user: AuthUser | null, isSuperAdmin: boolean) {
   if (isSuperAdmin) return true;
   if (!user) return false;
-  if (isOwnerRole(user.roleCode) || user.permissions.includes("*") || user.modules.includes("*")) {
+  if (isOwnerRole(user.roleCode)) {
     return true;
   }
   return user.permissions.some((matcher) => matchPermission("supermarket.products.create", matcher));

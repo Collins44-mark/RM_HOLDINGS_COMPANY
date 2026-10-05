@@ -95,7 +95,7 @@ const thClass =
 
 function canManageProducts(user: AuthUser | null, permission: string) {
   if (!user) return false;
-  if (isOwnerRole(user.roleCode) || user.permissions.includes("*") || user.modules.includes("*")) {
+  if (isOwnerRole(user.roleCode)) {
     return true;
   }
   return user.permissions.some((matcher) => matchPermission(permission, matcher));

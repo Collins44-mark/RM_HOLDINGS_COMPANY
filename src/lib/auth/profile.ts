@@ -1,4 +1,5 @@
 import { isOwnerRole, type AssignedBusinessUnit } from "@/lib/auth/rbac";
+import { displayRoleName } from "@/lib/auth/role-options";
 import type { AuthUser } from "@/lib/auth/types";
 
 type ProfileRecord = {
@@ -41,7 +42,7 @@ export function toAuthUser(user: ProfileRecord, sessionId: string): AuthUser {
     phone: user.phone,
     avatarUrl: user.avatarUrl,
     roleCode: user.role.code,
-    roleName: user.role.name,
+    roleName: displayRoleName(user.role.code, user.role.name),
     modules,
     businessUnits: assigned,
     permissions: [...permissionSet],

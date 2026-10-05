@@ -3,7 +3,7 @@ import { unstable_cache } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isOwnerRole } from "@/lib/auth/rbac";
-import { permissionsForRoleCode } from "@/lib/auth/role-options";
+import { displayRoleName, permissionsForRoleCode } from "@/lib/auth/role-options";
 import { displayLoginIdentifier } from "@/lib/auth/identifiers";
 import { BUSINESS_UNITS } from "@/lib/config/app";
 
@@ -131,7 +131,7 @@ export function toManagedUser(profile: ProfileRecord): ManagedUser {
     phone: profile.phone,
     loginIdentifier: displayLoginIdentifier({ email: profile.email, phone: profile.phone }),
     roleCode: role.code,
-    roleName: role.name,
+    roleName: displayRoleName(role.code, role.name),
     modules,
     moduleNames,
     isActive: profile.is_active,
@@ -152,7 +152,7 @@ export function accessFromProfile(profile: ProfileRecord) {
   const owner = isOwnerRole(role.code);
   return {
     roleCode: role.code,
-    roleName: role.name,
+    roleName: displayRoleName(role.code, role.name),
     modules: owner ? ["*"] : units.map((unit) => unit.code),
     businessUnits: units.map((unit) => ({ code: unit.code, name: unit.name })),
     permissions: owner ? ["*"] : permissionsForRoleCode(role.code),

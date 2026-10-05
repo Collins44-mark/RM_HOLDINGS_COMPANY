@@ -13,9 +13,14 @@ import {
   type RoleSummary,
   type UserCustomization,
 } from "@/lib/data/rbac";
-import { OPERABLE_PERMISSION_CATALOG, isOperablePermission } from "@/lib/config/permissions";
+import {
+  OPERABLE_PERMISSION_CATALOG,
+  catalogForModule,
+  isOperablePermission,
+  moduleScopeForRole,
+} from "@/lib/config/permissions";
 import { writeAuditEvent } from "@/lib/audit";
-import { isRoleAllowedForModules } from "@/lib/auth/role-options";
+import { isRoleAllowedForModules, displayRoleName, roleDefinition } from "@/lib/auth/role-options";
 
 export type RbacActionState = { error?: string } | null;
 
@@ -62,7 +67,12 @@ export async function saveRolePermissionsAction(
     return { error: "Owner access cannot be edited." };
   }
 
-  const allowed = new Set(OPERABLE_PERMISSION_CATALOG.map((item) => item.code));
+  const definition = roleDefinition(state.role.code);
+  const scope = definition ? moduleScopeForRole(definition) : null;
+  if (!scope || scope === "*") {
+    return { error: "This role cannot be edited." };
+  }
+  const allowed = new Set(catalogForModule(scope).map((item) => item.code));
   const next = [...new Set(permissionCodes.filter((code) => allowed.has(code) && isOperablePermission(code)))];
   const previous = new Set(state.permissionCodes);
   const added = next.filter((code) => !previous.has(code));
@@ -302,5 +312,5 @@ export async function saveUserCustomizationAction(input: {
     metadata: { modules: assigned.map((unit) => unit.code) },
   });
 
-  return { modules: claims.modules, roleName: primaryRole.name };
+  return { modules: claims.modules, roleName: displayRoleName(primaryRole.code, primaryRole.name) };
 }

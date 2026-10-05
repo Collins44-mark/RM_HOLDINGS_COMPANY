@@ -146,9 +146,41 @@ export const PERMISSION_CATALOG: PermissionItem[] =
 
 /** Permissions that map to live application capabilities (platform + supermarket). */
 export const OPERABLE_PERMISSION_MODULES = ["platform", "supermarket"] as const;
+export const IMPLEMENTED_BUSINESS_MODULES = ["supermarket"] as const;
+export const OWNER_DISPLAY_NAME = "Owner";
+/** Unique `roles.name` for code SUPER_ADMIN. Never shown in the UI. */
+export const OWNER_LEGACY_DB_NAME = "Owner Legacy";
 
 export function isOperablePermission(code: string) {
   return code.startsWith("platform.") || code.startsWith("supermarket.");
+}
+
+export function isImplementedBusinessModule(code: string) {
+  return (IMPLEMENTED_BUSINESS_MODULES as readonly string[]).includes(code);
+}
+
+export function catalogForModule(module: string) {
+  return OPERABLE_PERMISSION_CATALOG.filter((item) => item.module === module);
+}
+
+export function isVisibleRbacRole(role: RoleDefinition) {
+  if ((OWNER_ROLES as readonly string[]).includes(role.code)) return true;
+  if ((FINANCE_ROLES as readonly string[]).includes(role.code)) return true;
+  if (role.code === ROLE_CODES.BUSINESS_MANAGER) return true;
+  return role.modules.some((module) => isImplementedBusinessModule(module));
+}
+
+export function moduleScopeForRole(role: RoleDefinition) {
+  if ((OWNER_ROLES as readonly string[]).includes(role.code)) return "*";
+  if ((FINANCE_ROLES as readonly string[]).includes(role.code)) return "platform";
+  const implemented = role.modules.filter((module) => isImplementedBusinessModule(module));
+  if (implemented[0]) return implemented[0];
+  if (role.code === ROLE_CODES.BUSINESS_MANAGER) return "supermarket";
+  return null;
+}
+
+export function roleSlug(code: string) {
+  return code.toLowerCase().replaceAll("_", "-");
 }
 
 export const OPERABLE_PERMISSION_CATALOG = PERMISSION_CATALOG.filter((item) =>
@@ -218,15 +250,15 @@ export function groupPermissions(
 export const ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     code: ROLE_CODES.SUPER_ADMIN,
-    name: "Super Admin",
-    description: "Full access to the RM Holdings platform and every business unit.",
+    name: OWNER_DISPLAY_NAME,
+    description: "Full system access across RM Holdings.",
     modules: ["*"],
     permissionMatchers: ["*"],
   },
   {
     code: ROLE_CODES.OWNER,
-    name: "Owner",
-    description: "Group owner with the same platform authority as Super Admin.",
+    name: OWNER_DISPLAY_NAME,
+    description: "Full system access across RM Holdings.",
     modules: ["*"],
     permissionMatchers: ["*"],
   },

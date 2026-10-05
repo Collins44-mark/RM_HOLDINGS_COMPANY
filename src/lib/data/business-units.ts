@@ -216,7 +216,7 @@ export function filterBusinessUnitsForAccess(
   units: BusinessUnitView[],
   identity: AccessIdentity,
 ): BusinessUnitView[] {
-  if (isOwnerRole(identity.role) || identity.modules.includes("*")) {
+  if (isOwnerRole(identity.role)) {
     return units;
   }
   return units.filter((unit) => canAccessModule(identity, unit.code));

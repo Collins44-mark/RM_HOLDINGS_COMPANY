@@ -15,7 +15,7 @@ export const CATEGORY_ACTIONS_SEPARATOR = "__category_actions_sep__";
 function hasCategoryPermission(user: AuthUser | null, isSuperAdmin: boolean, permission: string) {
   if (isSuperAdmin) return true;
   if (!user) return false;
-  if (isOwnerRole(user.roleCode) || user.permissions.includes("*") || user.modules.includes("*")) {
+  if (isOwnerRole(user.roleCode)) {
     return true;
   }
   return user.permissions.some((matcher) => matchPermission(permission, matcher));

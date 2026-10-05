@@ -26,8 +26,9 @@ export function isSuperAdmin(role: string) {
 
 export function hasPermission(identity: AccessIdentity, permission: string) {
   if (isOwnerRole(identity.role)) return true;
-  if (identity.permissions.includes("*")) return true;
-  return identity.permissions.some((matcher) => matchPermission(permission, matcher));
+  return identity.permissions.some(
+    (matcher) => matcher !== "*" && matchPermission(permission, matcher),
+  );
 }
 
 export function hasRole(identity: Pick<AccessIdentity, "role">, role: string) {
@@ -35,7 +36,6 @@ export function hasRole(identity: Pick<AccessIdentity, "role">, role: string) {
 }
 
 export function hasBusinessUnit(modules: string[], unit: string) {
-  if (modules.includes("*")) return true;
   return modules.includes(unit);
 }
 

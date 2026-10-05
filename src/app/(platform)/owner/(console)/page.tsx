@@ -11,7 +11,7 @@ import { formatHeroDate, formatSnapshotUpdated, greetingForHour } from "@/lib/fo
 import { APP_TIMEZONE } from "@/lib/config/app";
 import { getMorogoroWeather } from "@/lib/weather";
 
-export const metadata = { title: "Super Admin Dashboard" };
+export const metadata = { title: "Owner Dashboard" };
 
 export default async function OwnerDashboardPage({
   searchParams,
@@ -44,7 +44,7 @@ export default async function OwnerDashboardPage({
     <div className="space-y-6">
       <WelcomeBanner
         greeting={greetingForHour(hour)}
-        name="Super Admin"
+        name="Owner"
         weekday={heroDate.weekday}
         date={heroDate.date}
         weather={weather}

@@ -99,7 +99,7 @@ const KPI_TONES: Record<KpiTone, { card: string; icon: string }> = {
 
 function canManageStock(user: AuthUser | null, permission: string) {
   if (!user) return false;
-  if (isOwnerRole(user.roleCode) || user.permissions.includes("*") || user.modules.includes("*")) {
+  if (isOwnerRole(user.roleCode)) {
     return true;
   }
   return user.permissions.some((matcher) => matchPermission(permission, matcher));

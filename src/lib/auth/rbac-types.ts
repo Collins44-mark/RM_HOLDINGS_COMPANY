@@ -5,6 +5,9 @@ export type RoleSummary = {
   description: string;
   moduleCount: number;
   permissionCount: number;
+  moduleLabel: string;
+  locked: boolean;
+  slug: string;
 };
 
 export type UserCustomization = {
