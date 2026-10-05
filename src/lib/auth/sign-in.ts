@@ -31,6 +31,24 @@ const LOCKED_MESSAGE = "Your account is locked. Please contact your administrato
 const DISABLED_MESSAGE = "Your account is locked. Please contact your administrator.";
 const MAX_FAILED_ATTEMPTS = 5;
 
+function isRejectedCredentialsError(error: { message?: string; code?: string } | null) {
+  if (!error) return true;
+  const code = (error.code ?? "").toLowerCase();
+  const message = (error.message ?? "").toLowerCase();
+  if (
+    code === "invalid_credentials" ||
+    code === "invalid_login_credentials" ||
+    code === "invalid_grant"
+  ) {
+    return true;
+  }
+  return (
+    message.includes("invalid login credentials") ||
+    message.includes("invalid email or password") ||
+    message.includes("invalid_grant")
+  );
+}
+
 function roleCodeOf(profile: ProfileRecord) {
   const role = Array.isArray(profile.role) ? profile.role[0] : profile.role;
   return role?.code ?? "";
@@ -131,6 +149,9 @@ export async function signInWithPassword(
   });
 
   if (error || !data.user) {
+    if (!isRejectedCredentialsError(error)) {
+      return { ok: false, error: GENERIC_INVALID };
+    }
     await registerFailedAttempt(profile);
     const refreshed = profile ? await findProfileByIdentifier(profile.email ?? profile.phone ?? "") : null;
     if (refreshed?.locked_at && !profile?.locked_at) {
