@@ -33,10 +33,10 @@ export type AuditLogFilters = {
 export const AUDIT_PAGE_SIZE = 25;
 
 export const AUDIT_ACTION_LABELS: Record<string, string> = {
-  "login.success": "User login",
-  "login.failed": "Failed login",
+  "login.success": "User signed in",
+  "login.failed": "Failed sign-in attempt",
   "login.locked": "Account locked",
-  logout: "User logout",
+  logout: "User signed out",
   "password.changed": "Password changed",
   "password.reset": "Password reset",
   "user.created": "User created",
@@ -44,10 +44,19 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "user.disabled": "User disabled",
   "user.enabled": "User enabled",
   "user.unlocked": "Account unlocked",
+  "user.access.customized": "User access updated",
+  "user.role.changed": "User role changed",
+  "user.business_unit.assigned": "Business unit access assigned",
+  "user.business_unit.removed": "Business unit access removed",
+  "user.permission_override.updated": "User permissions customized",
+  "role.updated": "Role permissions updated",
+  "role.permission.added": "Permission added to role",
+  "role.permission.removed": "Permission removed from role",
   "profile.updated": "Profile updated",
-  "business_unit.location_updated": "Updated business unit location",
-  "organisation.setting_updated": "Updated organisation settings",
-  "language.setting_updated": "Updated language setting",
+  "business_unit.location_updated": "Business unit location updated",
+  "organisation.setting_updated": "Organisation settings updated",
+  "language.setting_updated": "Language setting updated",
+  "report.generated": "Report generated",
   "report.exported": "Report exported",
   "sale.created": "Sale created",
   "return.created": "Return created",
@@ -103,8 +112,23 @@ function mapRow(row: Record<string, unknown>): AuditLogRecord {
   };
 }
 
+function humanizeUnknownAuditAction(action: string) {
+  const words = action
+    .trim()
+    .split(/[._\s-]+/)
+    .filter(Boolean)
+    .map((word) => word.toLowerCase());
+  if (words.length === 0) return action;
+  const sentence = words.join(" ");
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+}
+
+export function formatAuditAction(action: string) {
+  return AUDIT_ACTION_LABELS[action] ?? humanizeUnknownAuditAction(action);
+}
+
 export function auditActionLabel(action: string) {
-  return AUDIT_ACTION_LABELS[action] ?? action;
+  return formatAuditAction(action);
 }
 
 export function auditModuleLabel(module: string) {

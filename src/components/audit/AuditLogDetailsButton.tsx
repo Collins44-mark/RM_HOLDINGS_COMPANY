@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { auditActionLabel, auditModuleLabel, type AuditLogRecord } from "@/lib/data/audit-logs";
+import { formatAuditAction, auditModuleLabel, type AuditLogRecord } from "@/lib/data/audit-logs";
 import { formatDateTime } from "@/lib/format/datetime";
 import { cn } from "@/lib/cn";
 
@@ -37,7 +37,8 @@ export function AuditLogDetailsButton({ event }: { event: AuditLogRecord }) {
               </button>
             </div>
             <dl className="space-y-2.5 text-[13.5px]">
-              <Row label="Action" value={auditActionLabel(event.action)} />
+              <Row label="Action" value={formatAuditAction(event.action)} />
+              <Row label="Event code" value={event.action} muted />
               <Row label="User" value={event.actorName} />
               <Row label="Module" value={auditModuleLabel(event.module)} />
               <Row label="Entity" value={event.entityType ?? "—"} />
@@ -69,11 +70,13 @@ export function AuditLogDetailsButton({ event }: { event: AuditLogRecord }) {
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
   return (
     <div className="grid grid-cols-1 gap-0.5 sm:grid-cols-[140px_1fr] sm:gap-3">
-      <dt className="text-slate-500">{label}</dt>
-      <dd className="break-words font-medium text-navy">{value}</dd>
+      <dt className={muted ? "text-[12px] text-slate-400" : "text-slate-500"}>{label}</dt>
+      <dd className={muted ? "break-words text-[12px] font-normal text-slate-400" : "break-words font-medium text-navy"}>
+        {value}
+      </dd>
     </div>
   );
 }

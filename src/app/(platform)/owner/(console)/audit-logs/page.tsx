@@ -4,7 +4,7 @@ import { AuditLogDetailsButton } from "@/components/audit/AuditLogDetailsButton"
 import { requirePermission } from "@/lib/auth/session";
 import {
   AUDIT_PAGE_SIZE,
-  auditActionLabel,
+  formatAuditAction,
   auditModuleLabel,
   listAuditLogs,
   type AuditLogFilters,
@@ -121,7 +121,7 @@ export default async function AuditLogsPage({
           <option value="">All actions</option>
           {data.actions.map((action) => (
             <option key={action} value={action}>
-              {auditActionLabel(action)}
+              {formatAuditAction(action)}
             </option>
           ))}
         </select>
@@ -192,7 +192,7 @@ export default async function AuditLogsPage({
                     {formatDateTime(new Date(log.createdAt))}
                   </td>
                   <td className="px-5 py-3.5 font-medium text-navy">{log.actorName}</td>
-                  <td className="px-5 py-3.5 text-slate-600">{auditActionLabel(log.action)}</td>
+                  <td className="px-5 py-3.5 text-slate-600">{formatAuditAction(log.action)}</td>
                   <td className="px-5 py-3.5 text-slate-600">{auditModuleLabel(log.module)}</td>
                   <td className="max-w-sm px-5 py-3.5 text-slate-600">{log.description}</td>
                   <td className="px-5 py-3.5">
