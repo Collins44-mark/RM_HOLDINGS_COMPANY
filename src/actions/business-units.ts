@@ -7,6 +7,7 @@ import {
   BUSINESS_UNITS_CACHE_TAG,
   updateBusinessUnitLocation,
 } from "@/lib/data/business-units";
+import { writeAuditEvent } from "@/lib/audit";
 
 export type BusinessUnitLocationState = {
   error?: string;
@@ -40,6 +41,21 @@ export async function saveBusinessUnitLocationAction(
 
   if (!result.ok) {
     return { error: result.error };
+  }
+
+  if (!result.unchanged) {
+    const previous = result.previousLocation?.trim() || "Location not set";
+    const next = result.nextLocation?.trim() || "Location not set";
+    await writeAuditEvent({
+      action: "business_unit.location_updated",
+      module: "settings",
+      description: `Changed ${result.name} location from "${previous}" to "${next}"`,
+      severity: "medium",
+      entityType: "business_unit",
+      entityId: parsed.data.businessUnitId,
+      businessUnitId: parsed.data.businessUnitId,
+      metadata: { previous_location: previous, next_location: next },
+    });
   }
 
   updateTag(BUSINESS_UNITS_CACHE_TAG);

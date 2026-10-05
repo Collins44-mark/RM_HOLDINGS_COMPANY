@@ -24,6 +24,7 @@ import {
   fetchPurchaseReportAction,
   fetchSalesReportAction,
 } from "@/actions/supermarket/reports";
+import { recordReportExportAction } from "@/actions/report-audit";
 
 const BUSINESS_UNIT = "Supermarket System";
 
@@ -440,23 +441,27 @@ export async function downloadReportPdf(
     const result = await fetchSalesReportAction(preset, range, filters);
     if (!result.ok) return result;
     downloadSalesReportPdfFromData(result.data, filters);
+    await recordReportExportAction({ kind: "sales", period: result.data.periodLabel });
     return { ok: true };
   }
   if (kind === "inventory") {
     const result = await fetchInventoryReportAction(preset, range);
     if (!result.ok) return result;
     downloadInventoryReportPdfFromData(result.data);
+    await recordReportExportAction({ kind: "inventory", period: result.data.periodLabel });
     return { ok: true };
   }
   if (kind === "purchases") {
     const result = await fetchPurchaseReportAction(preset, range);
     if (!result.ok) return result;
     downloadPurchaseReportPdfFromData(result.data);
+    await recordReportExportAction({ kind: "purchases", period: result.data.periodLabel });
     return { ok: true };
   }
   const result = await fetchProfitLossReportAction(preset, range);
   if (!result.ok) return result;
   downloadProfitLossReportPdfFromData(result.data);
+  await recordReportExportAction({ kind: "profit-loss", period: result.data.periodLabel });
   return { ok: true };
 }
 

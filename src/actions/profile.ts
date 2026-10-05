@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getVerifiedAuthUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { writeAuditEvent } from "@/lib/audit";
 
 const profileSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -40,6 +41,15 @@ export async function updateProfileAction(
   if (error) {
     return { error: "Unable to save your name. Please try again." };
   }
+
+  await writeAuditEvent({
+    action: "profile.updated",
+    module: "profile",
+    description: `Updated profile name to ${parsed.data.name}`,
+    severity: "low",
+    entityType: "user",
+    entityId: actor.id,
+  });
 
   revalidatePath("/profile");
   return { success: true };

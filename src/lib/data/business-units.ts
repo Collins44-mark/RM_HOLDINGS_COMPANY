@@ -236,13 +236,38 @@ export function isKnownBusinessUnitCode(code: string): code is BusinessUnitCode 
 export async function updateBusinessUnitLocation(input: {
   id: string;
   location: string;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+}): Promise<
+  | { ok: true; unchanged: true }
+  | {
+      ok: true;
+      unchanged: false;
+      name: string;
+      previousLocation: string | null;
+      nextLocation: string | null;
+    }
+  | { ok: false; error: string }
+> {
   const admin = createSupabaseAdminClient();
   if (!admin) {
     return { ok: false, error: "Server is missing SUPABASE_SERVICE_ROLE_KEY." };
   }
 
   const location = input.location.trim() || null;
+  const { data: existing, error: readError } = await admin
+    .from("business_units")
+    .select("id, name, location")
+    .eq("id", input.id)
+    .maybeSingle();
+
+  if (readError || !existing) {
+    return { ok: false, error: "Could not save the location." };
+  }
+
+  const previous = typeof existing.location === "string" ? existing.location.trim() || null : null;
+  if (previous === location) {
+    return { ok: true, unchanged: true };
+  }
+
   const { error } = await admin
     .from("business_units")
     .update({ location })
@@ -261,5 +286,11 @@ export async function updateBusinessUnitLocation(input: {
     return { ok: false, error: "Could not save the location." };
   }
 
-  return { ok: true };
+  return {
+    ok: true,
+    unchanged: false,
+    name: String(existing.name),
+    previousLocation: previous,
+    nextLocation: location,
+  };
 }

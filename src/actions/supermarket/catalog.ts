@@ -7,6 +7,7 @@ import {
   requireSupermarketPermission,
   SupermarketError,
 } from "@/lib/supermarket/access";
+import { writeSupermarketAudit } from "@/lib/audit";
 import {
   loadCatalogOptions,
   loadInventorySnapshot,
@@ -91,6 +92,13 @@ export async function createCategoryAction(input: { name: string; description?: 
 
     if (error) mapDbError(error);
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "category.created",
+      description: `Created category ${name}`,
+      severity: "medium",
+      entityType: "category",
+      entityId: String(data.id),
+    });
     return { ok: true as const, category: data };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -122,6 +130,13 @@ export async function updateCategoryAction(
 
     if (error) mapDbError(error);
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "category.updated",
+      description: `Updated category ${name}`,
+      severity: "medium",
+      entityType: "category",
+      entityId: id,
+    });
     return { ok: true as const, category: data };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -140,6 +155,13 @@ export async function setCategoryActiveAction(id: string, isActive: boolean) {
       .eq("business_unit_id", businessUnitId);
     if (error) mapDbError(error);
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "category.updated",
+      description: isActive ? "Activated a category" : "Deactivated a category",
+      severity: "medium",
+      entityType: "category",
+      entityId: id,
+    });
     return { ok: true as const };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -168,6 +190,13 @@ export async function deleteCategoryAction(id: string) {
       .eq("business_unit_id", businessUnitId);
     if (error) mapDbError(error);
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "category.deleted",
+      description: "Deleted a category",
+      severity: "high",
+      entityType: "category",
+      entityId: id,
+    });
     return { ok: true as const };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -237,6 +266,13 @@ export async function upsertProductAction(product: SupermarketProduct & { catego
         .single();
       if (error) mapDbError(error);
       revalidateSupermarket();
+      await writeSupermarketAudit(businessUnitId, {
+        action: "product.created",
+        description: `Created product ${payload.name}`,
+        severity: "medium",
+        entityType: "product",
+        entityId: String(data.id),
+      });
       return { ok: true as const, id: data.id as string };
     }
 
@@ -247,6 +283,13 @@ export async function upsertProductAction(product: SupermarketProduct & { catego
       .eq("business_unit_id", businessUnitId);
     if (error) mapDbError(error);
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "product.updated",
+      description: `Updated product ${payload.name}`,
+      severity: "medium",
+      entityType: "product",
+      entityId: product.id,
+    });
     return { ok: true as const, id: product.id };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -274,6 +317,13 @@ export async function toggleProductActiveAction(productId: string) {
       .eq("business_unit_id", businessUnitId);
     if (updateError) mapDbError(updateError);
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "product.status_changed",
+      description: data.is_active ? "Deactivated a product" : "Activated a product",
+      severity: "medium",
+      entityType: "product",
+      entityId: productId,
+    });
     return { ok: true as const };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -311,6 +361,13 @@ export async function createSupplierAction(input: {
       .single();
     if (error) mapDbError(error);
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "supplier.created",
+      description: `Created supplier ${name}`,
+      severity: "medium",
+      entityType: "supplier",
+      entityId: String(data.id),
+    });
     return { ok: true as const, id: data.id as string };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -327,7 +384,7 @@ export async function adjustStockAction(input: {
   correctionDirection?: "increase" | "decrease";
 }) {
   try {
-    const { supabase } = await requireSupermarketPermission("supermarket.stock.edit");
+    const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.stock.edit");
     const { data, error } = await supabase.rpc("sm_adjust_stock", {
       p_product_id: input.productId,
       p_kind: input.kind,
@@ -339,6 +396,14 @@ export async function adjustStockAction(input: {
     });
     if (error) mapDbError(error);
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "stock.adjusted",
+      description: `Adjusted stock (${input.kind}) by ${input.quantity}`,
+      severity: "medium",
+      entityType: "stock_adjustment",
+      entityId: String(data),
+      metadata: { kind: input.kind, quantity: input.quantity },
+    });
     return { ok: true as const, id: data as string };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -408,6 +473,13 @@ export async function createPurchaseOrderAction(input: {
     if (itemsError) mapDbError(itemsError);
 
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "purchase_order.created",
+      description: `Created purchase order ${String(poNumber)}`,
+      severity: "medium",
+      entityType: "purchase_order",
+      entityId: String(po.id),
+    });
     return { ok: true as const, id: po.id as string };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -427,6 +499,13 @@ export async function sendPurchaseOrderAction(orderId: string) {
       .eq("status", "DRAFT");
     if (error) mapDbError(error);
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "purchase_order.sent",
+      description: "Sent a purchase order",
+      severity: "medium",
+      entityType: "purchase_order",
+      entityId: orderId,
+    });
     return { ok: true as const };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -446,7 +525,7 @@ export async function receivePurchaseOrderAction(input: {
   }[];
 }) {
   try {
-    const { supabase } = await requireSupermarketPermission("supermarket.purchases.create");
+    const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.purchases.create");
     const payload = input.lines.map((line) => ({
       purchase_order_item_id: line.purchaseOrderItemId,
       quantity: line.quantity,
@@ -463,6 +542,13 @@ export async function receivePurchaseOrderAction(input: {
     });
     if (error) mapDbError(error);
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "goods_receipt.created",
+      description: "Received a purchase order",
+      severity: "medium",
+      entityType: "goods_receipt",
+      entityId: String(data),
+    });
     return { ok: true as const, id: data as string };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };

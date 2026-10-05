@@ -151,6 +151,9 @@ model AuditLog {
   @@index([userId])
 }
 
+// LEGACY: Prisma AuditLog is not the production source for /owner/audit-logs.
+// Production audit events are written to Supabase public.audit_logs.
+
 model Notification {
   id        String   @id @default(cuid())
   userId    String

@@ -13,6 +13,7 @@ import {
   normalizePhone,
   syntheticEmailForPhone,
 } from "@/lib/auth/identifiers";
+import { writeAuditEvent } from "@/lib/audit";
 
 export type PasswordSignInResult =
   | {
@@ -91,9 +92,35 @@ export async function signInWithPassword(
   );
 
   if (profile && !profile.is_active) {
+    await writeAuditEvent({
+      action: "login.failed",
+      module: "auth",
+      description: "Failed login to a disabled account",
+      severity: "high",
+      entityType: "user",
+      entityId: profile.id,
+      actor: {
+        id: profile.id,
+        name: profile.full_name,
+        email: profile.email,
+      },
+    });
     return { ok: false, error: DISABLED_MESSAGE };
   }
   if (profile?.locked_at) {
+    await writeAuditEvent({
+      action: "login.failed",
+      module: "auth",
+      description: "Failed login to a locked account",
+      severity: "high",
+      entityType: "user",
+      entityId: profile.id,
+      actor: {
+        id: profile.id,
+        name: profile.full_name,
+        email: profile.email,
+      },
+    });
     return { ok: false, error: LOCKED_MESSAGE };
   }
 
@@ -106,6 +133,29 @@ export async function signInWithPassword(
   if (error || !data.user) {
     await registerFailedAttempt(profile);
     const refreshed = profile ? await findProfileByIdentifier(profile.email ?? profile.phone ?? "") : null;
+    if (refreshed?.locked_at && !profile?.locked_at) {
+      await writeAuditEvent({
+        action: "login.locked",
+        module: "auth",
+        description: `Account locked after repeated failed logins`,
+        severity: "high",
+        entityType: "user",
+        entityId: refreshed.id,
+        actor: { id: refreshed.id, name: refreshed.full_name, email: refreshed.email },
+      });
+      return { ok: false, error: LOCKED_MESSAGE };
+    }
+    await writeAuditEvent({
+      action: "login.failed",
+      module: "auth",
+      description: "Failed login",
+      severity: "high",
+      entityType: profile ? "user" : null,
+      entityId: profile?.id ?? null,
+      actor: profile
+        ? { id: profile.id, name: profile.full_name, email: profile.email }
+        : { id: null, name: "System / Unauthenticated", email: null },
+    });
     if (refreshed?.locked_at) {
       return { ok: false, error: LOCKED_MESSAGE };
     }
@@ -121,6 +171,20 @@ export async function signInWithPassword(
     : isOwnerRole(roleCode)
       ? ["*"]
       : [];
+
+  await writeAuditEvent({
+    action: "login.success",
+    module: "auth",
+    description: "User login",
+    severity: "low",
+    entityType: "user",
+    entityId: profile?.id ?? data.user.id,
+    actor: {
+      id: profile?.id ?? data.user.id,
+      name: profile?.full_name ?? data.user.email?.split("@")[0] ?? "User",
+      email: profile?.email ?? data.user.email,
+    },
+  });
 
   return {
     ok: true,

@@ -8,6 +8,7 @@ import {
   requireSupermarketPermission,
   SupermarketError,
 } from "@/lib/supermarket/access";
+import { writeSupermarketAudit } from "@/lib/audit";
 import { mapExpense, mapPayment, mapPromotion, mapSale } from "@/lib/supermarket/mappers";
 import type {
   ExpenseRecord,
@@ -60,7 +61,7 @@ export async function completeSaleAction(input: {
   payments: { method: string; amount: number; provider?: string; reference?: string }[];
 }) {
   try {
-    const { supabase } = await requireSupermarketPermission("supermarket.sales.create");
+    const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.sales.create");
     if (!input.items.length) throw new SupermarketError("Cart is empty.", "VALIDATION");
     if (!input.payments.length) throw new SupermarketError("Add a payment.", "VALIDATION");
 
@@ -92,6 +93,14 @@ export async function completeSaleAction(input: {
       .maybeSingle();
     if (saleLookupError) mapDbError(saleLookupError);
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "sale.created",
+      description: `Completed sale ${String(saleRow?.invoice_number ?? saleId)}`,
+      severity: "medium",
+      entityType: "sale",
+      entityId: saleId,
+      metadata: { invoice_number: String(saleRow?.invoice_number ?? ""), item_count: input.items.length },
+    });
     return {
       ok: true as const,
       saleId,
@@ -186,7 +195,7 @@ export async function processReturnAction(input: {
   }[];
 }) {
   try {
-    const { supabase } = await requireSupermarketPermission("supermarket.sales.create");
+    const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.sales.create");
     const { data, error } = await supabase.rpc("sm_process_sales_return", {
       p_sale_id: input.saleId,
       p_items: input.items.map((item) => ({
@@ -200,6 +209,13 @@ export async function processReturnAction(input: {
     });
     if (error) mapDbError(error);
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "return.created",
+      description: "Processed a sales return",
+      severity: "medium",
+      entityType: "sales_return",
+      entityId: String(data),
+    });
     return { ok: true as const, id: data as string };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -436,6 +452,13 @@ export async function upsertPromotionAction(input: {
     }
 
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "promotion.upserted",
+      description: input.id ? `Updated promotion ${input.name.trim()}` : `Created promotion ${input.name.trim()}`,
+      severity: "medium",
+      entityType: "promotion",
+      entityId: String(promotionId),
+    });
     return { ok: true as const, id: promotionId as string };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -454,6 +477,13 @@ export async function setPromotionPausedAction(id: string, isPaused: boolean) {
       .eq("business_unit_id", businessUnitId);
     if (error) mapDbError(error);
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "promotion.paused",
+      description: isPaused ? "Paused a promotion" : "Resumed a promotion",
+      severity: "medium",
+      entityType: "promotion",
+      entityId: id,
+    });
     return { ok: true as const };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -472,6 +502,13 @@ export async function deletePromotionAction(id: string) {
       .eq("business_unit_id", businessUnitId);
     if (error) mapDbError(error);
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "promotion.deleted",
+      description: "Deleted a promotion",
+      severity: "high",
+      entityType: "promotion",
+      entityId: id,
+    });
     return { ok: true as const };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -507,6 +544,13 @@ export async function createExpenseAction(input: {
       .single();
     if (error) mapDbError(error);
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "expense.created",
+      description: `Created expense ${input.category.trim()} (${input.amount})`,
+      severity: "medium",
+      entityType: "expense",
+      entityId: String(data.id),
+    });
     return { ok: true as const, expense: mapExpense(data as Record<string, unknown>) };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -549,6 +593,13 @@ export async function createPaymentAction(input: {
       .single();
     if (error) mapDbError(error);
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "payment.created",
+      description: `Recorded ${input.direction} payment of ${input.amount}`,
+      severity: "medium",
+      entityType: "payment",
+      entityId: String(data.id),
+    });
     return { ok: true as const, payment: mapPayment(data as Record<string, unknown>) };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -567,6 +618,13 @@ export async function deletePaymentAction(id: string) {
       .eq("business_unit_id", businessUnitId);
     if (error) mapDbError(error);
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "payment.deleted",
+      description: "Deleted a payment",
+      severity: "high",
+      entityType: "payment",
+      entityId: id,
+    });
     return { ok: true as const };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -594,6 +652,13 @@ export async function updatePromotionTypeAction(input: {
       .eq("business_unit_id", businessUnitId);
     if (error) mapDbError(error);
     revalidateSupermarket();
+    await writeSupermarketAudit(businessUnitId, {
+      action: "promotion.upserted",
+      description: `Updated promotion type ${input.name.trim()}`,
+      severity: "medium",
+      entityType: "promotion_type",
+      entityId: input.id,
+    });
     return { ok: true as const };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };

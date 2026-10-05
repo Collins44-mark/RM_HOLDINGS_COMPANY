@@ -6,6 +6,8 @@ import { canAccessPath, landingPathFor } from "@/lib/auth/access";
 import { signInWithPassword, signOutFromAuthProvider } from "@/lib/auth/sign-in";
 import { CHANGE_PASSWORD_PATH, LOGIN_PATH } from "@/lib/config/app";
 import { permissionsForRoleCode } from "@/lib/auth/role-options";
+import { getVerifiedAuthUser } from "@/lib/auth/session";
+import { writeAuditEvent } from "@/lib/audit";
 
 const loginSchema = z.object({
   identifier: z.string().trim().min(3),
@@ -55,6 +57,18 @@ export async function loginAction(
 }
 
 export async function logoutAction() {
+  const user = await getVerifiedAuthUser();
   await signOutFromAuthProvider();
+  if (user) {
+    await writeAuditEvent({
+      action: "logout",
+      module: "auth",
+      description: "User logout",
+      severity: "low",
+      entityType: "user",
+      entityId: user.id,
+      actor: { id: user.id, name: user.name, email: user.email },
+    });
+  }
   redirect(LOGIN_PATH);
 }

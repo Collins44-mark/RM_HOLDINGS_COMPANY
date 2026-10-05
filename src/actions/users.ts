@@ -25,6 +25,7 @@ import {
   statusOf,
   type ManagedUser,
 } from "@/lib/data/app-users";
+import { writeAuditEvent } from "@/lib/audit";
 
 export type CredentialsPayload = {
   name: string;
@@ -255,6 +256,15 @@ export async function createUserAction(
   };
   createdUser.status = statusOf(createdUser);
   revalidateUsersWorkspace();
+  await writeAuditEvent({
+    action: "user.created",
+    module: "users",
+    description: `Created user ${parsed.data.name} with role ${roleName}`,
+    severity: "medium",
+    entityType: "user",
+    entityId: createdUser.id,
+    metadata: { role: parsed.data.roleCode, modules: metadataModules.map(String) },
+  });
 
   return {
     credentials: {
@@ -295,6 +305,14 @@ export async function resetPasswordAction(userId: string): Promise<UsersActionSt
     .eq("id", userId);
 
   revalidateUsersWorkspace();
+  await writeAuditEvent({
+    action: "password.reset",
+    module: "users",
+    description: `Reset password for ${target.name}`,
+    severity: "high",
+    entityType: "user",
+    entityId: target.id,
+  });
   return {
     credentials: {
       name: target.name,
@@ -322,6 +340,14 @@ export async function unlockUserAction(userId: string): Promise<{ error?: string
     .eq("id", userId);
 
   revalidateUsersWorkspace();
+  await writeAuditEvent({
+    action: "user.unlocked",
+    module: "users",
+    description: "Unlocked a user account",
+    severity: "high",
+    entityType: "user",
+    entityId: userId,
+  });
   return {};
 }
 
@@ -344,6 +370,14 @@ export async function disableUserAction(userId: string): Promise<{ error?: strin
     .eq("id", userId);
 
   revalidateUsersWorkspace();
+  await writeAuditEvent({
+    action: "user.disabled",
+    module: "users",
+    description: `Disabled user ${target.name}`,
+    severity: "high",
+    entityType: "user",
+    entityId: target.id,
+  });
   return {};
 }
 
@@ -356,6 +390,14 @@ export async function enableUserAction(userId: string): Promise<{ error?: string
     .update({ is_active: true, updated_at: new Date().toISOString() })
     .eq("id", userId);
   revalidateUsersWorkspace();
+  await writeAuditEvent({
+    action: "user.enabled",
+    module: "users",
+    description: "Enabled a user account",
+    severity: "medium",
+    entityType: "user",
+    entityId: userId,
+  });
   return {};
 }
 
@@ -402,7 +444,29 @@ export async function updateUserAction(
   });
   if ("error" in result) return { error: result.error };
 
+  const previousModules = [...target.modules].sort().join(",");
+  const nextModules = [...parsed.data.modules].sort().join(",");
+  const details = [
+    target.roleCode !== parsed.data.roleCode
+      ? `role ${target.roleName} → ${result.roleName}`
+      : null,
+    previousModules !== nextModules ? "business-unit access updated" : null,
+    target.name !== parsed.data.name ? `name ${target.name} → ${parsed.data.name}` : null,
+  ].filter(Boolean);
+
   revalidateUsersWorkspace();
+  await writeAuditEvent({
+    action: "user.updated",
+    module: "users",
+    description: `Updated user ${parsed.data.name}${details.length ? ` (${details.join("; ")})` : ""}`,
+    severity: "medium",
+    entityType: "user",
+    entityId: userId,
+    metadata: {
+      previous_role: target.roleCode,
+      next_role: parsed.data.roleCode,
+    },
+  });
   return {};
 }
 

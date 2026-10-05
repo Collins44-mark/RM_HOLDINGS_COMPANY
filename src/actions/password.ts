@@ -7,6 +7,7 @@ import { getVerifiedAuthUser } from "@/lib/auth/session";
 import { identityFromUser } from "@/lib/auth/types";
 import { landingPathFor } from "@/lib/auth/access";
 import { LOGIN_PATH } from "@/lib/config/app";
+import { writeAuditEvent } from "@/lib/audit";
 
 export type PasswordChangeState = { error?: string } | null;
 
@@ -56,5 +57,14 @@ export async function changePasswordAction(
   }
 
   await supabase.rpc("clear_password_change_required");
+  await writeAuditEvent({
+    action: "password.changed",
+    module: "auth",
+    description: "Password changed",
+    severity: "medium",
+    entityType: "user",
+    entityId: user.id,
+    actor: { id: user.id, name: user.name, email: user.email },
+  });
   redirect(landingPathFor(identityFromUser({ ...user, mustChangePassword: false })));
 }
