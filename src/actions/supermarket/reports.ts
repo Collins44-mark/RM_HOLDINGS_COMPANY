@@ -5,8 +5,7 @@ import {
   mapDbError,
   requireSupermarketContext,
 } from "@/lib/supermarket/access";
-import { loadInventoryValuation } from "@/lib/supermarket/queries";
-import { mapExpense } from "@/lib/supermarket/mappers";
+import { mapBatch, mapCategory, mapExpense, mapProduct } from "@/lib/supermarket/mappers";
 import {
   formatSalesDate,
   resolveSalesPeriod,
@@ -236,11 +235,49 @@ export async function fetchInventoryReportAction(
   _filters: InventoryReportFilters = {},
 ): Promise<{ ok: true; data: InventoryReportData } | { ok: false; error: string }> {
   try {
-    const inventory = await loadInventoryValuation();
-    if (inventory.error) return { ok: false, error: inventory.error };
+    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const [productsRes, categoriesRes, suppliersRes, batchesRes] = await Promise.all([
+      supabase
+        .from("sm_products")
+        .select(
+          "id, name, sku, barcode, category_id, unit, buying_price, selling_price, reorder_level, track_expiry, is_active, created_at, supplier_id",
+        )
+        .eq("business_unit_id", businessUnitId)
+        .order("name"),
+      supabase
+        .from("sm_categories")
+        .select("id, name, description, is_active")
+        .eq("business_unit_id", businessUnitId),
+      supabase.from("sm_suppliers").select("id, name").eq("business_unit_id", businessUnitId),
+      supabase
+        .from("sm_stock_batches")
+        .select(
+          "id, product_id, batch_number, quantity, expiry_date, buying_price, supplier_id, received_at, location",
+        )
+        .eq("business_unit_id", businessUnitId)
+        .gt("quantity", 0),
+    ]);
+    if (productsRes.error) mapDbError(productsRes.error);
+    if (categoriesRes.error) mapDbError(categoriesRes.error);
+    if (suppliersRes.error) mapDbError(suppliersRes.error);
+    if (batchesRes.error) mapDbError(batchesRes.error);
 
-    const rows = inventory.products.map((product) => {
-      const stock = inventory.batches
+    const categories = (categoriesRes.data ?? []).map((row) =>
+      mapCategory(row as Record<string, unknown>),
+    );
+    const categoryNameById = new Map(categories.map((c) => [c.id, c.name]));
+    const supplierNameById = new Map(
+      (suppliersRes.data ?? []).map((s) => [s.id as string, String(s.name)]),
+    );
+    const products = (productsRes.data ?? []).map((row) =>
+      mapProduct(row as Record<string, unknown>, categoryNameById),
+    );
+    const batches = (batchesRes.data ?? []).map((row) =>
+      mapBatch(row as Record<string, unknown>, supplierNameById),
+    );
+
+    const rows = products.map((product) => {
+      const stock = batches
         .filter((b) => b.productId === product.id)
         .reduce((sum, b) => sum + b.quantity, 0);
       const value = stock * product.buyingPrice;
@@ -271,7 +308,7 @@ export async function fetchInventoryReportAction(
     let expiredUnits = 0;
     let expiringSoonUnits = 0;
     let expiredStockValue = 0;
-    for (const batch of inventory.batches) {
+    for (const batch of batches) {
       if (!batch.expiryDate || batch.quantity <= 0) continue;
       if (batch.expiryDate < today) {
         expiredUnits += batch.quantity;
@@ -281,7 +318,7 @@ export async function fetchInventoryReportAction(
       }
     }
 
-    const expiryRows = inventory.batches
+    const expiryRows = batches
       .filter((batch) => batch.quantity > 0 && batch.expiryDate)
       .map((batch) => {
         const status =
@@ -292,7 +329,7 @@ export async function fetchInventoryReportAction(
               : null;
         if (!status) return null;
         return {
-          name: inventory.products.find((p) => p.id === batch.productId)?.name ?? "Product",
+          name: products.find((p) => p.id === batch.productId)?.name ?? "Product",
           quantity: batch.quantity,
           expiryDate: batch.expiryDate as string,
           status,

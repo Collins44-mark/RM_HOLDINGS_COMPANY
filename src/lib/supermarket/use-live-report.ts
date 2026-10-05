@@ -61,11 +61,14 @@ export function useLiveReport<TData, TFilters>(
       .then((result) => {
         // Ignore only if the user has moved on to a different period/filters.
         if (latestKeyRef.current !== key) return;
-        if (!result.ok) {
+        if (!result || typeof result !== "object" || !("ok" in result) || !result.ok) {
           setState({
             resolvedKey: key,
             data: null,
-            error: result.error || "Unable to load report.",
+            error:
+              result && typeof result === "object" && "error" in result && result.error
+                ? String(result.error)
+                : "Unable to load report.",
           });
           return;
         }
@@ -77,12 +80,12 @@ export function useLiveReport<TData, TFilters>(
       })
       .catch((err: unknown) => {
         if (latestKeyRef.current !== key) return;
-        if (isNextControlFlowError(err)) throw err;
         setState({
           resolvedKey: key,
           data: null,
           error: err instanceof Error ? err.message : "Unable to load report.",
         });
+        if (isNextControlFlowError(err)) throw err;
       });
   }, [preset, rangeFrom, rangeTo, filtersKey]);
 
