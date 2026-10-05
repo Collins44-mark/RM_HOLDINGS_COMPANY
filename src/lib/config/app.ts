@@ -51,9 +51,10 @@ export type BusinessUnitDefinition = {
 };
 
 /**
- * Presentation catalog (theme, location, short labels) keyed by stable unit code.
- * Production existence / active status / sort order come from Supabase
+ * Presentation catalog (theme, short labels, descriptions) keyed by stable unit code.
+ * Production existence, active status, sort order, and location come from Supabase
  * `business_units` via `src/lib/data/business-units.ts` — not this array.
+ * `location` here is documentation/seed only and is never read by production UI.
  */
 export const BUSINESS_UNITS: BusinessUnitDefinition[] = [
   {

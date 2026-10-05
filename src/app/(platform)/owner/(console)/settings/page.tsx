@@ -1,9 +1,17 @@
+import { BusinessUnitLocationsForm } from "@/components/settings/BusinessUnitLocationsForm";
 import { PageHeader, Surface } from "@/components/ui/PageHeader";
+import { requireAuth } from "@/lib/auth/session";
+import { isOwnerRole } from "@/lib/auth/rbac";
 import { APP_MOTTO, APP_NAME, APP_TAGLINE, APP_TIMEZONE } from "@/lib/config/app";
+import { listBusinessUnits } from "@/lib/data/business-units";
 
 export const metadata = { title: "System Settings" };
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const user = await requireAuth();
+  const canEditLocations = isOwnerRole(user.roleCode);
+  const units = canEditLocations ? await listBusinessUnits() : [];
+
   const rows = [
     ["Organisation", APP_NAME],
     ["Tagline", APP_TAGLINE],
@@ -33,6 +41,22 @@ export default function SettingsPage() {
           ))}
         </dl>
       </Surface>
+      {canEditLocations ? (
+        <div className="mt-6">
+          <h2 className="mb-3 text-[16px] font-semibold tracking-[-0.02em] text-navy">
+            Business Unit Locations
+          </h2>
+          <Surface>
+            <BusinessUnitLocationsForm
+              units={units.map((unit) => ({
+                id: unit.id,
+                name: unit.name,
+                storedLocation: unit.storedLocation,
+              }))}
+            />
+          </Surface>
+        </div>
+      ) : null}
     </div>
   );
 }
