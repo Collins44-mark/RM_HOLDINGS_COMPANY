@@ -26,6 +26,7 @@ import {
   type ManagedUser,
 } from "@/lib/data/app-users";
 import { writeAuditEvent } from "@/lib/audit";
+import { syncUserAccessClaims } from "@/lib/auth/effective-access";
 
 export type CredentialsPayload = {
   name: string;
@@ -122,15 +123,27 @@ async function setUserAccess(input: {
     );
   }
 
-  const modules = input.moduleCodes.includes(ALL_MODULES_VALUE)
-    ? ["*"]
-    : assignedCodes;
+  await admin.from("user_module_roles").delete().eq("user_id", input.userId);
+  if (assignedUnits.length) {
+    await admin.from("user_module_roles").insert(
+      assignedUnits.map((unit) => ({
+        user_id: input.userId,
+        business_unit_id: unit.id,
+        role_id: role.id,
+      })),
+    );
+  }
 
-  await admin.auth.admin.updateUserById(input.userId, {
-    app_metadata: { role_code: input.roleCode, modules },
-  });
+  const claims = await syncUserAccessClaims(admin, input.userId);
+  if ("error" in claims) {
+    const modules = input.moduleCodes.includes(ALL_MODULES_VALUE) ? ["*"] : assignedCodes;
+    await admin.auth.admin.updateUserById(input.userId, {
+      app_metadata: { role_code: input.roleCode, modules },
+    });
+    return { roleName: role.name as string, modules };
+  }
 
-  return { roleName: role.name as string, modules };
+  return { roleName: role.name as string, modules: claims.modules };
 }
 
 export async function createUserAction(
@@ -198,6 +211,7 @@ export async function createUserAction(
     app_metadata: {
       role_code: parsed.data.roleCode,
       modules: metadataModules,
+      permissions: isOwnerRole(parsed.data.roleCode) ? ["*"] : [],
     },
   });
 
@@ -231,7 +245,16 @@ export async function createUserAction(
       await admin.auth.admin.deleteUser(created.data.user.id);
       return { error: "Unable to assign modules." };
     }
+    await admin.from("user_module_roles").insert(
+      assignedUnits.map((unit) => ({
+        user_id: created.data.user.id,
+        business_unit_id: unit.id,
+        role_id: role.id,
+      })),
+    );
   }
+
+  await syncUserAccessClaims(admin, created.data.user.id);
 
   const roleName = role.name || roleDefinition(parsed.data.roleCode)?.name || parsed.data.roleCode;
   const createdUser: ManagedUser = {

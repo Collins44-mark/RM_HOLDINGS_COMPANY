@@ -45,7 +45,9 @@ function expand(module: string, resources: ResourceDef[]) {
   );
 }
 
-export const PERMISSION_CATALOG: { module: string; code: string; name: string }[] =
+export type PermissionItem = { module: string; code: string; name: string };
+
+export const PERMISSION_CATALOG: PermissionItem[] =
   [
     ...[
       "dashboard.view",
@@ -141,6 +143,77 @@ export const PERMISSION_CATALOG: { module: string; code: string; name: string }[
       { resource: "sales", actions: ["view", "create"] },
     ]).map((code) => ({ module: "beekeeping", code, name: titleize(code) })),
   ];
+
+/** Permissions that map to live application capabilities (platform + supermarket). */
+export const OPERABLE_PERMISSION_MODULES = ["platform", "supermarket"] as const;
+
+export function isOperablePermission(code: string) {
+  return code.startsWith("platform.") || code.startsWith("supermarket.");
+}
+
+export const OPERABLE_PERMISSION_CATALOG = PERMISSION_CATALOG.filter((item) =>
+  isOperablePermission(item.code),
+);
+
+const MODULE_LABELS: Record<string, string> = {
+  platform: "Platform",
+  supermarket: "Supermarket",
+};
+
+const RESOURCE_LABELS: Record<string, string> = {
+  stock: "Inventory",
+  business_units: "Business Units",
+};
+
+export function permissionModuleLabel(module: string) {
+  return MODULE_LABELS[module] ?? titleize(module);
+}
+
+export function permissionResourceLabel(resource: string) {
+  return RESOURCE_LABELS[resource] ?? titleize(resource);
+}
+
+export type PermissionResourceGroup = {
+  resource: string;
+  label: string;
+  permissions: PermissionItem[];
+};
+
+export type PermissionModuleGroup = {
+  module: string;
+  label: string;
+  resources: PermissionResourceGroup[];
+};
+
+export function groupPermissions(
+  items: PermissionItem[] = OPERABLE_PERMISSION_CATALOG,
+): PermissionModuleGroup[] {
+  const byModule = new Map<string, PermissionItem[]>();
+  for (const item of items) {
+    const list = byModule.get(item.module) ?? [];
+    list.push(item);
+    byModule.set(item.module, list);
+  }
+
+  return [...byModule.entries()].map(([module, moduleItems]) => {
+    const byResource = new Map<string, PermissionItem[]>();
+    for (const item of moduleItems) {
+      const resource = item.code.split(".")[1] ?? item.module;
+      const list = byResource.get(resource) ?? [];
+      list.push(item);
+      byResource.set(resource, list);
+    }
+    return {
+      module,
+      label: permissionModuleLabel(module),
+      resources: [...byResource.entries()].map(([resource, permissions]) => ({
+        resource,
+        label: permissionResourceLabel(resource),
+        permissions,
+      })),
+    };
+  });
+}
 
 export const ROLE_DEFINITIONS: RoleDefinition[] = [
   {
@@ -300,16 +373,21 @@ export function matchPermission(code: string, matcher: string) {
   return code === matcher;
 }
 
-export function permissionsForRole(role: RoleDefinition) {
+export function permissionsForRole(
+  role: RoleDefinition,
+  catalog: PermissionItem[] = OPERABLE_PERMISSION_CATALOG,
+) {
   if (role.permissionMatchers.includes("*")) {
-    return PERMISSION_CATALOG.map((item) => item.code);
+    return catalog.map((item) => item.code);
   }
-  return PERMISSION_CATALOG.filter((item) =>
-    role.permissionMatchers.some((matcher) => matchPermission(item.code, matcher)),
-  ).map((item) => item.code);
+  return catalog
+    .filter((item) =>
+      role.permissionMatchers.some((matcher) => matchPermission(item.code, matcher)),
+    )
+    .map((item) => item.code);
 }
 
-function titleize(value: string) {
+export function titleize(value: string) {
   return value
     .replaceAll(".", " ")
     .replaceAll("_", " ")

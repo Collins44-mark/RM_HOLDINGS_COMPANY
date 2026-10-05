@@ -25,10 +25,15 @@ export function identityFromAppMetadata(
     return { role, modules: ["*"], permissions: ["*"] };
   }
 
+  const rawPermissions = metadata?.permissions;
+  const claimedPermissions = Array.isArray(rawPermissions)
+    ? rawPermissions.filter((item): item is string => typeof item === "string")
+    : null;
+
   return {
     role,
     modules,
-    permissions: permissionsForRoleCode(role),
+    permissions: claimedPermissions ?? permissionsForRoleCode(role),
   };
 }
 

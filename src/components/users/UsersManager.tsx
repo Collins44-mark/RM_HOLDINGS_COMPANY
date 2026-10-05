@@ -1,15 +1,24 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import Link from "next/link";
-import { ArrowLeft, LayoutGrid, Plus, Search, Users } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { ArrowLeft, Plus, Search } from "lucide-react";
 import { PageHeader, Surface } from "@/components/ui/PageHeader";
 import { ModuleIcon } from "@/components/icons/ModuleIcon";
 import { UsersBusinessUnitCard } from "@/components/users/UsersBusinessUnitCard";
+import { UsersWorkspaceTabs, type UsersWorkspaceTab } from "@/components/users/UsersWorkspaceTabs";
+import { UserActionsMenu } from "@/components/users/UserActionsMenu";
+import { RoleCard } from "@/components/users/RoleCard";
+import { RolePermissionEditor } from "@/components/users/RolePermissionEditor";
+import { CustomizeAccessDrawer } from "@/components/users/CustomizeAccessDrawer";
 import { cn } from "@/lib/cn";
 import { ALL_MODULES_VALUE, rolesForSelectedModules } from "@/lib/auth/role-options";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import type { ManagedUser, ManagedUserStatus } from "@/lib/data/app-users";
+import type { RoleSummary, UserCustomization } from "@/lib/auth/rbac-types";
+import {
+  loadRolePermissionStateAction,
+  loadUserCustomizationAction,
+} from "@/actions/rbac";
 import {
   createUserAction,
   disableUserAction,
@@ -21,7 +30,8 @@ import {
   type UsersActionState,
 } from "@/actions/users";
 
-export type UsersWorkspaceView = "all" | "business-units" | "business-unit";
+export type UsersWorkspaceView = UsersWorkspaceTab;
+
 
 export type UsersUnitOption = {
   code: string;
@@ -67,37 +77,50 @@ function displayEmail(user: ManagedUser) {
 }
 
 export function UsersManager({
-  view,
+  initialView,
+  initialUnitCode,
   users,
+  roles,
   currentUserId,
   businessUnits,
-  selectedUnit,
 }: {
-  view: UsersWorkspaceView;
+  initialView: UsersWorkspaceView;
+  initialUnitCode?: string | null;
   users: ManagedUser[];
+  roles: RoleSummary[];
   currentUserId: string;
   businessUnits: UsersUnitOption[];
-  selectedUnit?: UsersUnitOption | null;
 }) {
   const units = businessUnits;
+  const [tab, setTab] = useState<UsersWorkspaceTab>(initialView);
+  const [unitCode, setUnitCode] = useState<string | null>(initialUnitCode ?? null);
   const [rows, setRows] = useState(users);
+  const [roleCards, setRoleCards] = useState(roles);
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState<ManagedUser | null>(null);
+  const [customizeUser, setCustomizeUser] = useState<ManagedUser | null>(null);
+  const [customization, setCustomization] = useState<UserCustomization | null>(null);
+  const [editingRole, setEditingRole] = useState<{ role: RoleSummary; permissionCodes: string[] } | null>(null);
   const [credentials, setCredentials] = useState<CredentialsPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const unitCode = selectedUnit?.code;
-  const showModulesColumn = view === "all";
-  const roles = useMemo(
+  const selectedUnit = unitCode ? units.find((unit) => unit.code === unitCode) ?? null : null;
+  const showingUnitUsers = tab === "business" && Boolean(selectedUnit);
+  const showModulesColumn = tab === "all";
+  const roleOptions = useMemo(
     () => Array.from(new Map(rows.map((user) => [user.roleCode, user.roleName])).entries()),
     [rows],
   );
 
-  const filtered = rows.filter((user) => {
+  const scopedRows = showingUnitUsers
+    ? rows.filter((user) => user.modules.includes(selectedUnit!.code))
+    : rows;
+
+  const filtered = scopedRows.filter((user) => {
     if (roleFilter !== "all" && user.roleCode !== roleFilter) return false;
     if (statusFilter !== "all" && user.status !== statusFilter) return false;
     if (query.trim()) {
@@ -106,6 +129,38 @@ export function UsersManager({
     }
     return true;
   });
+
+  const writeUrl = useCallback((nextTab: UsersWorkspaceTab, nextUnit: string | null, mode: "replace" | "push") => {
+    const params = new URLSearchParams();
+    if (nextTab !== "all") params.set("view", nextTab);
+    if (nextTab === "business" && nextUnit) params.set("unit", nextUnit);
+    const queryString = params.toString();
+    const href = queryString ? `/owner/users?${queryString}` : "/owner/users";
+    if (mode === "push") window.history.pushState(window.history.state, "", href);
+    else window.history.replaceState(window.history.state, "", href);
+  }, []);
+
+  const changeTab = useCallback(
+    (next: UsersWorkspaceTab) => {
+      setTab(next);
+      setUnitCode(null);
+      writeUrl(next, null, "replace");
+    },
+    [writeUrl],
+  );
+
+  useEffect(() => {
+    function onPopState() {
+      const params = new URLSearchParams(window.location.search);
+      const raw = params.get("view");
+      const nextTab: UsersWorkspaceTab =
+        raw === "business" || raw === "business-units" ? "business" : raw === "roles" ? "roles" : "all";
+      setTab(nextTab);
+      setUnitCode(nextTab === "business" ? params.get("unit") : null);
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   const addButton = (
     <button
@@ -159,17 +214,46 @@ export function UsersManager({
     });
   }
 
+  function openCustomize(user: ManagedUser) {
+    setError(null);
+    startTransition(async () => {
+      const data = await loadUserCustomizationAction(user.id);
+      if (!data) {
+        setError("Unable to load access for this user.");
+        return;
+      }
+      setCustomizeUser(user);
+      setCustomization(data);
+    });
+  }
+
+  function openRole(role: RoleSummary) {
+    setError(null);
+    startTransition(async () => {
+      const data = await loadRolePermissionStateAction(role.id);
+      if (!data) {
+        setError("Unable to load role permissions.");
+        return;
+      }
+      setEditingRole(data);
+    });
+  }
+
   return (
     <div className="min-w-0 space-y-5 sm:space-y-6">
-      {view === "business-unit" && selectedUnit ? (
+      {showingUnitUsers && selectedUnit ? (
         <div>
-          <Link
-            href="/owner/users?view=business-units"
+          <button
+            type="button"
+            onClick={() => {
+              setUnitCode(null);
+              writeUrl("business", null, "replace");
+            }}
             className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-500 transition hover:text-navy"
           >
             <ArrowLeft className="h-4 w-4" strokeWidth={1.9} />
             All Business Units
-          </Link>
+          </button>
           <div className="mb-5 flex min-w-0 flex-col gap-3 sm:mb-6 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
               <span
@@ -192,9 +276,7 @@ export function UsersManager({
             </div>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="rounded-full bg-[#e7f4ea] px-2.5 py-1 text-[12px] font-medium text-[#3f8a5a]">
-                {selectedUnit.assignedUserCount === 1
-                  ? "1 user"
-                  : `${selectedUnit.assignedUserCount ?? rows.length} users`}
+                {filtered.length === 1 ? "1 user" : `${filtered.length} users`}
               </span>
               {addButton}
             </div>
@@ -208,24 +290,33 @@ export function UsersManager({
         />
       )}
 
-      {view !== "business-unit" ? <UsersViewSwitch view={view} /> : null}
+      {!showingUnitUsers ? <UsersWorkspaceTabs view={tab} onChange={changeTab} /> : null}
 
       {error ? (
         <p className="rounded-[14px] border border-red-200/70 bg-red-50/80 px-3 py-2.5 text-sm text-[#9b2c2c]">{error}</p>
       ) : null}
 
-      {view === "business-units" ? (
+      {tab === "business" && !selectedUnit ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {units.map((unit) => (
             <UsersBusinessUnitCard
               key={unit.code}
-              href={`/owner/users?view=business-unit&unit=${encodeURIComponent(unit.code)}`}
+              onOpen={() => {
+                setUnitCode(unit.code);
+                writeUrl("business", unit.code, "push");
+              }}
               code={unit.code}
               name={unit.name}
               userCount={unit.assignedUserCount ?? 0}
               accent={unit.accent ?? "#5B7FA6"}
               iconBg={unit.iconBg ?? "rgba(91, 127, 166, 0.14)"}
             />
+          ))}
+        </div>
+      ) : tab === "roles" ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {roleCards.map((role) => (
+            <RoleCard key={role.id} role={role} onOpen={() => openRole(role)} />
           ))}
         </div>
       ) : (
@@ -246,7 +337,7 @@ export function UsersManager({
               className="h-11 rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
             >
               <option value="all">All roles</option>
-              {roles.map(([code, name]) => (
+              {roleOptions.map(([code, name]) => (
                 <option key={code} value={code}>
                   {name}
                 </option>
@@ -301,13 +392,11 @@ export function UsersManager({
                     </td>
                     <td className="px-5 py-3.5 text-slate-500">{formatDate(user.lastLoginAt)}</td>
                     <td className="px-5 py-3.5">
-                      <button
-                        type="button"
-                        onClick={() => setSelected(user)}
-                        className="text-[13px] font-semibold text-navy hover:underline"
-                      >
-                        View
-                      </button>
+                      <UserActionsMenu
+                        onView={() => setSelected(user)}
+                        onCustomize={() => openCustomize(user)}
+                        customizeDisabled={user.id === currentUserId || isOwnerRole(user.roleCode)}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -317,10 +406,8 @@ export function UsersManager({
 
           <div className="space-y-2.5 md:hidden">
             {filtered.map((user) => (
-              <button
+              <div
                 key={user.id}
-                type="button"
-                onClick={() => setSelected(user)}
                 className="flex w-full min-w-0 items-start gap-3 rounded-[16px] border border-white/90 bg-white px-3 py-3 text-left shadow-[0_6px_20px_rgba(20,40,70,0.04)]"
               >
                 <Avatar name={user.name} />
@@ -334,7 +421,12 @@ export function UsersManager({
                     {showModulesColumn ? `${user.roleName} · ${user.moduleNames.join(", ")}` : user.roleName}
                   </span>
                 </span>
-              </button>
+                <UserActionsMenu
+                  onView={() => setSelected(user)}
+                  onCustomize={() => openCustomize(user)}
+                  customizeDisabled={user.id === currentUserId || isOwnerRole(user.roleCode)}
+                />
+              </div>
             ))}
           </div>
 
@@ -398,42 +490,56 @@ export function UsersManager({
       {credentials ? (
         <CredentialsDialog credentials={credentials} onClose={() => setCredentials(null)} />
       ) : null}
+
+      {customizeUser && customization ? (
+        <CustomizeAccessDrawer
+          userId={customizeUser.id}
+          userName={customizeUser.name}
+          initial={customization}
+          businessUnits={units}
+          onClose={() => {
+            setCustomizeUser(null);
+            setCustomization(null);
+          }}
+          onSaved={({ modules, roleName }) => {
+            const unitName = (code: string) => units.find((unit) => unit.code === code)?.name ?? code;
+            setRows((current) =>
+              current.map((user) =>
+                user.id === customizeUser.id
+                  ? {
+                      ...user,
+                      modules,
+                      moduleNames: modules.includes("*") ? ["All modules"] : modules.map(unitName),
+                      roleName: roleName ?? user.roleName,
+                    }
+                  : user,
+              ),
+            );
+            setCustomizeUser(null);
+            setCustomization(null);
+          }}
+        />
+      ) : null}
+
+      {editingRole ? (
+        <RolePermissionEditor
+          role={editingRole.role}
+          permissionCodes={editingRole.permissionCodes}
+          onClose={() => setEditingRole(null)}
+          onSaved={(codes) => {
+            const modules = new Set(codes.map((code) => code.split(".")[0]).filter(Boolean));
+            setRoleCards((current) =>
+              current.map((role) =>
+                role.id === editingRole.role.id
+                  ? { ...role, permissionCount: codes.length, moduleCount: modules.size }
+                  : role,
+              ),
+            );
+            setEditingRole(null);
+          }}
+        />
+      ) : null}
     </div>
-  );
-}
-
-function UsersViewSwitch({ view }: { view: UsersWorkspaceView }) {
-  const items = [
-    { href: "/owner/users", label: "All Users", icon: Users, active: view === "all" },
-    {
-      href: "/owner/users?view=business-units",
-      label: "By Business Unit",
-      icon: LayoutGrid,
-      active: view === "business-units",
-    },
-  ] as const;
-
-  return (
-    <nav aria-label="Users views" className="flex flex-wrap gap-2">
-      {items.map((item) => {
-        const Icon = item.icon;
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              "inline-flex h-11 items-center gap-2 rounded-full px-4 text-[13.5px] font-medium transition duration-200",
-              item.active
-                ? "bg-navy text-white shadow-[0_6px_16px_rgba(15,35,64,0.16)]"
-                : "bg-white text-slate-600 ring-1 ring-black/6 hover:text-navy",
-            )}
-          >
-            <Icon className="h-4 w-4" strokeWidth={1.9} />
-            {item.label}
-          </Link>
-        );
-      })}
-    </nav>
   );
 }
 

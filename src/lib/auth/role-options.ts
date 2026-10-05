@@ -2,10 +2,13 @@ import {
   FINANCE_ROLES,
   OWNER_ROLES,
   ROLE_DEFINITIONS,
+  permissionsForRole,
   type RoleCode,
   type RoleDefinition,
 } from "@/lib/config/permissions";
 import { BUSINESS_UNITS, type BusinessUnitCode } from "@/lib/config/app";
+import { isOwnerRole } from "@/lib/auth/rbac";
+import { OPERABLE_PERMISSION_CATALOG } from "@/lib/config/permissions";
 
 export const ALL_MODULES_VALUE = "*";
 
@@ -42,7 +45,13 @@ export function permissionsForRoleCode(code: string) {
   const role = roleDefinition(code);
   if (!role) return [];
   if (role.permissionMatchers.includes("*")) return ["*"];
-  return role.permissionMatchers;
+  return permissionsForRole(role);
+}
+
+export function roleDefaultPermissions(roleCode: string) {
+  if (isOwnerRole(roleCode)) return OPERABLE_PERMISSION_CATALOG.map((item) => item.code);
+  const definition = roleDefinition(roleCode);
+  return definition ? permissionsForRole(definition) : [];
 }
 
 export function modulesForAssignment(moduleCodes: string[]): BusinessUnitCode[] {

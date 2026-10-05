@@ -1,4 +1,5 @@
 import { FINANCE_ROLES, OWNER_ROLES, ROLE_CODES } from "@/lib/config/permissions";
+import { matchPermission } from "@/lib/config/permissions";
 
 export type AssignedBusinessUnit = {
   code: string;
@@ -26,9 +27,7 @@ export function isSuperAdmin(role: string) {
 export function hasPermission(identity: AccessIdentity, permission: string) {
   if (isOwnerRole(identity.role)) return true;
   if (identity.permissions.includes("*")) return true;
-  if (identity.permissions.includes(permission)) return true;
-  const [module] = permission.split(".");
-  return identity.permissions.includes(`${module}.*`);
+  return identity.permissions.some((matcher) => matchPermission(permission, matcher));
 }
 
 export function hasRole(identity: Pick<AccessIdentity, "role">, role: string) {

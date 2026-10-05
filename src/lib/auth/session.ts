@@ -9,7 +9,8 @@ import {
   type ModuleCode,
 } from "@/lib/config/app";
 import { canAccessPath, defaultHomeFor } from "@/lib/auth/access";
-import { isOwnerRole } from "@/lib/auth/rbac";
+import { hasPermission, isOwnerRole } from "@/lib/auth/rbac";
+import { resolveEffectiveAccess } from "@/lib/auth/effective-access";
 import { identityFromAppMetadata } from "@/lib/auth/identity-from-claims";
 import { roleDefinition } from "@/lib/auth/role-options";
 import { identityFromUser, type AuthUser } from "@/lib/auth/types";
@@ -141,9 +142,6 @@ async function hydrateAuthUser(user: User, options?: { skipProfile?: boolean }) 
     profile = await bootstrapOwnerProfile(user);
   }
 
-  const fromClaims = authUserFromClaims(user, profile);
-  if (fromClaims) return fromClaims;
-
   if (!profile) {
     return user.email ? legacyOwnerFromAuth(user) : null;
   }
@@ -152,10 +150,13 @@ async function hydrateAuthUser(user: User, options?: { skipProfile?: boolean }) 
 
   const full = await findProfileByAuthId(user.id);
   if (!full) {
-    return user.email ? legacyOwnerFromAuth(user) : null;
+    return authUserFromClaims(user, profile) ?? (user.email ? legacyOwnerFromAuth(user) : null);
   }
 
-  const access = accessFromProfile(full);
+  const admin = createSupabaseAdminClient();
+  const resolved = admin ? await resolveEffectiveAccess(admin, full.id) : null;
+  const fallback = accessFromProfile(full);
+  const access = resolved ?? fallback;
   return {
     id: profile.id,
     authUid: user.id,
@@ -167,7 +168,9 @@ async function hydrateAuthUser(user: User, options?: { skipProfile?: boolean }) 
     roleCode: access.roleCode,
     roleName: access.roleName,
     modules: access.modules,
-    businessUnits: access.businessUnits,
+    businessUnits: resolved
+      ? resolved.moduleRoles.map((unit) => ({ code: unit.businessUnitCode, name: unit.businessUnitName }))
+      : fallback.businessUnits,
     permissions: access.permissions,
     isActive: profile.is_active,
     sessionId: user.id,
@@ -263,7 +266,7 @@ export async function requireVerifiedOwner() {
 
 export async function requirePermission(permission: string) {
   const user = await requireAuth();
-  if (isOwnerRole(user.roleCode) || user.permissions.includes(permission) || user.permissions.includes("*")) {
+  if (hasPermission(identityFromUser(user), permission)) {
     return user;
   }
   redirect("/forbidden");
@@ -271,9 +274,7 @@ export async function requirePermission(permission: string) {
 }
 
 export function userCan(user: AuthUser, permission: string) {
-  if (isOwnerRole(user.roleCode)) return true;
-  if (user.permissions.includes("*")) return true;
-  return user.permissions.includes(permission);
+  return hasPermission(identityFromUser(user), permission);
 }
 
 export { defaultHomeFor };
