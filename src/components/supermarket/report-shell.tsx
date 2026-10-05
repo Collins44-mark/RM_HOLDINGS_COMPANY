@@ -11,7 +11,7 @@ import {
 } from "@/lib/data/sample-supermarket-reports";
 import type { SalesDateRange, SalesPeriodPreset } from "@/lib/data/sample-supermarket-sales";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
-import { primaryButton } from "@/components/supermarket/purchasing-ui";
+import { primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 
 export const reportGlass =
@@ -237,30 +237,82 @@ export function StatusPill({ value }: { value: string }) {
   );
 }
 
-/** Shared first-paint loading chrome so the report shell mounts before data resolves. */
-export function ReportLoadingChrome({
-  title,
-  subtitle,
-  embedded = false,
+export function ReportSkeletonBar({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn("inline-block h-3.5 animate-pulse rounded-md bg-slate-200/85", className)}
+      aria-hidden
+    />
+  );
+}
+
+export function ReportSkeletonTableRows({
+  rows = 5,
+  cols,
 }: {
-  title: string;
-  subtitle: string;
-  embedded?: boolean;
+  rows?: number;
+  cols: number;
 }) {
   return (
+    <>
+      {Array.from({ length: rows }, (_, row) => (
+        <tr key={row} className="border-t border-[#e8eef5]">
+          {Array.from({ length: cols }, (_, col) => (
+            <td key={col} className="px-3 py-3 sm:px-4">
+              <ReportSkeletonBar className={col === 0 ? "w-[58%]" : "ml-auto w-[44%]"} />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  );
+}
+
+export function ReportLoadError({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        reportGlass,
+        "flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5",
+      )}
+    >
+      <p className="text-[13px] text-[#c45b66]">{message}</p>
+      {onRetry ? (
+        <button type="button" onClick={onRetry} className={cn(secondaryButton, "h-9 shrink-0")}>
+          Retry
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** Brief Suspense fallback — report structure, no blocking copy. */
+export function ReportMountFallback() {
+  return (
     <div className="min-w-0 max-w-full space-y-4 pb-10 sm:space-y-5">
-      <header className="min-w-0">
-        <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[28px]">{title}</h1>
-        <p className="mt-1.5 text-[13.5px] text-slate-500">{subtitle}</p>
-      </header>
-      <div
-        className={cn(
-          reportGlass,
-          "px-5 py-10 text-center text-[13.5px] text-slate-500",
-          embedded ? "" : "",
-        )}
-      >
-        Loading report data…
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => (
+          <div key={index} className={cn(reportGlass, "px-4 py-4 sm:px-5")}>
+            <ReportSkeletonBar className="h-3 w-24" />
+            <ReportSkeletonBar className="mt-4 h-7 w-32" />
+          </div>
+        ))}
+      </div>
+      <div className={cn(reportGlass, "overflow-hidden")}>
+        <div className="px-4 py-4 sm:px-5">
+          <ReportSkeletonBar className="h-4 w-40" />
+        </div>
+        <table className="w-full text-left">
+          <tbody>
+            <ReportSkeletonTableRows rows={4} cols={4} />
+          </tbody>
+        </table>
       </div>
     </div>
   );

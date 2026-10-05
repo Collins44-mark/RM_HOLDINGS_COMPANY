@@ -12,7 +12,7 @@ import {
 import { fetchProfitLossReportAction } from "@/actions/supermarket/reports";
 import { useLiveReport } from "@/lib/supermarket/use-live-report";
 import { downloadProfitLossReportPdfFromData } from "@/lib/data/supermarket-reports-pdf";
-import { useReportPeriod, type ControlledReportPeriod, ReportLoadingChrome } from "@/components/supermarket/report-shell";
+import { useReportPeriod, type ControlledReportPeriod, ReportLoadError, ReportSkeletonBar, ReportSkeletonTableRows } from "@/components/supermarket/report-shell";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 
 const glass =
@@ -71,20 +71,33 @@ function SummaryCard({
   delta,
   comparisonLabel,
   invert,
+  pending,
 }: {
   label: string;
   value: string;
   delta: number;
   comparisonLabel: string;
   invert?: boolean;
+  pending?: boolean;
 }) {
   return (
     <article className={cn(glass, "min-w-0 px-4 py-4 sm:px-5")}>
       <p className="text-[12.5px] font-medium text-slate-500">{label}</p>
-      <p className="mt-3 truncate text-[22px] font-semibold tracking-[-0.04em] text-navy sm:text-[24px]">
-        {value}
-      </p>
-      <TrendBadge value={delta} label={comparisonLabel} invert={invert} />
+      {pending ? (
+        <>
+          <p className="mt-3">
+            <ReportSkeletonBar className="h-7 w-32" />
+          </p>
+          <ReportSkeletonBar className="mt-3 h-4 w-24 rounded-full" />
+        </>
+      ) : (
+        <>
+          <p className="mt-3 truncate text-[22px] font-semibold tracking-[-0.04em] text-navy sm:text-[24px]">
+            {value}
+          </p>
+          <TrendBadge value={delta} label={comparisonLabel} invert={invert} />
+        </>
+      )}
     </article>
   );
 }
@@ -151,38 +164,27 @@ export function ProfitLossReportDetail({
     [branch, reportType],
   );
 
-  const { data, error, loading } = useLiveReport(fetchProfitLossReportAction, preset, range, filters);
-  if (loading && !data) {
-    return (
-      <ReportLoadingChrome
-        embedded={embedded}
-        title="Profit & Loss Report"
-        subtitle="Revenue, expenses and profitability for the selected period."
-      />
-    );
-  }
-  if (error || !data) {
-    return <p className="px-1 py-8 text-[13px] text-[#c45b66]">{error || "Unable to load profit & loss."}</p>;
-  }
-
+  const { data, error, loading, reload } = useLiveReport(fetchProfitLossReportAction, preset, range, filters);
+  const pending = loading;
+  const failed = Boolean(error) && !pending;
 
   const summaryRows = [
-    { label: "Revenue", amount: data.revenue, highlight: false as const },
-    { label: "Cost of Goods Sold", amount: data.costOfGoodsSold, highlight: false as const },
-    { label: "Gross Profit", amount: data.grossProfit, highlight: "profit" as const },
-    { label: "Operating Expenses", amount: data.operatingExpenses, highlight: false as const },
-    { label: "Other Income", amount: data.otherIncome, highlight: false as const },
-    { label: "Other Expenses", amount: data.inventoryLoss, highlight: false as const },
-    { label: "Net Profit", amount: data.netProfit, highlight: "profit" as const },
+    { label: "Revenue", amount: data?.revenue, highlight: false as const },
+    { label: "Cost of Goods Sold", amount: data?.costOfGoodsSold, highlight: false as const },
+    { label: "Gross Profit", amount: data?.grossProfit, highlight: "profit" as const },
+    { label: "Operating Expenses", amount: data?.operatingExpenses, highlight: false as const },
+    { label: "Other Income", amount: data?.otherIncome, highlight: false as const },
+    { label: "Other Expenses", amount: data?.inventoryLoss, highlight: false as const },
+    { label: "Net Profit", amount: data?.netProfit, highlight: "profit" as const },
   ];
 
   const profitabilityRows = [
-    { label: "Gross Margin", value: `${data.grossMargin}%` },
-    { label: "Net Margin", value: `${data.netMargin}%` },
-    { label: "Operating Expense Ratio", value: `${data.operatingExpenseRatio}%` },
-    { label: "Inventory Turnover", value: `${data.inventoryTurnover}x` },
-    { label: "Average Order Value", value: formatAmount(data.averageOrderValue) },
-    { label: "Break-even Sales", value: formatAmount(data.breakEvenSales) },
+    { label: "Gross Margin", value: data ? `${data.grossMargin}%` : "—" },
+    { label: "Net Margin", value: data ? `${data.netMargin}%` : "—" },
+    { label: "Operating Expense Ratio", value: data ? `${data.operatingExpenseRatio}%` : "—" },
+    { label: "Inventory Turnover", value: data ? `${data.inventoryTurnover}x` : "—" },
+    { label: "Average Order Value", value: data ? formatAmount(data.averageOrderValue) : "—" },
+    { label: "Break-even Sales", value: data ? formatAmount(data.breakEvenSales) : "—" },
   ];
 
   function resetFilters() {
@@ -217,8 +219,9 @@ export function ProfitLossReportDetail({
           ) : null}
           <button
             type="button"
-            onClick={() => downloadProfitLossReportPdfFromData(data)}
-            className={cn(primaryButton, "w-full shrink-0 sm:w-auto")}
+            disabled={!data}
+            onClick={() => data && downloadProfitLossReportPdfFromData(data)}
+            className={cn(primaryButton, "w-full shrink-0 sm:w-auto disabled:opacity-40")}
           >
             <Download className="h-3.5 w-3.5" strokeWidth={2} />
             Export
@@ -226,31 +229,39 @@ export function ProfitLossReportDetail({
         </div>
       </header>
 
+      {failed ? (
+        <ReportLoadError message={error || "Unable to load report data."} onRetry={reload} />
+      ) : null}
+
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
           label="Revenue"
-          value={formatTzs(data.revenue)}
-          delta={data.deltas.revenue}
-          comparisonLabel={data.comparisonLabel}
+          value={data ? formatTzs(data.revenue) : "TZS ———"}
+          delta={data?.deltas.revenue ?? 0}
+          comparisonLabel={data?.comparisonLabel ?? ""}
+          pending={pending}
         />
         <SummaryCard
           label="Cost of Goods Sold"
-          value={formatTzs(data.costOfGoodsSold)}
-          delta={data.deltas.cogs}
-          comparisonLabel={data.comparisonLabel}
+          value={data ? formatTzs(data.costOfGoodsSold) : "TZS ———"}
+          delta={data?.deltas.cogs ?? 0}
+          comparisonLabel={data?.comparisonLabel ?? ""}
+          pending={pending}
         />
         <SummaryCard
           label="Gross Profit"
-          value={formatTzs(data.grossProfit)}
-          delta={data.deltas.grossProfit}
-          comparisonLabel={data.comparisonLabel}
+          value={data ? formatTzs(data.grossProfit) : "TZS ———"}
+          delta={data?.deltas.grossProfit ?? 0}
+          comparisonLabel={data?.comparisonLabel ?? ""}
+          pending={pending}
         />
         <SummaryCard
           label="Operating Expenses"
-          value={formatTzs(data.operatingExpenses)}
-          delta={data.deltas.operatingExpenses}
-          comparisonLabel={data.comparisonLabel}
+          value={data ? formatTzs(data.operatingExpenses) : "TZS ———"}
+          delta={data?.deltas.operatingExpenses ?? 0}
+          comparisonLabel={data?.comparisonLabel ?? ""}
           invert
+          pending={pending}
         />
       </section>
 
@@ -268,7 +279,8 @@ export function ProfitLossReportDetail({
                 />
                 <input
                   readOnly
-                  value={data.periodDates}
+                  value={pending ? "" : data?.periodDates ?? ""}
+                  placeholder={pending ? "——" : undefined}
                   className="h-10 w-full rounded-[12px] border border-[#dbe3ee] bg-white pl-9 pr-3 text-[13px] text-navy outline-none"
                 />
               </span>
@@ -315,7 +327,10 @@ export function ProfitLossReportDetail({
               </tr>
             </thead>
             <tbody>
-              {summaryRows.map((row) => (
+              {pending ? (
+                <ReportSkeletonTableRows rows={7} cols={2} />
+              ) : (
+                summaryRows.map((row) => (
                 <tr
                   key={row.label}
                   className={cn(
@@ -341,10 +356,11 @@ export function ProfitLossReportDetail({
                         : "font-medium text-navy",
                     )}
                   >
-                    {formatAmount(row.amount)}
+                    {row.amount == null ? "—" : formatAmount(row.amount)}
                   </td>
                 </tr>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </div>
@@ -371,7 +387,11 @@ export function ProfitLossReportDetail({
                 </tr>
               </thead>
               <tbody>
-                {data.topOperatingExpenses.map((row, index) => (
+                {pending ? (
+                  <ReportSkeletonTableRows rows={4} cols={4} />
+                ) : (
+                  <>
+                {(data?.topOperatingExpenses ?? []).map((row, index) => (
                   <tr key={row.category} className="border-t border-[#eef2f7]">
                     <td className="px-4 py-3 text-slate-400 sm:px-5">{index + 1}</td>
                     <td className="px-3 py-3 font-medium text-navy">{row.category}</td>
@@ -383,6 +403,7 @@ export function ProfitLossReportDetail({
                     </td>
                   </tr>
                 ))}
+                {data ? (
                 <tr className="border-t border-[#e8eef5] bg-[#f8fafc]/50">
                   <td className="px-4 py-3.5 sm:px-5" colSpan={2}>
                     <span className="font-semibold text-navy">Total</span>
@@ -394,6 +415,9 @@ export function ProfitLossReportDetail({
                     100%
                   </td>
                 </tr>
+                ) : null}
+                  </>
+                )}
               </tbody>
             </table>
           </div>
@@ -417,14 +441,18 @@ export function ProfitLossReportDetail({
                 </tr>
               </thead>
               <tbody>
-                {profitabilityRows.map((row) => (
+                {pending ? (
+                  <ReportSkeletonTableRows rows={6} cols={2} />
+                ) : (
+                  profitabilityRows.map((row) => (
                   <tr key={row.label} className="border-t border-[#eef2f7]">
                     <td className="px-4 py-3.5 font-medium text-navy sm:px-5">{row.label}</td>
                     <td className="px-4 py-3.5 text-right font-semibold tabular-nums text-navy sm:px-5">
                       {row.value}
                     </td>
                   </tr>
-                ))}
+                ))
+                )}
               </tbody>
             </table>
           </div>

@@ -11,7 +11,7 @@ import {
   type InventoryReportFilters,
 } from "@/lib/data/sample-supermarket-reports";
 import { downloadInventoryReportPdfFromData } from "@/lib/data/supermarket-reports-pdf";
-import { useReportPeriod, type ControlledReportPeriod, ReportLoadingChrome } from "@/components/supermarket/report-shell";
+import { useReportPeriod, type ControlledReportPeriod, ReportLoadError, ReportSkeletonBar, ReportSkeletonTableRows } from "@/components/supermarket/report-shell";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 import { fetchInventoryReportAction } from "@/actions/supermarket/reports";
 import { useLiveReport } from "@/lib/supermarket/use-live-report";
@@ -80,6 +80,7 @@ function SummaryCard({
   delta,
   comparisonLabel,
   invert,
+  pending,
   icon: Icon,
 }: {
   label: string;
@@ -87,6 +88,7 @@ function SummaryCard({
   delta: number;
   comparisonLabel: string;
   invert?: boolean;
+  pending?: boolean;
   icon: typeof Package;
 }) {
   return (
@@ -97,10 +99,21 @@ function SummaryCard({
           <Icon className="h-3.5 w-3.5" strokeWidth={1.9} />
         </span>
       </div>
-      <p className="mt-3 truncate text-[22px] font-semibold tracking-[-0.04em] text-navy sm:text-[24px]">
-        {value}
-      </p>
-      <TrendBadge value={delta} label={comparisonLabel} invert={invert} />
+      {pending ? (
+        <>
+          <p className="mt-3">
+            <ReportSkeletonBar className="h-7 w-28" />
+          </p>
+          <ReportSkeletonBar className="mt-3 h-4 w-24 rounded-full" />
+        </>
+      ) : (
+        <>
+          <p className="mt-3 truncate text-[22px] font-semibold tracking-[-0.04em] text-navy sm:text-[24px]">
+            {value}
+          </p>
+          <TrendBadge value={delta} label={comparisonLabel} invert={invert} />
+        </>
+      )}
     </article>
   );
 }
@@ -164,7 +177,9 @@ export function InventoryReportDetail({
     [category, status],
   );
 
-  const { data, error, loading } = useLiveReport(fetchInventoryReportAction, preset, range, filters);
+  const { data, error, loading, reload } = useLiveReport(fetchInventoryReportAction, preset, range, filters);
+  const pending = loading;
+  const failed = Boolean(error) && !pending;
 
   const valuationRows = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -177,19 +192,6 @@ export function InventoryReportDetail({
     setCategory("all");
     setStatus("all");
     setSearch("");
-  }
-
-  if (loading && !data) {
-    return (
-      <ReportLoadingChrome
-        embedded={embedded}
-        title="Inventory Report"
-        subtitle="Stock levels, movement and valuation for the selected period."
-      />
-    );
-  }
-  if (error || !data) {
-    return <p className="px-1 py-8 text-[13px] text-[#c45b66]">{error || "Unable to load inventory report."}</p>;
   }
 
   return (
@@ -224,8 +226,9 @@ export function InventoryReportDetail({
           ) : null}
           <button
             type="button"
-            onClick={() => downloadInventoryReportPdfFromData(data)}
-            className={cn(primaryButton, "w-full shrink-0 sm:w-auto")}
+            disabled={!data}
+            onClick={() => data && downloadInventoryReportPdfFromData(data)}
+            className={cn(primaryButton, "w-full shrink-0 sm:w-auto disabled:opacity-40")}
           >
             <Download className="h-3.5 w-3.5" strokeWidth={2} />
             Export
@@ -233,35 +236,43 @@ export function InventoryReportDetail({
         </div>
       </header>
 
+      {failed ? (
+        <ReportLoadError message={error || "Unable to load report data."} onRetry={reload} />
+      ) : null}
+
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
           label="Total Products"
-          value={data.totalProducts.toLocaleString("en-US")}
-          delta={data.deltas.products}
-          comparisonLabel={data.comparisonLabel}
+          value={data ? data.totalProducts.toLocaleString("en-US") : "———"}
+          delta={data?.deltas.products ?? 0}
+          comparisonLabel={data?.comparisonLabel ?? ""}
           icon={Package}
+          pending={pending}
         />
         <SummaryCard
           label="Total Stock Units"
-          value={data.totalStockUnits.toLocaleString("en-US")}
-          delta={data.deltas.stockUnits}
-          comparisonLabel={data.comparisonLabel}
+          value={data ? data.totalStockUnits.toLocaleString("en-US") : "———"}
+          delta={data?.deltas.stockUnits ?? 0}
+          comparisonLabel={data?.comparisonLabel ?? ""}
           icon={Boxes}
+          pending={pending}
         />
         <SummaryCard
           label="Inventory Value"
-          value={formatTzs(data.totalInventoryValue)}
-          delta={data.deltas.inventoryValue}
-          comparisonLabel={data.comparisonLabel}
+          value={data ? formatTzs(data.totalInventoryValue) : "TZS ———"}
+          delta={data?.deltas.inventoryValue ?? 0}
+          comparisonLabel={data?.comparisonLabel ?? ""}
           icon={Wallet}
+          pending={pending}
         />
         <SummaryCard
           label="Low Stock Items"
-          value={data.lowStock.toLocaleString("en-US")}
-          delta={data.deltas.lowStock}
-          comparisonLabel={data.comparisonLabel}
+          value={data ? data.lowStock.toLocaleString("en-US") : "———"}
+          delta={data?.deltas.lowStock ?? 0}
+          comparisonLabel={data?.comparisonLabel ?? ""}
           invert
           icon={TriangleAlert}
+          pending={pending}
         />
       </section>
 
@@ -315,7 +326,10 @@ export function InventoryReportDetail({
                 </tr>
               </thead>
               <tbody>
-                {data.movements.map((row) => (
+                {pending ? (
+                  <ReportSkeletonTableRows rows={4} cols={3} />
+                ) : (
+                  (data?.movements ?? []).map((row) => (
                   <tr key={row.label} className="border-t border-[#e8eef5]">
                     <td className="px-4 py-3 font-medium text-navy sm:px-5">{row.label}</td>
                     <td className="px-3 py-3 text-slate-500">{row.count.toLocaleString("en-US")}</td>
@@ -323,7 +337,8 @@ export function InventoryReportDetail({
                       {row.quantity.toLocaleString("en-US")}
                     </td>
                   </tr>
-                ))}
+                ))
+                )}
               </tbody>
             </table>
           </div>
@@ -343,22 +358,26 @@ export function InventoryReportDetail({
                 </tr>
               </thead>
               <tbody>
-                {[
-                  { metric: "Total Products", value: data.totalProducts.toLocaleString("en-US") },
-                  { metric: "Total Stock Units", value: data.totalStockUnits.toLocaleString("en-US") },
+                {pending ? (
+                  <ReportSkeletonTableRows rows={6} cols={2} />
+                ) : (
+                  [
+                  { metric: "Total Products", value: data?.totalProducts.toLocaleString("en-US") ?? "—" },
+                  { metric: "Total Stock Units", value: data?.totalStockUnits.toLocaleString("en-US") ?? "—" },
                   {
                     metric: "Inventory Value (TZS)",
-                    value: data.totalInventoryValue.toLocaleString("en-US"),
+                    value: data?.totalInventoryValue.toLocaleString("en-US") ?? "—",
                   },
-                  { metric: "Low Stock Items", value: data.lowStock.toLocaleString("en-US") },
-                  { metric: "Expiring Soon", value: data.expiringSoon.toLocaleString("en-US") },
-                  { metric: "Expired Items", value: data.expiredItems.toLocaleString("en-US") },
+                  { metric: "Low Stock Items", value: data?.lowStock.toLocaleString("en-US") ?? "—" },
+                  { metric: "Expiring Soon", value: data?.expiringSoon.toLocaleString("en-US") ?? "—" },
+                  { metric: "Expired Items", value: data?.expiredItems.toLocaleString("en-US") ?? "—" },
                 ].map((row) => (
                   <tr key={row.metric} className="border-t border-[#e8eef5]">
                     <td className="px-4 py-3 text-slate-600 sm:px-5">{row.metric}</td>
                     <td className="px-4 py-3 text-right font-semibold text-navy sm:px-5">{row.value}</td>
                   </tr>
-                ))}
+                ))
+                )}
               </tbody>
             </table>
           </div>
@@ -398,6 +417,10 @@ export function InventoryReportDetail({
               </tr>
             </thead>
             <tbody>
+              {pending ? (
+                <ReportSkeletonTableRows rows={6} cols={6} />
+              ) : (
+                <>
               {valuationRows.map((row, index) => (
                 <tr key={row.name} className="border-t border-[#e8eef5]">
                   <td className="px-4 py-3 text-slate-400 sm:px-5">{index + 1}</td>
@@ -410,19 +433,28 @@ export function InventoryReportDetail({
                   </td>
                 </tr>
               ))}
-              {valuationRows.length === 0 ? (
+              {valuationRows.length === 0 && !failed ? (
                 <tr>
                   <td colSpan={6} className="px-5 py-10 text-center text-slate-500">
                     No products match the current filters.
                   </td>
                 </tr>
               ) : null}
+                </>
+              )}
             </tbody>
           </table>
         </div>
 
         <ul className="space-y-2 px-4 pb-4 md:hidden">
-          {valuationRows.map((row, index) => (
+          {pending
+            ? Array.from({ length: 4 }, (_, index) => (
+                <li key={index} className="rounded-[14px] border border-[#e6ebf2] bg-white/70 px-3.5 py-3">
+                  <ReportSkeletonBar className="h-4 w-40" />
+                  <ReportSkeletonBar className="mt-2 h-3 w-24" />
+                </li>
+              ))
+            : valuationRows.map((row, index) => (
             <li key={row.name} className="rounded-[14px] border border-[#e6ebf2] bg-white/70 px-3.5 py-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">

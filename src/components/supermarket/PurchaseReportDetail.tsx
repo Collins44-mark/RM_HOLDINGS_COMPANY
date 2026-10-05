@@ -10,7 +10,7 @@ import {
   type PurchaseReportFilters,
 } from "@/lib/data/sample-supermarket-reports";
 import { downloadPurchaseReportPdfFromData } from "@/lib/data/supermarket-reports-pdf";
-import { useReportPeriod, type ControlledReportPeriod, ReportLoadingChrome } from "@/components/supermarket/report-shell";
+import { useReportPeriod, type ControlledReportPeriod, ReportLoadError, ReportSkeletonBar, ReportSkeletonTableRows } from "@/components/supermarket/report-shell";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 import { fetchPurchaseReportAction } from "@/actions/supermarket/reports";
 import { useLiveReport } from "@/lib/supermarket/use-live-report";
@@ -83,20 +83,33 @@ function SummaryCard({
   delta,
   comparisonLabel,
   invert,
+  pending,
 }: {
   label: string;
   value: string;
   delta: number;
   comparisonLabel: string;
   invert?: boolean;
+  pending?: boolean;
 }) {
   return (
     <article className={cn(glass, "min-w-0 px-4 py-4 sm:px-5")}>
       <p className="text-[12.5px] font-medium text-slate-500">{label}</p>
-      <p className="mt-3 truncate text-[22px] font-semibold tracking-[-0.04em] text-navy sm:text-[24px]">
-        {value}
-      </p>
-      <TrendBadge value={delta} label={comparisonLabel} invert={invert} />
+      {pending ? (
+        <>
+          <p className="mt-3">
+            <ReportSkeletonBar className="h-7 w-32" />
+          </p>
+          <ReportSkeletonBar className="mt-3 h-4 w-24 rounded-full" />
+        </>
+      ) : (
+        <>
+          <p className="mt-3 truncate text-[22px] font-semibold tracking-[-0.04em] text-navy sm:text-[24px]">
+            {value}
+          </p>
+          <TrendBadge value={delta} label={comparisonLabel} invert={invert} />
+        </>
+      )}
     </article>
   );
 }
@@ -170,7 +183,9 @@ export function PurchaseReportDetail({
   );
 
   const inventory = useSupermarketInventory({ purchasing: true });
-  const { data, error, loading } = useLiveReport(fetchPurchaseReportAction, preset, range, filters);
+  const { data, error, loading, reload } = useLiveReport(fetchPurchaseReportAction, preset, range, filters);
+  const pending = loading;
+  const failed = Boolean(error) && !pending;
 
   const purchaseRows = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -188,19 +203,6 @@ export function PurchaseReportDetail({
   const supplierTotal = (data?.suppliers ?? []).reduce((sum, row) => sum + row.purchases, 0);
   const paymentAmountTotal = (data?.paymentStatusSummary ?? []).reduce((sum, row) => sum + row.amount, 0);
   const paymentCountTotal = (data?.paymentStatusSummary ?? []).reduce((sum, row) => sum + row.count, 0);
-
-  if (loading && !data) {
-    return (
-      <ReportLoadingChrome
-        embedded={embedded}
-        title="Purchase Report"
-        subtitle="Purchase summary and supplier-wise details for the selected period."
-      />
-    );
-  }
-  if (error || !data) {
-    return <p className="px-1 py-8 text-[13px] text-[#c45b66]">{error || "Unable to load purchase report."}</p>;
-  }
 
   function resetFilters() {
     setSupplier("all");
@@ -235,8 +237,9 @@ export function PurchaseReportDetail({
           ) : null}
           <button
             type="button"
-            onClick={() => downloadPurchaseReportPdfFromData(data)}
-            className={cn(primaryButton, "w-full shrink-0 sm:w-auto")}
+            disabled={!data}
+            onClick={() => data && downloadPurchaseReportPdfFromData(data)}
+            className={cn(primaryButton, "w-full shrink-0 sm:w-auto disabled:opacity-40")}
           >
             <Download className="h-3.5 w-3.5" strokeWidth={2} />
             Export
@@ -244,31 +247,39 @@ export function PurchaseReportDetail({
         </div>
       </header>
 
+      {failed ? (
+        <ReportLoadError message={error || "Unable to load report data."} onRetry={reload} />
+      ) : null}
+
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
           label="Total Purchases (TZS)"
-          value={formatTzs(data.totalPurchases)}
-          delta={data.deltas.purchases}
-          comparisonLabel={data.comparisonLabel}
+          value={data ? formatTzs(data.totalPurchases) : "TZS ———"}
+          delta={data?.deltas.purchases ?? 0}
+          comparisonLabel={data?.comparisonLabel ?? ""}
+          pending={pending}
         />
         <SummaryCard
           label="Purchase Orders"
-          value={data.purchaseCount.toLocaleString("en-US")}
-          delta={data.deltas.orders}
-          comparisonLabel={data.comparisonLabel}
+          value={data ? data.purchaseCount.toLocaleString("en-US") : "———"}
+          delta={data?.deltas.orders ?? 0}
+          comparisonLabel={data?.comparisonLabel ?? ""}
+          pending={pending}
         />
         <SummaryCard
           label="Items Purchased"
-          value={data.itemsPurchased.toLocaleString("en-US")}
-          delta={data.deltas.items}
-          comparisonLabel={data.comparisonLabel}
+          value={data ? data.itemsPurchased.toLocaleString("en-US") : "———"}
+          delta={data?.deltas.items ?? 0}
+          comparisonLabel={data?.comparisonLabel ?? ""}
+          pending={pending}
         />
         <SummaryCard
           label="Outstanding (TZS)"
-          value={formatTzs(data.outstanding)}
-          delta={data.deltas.outstanding}
-          comparisonLabel={data.comparisonLabel}
+          value={data ? formatTzs(data.outstanding) : "TZS ———"}
+          delta={data?.deltas.outstanding ?? 0}
+          comparisonLabel={data?.comparisonLabel ?? ""}
           invert
+          pending={pending}
         />
       </section>
 
@@ -296,7 +307,8 @@ export function PurchaseReportDetail({
                 />
                 <input
                   readOnly
-                  value={data.periodDates}
+                  value={pending ? "" : data?.periodDates ?? ""}
+                  placeholder={pending ? "——" : undefined}
                   className="h-10 w-full rounded-[12px] border border-[#dbe3ee] bg-white pl-9 pr-3 text-[13px] text-navy outline-none"
                 />
               </span>
@@ -327,16 +339,31 @@ export function PurchaseReportDetail({
         </div>
         <div className="grid grid-cols-1 gap-0 border-t border-[#e8eef5] px-4 py-2 sm:grid-cols-2 sm:gap-8 sm:px-5 sm:py-3">
           <div>
-            <MetricRow label="Total Purchases (TZS)" value={data.totalPurchases.toLocaleString("en-US")} />
-            <MetricRow label="Purchase Orders" value={data.purchaseCount.toLocaleString("en-US")} />
-            <MetricRow label="Items Purchased" value={data.itemsPurchased.toLocaleString("en-US")} />
+            <MetricRow
+              label="Total Purchases (TZS)"
+              value={pending ? "——" : (data?.totalPurchases.toLocaleString("en-US") ?? "—")}
+            />
+            <MetricRow
+              label="Purchase Orders"
+              value={pending ? "——" : (data?.purchaseCount.toLocaleString("en-US") ?? "—")}
+            />
+            <MetricRow
+              label="Items Purchased"
+              value={pending ? "——" : (data?.itemsPurchased.toLocaleString("en-US") ?? "—")}
+            />
           </div>
           <div>
-            <MetricRow label="Outstanding (TZS)" value={data.outstanding.toLocaleString("en-US")} />
-            <MetricRow label="Suppliers" value={data.supplierCount.toLocaleString("en-US")} />
+            <MetricRow
+              label="Outstanding (TZS)"
+              value={pending ? "——" : (data?.outstanding.toLocaleString("en-US") ?? "—")}
+            />
+            <MetricRow
+              label="Suppliers"
+              value={pending ? "——" : (data?.supplierCount.toLocaleString("en-US") ?? "—")}
+            />
             <MetricRow
               label="Average Order Value (TZS)"
-              value={data.averageOrderValue.toLocaleString("en-US")}
+              value={pending ? "——" : (data?.averageOrderValue.toLocaleString("en-US") ?? "—")}
             />
           </div>
         </div>
@@ -379,6 +406,10 @@ export function PurchaseReportDetail({
               </tr>
             </thead>
             <tbody>
+              {pending ? (
+                <ReportSkeletonTableRows rows={5} cols={8} />
+              ) : (
+                <>
               {purchaseRows.map((row, index) => (
                 <tr key={row.number} className="border-t border-[#e8eef5]">
                   <td className="px-4 py-3 text-slate-400 sm:px-5">{index + 1}</td>
@@ -397,19 +428,28 @@ export function PurchaseReportDetail({
                   </td>
                 </tr>
               ))}
-              {purchaseRows.length === 0 ? (
+              {purchaseRows.length === 0 && !failed ? (
                 <tr>
                   <td colSpan={8} className="px-5 py-10 text-center text-slate-500">
                     No purchases match the current filters.
                   </td>
                 </tr>
               ) : null}
+                </>
+              )}
             </tbody>
           </table>
         </div>
 
         <ul className="space-y-2 px-4 pb-4 md:hidden">
-          {purchaseRows.map((row, index) => (
+          {pending
+            ? Array.from({ length: 4 }, (_, index) => (
+                <li key={index} className="rounded-[14px] border border-[#e6ebf2] bg-white/70 px-3.5 py-3">
+                  <ReportSkeletonBar className="h-4 w-40" />
+                  <ReportSkeletonBar className="mt-2 h-3 w-28" />
+                </li>
+              ))
+            : purchaseRows.map((row, index) => (
             <li key={row.number} className="rounded-[14px] border border-[#e6ebf2] bg-white/70 px-3.5 py-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -448,7 +488,11 @@ export function PurchaseReportDetail({
                 </tr>
               </thead>
               <tbody>
-                {data.suppliers.map((row, index) => (
+                {pending ? (
+                  <ReportSkeletonTableRows rows={4} cols={3} />
+                ) : (
+                  <>
+                {(data?.suppliers ?? []).map((row, index) => (
                   <tr key={row.name} className="border-t border-[#e8eef5]">
                     <td className="px-4 py-3 text-slate-400 sm:px-5">{index + 1}</td>
                     <td className="px-3 py-3 font-medium text-navy">{row.name}</td>
@@ -457,7 +501,7 @@ export function PurchaseReportDetail({
                     </td>
                   </tr>
                 ))}
-                {data.suppliers.length > 0 ? (
+                {(data?.suppliers.length ?? 0) > 0 ? (
                   <tr className="border-t border-[#e8eef5] bg-[#f7f9fc]/80">
                     <td className="px-4 py-3 sm:px-5" colSpan={2}>
                       <span className="font-semibold text-navy">Total</span>
@@ -466,12 +510,14 @@ export function PurchaseReportDetail({
                       {supplierTotal.toLocaleString("en-US")}
                     </td>
                   </tr>
-                ) : (
+                ) : !pending && !failed ? (
                   <tr>
                     <td colSpan={3} className="px-5 py-8 text-center text-slate-500">
                       No supplier purchases in this period.
                     </td>
                   </tr>
+                ) : null}
+                  </>
                 )}
               </tbody>
             </table>
@@ -494,7 +540,11 @@ export function PurchaseReportDetail({
                 </tr>
               </thead>
               <tbody>
-                {data.paymentStatusSummary.map((row) => (
+                {pending ? (
+                  <ReportSkeletonTableRows rows={4} cols={4} />
+                ) : (
+                  <>
+                {(data?.paymentStatusSummary ?? []).map((row) => (
                   <tr key={row.status} className="border-t border-[#e8eef5]">
                     <td className="px-4 py-3 sm:px-5">
                       <StatusPill value={row.status} />
@@ -510,7 +560,7 @@ export function PurchaseReportDetail({
                     </td>
                   </tr>
                 ))}
-                {data.paymentStatusSummary.length > 0 ? (
+                {(data?.paymentStatusSummary.length ?? 0) > 0 ? (
                   <tr className="border-t border-[#e8eef5] bg-[#f7f9fc]/80">
                     <td className="px-4 py-3 font-semibold text-navy sm:px-5">Total</td>
                     <td className="px-3 py-3 text-right font-semibold tabular-nums text-navy">
@@ -521,12 +571,14 @@ export function PurchaseReportDetail({
                     </td>
                     <td className="px-4 py-3 text-right font-semibold text-navy sm:px-5">100%</td>
                   </tr>
-                ) : (
+                ) : !pending && !failed ? (
                   <tr>
                     <td colSpan={4} className="px-5 py-8 text-center text-slate-500">
                       No payment activity in this period.
                     </td>
                   </tr>
+                ) : null}
+                  </>
                 )}
               </tbody>
             </table>

@@ -5,7 +5,8 @@ import {
   GroupPerformanceReport,
 } from "@/components/reports/group/GroupReportPanels";
 import { EmbeddedSupermarketReport } from "@/components/reports/EmbeddedSupermarketReport";
-import { ReportEmptyState, ReportSurface } from "@/components/reports/report-ui";
+import { ReportEmptyState } from "@/components/reports/report-ui";
+import { ReportMountFallback } from "@/components/supermarket/report-shell";
 import type { ConsolidatedReport } from "@/lib/data/reports";
 import type { ReportPeriod } from "@/lib/data/report-period";
 import {
@@ -24,14 +25,6 @@ type Props = {
   showResult: boolean;
   consolidated: ConsolidatedReport | null;
 };
-
-function ReportLoading() {
-  return (
-    <ReportSurface className="px-6 py-14 text-center text-[13.5px] text-slate-500">
-      Loading report…
-    </ReportSurface>
-  );
-}
 
 export function ReportResultRouter({
   moduleId,
@@ -89,7 +82,7 @@ export function ReportResultRouter({
 
   if (moduleId === "supermarket") {
     return (
-      <Suspense fallback={<ReportLoading />}>
+      <Suspense fallback={<ReportMountFallback />}>
         <EmbeddedSupermarketReport
           reportId={reportId}
           period={period}

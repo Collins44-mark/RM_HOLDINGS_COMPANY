@@ -42,16 +42,17 @@ export function useLiveReport<TData, TFilters>(
     loaderRef.current = loader;
   });
 
+  const [reloadToken, setReloadToken] = useState(0);
   const rangeFrom = range.from;
   const rangeTo = range.to;
   const filtersKey = stableFiltersKey(filters);
-  const requestKey = `${preset}|${rangeFrom}|${rangeTo}|${filtersKey}`;
+  const requestKey = `${preset}|${rangeFrom}|${rangeTo}|${filtersKey}|${reloadToken}`;
   const latestKeyRef = useRef(requestKey);
 
   const loading = state.resolvedKey !== requestKey;
 
   useEffect(() => {
-    const key = `${preset}|${rangeFrom}|${rangeTo}|${filtersKey}`;
+    const key = `${preset}|${rangeFrom}|${rangeTo}|${filtersKey}|${reloadToken}`;
     latestKeyRef.current = key;
     const requestRange: SalesDateRange = { from: rangeFrom, to: rangeTo };
     const requestFilters = JSON.parse(filtersKey) as TFilters;
@@ -87,12 +88,13 @@ export function useLiveReport<TData, TFilters>(
         });
         if (isNextControlFlowError(err)) throw err;
       });
-  }, [preset, rangeFrom, rangeTo, filtersKey]);
+  }, [preset, rangeFrom, rangeTo, filtersKey, reloadToken]);
 
   return {
     data: state.resolvedKey === requestKey ? state.data : null,
     error: state.resolvedKey === requestKey ? state.error : null,
     loading,
+    reload: () => setReloadToken((token) => token + 1),
   };
 }
 
