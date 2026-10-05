@@ -1,16 +1,18 @@
 import { DateRangeSelector } from "@/components/finance/DateRangeSelector";
 import { ExportMenu } from "@/components/finance/ExportMenu";
-import type { UnitFinanceRow } from "@/lib/data/finance";
-import type { RevenuePeriod } from "@/lib/data/period";
+import type { FinanceTab, UnitFinanceRow } from "@/lib/data/finance";
+import type { ReportPeriod } from "@/lib/data/report-period";
 
 export function FinanceHeader({
   period,
   label,
+  tab,
   rows,
   totals,
 }: {
-  period: RevenuePeriod;
+  period: ReportPeriod;
   label: string;
+  tab: FinanceTab;
   rows: UnitFinanceRow[];
   totals: { revenue: number; expenses: number; operatingPosition: number; margin: number };
 }) {
@@ -20,7 +22,7 @@ export function FinanceHeader({
         Finance (Consolidated)
       </h1>
       <div className="flex flex-wrap items-center gap-2">
-        <DateRangeSelector period={period} label={label} />
+        <DateRangeSelector period={period} label={label} tab={tab} />
         <ExportMenu rows={rows} totals={totals} />
       </div>
     </div>

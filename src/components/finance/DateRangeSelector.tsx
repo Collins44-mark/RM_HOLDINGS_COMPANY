@@ -2,14 +2,17 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Calendar, ChevronDown } from "lucide-react";
-import { PERIOD_OPTIONS, type RevenuePeriod } from "@/lib/data/period";
+import { REPORT_PERIOD_OPTIONS, type ReportPeriod } from "@/lib/data/report-period";
+import type { FinanceTab } from "@/lib/data/finance";
 
 export function DateRangeSelector({
   period,
   label,
+  tab,
 }: {
-  period: RevenuePeriod;
+  period: ReportPeriod;
   label: string;
+  tab: FinanceTab;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -20,7 +23,10 @@ export function DateRangeSelector({
       if (!value) params.delete(key);
       else params.set(key, value);
     }
-    router.push(`?${params.toString()}`);
+    if (tab === "units") params.delete("tab");
+    else params.set("tab", tab);
+    const query = params.toString();
+    router.push(query ? `/owner/finance?${query}` : "/owner/finance");
   }
 
   return (
@@ -31,7 +37,7 @@ export function DateRangeSelector({
         <select
           value={period}
           onChange={(event) => {
-            const value = event.target.value;
+            const value = event.target.value as ReportPeriod;
             update({
               period: value,
               from: value === "custom" ? searchParams.get("from") ?? "" : undefined,
@@ -40,7 +46,7 @@ export function DateRangeSelector({
           }}
           className="h-12 appearance-none rounded-[12px] border border-black/8 bg-white py-2 pl-10 pr-10 text-[13.5px] font-medium text-navy outline-none transition duration-200 focus:border-[#c9d7f5] focus:ring-4 focus:ring-[#3a6fd4]/10"
         >
-          {PERIOD_OPTIONS.map((option) => (
+          {REPORT_PERIOD_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
               {option.value === period ? label : option.label}
             </option>

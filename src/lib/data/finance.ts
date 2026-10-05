@@ -96,6 +96,22 @@ export type FinanceDelta = {
 
 export type FinanceTab = "units" | "trend" | "category";
 
+export type FinanceTrendRow = {
+  period: string;
+  revenue: number;
+  cogs: number;
+  expenses: number;
+  operatingPosition: number;
+  margin: number;
+};
+
+export type FinanceCategoryRow = {
+  category: string;
+  type: "Revenue" | "Cost" | "Expense";
+  amount: number;
+  share: number;
+};
+
 export function parseFinanceTab(value: string | string[] | undefined): FinanceTab {
   const raw = Array.isArray(value) ? value[0] : value;
   if (raw === "trend" || raw === "category" || raw === "units") return raw;
@@ -113,14 +129,11 @@ export type SupermarketPeriodLedger = {
   salesCount: number;
 };
 
-const EMPTY_LEDGER: SupermarketPeriodLedger = {
-  revenue: 0,
-  cogs: 0,
-  expenses: 0,
-  productProfit: 0,
-  netProfit: 0,
-  salesCount: 0,
-};
+type SalePoint = { saleDate: string; total: number; cogs: number };
+type ExpensePoint = { expenseDate: string; amount: number; category: string };
+type PeriodPoints = { sales: SalePoint[]; expenses: ExpensePoint[] };
+
+const EMPTY_POINTS: PeriodPoints = { sales: [], expenses: [] };
 
 function formatLocalDate(date: Date) {
   const y = date.getFullYear();
@@ -142,6 +155,269 @@ function deltaOrZero(current: number, previous: number) {
   return percentChange(current, previous) ?? 0;
 }
 
+function dayKey(value: string) {
+  return String(value).slice(0, 10);
+}
+
+function monthKey(value: string) {
+  return String(value).slice(0, 7);
+}
+
+function addDays(date: Date, amount: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return next;
+}
+
+function enumerateDays(from: Date, to: Date) {
+  const start = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  const end = new Date(to.getFullYear(), to.getMonth(), to.getDate());
+  const days: string[] = [];
+  for (let cursor = start; cursor <= end; cursor = addDays(cursor, 1)) {
+    days.push(formatLocalDate(cursor));
+  }
+  return days;
+}
+
+function enumerateMonths(from: Date, to: Date) {
+  const start = new Date(from.getFullYear(), from.getMonth(), 1);
+  const end = new Date(to.getFullYear(), to.getMonth(), 1);
+  const months: { key: string; label: string }[] = [];
+  for (
+    let cursor = start;
+    cursor <= end;
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)
+  ) {
+    months.push({
+      key: `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`,
+      label: cursor.toLocaleString("en-GB", { month: "short", year: "numeric" }),
+    });
+  }
+  return months;
+}
+
+function formatDayLabel(isoDate: string) {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  if (!year || !month || !day) return isoDate;
+  return new Date(year, month - 1, day).toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function trendGrainForSpan(from: Date, to: Date, preferMonth: boolean): "month" | "day" {
+  if (preferMonth) return "month";
+  const days =
+    Math.round(
+      (new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime() -
+        new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime()) /
+        86_400_000,
+    ) + 1;
+  return days > 62 ? "month" : "day";
+}
+
+function ledgerFromPoints(points: PeriodPoints): SupermarketPeriodLedger {
+  const revenue = points.sales.reduce((sum, row) => sum + row.total, 0);
+  const cogs = points.sales.reduce((sum, row) => sum + row.cogs, 0);
+  const expenses = points.expenses.reduce((sum, row) => sum + row.amount, 0);
+  const productProfit = revenue - cogs;
+  return {
+    revenue,
+    cogs,
+    expenses,
+    productProfit,
+    netProfit: productProfit - expenses,
+    salesCount: points.sales.length,
+  };
+}
+
+function buildTrendRows(
+  points: PeriodPoints,
+  range: { from: Date; to: Date },
+  grain: "month" | "day",
+): FinanceTrendRow[] {
+  const buckets = new Map<string, { label: string; revenue: number; cogs: number; expenses: number }>();
+
+  if (grain === "month") {
+    for (const month of enumerateMonths(range.from, range.to)) {
+      buckets.set(month.key, { label: month.label, revenue: 0, cogs: 0, expenses: 0 });
+    }
+    for (const sale of points.sales) {
+      const bucket = buckets.get(monthKey(sale.saleDate));
+      if (!bucket) continue;
+      bucket.revenue += sale.total;
+      bucket.cogs += sale.cogs;
+    }
+    for (const expense of points.expenses) {
+      const bucket = buckets.get(monthKey(expense.expenseDate));
+      if (!bucket) continue;
+      bucket.expenses += expense.amount;
+    }
+  } else {
+    for (const day of enumerateDays(range.from, range.to)) {
+      buckets.set(day, { label: formatDayLabel(day), revenue: 0, cogs: 0, expenses: 0 });
+    }
+    for (const sale of points.sales) {
+      const bucket = buckets.get(dayKey(sale.saleDate));
+      if (!bucket) continue;
+      bucket.revenue += sale.total;
+      bucket.cogs += sale.cogs;
+    }
+    for (const expense of points.expenses) {
+      const bucket = buckets.get(dayKey(expense.expenseDate));
+      if (!bucket) continue;
+      bucket.expenses += expense.amount;
+    }
+  }
+
+  return [...buckets.values()].map((bucket) => {
+    const operatingPosition = bucket.revenue - bucket.cogs - bucket.expenses;
+    return {
+      period: bucket.label,
+      revenue: bucket.revenue,
+      cogs: bucket.cogs,
+      expenses: bucket.expenses,
+      operatingPosition,
+      margin: ratioPercent(operatingPosition, bucket.revenue),
+    };
+  });
+}
+
+function buildCategoryRows(points: PeriodPoints): FinanceCategoryRow[] {
+  const revenue = points.sales.reduce((sum, row) => sum + row.total, 0);
+  const cogs = points.sales.reduce((sum, row) => sum + row.cogs, 0);
+  const expenseGroups = new Map<string, number>();
+  for (const expense of points.expenses) {
+    const name = expense.category.trim() || "Uncategorized";
+    expenseGroups.set(name, (expenseGroups.get(name) ?? 0) + expense.amount);
+  }
+
+  const rows: FinanceCategoryRow[] = [
+    { category: "Sales", type: "Revenue", amount: revenue, share: 0 },
+    { category: "COGS", type: "Cost", amount: cogs, share: 0 },
+    ...[...expenseGroups.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([category, amount]) => ({
+        category,
+        type: "Expense" as const,
+        amount,
+        share: 0,
+      })),
+  ];
+
+  const total = rows.reduce((sum, row) => sum + row.amount, 0);
+  return rows.map((row) => ({
+    ...row,
+    share: ratioPercent(row.amount, total),
+  }));
+}
+
+async function loadSupermarketPeriodPoints(from: Date, to: Date): Promise<PeriodPoints> {
+  try {
+    const supabase = await createSupabaseServerClient();
+    if (!supabase) {
+      console.error(
+        JSON.stringify({
+          scope: "consolidated-finance",
+          operation: "loadSupermarketPeriodPoints",
+          phase: "auth",
+          message: "Supabase is not configured.",
+        }),
+      );
+      return EMPTY_POINTS;
+    }
+
+    const { data: bu, error: buError } = await supabase
+      .from("business_units")
+      .select("id")
+      .eq("code", "supermarket")
+      .maybeSingle();
+
+    if (buError) {
+      console.error(
+        JSON.stringify({
+          scope: "consolidated-finance",
+          operation: "loadSupermarketPeriodPoints",
+          phase: "query",
+          message: buError.message,
+        }),
+      );
+      return EMPTY_POINTS;
+    }
+
+    if (!bu?.id) return EMPTY_POINTS;
+
+    const fromDate = formatLocalDate(from);
+    const toDate = formatLocalDate(to);
+    const fromIso = `${fromDate}T00:00:00`;
+    const toIso = `${toDate}T23:59:59`;
+
+    const [salesRes, expensesRes] = await Promise.all([
+      supabase
+        .from("sm_sales")
+        .select("sale_date, total, cogs")
+        .eq("business_unit_id", bu.id)
+        .gte("sale_date", fromIso)
+        .lte("sale_date", toIso),
+      supabase
+        .from("sm_expenses")
+        .select("expense_date, amount, category")
+        .eq("business_unit_id", bu.id)
+        .gte("expense_date", fromDate)
+        .lte("expense_date", toDate),
+    ]);
+
+    if (salesRes.error) {
+      console.error(
+        JSON.stringify({
+          scope: "consolidated-finance",
+          operation: "loadSupermarketPeriodPoints",
+          phase: "query",
+          table: "sm_sales",
+          message: salesRes.error.message,
+        }),
+      );
+      return EMPTY_POINTS;
+    }
+    if (expensesRes.error) {
+      console.error(
+        JSON.stringify({
+          scope: "consolidated-finance",
+          operation: "loadSupermarketPeriodPoints",
+          phase: "query",
+          table: "sm_expenses",
+          message: expensesRes.error.message,
+        }),
+      );
+      return EMPTY_POINTS;
+    }
+
+    return {
+      sales: (salesRes.data ?? []).map((row) => ({
+        saleDate: dayKey(String(row.sale_date ?? "")),
+        total: Number(row.total || 0),
+        cogs: Number(row.cogs || 0),
+      })),
+      expenses: (expensesRes.data ?? []).map((row) => ({
+        expenseDate: dayKey(String(row.expense_date ?? "")),
+        amount: Number(row.amount || 0),
+        category: String(row.category ?? ""),
+      })),
+    };
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        scope: "consolidated-finance",
+        operation: "loadSupermarketPeriodPoints",
+        phase: "unknown",
+        message: error instanceof Error ? error.message : "Failed to load supermarket ledger.",
+      }),
+    );
+    return EMPTY_POINTS;
+  }
+}
+
 /**
  * Live supermarket ledger for a period (Phase 1 formula).
  * Revenue = Σ sm_sales.total
@@ -155,116 +431,7 @@ export async function loadSupermarketPeriodLedger(
   from: Date,
   to: Date,
 ): Promise<SupermarketPeriodLedger> {
-  try {
-    const supabase = await createSupabaseServerClient();
-    if (!supabase) {
-      console.error(
-        JSON.stringify({
-          scope: "consolidated-finance",
-          operation: "loadSupermarketPeriodLedger",
-          phase: "auth",
-          message: "Supabase is not configured.",
-        }),
-      );
-      return EMPTY_LEDGER;
-    }
-
-    const { data: bu, error: buError } = await supabase
-      .from("business_units")
-      .select("id")
-      .eq("code", "supermarket")
-      .maybeSingle();
-
-    if (buError) {
-      console.error(
-        JSON.stringify({
-          scope: "consolidated-finance",
-          operation: "loadSupermarketPeriodLedger",
-          phase: "query",
-          message: buError.message,
-        }),
-      );
-      return EMPTY_LEDGER;
-    }
-
-    if (!bu?.id) {
-      return EMPTY_LEDGER;
-    }
-
-    const fromDate = formatLocalDate(from);
-    const toDate = formatLocalDate(to);
-    const fromIso = `${fromDate}T00:00:00`;
-    const toIso = `${toDate}T23:59:59`;
-
-    const [salesRes, expensesRes] = await Promise.all([
-      supabase
-        .from("sm_sales")
-        .select("total, cogs")
-        .eq("business_unit_id", bu.id)
-        .gte("sale_date", fromIso)
-        .lte("sale_date", toIso),
-      supabase
-        .from("sm_expenses")
-        .select("amount")
-        .eq("business_unit_id", bu.id)
-        .gte("expense_date", fromDate)
-        .lte("expense_date", toDate),
-    ]);
-
-    if (salesRes.error) {
-      console.error(
-        JSON.stringify({
-          scope: "consolidated-finance",
-          operation: "loadSupermarketPeriodLedger",
-          phase: "query",
-          table: "sm_sales",
-          message: salesRes.error.message,
-        }),
-      );
-      return EMPTY_LEDGER;
-    }
-    if (expensesRes.error) {
-      console.error(
-        JSON.stringify({
-          scope: "consolidated-finance",
-          operation: "loadSupermarketPeriodLedger",
-          phase: "query",
-          table: "sm_expenses",
-          message: expensesRes.error.message,
-        }),
-      );
-      return EMPTY_LEDGER;
-    }
-
-    const salesRows = salesRes.data ?? [];
-    const revenue = salesRows.reduce((sum, row) => sum + Number(row.total || 0), 0);
-    const cogs = salesRows.reduce((sum, row) => sum + Number(row.cogs || 0), 0);
-    const expenses = (expensesRes.data ?? []).reduce(
-      (sum, row) => sum + Number(row.amount || 0),
-      0,
-    );
-    const productProfit = revenue - cogs;
-    const netProfit = productProfit - expenses;
-
-    return {
-      revenue,
-      cogs,
-      expenses,
-      productProfit,
-      netProfit,
-      salesCount: salesRows.length,
-    };
-  } catch (error) {
-    console.error(
-      JSON.stringify({
-        scope: "consolidated-finance",
-        operation: "loadSupermarketPeriodLedger",
-        phase: "unknown",
-        message: error instanceof Error ? error.message : "Failed to load supermarket ledger.",
-      }),
-    );
-    return EMPTY_LEDGER;
-  }
+  return ledgerFromPoints(await loadSupermarketPeriodPoints(from, to));
 }
 
 function buildUnitRow(
@@ -304,12 +471,14 @@ function buildUnitRow(
 async function consolidateLedgers(
   range: { from: Date; to: Date; label: string },
   previous: { from: Date; to: Date; label: string },
+  grain: "month" | "day",
 ) {
-  const [currentLedger, previousLedger, units] = await Promise.all([
-    loadSupermarketPeriodLedger(range.from, range.to),
+  const [currentPoints, previousLedger, units] = await Promise.all([
+    loadSupermarketPeriodPoints(range.from, range.to),
     loadSupermarketPeriodLedger(previous.from, previous.to),
     listBusinessUnits(),
   ]);
+  const currentLedger = ledgerFromPoints(currentPoints);
 
   const rows: UnitFinanceRow[] = units.map((unit) =>
     buildUnitRow(unit, currentLedger, previousLedger),
@@ -342,6 +511,10 @@ async function consolidateLedgers(
     label: range.label,
     from: range.from,
     to: range.to,
+    cogs: currentLedger.cogs,
+    trend: buildTrendRows(currentPoints, range, grain),
+    trendGrain: grain,
+    categories: buildCategoryRows(currentPoints),
   };
 }
 
@@ -366,7 +539,15 @@ export async function getConsolidatedFinance(input: {
     from: input.from,
     to: input.to,
   });
-  return consolidateLedgers(range, previous);
+  return consolidateLedgers(
+    range,
+    previous,
+    trendGrainForSpan(
+      range.from,
+      range.to,
+      input.period === "this-year" || input.period === "this-quarter",
+    ),
+  );
 }
 
 /**
@@ -388,5 +569,9 @@ export async function getConsolidatedFinanceForReportPeriod(input: {
     from: input.from,
     to: input.to,
   });
-  return consolidateLedgers(range, previous);
+  return consolidateLedgers(
+    range,
+    previous,
+    trendGrainForSpan(range.from, range.to, input.period === "this-year"),
+  );
 }
