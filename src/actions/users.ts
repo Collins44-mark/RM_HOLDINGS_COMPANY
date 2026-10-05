@@ -1,6 +1,7 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
+import { BUSINESS_UNITS_CACHE_TAG } from "@/lib/data/business-units";
 import { z } from "zod";
 import { requireVerifiedOwner } from "@/lib/auth/session";
 import { isOwnerRole } from "@/lib/auth/rbac";
@@ -53,6 +54,11 @@ function adminOrError() {
     return { ok: false as const, error: "Server is missing SUPABASE_SERVICE_ROLE_KEY." };
   }
   return { ok: true as const, admin };
+}
+
+function revalidateUsersWorkspace() {
+  updateTag(BUSINESS_UNITS_CACHE_TAG);
+  revalidatePath("/owner/users");
 }
 
 async function ownerCount(admin: NonNullable<ReturnType<typeof createSupabaseAdminClient>>) {
@@ -248,6 +254,7 @@ export async function createUserAction(
     status: "pending_password",
   };
   createdUser.status = statusOf(createdUser);
+  revalidateUsersWorkspace();
 
   return {
     credentials: {
@@ -287,7 +294,7 @@ export async function resetPasswordAction(userId: string): Promise<UsersActionSt
     })
     .eq("id", userId);
 
-  revalidatePath("/owner/users");
+  revalidateUsersWorkspace();
   return {
     credentials: {
       name: target.name,
@@ -314,7 +321,7 @@ export async function unlockUserAction(userId: string): Promise<{ error?: string
     })
     .eq("id", userId);
 
-  revalidatePath("/owner/users");
+  revalidateUsersWorkspace();
   return {};
 }
 
@@ -336,7 +343,7 @@ export async function disableUserAction(userId: string): Promise<{ error?: strin
     .update({ is_active: false, updated_at: new Date().toISOString() })
     .eq("id", userId);
 
-  revalidatePath("/owner/users");
+  revalidateUsersWorkspace();
   return {};
 }
 
@@ -348,7 +355,7 @@ export async function enableUserAction(userId: string): Promise<{ error?: string
     .from("profiles")
     .update({ is_active: true, updated_at: new Date().toISOString() })
     .eq("id", userId);
-  revalidatePath("/owner/users");
+  revalidateUsersWorkspace();
   return {};
 }
 
@@ -395,7 +402,7 @@ export async function updateUserAction(
   });
   if ("error" in result) return { error: result.error };
 
-  revalidatePath("/owner/users");
+  revalidateUsersWorkspace();
   return {};
 }
 

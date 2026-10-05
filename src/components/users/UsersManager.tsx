@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Plus, Search } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, LayoutGrid, Plus, Search, Users } from "lucide-react";
 import { PageHeader, Surface } from "@/components/ui/PageHeader";
 import { ModuleIcon } from "@/components/icons/ModuleIcon";
+import { UsersBusinessUnitCard } from "@/components/users/UsersBusinessUnitCard";
 import { cn } from "@/lib/cn";
-import { BUSINESS_UNITS } from "@/lib/config/app";
 import { ALL_MODULES_VALUE, rolesForSelectedModules } from "@/lib/auth/role-options";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import type { ManagedUser, ManagedUserStatus } from "@/lib/data/app-users";
@@ -20,7 +21,15 @@ import {
   type UsersActionState,
 } from "@/actions/users";
 
-type UnitOption = { code: string; name: string };
+export type UsersWorkspaceView = "all" | "business-units" | "business-unit";
+
+export type UsersUnitOption = {
+  code: string;
+  name: string;
+  assignedUserCount?: number;
+  accent?: string;
+  iconBg?: string;
+};
 
 const STATUS_LABEL: Record<ManagedUserStatus, string> = {
   active: "Active",
@@ -53,34 +62,25 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
-function moduleCountsFromUsers(users: ManagedUser[], units: UnitOption[]) {
-  const counts = Object.fromEntries(units.map((unit) => [unit.code, 0])) as Record<string, number>;
-  for (const user of users) {
-    if (user.modules.includes("*")) {
-      for (const code of Object.keys(counts)) counts[code] += 1;
-      continue;
-    }
-    for (const code of user.modules) {
-      if (code in counts) counts[code] += 1;
-    }
-  }
-  return counts;
+function displayEmail(user: ManagedUser) {
+  return user.email && !user.email.endsWith("@users.rmholdings.internal") ? user.email : "—";
 }
 
 export function UsersManager({
+  view,
   users,
   currentUserId,
   businessUnits,
+  selectedUnit,
 }: {
+  view: UsersWorkspaceView;
   users: ManagedUser[];
   currentUserId: string;
-  businessUnits?: UnitOption[];
+  businessUnits: UsersUnitOption[];
+  selectedUnit?: UsersUnitOption | null;
 }) {
-  const units = businessUnits?.length
-    ? businessUnits
-    : BUSINESS_UNITS.map((unit) => ({ code: unit.code, name: unit.name }));
+  const units = businessUnits;
   const [rows, setRows] = useState(users);
-  const [moduleFilter, setModuleFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [query, setQuery] = useState("");
@@ -90,16 +90,14 @@ export function UsersManager({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const counts = moduleCountsFromUsers(rows, units);
+  const unitCode = selectedUnit?.code;
+  const showModulesColumn = view === "all";
   const roles = useMemo(
     () => Array.from(new Map(rows.map((user) => [user.roleCode, user.roleName])).entries()),
     [rows],
   );
 
   const filtered = rows.filter((user) => {
-    if (moduleFilter !== "all" && !user.modules.includes("*") && !user.modules.includes(moduleFilter)) {
-      return false;
-    }
     if (roleFilter !== "all" && user.roleCode !== roleFilter) return false;
     if (statusFilter !== "all" && user.status !== statusFilter) return false;
     if (query.trim()) {
@@ -109,179 +107,242 @@ export function UsersManager({
     return true;
   });
 
+  const addButton = (
+    <button
+      type="button"
+      onClick={() => setAddOpen(true)}
+      className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-[14px] bg-navy px-4 text-[14px] font-semibold text-white transition hover:bg-[#132844] sm:w-auto"
+    >
+      <Plus className="h-4 w-4" strokeWidth={2.2} />
+      Add User
+    </button>
+  );
+
+  function handleResult(result: UsersActionState, close: () => void) {
+    if (result?.error) {
+      setError(result.error);
+      return;
+    }
+    if (result?.createdUser) {
+      const created = result.createdUser;
+      const belongsToUnit = !unitCode || created.modules.includes(unitCode);
+      if (belongsToUnit) {
+        setRows((current) => (current.some((user) => user.id === created.id) ? current : [...current, created]));
+      }
+    }
+    if (result?.credentials) setCredentials(result.credentials);
+    close();
+  }
+
+  function runAction(
+    action: () => Promise<{ error?: string }>,
+    close: () => void,
+    patch?: Partial<ManagedUser>,
+  ) {
+    startTransition(async () => {
+      const result = await action();
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      if (patch && selected) {
+        setRows((current) =>
+          current.map((user) => {
+            if (user.id !== selected.id) return user;
+            const next = { ...user, ...patch };
+            next.status = statusOf(next);
+            return next;
+          }),
+        );
+      }
+      close();
+    });
+  }
+
   return (
     <div className="min-w-0 space-y-5 sm:space-y-6">
-      <PageHeader
-        title="Users & Permissions"
-        description="Manage users, roles, module access and account status."
-        action={
-          <button
-            type="button"
-            onClick={() => setAddOpen(true)}
-            className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-[14px] bg-navy px-4 text-[14px] font-semibold text-white transition hover:bg-[#132844] sm:w-auto"
+      {view === "business-unit" && selectedUnit ? (
+        <div>
+          <Link
+            href="/owner/users?view=business-units"
+            className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-500 transition hover:text-navy"
           >
-            <Plus className="h-4 w-4" strokeWidth={2.2} />
-            Add User
-          </button>
-        }
-      />
-
-      <section className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
-        {units.map((unit) => (
-          <button
-            key={unit.code}
-            type="button"
-            onClick={() => setModuleFilter(unit.code)}
-            className={cn(
-              "flex min-w-0 items-center gap-2.5 rounded-[18px] border bg-white px-3 py-3 text-left shadow-[0_6px_20px_rgba(20,40,70,0.04)] sm:gap-3 sm:px-4",
-              moduleFilter === unit.code ? "border-navy/20 ring-2 ring-navy/10" : "border-white/90",
-            )}
-          >
-            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-[#f3f5f8] text-navy sm:h-11 sm:w-11">
-              <ModuleIcon code={unit.code} className="h-4 w-4 sm:h-5 sm:w-5" />
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-[12px] font-semibold text-navy sm:text-[13.5px]">
-                {unit.name}
+            <ArrowLeft className="h-4 w-4" strokeWidth={1.9} />
+            All Business Units
+          </Link>
+          <div className="mb-5 flex min-w-0 flex-col gap-3 sm:mb-6 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px]"
+                style={{
+                  backgroundColor: selectedUnit.iconBg ?? "rgba(91, 127, 166, 0.14)",
+                  color: selectedUnit.accent ?? "#5B7FA6",
+                }}
+              >
+                <ModuleIcon code={selectedUnit.code} className="h-5 w-5" />
               </span>
-              <span className="mt-0.5 block text-[11px] text-slate-500 sm:text-[12px]">
-                {counts[unit.code] ?? 0} Users
+              <div className="min-w-0">
+                <h1 className="text-[20px] font-semibold tracking-[-0.02em] text-navy sm:text-[22px]">
+                  {selectedUnit.name} Users
+                </h1>
+                <p className="mt-1 text-[13px] leading-6 text-slate-500 sm:text-[13.5px]">
+                  Users assigned to {selectedUnit.name}
+                </p>
+              </div>
+            </div>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="rounded-full bg-[#e7f4ea] px-2.5 py-1 text-[12px] font-medium text-[#3f8a5a]">
+                {selectedUnit.assignedUserCount === 1
+                  ? "1 user"
+                  : `${selectedUnit.assignedUserCount ?? rows.length} users`}
               </span>
-            </span>
-          </button>
-        ))}
-      </section>
-
-      <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center">
-        <div className="flex flex-wrap gap-2">
-          <FilterChip active={moduleFilter === "all"} onClick={() => setModuleFilter("all")}>
-            All
-          </FilterChip>
-          {units.map((unit) => (
-            <FilterChip
-              key={unit.code}
-              active={moduleFilter === unit.code}
-              onClick={() => setModuleFilter(unit.code)}
-            >
-              {unit.name}
-            </FilterChip>
-          ))}
+              {addButton}
+            </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <PageHeader
+          title="Users & Permissions"
+          description="Manage users, roles and business access."
+          action={addButton}
+        />
+      )}
 
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-        <label className="relative min-w-0">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search name, email or phone"
-            className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white pl-9 pr-3 text-[13.5px] text-navy outline-none focus:border-[#9bb6e0]"
-          />
-        </label>
-        <select
-          value={roleFilter}
-          onChange={(event) => setRoleFilter(event.target.value)}
-          className="h-11 rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
-        >
-          <option value="all">All roles</option>
-          {roles.map(([code, name]) => (
-            <option key={code} value={code}>
-              {name}
-            </option>
-          ))}
-        </select>
-        <select
-          value={statusFilter}
-          onChange={(event) => setStatusFilter(event.target.value)}
-          className="h-11 rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
-        >
-          <option value="all">All statuses</option>
-          {Object.entries(STATUS_LABEL).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </div>
+      {view !== "business-unit" ? <UsersViewSwitch view={view} /> : null}
 
       {error ? (
         <p className="rounded-[14px] border border-red-200/70 bg-red-50/80 px-3 py-2.5 text-sm text-[#9b2c2c]">{error}</p>
       ) : null}
 
-      <Surface className="hidden overflow-x-auto md:block">
-        <table className="min-w-full text-left text-[13px]">
-          <thead className="border-b border-black/5 text-[11px] uppercase tracking-wide text-slate-400">
-            <tr>
-              <th className="px-5 py-3 font-medium">User</th>
-              <th className="px-5 py-3 font-medium">Email / Phone</th>
-              <th className="px-5 py-3 font-medium">Role</th>
-              <th className="px-5 py-3 font-medium">Module(s)</th>
-              <th className="px-5 py-3 font-medium">Status</th>
-              <th className="px-5 py-3 font-medium">Last Login</th>
-              <th className="px-5 py-3 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
+      {view === "business-units" ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {units.map((unit) => (
+            <UsersBusinessUnitCard
+              key={unit.code}
+              href={`/owner/users?view=business-unit&unit=${encodeURIComponent(unit.code)}`}
+              code={unit.code}
+              name={unit.name}
+              userCount={unit.assignedUserCount ?? 0}
+              accent={unit.accent ?? "#5B7FA6"}
+              iconBg={unit.iconBg ?? "rgba(91, 127, 166, 0.14)"}
+            />
+          ))}
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+            <label className="relative min-w-0">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search name, email or phone..."
+                className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white pl-9 pr-3 text-[13.5px] text-navy outline-none focus:border-[#9bb6e0]"
+              />
+            </label>
+            <select
+              value={roleFilter}
+              onChange={(event) => setRoleFilter(event.target.value)}
+              className="h-11 rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
+            >
+              <option value="all">All roles</option>
+              {roles.map(([code, name]) => (
+                <option key={code} value={code}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="h-11 rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
+            >
+              <option value="all">All statuses</option>
+              {Object.entries(STATUS_LABEL).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <Surface className="hidden overflow-x-auto md:block">
+            <table className="min-w-full text-left text-[13px]">
+              <thead className="border-b border-black/5 text-[11px] uppercase tracking-wide text-slate-400">
+                <tr>
+                  <th className="px-5 py-3 font-medium">User</th>
+                  <th className="px-5 py-3 font-medium">Email / Phone</th>
+                  <th className="px-5 py-3 font-medium">Role</th>
+                  {showModulesColumn ? <th className="px-5 py-3 font-medium">Module(s)</th> : null}
+                  <th className="px-5 py-3 font-medium">Status</th>
+                  <th className="px-5 py-3 font-medium">Last Login</th>
+                  <th className="px-5 py-3 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((user) => (
+                  <tr key={user.id} className="border-b border-black/4 last:border-0">
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-3">
+                        <Avatar name={user.name} />
+                        <p className="font-semibold text-navy">{user.name}</p>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5 text-slate-600">
+                      <p>{displayEmail(user)}</p>
+                      <p className="text-xs text-slate-400">{user.phone || "—"}</p>
+                    </td>
+                    <td className="px-5 py-3.5 text-slate-600">{user.roleName}</td>
+                    {showModulesColumn ? (
+                      <td className="px-5 py-3.5 text-slate-600">{user.moduleNames.join(", ")}</td>
+                    ) : null}
+                    <td className="px-5 py-3.5">
+                      <StatusBadge status={user.status} />
+                    </td>
+                    <td className="px-5 py-3.5 text-slate-500">{formatDate(user.lastLoginAt)}</td>
+                    <td className="px-5 py-3.5">
+                      <button
+                        type="button"
+                        onClick={() => setSelected(user)}
+                        className="text-[13px] font-semibold text-navy hover:underline"
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Surface>
+
+          <div className="space-y-2.5 md:hidden">
             {filtered.map((user) => (
-              <tr key={user.id} className="border-b border-black/4 last:border-0">
-                <td className="px-5 py-3.5">
-                  <div className="flex items-center gap-3">
-                    <Avatar name={user.name} />
-                    <p className="font-semibold text-navy">{user.name}</p>
-                  </div>
-                </td>
-                <td className="px-5 py-3.5 text-slate-600">
-                  <p>{user.email && !user.email.endsWith("@users.rmholdings.internal") ? user.email : "—"}</p>
-                  <p className="text-xs text-slate-400">{user.phone || "—"}</p>
-                </td>
-                <td className="px-5 py-3.5 text-slate-600">{user.roleName}</td>
-                <td className="px-5 py-3.5 text-slate-600">{user.moduleNames.join(", ")}</td>
-                <td className="px-5 py-3.5">
-                  <StatusBadge status={user.status} />
-                </td>
-                <td className="px-5 py-3.5 text-slate-500">{formatDate(user.lastLoginAt)}</td>
-                <td className="px-5 py-3.5">
-                  <button
-                    type="button"
-                    onClick={() => setSelected(user)}
-                    className="text-[13px] font-semibold text-navy hover:underline"
-                  >
-                    View
-                  </button>
-                </td>
-              </tr>
+              <button
+                key={user.id}
+                type="button"
+                onClick={() => setSelected(user)}
+                className="flex w-full min-w-0 items-start gap-3 rounded-[16px] border border-white/90 bg-white px-3 py-3 text-left shadow-[0_6px_20px_rgba(20,40,70,0.04)]"
+              >
+                <Avatar name={user.name} />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-start justify-between gap-2">
+                    <span className="font-semibold text-navy">{user.name}</span>
+                    <StatusBadge status={user.status} />
+                  </span>
+                  <span className="mt-1 block text-[12px] text-slate-500">{user.loginIdentifier}</span>
+                  <span className="mt-1 block text-[12px] text-slate-500">
+                    {showModulesColumn ? `${user.roleName} · ${user.moduleNames.join(", ")}` : user.roleName}
+                  </span>
+                </span>
+              </button>
             ))}
-          </tbody>
-        </table>
-      </Surface>
+          </div>
 
-      <div className="space-y-2.5 md:hidden">
-        {filtered.map((user) => (
-          <button
-            key={user.id}
-            type="button"
-            onClick={() => setSelected(user)}
-            className="flex w-full min-w-0 items-start gap-3 rounded-[16px] border border-white/90 bg-white px-3 py-3 text-left shadow-[0_6px_20px_rgba(20,40,70,0.04)]"
-          >
-            <Avatar name={user.name} />
-            <span className="min-w-0 flex-1">
-              <span className="flex items-start justify-between gap-2">
-                <span className="font-semibold text-navy">{user.name}</span>
-                <StatusBadge status={user.status} />
-              </span>
-              <span className="mt-1 block text-[12px] text-slate-500">{user.loginIdentifier}</span>
-              <span className="mt-1 block text-[12px] text-slate-500">
-                {user.roleName} · {user.moduleNames.join(", ")}
-              </span>
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {filtered.length === 0 ? (
-        <p className="text-sm text-slate-500">No users match the current filters.</p>
-      ) : null}
+          {filtered.length === 0 ? (
+            <p className="text-sm text-slate-500">No users match the current filters.</p>
+          ) : null}
+        </>
+      )}
 
       {addOpen ? (
         <UserFormDialog
@@ -339,47 +400,41 @@ export function UsersManager({
       ) : null}
     </div>
   );
+}
 
-  function handleResult(result: UsersActionState, close: () => void) {
-    if (result?.error) {
-      setError(result.error);
-      return;
-    }
-    if (result?.createdUser) {
-      setRows((current) =>
-        current.some((user) => user.id === result.createdUser!.id)
-          ? current
-          : [...current, result.createdUser!],
-      );
-    }
-    if (result?.credentials) setCredentials(result.credentials);
-    close();
-  }
+function UsersViewSwitch({ view }: { view: UsersWorkspaceView }) {
+  const items = [
+    { href: "/owner/users", label: "All Users", icon: Users, active: view === "all" },
+    {
+      href: "/owner/users?view=business-units",
+      label: "By Business Unit",
+      icon: LayoutGrid,
+      active: view === "business-units",
+    },
+  ] as const;
 
-  function runAction(
-    action: () => Promise<{ error?: string }>,
-    close: () => void,
-    patch?: Partial<ManagedUser>,
-  ) {
-    startTransition(async () => {
-      const result = await action();
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      if (patch && selected) {
-        setRows((current) =>
-          current.map((user) => {
-            if (user.id !== selected.id) return user;
-            const next = { ...user, ...patch };
-            next.status = statusOf(next);
-            return next;
-          }),
+  return (
+    <nav aria-label="Users views" className="flex flex-wrap gap-2">
+      {items.map((item) => {
+        const Icon = item.icon;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              "inline-flex h-11 items-center gap-2 rounded-full px-4 text-[13.5px] font-medium transition duration-200",
+              item.active
+                ? "bg-navy text-white shadow-[0_6px_16px_rgba(15,35,64,0.16)]"
+                : "bg-white text-slate-600 ring-1 ring-black/6 hover:text-navy",
+            )}
+          >
+            <Icon className="h-4 w-4" strokeWidth={1.9} />
+            {item.label}
+          </Link>
         );
-      }
-      close();
-    });
-  }
+      })}
+    </nav>
+  );
 }
 
 function Avatar({ name }: { name: string }) {
@@ -406,29 +461,6 @@ function StatusBadge({ status }: { status: ManagedUserStatus }) {
   );
 }
 
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "rounded-full px-3 py-1.5 text-[12px] font-medium",
-        active ? "bg-navy text-white" : "bg-white text-slate-600 ring-1 ring-black/[0.06]",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
 function UserFormDialog({
   title,
   user,
@@ -441,7 +473,7 @@ function UserFormDialog({
   title: string;
   user?: ManagedUser;
   currentUserId: string;
-  businessUnits: UnitOption[];
+  businessUnits: UsersUnitOption[];
   pending: boolean;
   onClose: () => void;
   onSubmit: (formData: FormData) => void;
@@ -475,7 +507,11 @@ function UserFormDialog({
       >
         {user ? <input type="hidden" name="userId" value={user.id} /> : null}
         <Field label="Full Name" name="name" defaultValue={user?.name} required />
-        <Field label="Email Address" name="email" defaultValue={user?.email && !user.email.endsWith("@users.rmholdings.internal") ? user.email : ""} />
+        <Field
+          label="Email Address"
+          name="email"
+          defaultValue={user?.email && !user.email.endsWith("@users.rmholdings.internal") ? user.email : ""}
+        />
         <Field label="Phone Number" name="phone" defaultValue={user?.phone ?? ""} />
         <div>
           <p className="mb-2 text-[13px] font-medium text-slate-500">Module</p>
@@ -555,7 +591,7 @@ function UserDetails({
 }: {
   user: ManagedUser;
   currentUserId: string;
-  businessUnits: UnitOption[];
+  businessUnits: UsersUnitOption[];
   pending: boolean;
   onClose: () => void;
   onUnlock: () => void;
@@ -589,7 +625,10 @@ function UserDetails({
           <h3 className="text-[13px] font-semibold uppercase tracking-wide text-slate-400">Profile</h3>
           <dl className="mt-3 space-y-2 text-[13.5px]">
             <Row label="Full Name" value={user.name} />
-            <Row label="Email" value={user.email && !user.email.endsWith("@users.rmholdings.internal") ? user.email : "—"} />
+            <Row
+              label="Email"
+              value={user.email && !user.email.endsWith("@users.rmholdings.internal") ? user.email : "—"}
+            />
             <Row label="Phone" value={user.phone || "—"} />
             <Row label="Status" value={STATUS_LABEL[user.status]} />
             <Row label="Created At" value={formatDate(user.createdAt)} />
@@ -604,23 +643,48 @@ function UserDetails({
           </dl>
         </section>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => setEditing(true)} disabled={self} className="h-10 rounded-[12px] bg-navy px-3 text-[13px] font-semibold text-white disabled:opacity-50">
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            disabled={self}
+            className="h-10 rounded-[12px] bg-navy px-3 text-[13px] font-semibold text-white disabled:opacity-50"
+          >
             Edit User
           </button>
           {user.status === "locked" ? (
-            <button type="button" onClick={onUnlock} disabled={self} className="h-10 rounded-[12px] bg-white px-3 text-[13px] font-semibold text-navy ring-1 ring-black/10 disabled:opacity-50">
+            <button
+              type="button"
+              onClick={onUnlock}
+              disabled={self}
+              className="h-10 rounded-[12px] bg-white px-3 text-[13px] font-semibold text-navy ring-1 ring-black/10 disabled:opacity-50"
+            >
               Unlock Account
             </button>
           ) : null}
-          <button type="button" onClick={onReset} disabled={self} className="h-10 rounded-[12px] bg-white px-3 text-[13px] font-semibold text-navy ring-1 ring-black/10 disabled:opacity-50">
+          <button
+            type="button"
+            onClick={onReset}
+            disabled={self}
+            className="h-10 rounded-[12px] bg-white px-3 text-[13px] font-semibold text-navy ring-1 ring-black/10 disabled:opacity-50"
+          >
             Reset Password
           </button>
           {user.isActive ? (
-            <button type="button" onClick={onDisable} disabled={self || ownerProtected} className="h-10 rounded-[12px] bg-white px-3 text-[13px] font-semibold text-[#b42318] ring-1 ring-black/10 disabled:opacity-50">
+            <button
+              type="button"
+              onClick={onDisable}
+              disabled={self || ownerProtected}
+              className="h-10 rounded-[12px] bg-white px-3 text-[13px] font-semibold text-[#b42318] ring-1 ring-black/10 disabled:opacity-50"
+            >
               Disable Account
             </button>
           ) : (
-            <button type="button" onClick={onEnable} disabled={self} className="h-10 rounded-[12px] bg-white px-3 text-[13px] font-semibold text-navy ring-1 ring-black/10">
+            <button
+              type="button"
+              onClick={onEnable}
+              disabled={self}
+              className="h-10 rounded-[12px] bg-white px-3 text-[13px] font-semibold text-navy ring-1 ring-black/10"
+            >
               Enable Account
             </button>
           )}

@@ -173,6 +173,30 @@ export async function listManagedUsers() {
   return (data as unknown as ProfileRecord[]).map(toManagedUser);
 }
 
+/** Users with a `user_business_units` row for the given unit. Owners with `*` are not included unless assigned. */
+export async function listManagedUsersForBusinessUnit(businessUnitId: string) {
+  const admin = createSupabaseAdminClient();
+  const client = admin ?? (await createSupabaseServerClient());
+  if (!client) return [];
+
+  const { data: assignments, error: assignmentError } = await client
+    .from("user_business_units")
+    .select("user_id")
+    .eq("business_unit_id", businessUnitId);
+
+  if (assignmentError || !assignments?.length) return [];
+
+  const ids = [...new Set(assignments.map((row) => String(row.user_id)))];
+  const { data, error } = await client
+    .from("profiles")
+    .select(PROFILE_SELECT)
+    .in("id", ids)
+    .order("full_name", { ascending: true });
+
+  if (error || !data) return [];
+  return (data as unknown as ProfileRecord[]).map(toManagedUser);
+}
+
 export const findProfileById = cache(async function findProfileById(id: string) {
   const admin = createSupabaseAdminClient();
   const client = admin ?? (await createSupabaseServerClient());
