@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getVerifiedAuthUser } from "@/lib/auth/session";
+import { getAuthUser } from "@/lib/auth/session";
 
 export type AuditSeverity = "low" | "medium" | "high";
 
@@ -76,49 +76,54 @@ async function requestContext() {
  * Server-side append-only audit writer. Uses the service-role client.
  * Never throws to callers; logs persistence failures instead.
  */
-export async function writeAuditEvent(input: WriteAuditEventInput): Promise<void> {
+export async function writeAuditEvents(inputs: WriteAuditEventInput[]): Promise<void> {
+  if (!inputs.length) return;
   const admin = createSupabaseAdminClient();
   if (!admin) {
-    console.error(JSON.stringify({ scope: "audit", message: "Admin client unavailable; event not stored." }));
+    console.error(JSON.stringify({ scope: "audit", message: "Admin client unavailable; events not stored." }));
     return;
   }
 
-  let actor = input.actor;
-  if (!actor) {
-    const user = await getVerifiedAuthUser();
-    if (user) {
-      actor = { id: user.id, name: user.name, email: user.email };
-    }
+  let sharedActor = inputs[0]?.actor;
+  if (!sharedActor) {
+    const user = await getAuthUser();
+    if (user) sharedActor = { id: user.id, name: user.name, email: user.email };
   }
-
   const request = await requestContext();
-  const { error } = await admin.from("audit_logs").insert({
-    actor_user_id: actor?.id ?? null,
-    actor_name: actor?.name?.trim() || (actor?.id ? null : "System / Unauthenticated"),
-    actor_email: safeEmail(actor?.email),
-    action: input.action.slice(0, 80),
-    module: input.module.slice(0, 40),
-    entity_type: input.entityType?.slice(0, 80) ?? null,
-    entity_id: input.entityId?.slice(0, 80) ?? null,
-    business_unit_id: input.businessUnitId ?? null,
-    description: input.description.slice(0, 500),
-    severity: input.severity,
-    metadata: safeMetadata(input.metadata),
-    ip_address: request.ipAddress,
-    user_agent: request.userAgent,
+  const rows = inputs.map((input) => {
+    const actor = input.actor ?? sharedActor;
+    return {
+      actor_user_id: actor?.id ?? null,
+      actor_name: actor?.name?.trim() || (actor?.id ? null : "System / Unauthenticated"),
+      actor_email: safeEmail(actor?.email),
+      action: input.action.slice(0, 80),
+      module: input.module.slice(0, 40),
+      entity_type: input.entityType?.slice(0, 80) ?? null,
+      entity_id: input.entityId?.slice(0, 80) ?? null,
+      business_unit_id: input.businessUnitId ?? null,
+      description: input.description.slice(0, 500),
+      severity: input.severity,
+      metadata: safeMetadata(input.metadata),
+      ip_address: request.ipAddress,
+      user_agent: request.userAgent,
+    };
   });
 
+  const { error } = await admin.from("audit_logs").insert(rows);
   if (error) {
     console.error(
       JSON.stringify({
         scope: "audit",
-        operation: "writeAuditEvent",
-        action: input.action,
-        module: input.module,
+        operation: "writeAuditEvents",
+        count: rows.length,
         message: error.message,
       }),
     );
   }
+}
+
+export async function writeAuditEvent(input: WriteAuditEventInput): Promise<void> {
+  await writeAuditEvents([input]);
 }
 
 export async function writeSupermarketAudit(

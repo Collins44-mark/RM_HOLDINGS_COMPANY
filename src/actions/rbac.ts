@@ -1,8 +1,6 @@
 "use server";
 
-import { revalidatePath, updateTag } from "next/cache";
-import { BUSINESS_UNITS_CACHE_TAG } from "@/lib/data/business-units";
-import { requireVerifiedOwner } from "@/lib/auth/session";
+import { requireOwner } from "@/lib/auth/session";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { syncUserAccessClaims } from "@/lib/auth/effective-access";
@@ -19,7 +17,7 @@ import {
   isOperablePermission,
   moduleScopeForRole,
 } from "@/lib/config/permissions";
-import { writeAuditEvent } from "@/lib/audit";
+import { writeAuditEvents, type WriteAuditEventInput } from "@/lib/audit";
 import { isRoleAllowedForModules, displayRoleName, roleDefinition } from "@/lib/auth/role-options";
 
 export type RbacActionState = { error?: string } | null;
@@ -32,24 +30,22 @@ function adminOrError() {
   return { ok: true as const, admin };
 }
 
-function revalidateAccessSurfaces() {
-  updateTag(BUSINESS_UNITS_CACHE_TAG);
-  revalidatePath("/owner/users");
-  revalidatePath("/", "layout");
+function actorOf(user: { id: string; name: string; email: string }) {
+  return { id: user.id, name: user.name, email: user.email };
 }
 
 export async function loadRoleSummariesAction(): Promise<RoleSummary[]> {
-  await requireVerifiedOwner();
+  await requireOwner();
   return listRoleSummaries();
 }
 
 export async function loadRolePermissionStateAction(roleId: string) {
-  await requireVerifiedOwner();
+  await requireOwner();
   return getRolePermissionState(roleId);
 }
 
 export async function loadUserCustomizationAction(userId: string): Promise<UserCustomization | null> {
-  await requireVerifiedOwner();
+  await requireOwner();
   return getUserCustomization(userId);
 }
 
@@ -57,7 +53,7 @@ export async function saveRolePermissionsAction(
   roleId: string,
   permissionCodes: string[],
 ): Promise<{ error?: string }> {
-  await requireVerifiedOwner();
+  const actor = await requireOwner();
   const ready = adminOrError();
   if (!ready.ok) return { error: ready.error };
 
@@ -77,31 +73,42 @@ export async function saveRolePermissionsAction(
   const previous = new Set(state.permissionCodes);
   const added = next.filter((code) => !previous.has(code));
   const removed = state.permissionCodes.filter((code) => !next.includes(code));
+  if (!added.length && !removed.length) {
+    return {};
+  }
 
-  await ready.admin.from("role_permissions").delete().eq("role_id", roleId);
-  if (next.length) {
+  if (removed.length) {
+    const { error } = await ready.admin
+      .from("role_permissions")
+      .delete()
+      .eq("role_id", roleId)
+      .in("permission_code", removed);
+    if (error) return { error: "Unable to save role permissions. Apply the latest database migration." };
+  }
+  if (added.length) {
     const { error } = await ready.admin.from("role_permissions").insert(
-      next.map((permission_code) => ({ role_id: roleId, permission_code })),
+      added.map((permission_code) => ({ role_id: roleId, permission_code })),
     );
     if (error) return { error: "Unable to save role permissions. Apply the latest database migration." };
   }
 
-  const { data: holders } = await ready.admin.from("profiles").select("id").eq("role_id", roleId);
-  const { data: moduleHolders } = await ready.admin
-    .from("user_module_roles")
-    .select("user_id")
-    .eq("role_id", roleId);
-  const userIds = new Set<string>([
-    ...(holders ?? []).map((row) => String(row.id)),
-    ...(moduleHolders ?? []).map((row) => String(row.user_id)),
+  const [holders, moduleHolders] = await Promise.all([
+    ready.admin.from("profiles").select("id").eq("role_id", roleId),
+    ready.admin.from("user_module_roles").select("user_id").eq("role_id", roleId),
   ]);
-  for (const userId of userIds) {
-    await syncUserAccessClaims(ready.admin, userId);
+  const userIds = [
+    ...new Set([
+      ...(holders.data ?? []).map((row) => String(row.id)),
+      ...(moduleHolders.data ?? []).map((row) => String(row.user_id)),
+    ]),
+  ];
+  if (userIds.length) {
+    await Promise.all(userIds.map((userId) => syncUserAccessClaims(ready.admin, userId)));
   }
 
-  revalidateAccessSurfaces();
+  const events: WriteAuditEventInput[] = [];
   if (added.length) {
-    await writeAuditEvent({
+    events.push({
       action: "role.permission.added",
       module: "users",
       description: `Added ${added.length} permission${added.length === 1 ? "" : "s"} to ${state.role.name}`,
@@ -109,10 +116,11 @@ export async function saveRolePermissionsAction(
       entityType: "role",
       entityId: roleId,
       metadata: { permissions: added },
+      actor: actorOf(actor),
     });
   }
   if (removed.length) {
-    await writeAuditEvent({
+    events.push({
       action: "role.permission.removed",
       module: "users",
       description: `Removed ${removed.length} permission${removed.length === 1 ? "" : "s"} from ${state.role.name}`,
@@ -120,16 +128,19 @@ export async function saveRolePermissionsAction(
       entityType: "role",
       entityId: roleId,
       metadata: { permissions: removed },
+      actor: actorOf(actor),
     });
   }
-  await writeAuditEvent({
+  events.push({
     action: "role.updated",
     module: "users",
     description: `Updated permissions for ${state.role.name}`,
     severity: "high",
     entityType: "role",
     entityId: roleId,
+    actor: actorOf(actor),
   });
+  await writeAuditEvents(events);
   return {};
 }
 
@@ -139,25 +150,12 @@ export async function saveUserCustomizationAction(input: {
   moduleRoles: Record<string, string>;
   overrides: Array<{ businessUnitCode: string; permissionCode: string; effect: "allow" | "deny" }>;
 }): Promise<{ error?: string; modules?: string[]; roleName?: string }> {
-  const actor = await requireVerifiedOwner();
+  const actor = await requireOwner();
   if (input.userId === actor.id) {
     return { error: "You cannot change your own role or module access." };
   }
   const ready = adminOrError();
   if (!ready.ok) return { error: ready.error };
-
-  const { data: profile } = await ready.admin
-    .from("profiles")
-    .select("id, full_name, role:roles(id, code, name)")
-    .eq("id", input.userId)
-    .maybeSingle();
-  if (!profile) return { error: "User was not found." };
-
-  const currentRole = Array.isArray(profile.role) ? profile.role[0] : profile.role;
-  const currentRoleCode = (currentRole as { code?: string } | null)?.code ?? "STAFF";
-  if (isOwnerRole(currentRoleCode)) {
-    return { error: "Owner access cannot be customized from this screen." };
-  }
 
   const uniqueUnits = [...new Set(input.unitCodes.filter(Boolean))];
   for (const code of uniqueUnits) {
@@ -170,60 +168,64 @@ export async function saveUserCustomizationAction(input: {
     }
   }
 
-  const { data: units } = await ready.admin.from("business_units").select("id, code, name");
-  const unitRows = (units ?? []) as Array<{ id: string; code: string; name: string }>;
+  const [profileResult, unitsResult, rolesResult, previousUnitsResult, previousRolesResult, previousOverridesResult] =
+    await Promise.all([
+      ready.admin
+        .from("profiles")
+        .select("id, full_name, role:roles(id, code, name)")
+        .eq("id", input.userId)
+        .maybeSingle(),
+      ready.admin.from("business_units").select("id, code, name"),
+      ready.admin.from("roles").select("id, code, name"),
+      ready.admin.from("user_business_units").select("business_unit_id").eq("user_id", input.userId),
+      ready.admin
+        .from("user_module_roles")
+        .select("business_unit_id, role_id")
+        .eq("user_id", input.userId),
+      ready.admin
+        .from("user_permission_overrides")
+        .select("business_unit_id, permission_code, effect")
+        .eq("user_id", input.userId),
+    ]);
+
+  const profile = profileResult.data;
+  if (!profile) return { error: "User was not found." };
+
+  const currentRole = Array.isArray(profile.role) ? profile.role[0] : profile.role;
+  const currentRoleCode = (currentRole as { code?: string } | null)?.code ?? "STAFF";
+  if (isOwnerRole(currentRoleCode)) {
+    return { error: "Owner access cannot be customized from this screen." };
+  }
+
+  const unitRows = (unitsResult.data ?? []) as Array<{ id: string; code: string; name: string }>;
   const unitByCode = new Map(unitRows.map((unit) => [unit.code, unit]));
   const assigned = uniqueUnits
     .map((code) => unitByCode.get(code))
     .filter((unit): unit is { id: string; code: string; name: string } => Boolean(unit));
 
-  const { data: roles } = await ready.admin.from("roles").select("id, code, name");
   const roleByCode = new Map(
-    ((roles ?? []) as Array<{ id: string; code: string; name: string }>).map((role) => [role.code, role]),
+    ((rolesResult.data ?? []) as Array<{ id: string; code: string; name: string }>).map((role) => [role.code, role]),
   );
 
   const primaryRoleCode = assigned[0] ? input.moduleRoles[assigned[0].code] : currentRoleCode;
   const primaryRole = roleByCode.get(primaryRoleCode);
   if (!primaryRole) return { error: "Selected role was not found." };
 
-  const { data: previousUnits } = await ready.admin
-    .from("user_business_units")
-    .select("business_unit_id")
-    .eq("user_id", input.userId);
-  const previousIds = new Set((previousUnits ?? []).map((row) => String(row.business_unit_id)));
+  const previousIds = new Set((previousUnitsResult.data ?? []).map((row) => String(row.business_unit_id)));
   const nextIds = new Set(assigned.map((unit) => unit.id));
-
-  const { error: profileError } = await ready.admin
-    .from("profiles")
-    .update({ role_id: primaryRole.id, updated_at: new Date().toISOString() })
-    .eq("id", input.userId);
-  if (profileError) return { error: "Unable to update the user profile." };
-
-  await ready.admin.from("user_business_units").delete().eq("user_id", input.userId);
-  if (assigned.length) {
-    const { error } = await ready.admin.from("user_business_units").insert(
-      assigned.map((unit) => ({ user_id: input.userId, business_unit_id: unit.id })),
-    );
-    if (error) return { error: "Unable to update module access." };
-  }
-
-  await ready.admin.from("user_module_roles").delete().eq("user_id", input.userId);
-  if (assigned.length) {
-    const rows = assigned
+  const nextRoleByUnit = new Map(
+    assigned
       .map((unit) => {
         const role = roleByCode.get(input.moduleRoles[unit.code] ?? "");
-        if (!role) return null;
-        return { user_id: input.userId, business_unit_id: unit.id, role_id: role.id };
+        return role ? ([unit.id, role.id] as const) : null;
       })
-      .filter((row): row is { user_id: string; business_unit_id: string; role_id: string } => Boolean(row));
-    if (rows.length) {
-      const { error } = await ready.admin.from("user_module_roles").insert(rows);
-      if (error) return { error: "Unable to save module roles. Apply the latest database migration." };
-    }
-  }
+      .filter((row): row is readonly [string, string] => Boolean(row)),
+  );
+  const previousRoleByUnit = new Map(
+    (previousRolesResult.data ?? []).map((row) => [String(row.business_unit_id), String(row.role_id)]),
+  );
 
   const allowed = new Set(OPERABLE_PERMISSION_CATALOG.map((item) => item.code));
-  await ready.admin.from("user_permission_overrides").delete().eq("user_id", input.userId);
   const overrideRows = input.overrides
     .map((item) => {
       const unit = unitByCode.get(item.businessUnitCode);
@@ -244,9 +246,78 @@ export async function saveUserCustomizationAction(input: {
       effect: "allow" | "deny";
     } => Boolean(row));
 
-  if (overrideRows.length) {
-    const { error } = await ready.admin.from("user_permission_overrides").insert(overrideRows);
-    if (error) return { error: "Unable to save permission overrides. Apply the latest database migration." };
+  const previousOverrideKeys = new Set(
+    (previousOverridesResult.data ?? []).map(
+      (row) => `${row.business_unit_id}:${row.permission_code}:${row.effect}`,
+    ),
+  );
+  const nextOverrideKeys = new Set(
+    overrideRows.map((row) => `${row.business_unit_id}:${row.permission_code}:${row.effect}`),
+  );
+  const assignmentsChanged =
+    previousIds.size !== nextIds.size || [...nextIds].some((id) => !previousIds.has(id));
+  const moduleRolesChanged =
+    previousRoleByUnit.size !== nextRoleByUnit.size ||
+    [...nextRoleByUnit.entries()].some(([unitId, roleId]) => previousRoleByUnit.get(unitId) !== roleId);
+  const overridesChanged =
+    previousOverrideKeys.size !== nextOverrideKeys.size ||
+    [...nextOverrideKeys].some((key) => !previousOverrideKeys.has(key));
+  const roleChanged = currentRoleCode !== primaryRole.code;
+
+  if (!assignmentsChanged && !moduleRolesChanged && !overridesChanged && !roleChanged) {
+    return {
+      modules: assigned.map((unit) => unit.code),
+      roleName: displayRoleName(primaryRole.code, primaryRole.name),
+    };
+  }
+
+  if (roleChanged) {
+    const { error: profileError } = await ready.admin
+      .from("profiles")
+      .update({ role_id: primaryRole.id, updated_at: new Date().toISOString() })
+      .eq("id", input.userId);
+    if (profileError) return { error: "Unable to update the user profile." };
+  }
+
+  if (assignmentsChanged) {
+    const { error: deleteError } = await ready.admin.from("user_business_units").delete().eq("user_id", input.userId);
+    if (deleteError) return { error: "Unable to update module access." };
+    if (assigned.length) {
+      const { error } = await ready.admin.from("user_business_units").insert(
+        assigned.map((unit) => ({ user_id: input.userId, business_unit_id: unit.id })),
+      );
+      if (error) return { error: "Unable to update module access." };
+    }
+  }
+
+  if (assignmentsChanged || moduleRolesChanged) {
+    const { error: deleteError } = await ready.admin.from("user_module_roles").delete().eq("user_id", input.userId);
+    if (deleteError) return { error: "Unable to save module roles. Apply the latest database migration." };
+    if (assigned.length) {
+      const rows = assigned
+        .map((unit) => {
+          const role = roleByCode.get(input.moduleRoles[unit.code] ?? "");
+          if (!role) return null;
+          return { user_id: input.userId, business_unit_id: unit.id, role_id: role.id };
+        })
+        .filter((row): row is { user_id: string; business_unit_id: string; role_id: string } => Boolean(row));
+      if (rows.length) {
+        const { error } = await ready.admin.from("user_module_roles").insert(rows);
+        if (error) return { error: "Unable to save module roles. Apply the latest database migration." };
+      }
+    }
+  }
+
+  if (overridesChanged || assignmentsChanged) {
+    const { error: deleteError } = await ready.admin
+      .from("user_permission_overrides")
+      .delete()
+      .eq("user_id", input.userId);
+    if (deleteError) return { error: "Unable to save permission overrides. Apply the latest database migration." };
+    if (overrideRows.length) {
+      const { error } = await ready.admin.from("user_permission_overrides").insert(overrideRows);
+      if (error) return { error: "Unable to save permission overrides. Apply the latest database migration." };
+    }
   }
 
   const claims = await syncUserAccessClaims(ready.admin, input.userId);
@@ -254,12 +325,10 @@ export async function saveUserCustomizationAction(input: {
 
   const addedUnits = assigned.filter((unit) => !previousIds.has(unit.id));
   const removedUnits = unitRows.filter((unit) => previousIds.has(unit.id) && !nextIds.has(unit.id));
-
-  revalidateAccessSurfaces();
-
   const name = String(profile.full_name);
+  const events: WriteAuditEventInput[] = [];
   for (const unit of addedUnits) {
-    await writeAuditEvent({
+    events.push({
       action: "user.business_unit.assigned",
       module: "users",
       description: `Assigned ${name} to ${unit.name}`,
@@ -267,10 +336,11 @@ export async function saveUserCustomizationAction(input: {
       entityType: "user",
       entityId: input.userId,
       businessUnitId: unit.id,
+      actor: actorOf(actor),
     });
   }
   for (const unit of removedUnits) {
-    await writeAuditEvent({
+    events.push({
       action: "user.business_unit.removed",
       module: "users",
       description: `Removed ${name} from ${unit.name}`,
@@ -278,10 +348,11 @@ export async function saveUserCustomizationAction(input: {
       entityType: "user",
       entityId: input.userId,
       businessUnitId: unit.id,
+      actor: actorOf(actor),
     });
   }
-  if (currentRoleCode !== primaryRole.code) {
-    await writeAuditEvent({
+  if (roleChanged) {
+    events.push({
       action: "user.role.changed",
       module: "users",
       description: `Changed ${name} role to ${primaryRole.name}`,
@@ -289,10 +360,11 @@ export async function saveUserCustomizationAction(input: {
       entityType: "user",
       entityId: input.userId,
       metadata: { previous_role: currentRoleCode, next_role: primaryRole.code },
+      actor: actorOf(actor),
     });
   }
-  if (overrideRows.length) {
-    await writeAuditEvent({
+  if (overridesChanged) {
+    events.push({
       action: "user.permission_override.updated",
       module: "users",
       description: `Updated permission overrides for ${name}`,
@@ -300,9 +372,10 @@ export async function saveUserCustomizationAction(input: {
       entityType: "user",
       entityId: input.userId,
       metadata: { count: String(overrideRows.length) },
+      actor: actorOf(actor),
     });
   }
-  await writeAuditEvent({
+  events.push({
     action: "user.access.customized",
     module: "users",
     description: `Customized access for ${name}`,
@@ -310,7 +383,9 @@ export async function saveUserCustomizationAction(input: {
     entityType: "user",
     entityId: input.userId,
     metadata: { modules: assigned.map((unit) => unit.code) },
+    actor: actorOf(actor),
   });
+  await writeAuditEvents(events);
 
   return { modules: claims.modules, roleName: displayRoleName(primaryRole.code, primaryRole.name) };
 }

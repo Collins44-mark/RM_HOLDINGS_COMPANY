@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { saveUserCustomizationAction } from "@/actions/rbac";
 import { AccessModal, PermissionSkeleton } from "@/components/users/AccessModal";
 import { PermissionTile } from "@/components/users/PermissionTile";
@@ -68,7 +68,9 @@ export function CustomizeAccessDrawer({
   const [checkedByUnit, setCheckedByUnit] = useState<Record<string, Set<string>>>({});
   const [activeModule, setActiveModule] = useState(units[0] ?? "");
   const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const savingLock = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -177,13 +179,16 @@ export function CustomizeAccessDrawer({
           </button>
           <button
             type="button"
-            disabled={pending || !loaded}
+            disabled={saving || saved || !loaded}
             onClick={() => {
+              if (savingLock.current || saving || saved || !loaded) return;
+              savingLock.current = true;
               setError(null);
               const overrides = units.flatMap((code) =>
-                overridesFromChecks(code, moduleRoles[code] ?? loaded?.roleCode ?? "STAFF", checkedByUnit[code] ?? new Set()),
+                overridesFromChecks(code, moduleRoles[code] ?? loaded.roleCode, checkedByUnit[code] ?? new Set()),
               );
-              startTransition(async () => {
+              setSaving(true);
+              void (async () => {
                 const result = await saveUserCustomizationAction({
                   userId,
                   unitCodes: units,
@@ -191,15 +196,21 @@ export function CustomizeAccessDrawer({
                   overrides,
                 });
                 if (result.error) {
-                  setError(result.error);
+                  setError("Unable to save changes.");
+                  setSaving(false);
+                  savingLock.current = false;
                   return;
                 }
-                onSaved({ modules: result.modules ?? units, roleName: result.roleName });
-              });
+                setSaved(true);
+                setSaving(false);
+                window.setTimeout(() => {
+                  onSaved({ modules: result.modules ?? units, roleName: result.roleName });
+                }, 700);
+              })();
             }}
             className="h-10 rounded-[12px] bg-navy px-4 text-[13.5px] font-semibold text-white disabled:opacity-60"
           >
-            {pending ? "Saving..." : "Save Changes"}
+            {saved ? "✓ Saved" : saving ? "Saving…" : "Save Changes"}
           </button>
         </>
       }

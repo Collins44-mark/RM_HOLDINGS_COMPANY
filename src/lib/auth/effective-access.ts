@@ -50,8 +50,12 @@ function fallbackRolePermissions(roleCode: string) {
   return permissionsForRoleCode(roleCode).filter((code) => code !== "*" && isOperablePermission(code));
 }
 
-async function loadRolePermissionMap(client: SupabaseClient) {
-  const { data, error } = await client.from("role_permissions").select("role_id, permission_code");
+async function loadRolePermissionMap(client: SupabaseClient, roleIds?: string[]) {
+  const ids = [...new Set((roleIds ?? []).filter(Boolean))];
+  if (roleIds && ids.length === 0) return new Map<string, string[]>();
+  let query = client.from("role_permissions").select("role_id, permission_code");
+  if (ids.length) query = query.in("role_id", ids);
+  const { data, error } = await query;
   if (error) return null;
   const map = new Map<string, string[]>();
   for (const row of data ?? []) {
@@ -119,7 +123,7 @@ export async function resolveEffectiveAccess(
     };
   }
 
-  const [moduleRoleResult, overrideResult, rolePermMap] = await Promise.all([
+  const [moduleRoleResult, overrideResult] = await Promise.all([
     client
       .from("user_module_roles")
       .select("business_unit_id, role:roles(id, code, name)")
@@ -128,7 +132,6 @@ export async function resolveEffectiveAccess(
       .from("user_permission_overrides")
       .select("business_unit_id, permission_code, effect")
       .eq("user_id", userId),
-    loadRolePermissionMap(client),
   ]);
 
   const moduleRoleByUnit = new Map<string, RoleRow>();
@@ -136,6 +139,12 @@ export async function resolveEffectiveAccess(
     const assigned = asRole(row.role);
     if (assigned) moduleRoleByUnit.set(String(row.business_unit_id), assigned);
   }
+
+  const roleIds = [
+    role.id,
+    ...[...moduleRoleByUnit.values()].map((item) => item.id),
+  ].filter(Boolean);
+  const rolePermMap = await loadRolePermissionMap(client, roleIds);
 
   const unitById = new Map(units.map((unit) => [unit.id, unit]));
   const overrides: PermissionOverrideRecord[] = (overrideResult.data ?? [])

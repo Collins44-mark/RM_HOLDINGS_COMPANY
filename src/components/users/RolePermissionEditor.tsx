@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { saveRolePermissionsAction } from "@/actions/rbac";
 import { AccessModal, PermissionSkeleton } from "@/components/users/AccessModal";
 import { PermissionTile } from "@/components/users/PermissionTile";
@@ -32,7 +32,9 @@ export function RolePermissionEditor({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [ready, setReady] = useState(locked);
   const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const savingLock = useRef(false);
 
   useEffect(() => {
     if (locked) return;
@@ -83,21 +85,29 @@ export function RolePermissionEditor({
             </button>
             <button
               type="button"
-              disabled={pending || !ready}
+              disabled={saving || saved || !ready}
               onClick={() => {
+                if (savingLock.current || saving || saved || !ready) return;
+                savingLock.current = true;
                 setError(null);
-                startTransition(async () => {
-                  const result = await saveRolePermissionsAction(role.id, [...selected]);
+                setSaving(true);
+                const codes = [...selected];
+                void (async () => {
+                  const result = await saveRolePermissionsAction(role.id, codes);
                   if (result.error) {
-                    setError(result.error);
+                    setError("Unable to save changes.");
+                    setSaving(false);
+                    savingLock.current = false;
                     return;
                   }
-                  onSaved([...selected]);
-                });
+                  setSaved(true);
+                  setSaving(false);
+                  window.setTimeout(() => onSaved(codes), 700);
+                })();
               }}
               className="h-10 rounded-[12px] bg-navy px-4 text-[13.5px] font-semibold text-white disabled:opacity-60"
             >
-              {pending ? "Saving..." : "Save Changes"}
+              {saved ? "✓ Saved" : saving ? "Saving…" : "Save Changes"}
             </button>
           </>
         )
