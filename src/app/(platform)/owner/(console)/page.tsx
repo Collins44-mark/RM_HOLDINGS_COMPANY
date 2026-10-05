@@ -51,6 +51,7 @@ export default async function OwnerDashboardPage({
         weekday={heroDate.weekday}
         date={heroDate.date}
         weather={weather}
+        timeZone={settings.timezone}
       />
       <GroupOverviewSection
         totals={finance.totals}

@@ -1,9 +1,57 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { CloudSun } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useT } from "@/components/i18n/LocaleProvider";
+import { resolveHeroSceneSrc } from "@/lib/dashboard/hero-scene";
 import type { WeatherSnapshot } from "@/lib/weather";
+
+function HeroBackground({ src }: { src: string }) {
+  const [active, setActive] = useState(src);
+  const [readySrc, setReadySrc] = useState<string | null>(null);
+  const incoming = src === active ? null : src;
+  const incomingVisible = incoming !== null && readySrc === incoming;
+
+  useEffect(() => {
+    if (!incoming) return;
+    let cancelled = false;
+    const image = new Image();
+    image.onload = () => {
+      if (cancelled) return;
+      requestAnimationFrame(() => setReadySrc(incoming));
+    };
+    image.src = incoming;
+    return () => {
+      cancelled = true;
+      image.onload = null;
+    };
+  }, [incoming]);
+
+  return (
+    <>
+      <img
+        src={active}
+        alt=""
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover object-[center_42%]"
+      />
+      {incoming ? (
+        <img
+          src={incoming}
+          alt=""
+          onTransitionEnd={() => {
+            if (!incomingVisible) return;
+            setActive(incoming);
+            setReadySrc(null);
+          }}
+          className={`pointer-events-none absolute inset-0 h-full w-full object-cover object-[center_42%] transition-opacity duration-[450ms] ease-out ${
+            incomingVisible ? "opacity-100" : "opacity-0"
+          }`}
+        />
+      ) : null}
+    </>
+  );
+}
 
 export function WelcomeBanner({
   greeting,
@@ -11,23 +59,29 @@ export function WelcomeBanner({
   weekday,
   date,
   weather,
+  timeZone,
 }: {
   greeting: string;
   name: string;
   weekday: string;
   date: string;
   weather: WeatherSnapshot;
+  timeZone: string;
 }) {
   const { user } = useAuth();
   const t = useT();
   const displayName = user?.name ?? name;
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  const heroSrc = resolveHeroSceneSrc(weather.condition, timeZone, new Date(nowTick));
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   return (
     <section className="relative isolate min-h-[188px] overflow-hidden rounded-[20px] border border-white/40 text-white shadow-[0_10px_30px_rgba(12,28,48,0.12)]">
-      <img
-        src="/images/banner-landscape.jpg"
-        alt=""
-        className="pointer-events-none absolute inset-0 h-full w-full object-cover object-[center_42%]"
-      />
+      <HeroBackground src={heroSrc} />
       <div className="absolute inset-0 bg-gradient-to-r from-[#071422]/68 via-[#0b1f3a]/32 to-[#071422]/18" />
 
       <div className="relative z-10 flex min-h-[188px] flex-col justify-between gap-5 px-4 py-4 sm:gap-6 sm:px-8 sm:py-6 lg:flex-row">

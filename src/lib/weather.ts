@@ -1,16 +1,29 @@
 import { unstable_cache } from "next/cache";
 
+export type WeatherCategory = "CLEAR" | "CLOUDY" | "RAIN" | "STORM" | "FOG" | "OTHER";
+
 export type WeatherSnapshot = {
   temperatureC: number;
   label: string;
   location: string;
+  condition: WeatherCategory | null;
 };
 
 const FALLBACK: WeatherSnapshot = {
   temperatureC: 31,
   label: "Partly cloudy",
   location: "Dar es Salaam",
+  condition: null,
 };
+
+function categoryFromWmo(code: number): WeatherCategory {
+  if (code === 0 || code === 1) return "CLEAR";
+  if (code === 2 || code === 3) return "CLOUDY";
+  if (code === 45 || code === 48) return "FOG";
+  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return "RAIN";
+  if (code >= 95 && code <= 99) return "STORM";
+  return "OTHER";
+}
 
 const WMO_LABELS: Record<number, string> = {
   0: "Clear",
@@ -42,6 +55,7 @@ async function fetchMorogoroWeather(): Promise<WeatherSnapshot> {
       temperatureC: Math.round(temperature),
       label: WMO_LABELS[code] ?? "Clear",
       location: "Dar es Salaam",
+      condition: categoryFromWmo(code),
     };
   } catch {
     return FALLBACK;
