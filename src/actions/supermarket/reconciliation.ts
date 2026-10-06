@@ -13,6 +13,12 @@ import {
 } from "@/lib/supermarket/access";
 import { addCents, centsToMoney, moneyToCents } from "@/lib/supermarket/money";
 import {
+  assertNoSelfApproval,
+  loadSodControls,
+  sodControlEnabled,
+  SOD_OWN_TRANSACTION_MESSAGE,
+} from "@/lib/supermarket/sod";
+import {
   breakdownFromCents,
   classifyPaymentMethod,
   periodBounds,
@@ -43,10 +49,12 @@ async function reconCtx(permission: string): Promise<Ctx> {
 }
 
 async function capabilities(): Promise<ReconciliationCapabilities> {
+  const ctx = await requireSupermarketContext();
   const user = await requireAuth();
   const owner = isOwnerRole(user.roleCode);
   const has = (code: string) =>
     owner || user.permissions.some((matcher) => matcher !== "*" && matchPermission(code, matcher));
+  const sod = await loadSodControls(ctx.supabase, ctx.businessUnitId);
   return {
     canView: has("supermarket.reconciliation.view"),
     canCreate: has("supermarket.reconciliation.create"),
@@ -54,6 +62,7 @@ async function capabilities(): Promise<ReconciliationCapabilities> {
     canPost: has("supermarket.reconciliation.post"),
     isOwner: owner,
     userId: user.id,
+    sodReconciliation: sodControlEnabled(sod, "reconciliation"),
   };
 }
 
@@ -63,13 +72,15 @@ function assertEditable(status: string) {
   }
 }
 
-function assertCanApprove(ctx: Ctx, preparedBy: string | null) {
-  if (!ctx.isOwner && preparedBy && preparedBy === ctx.userId) {
-    throw new SupermarketError(
-      "Segregation of duties: the preparer cannot approve this reconciliation.",
-      "UNAUTHORIZED",
-    );
-  }
+async function assertReconSod(ctx: Ctx, preparedBy: string | null) {
+  const sod = await loadSodControls(ctx.supabase, ctx.businessUnitId);
+  assertNoSelfApproval({
+    preparerId: preparedBy,
+    actorId: ctx.userId,
+    isOwner: ctx.isOwner,
+    enabled: sodControlEnabled(sod, "reconciliation"),
+    message: SOD_OWN_TRANSACTION_MESSAGE,
+  });
 }
 
 function requireVarianceReason(varianceCents: number, reason: string) {
@@ -402,7 +413,7 @@ export async function approveSalesReconciliationAction(id: string) {
     if (String(data?.status) !== "SUBMITTED") {
       throw new SupermarketError("Only a submitted reconciliation can be approved.", "CONFLICT");
     }
-    assertCanApprove(ctx, data?.prepared_by ? String(data.prepared_by) : null);
+    await assertReconSod(ctx, data?.prepared_by ? String(data.prepared_by) : null);
     requireVarianceReason(moneyToCents(data?.variance), String(data?.variance_reason ?? ""));
     const { data: updated, error: updateError } = await ctx.supabase
       .from("sm_sales_reconciliations")
@@ -570,7 +581,7 @@ export async function approveCashReconciliationAction(id: string) {
     if (String(data?.status) !== "SUBMITTED") {
       throw new SupermarketError("Only a submitted reconciliation can be approved.", "CONFLICT");
     }
-    assertCanApprove(ctx, data?.prepared_by ? String(data.prepared_by) : null);
+    await assertReconSod(ctx, data?.prepared_by ? String(data.prepared_by) : null);
     requireVarianceReason(moneyToCents(data?.variance), String(data?.variance_reason ?? ""));
     const { error: updateError } = await ctx.supabase
       .from("sm_cash_reconciliations")
@@ -912,7 +923,7 @@ export async function approveStockReconciliationAction(id: string) {
     if (String(data?.status) !== "SUBMITTED") {
       throw new SupermarketError("Only a submitted stocktake can be approved.", "CONFLICT");
     }
-    assertCanApprove(ctx, data?.prepared_by ? String(data.prepared_by) : null);
+    await assertReconSod(ctx, data?.prepared_by ? String(data.prepared_by) : null);
     const { error: updateError } = await ctx.supabase
       .from("sm_stock_reconciliations")
       .update({
@@ -1524,7 +1535,7 @@ export async function approveBankReconciliationAction(id: string) {
     if (String(data?.status) !== "SUBMITTED") {
       throw new SupermarketError("Only a submitted reconciliation can be approved.", "CONFLICT");
     }
-    assertCanApprove(ctx, data?.prepared_by ? String(data.prepared_by) : null);
+    await assertReconSod(ctx, data?.prepared_by ? String(data.prepared_by) : null);
     const { error: updateError } = await ctx.supabase
       .from("sm_bank_reconciliations")
       .update({

@@ -7,10 +7,18 @@ import { writeSupermarketAudit } from "@/lib/audit";
 import {
   actionErrorMessage,
   mapDbError,
+  requireSupermarketContext,
   requireSupermarketPermission,
   SupermarketError,
 } from "@/lib/supermarket/access";
 import { addCents, centsToMoney, moneyToCents } from "@/lib/supermarket/money";
+import {
+  assertNoSelfApproval,
+  loadSodControls,
+  sodControlEnabled,
+  SOD_OWN_POST_MESSAGE,
+  SOD_OWN_TRANSACTION_MESSAGE,
+} from "@/lib/supermarket/sod";
 
 export type PettyCashTxnType = "EXPENSE" | "REPLENISHMENT" | "REVERSAL" | "ADJUSTMENT";
 export type PettyCashPostingStatus = "DRAFT" | "POSTED" | "REVERSED";
@@ -45,12 +53,15 @@ async function caps() {
   const owner = isOwnerRole(user.roleCode);
   const has = (code: string) =>
     owner || user.permissions.some((matcher) => matcher !== "*" && matchPermission(code, matcher));
+  const { supabase, businessUnitId } = await requireSupermarketContext();
+  const sod = await loadSodControls(supabase, businessUnitId);
   return {
     canView: has("supermarket.petty_cash.view"),
     canCreate: has("supermarket.petty_cash.create"),
     canApprove: has("supermarket.petty_cash.approve"),
     isOwner: owner,
     userId: user.id,
+    sodPettyCash: sodControlEnabled(sod, "pettyCash"),
   };
 }
 
@@ -261,22 +272,30 @@ export async function savePettyCashExpenseAction(input: {
     const amount = moneyToCents(input.amount);
     if (amount <= 0) throw new SupermarketError("Amount must be positive.", "VALIDATION");
     if (!input.category.trim()) throw new SupermarketError("Category is required.", "VALIDATION");
-    if (input.post && !access.isOwner) {
+    if (input.post) {
       if (!input.draftId) {
-        throw new SupermarketError(
-          "Segregation of duties: save a draft; another authorized user must post this expense.",
-          "UNAUTHORIZED",
-        );
-      }
-      const { data, error } = await supabase
-        .from("sm_petty_cash_transactions")
-        .select("created_by")
-        .eq("id", input.draftId)
-        .eq("business_unit_id", businessUnitId)
-        .single();
-      if (error) mapDbError(error);
-      if (data?.created_by && String(data.created_by) === userId) {
-        throw new SupermarketError("Segregation of duties: the preparer cannot post this expense.", "UNAUTHORIZED");
+        assertNoSelfApproval({
+          preparerId: userId,
+          actorId: userId,
+          isOwner: access.isOwner,
+          enabled: access.sodPettyCash,
+          message: SOD_OWN_POST_MESSAGE,
+        });
+      } else {
+        const { data, error } = await supabase
+          .from("sm_petty_cash_transactions")
+          .select("created_by")
+          .eq("id", input.draftId)
+          .eq("business_unit_id", businessUnitId)
+          .single();
+        if (error) mapDbError(error);
+        assertNoSelfApproval({
+          preparerId: data?.created_by ? String(data.created_by) : null,
+          actorId: userId,
+          isOwner: access.isOwner,
+          enabled: access.sodPettyCash,
+          message: SOD_OWN_POST_MESSAGE,
+        });
       }
     }
     const { data, error } = await supabase.rpc("sm_save_petty_cash_expense", {
@@ -328,25 +347,30 @@ export async function savePettyCashReplenishmentAction(input: {
     if (input.source === "BANK" && !input.bankAccountId) {
       throw new SupermarketError("Select a bank account.", "VALIDATION");
     }
-    if (input.post && !access.isOwner) {
+    if (input.post) {
       if (!input.draftId) {
-        throw new SupermarketError(
-          "Segregation of duties: save a draft; another authorized user must post this replenishment.",
-          "UNAUTHORIZED",
-        );
-      }
-      const { data, error } = await supabase
-        .from("sm_petty_cash_transactions")
-        .select("created_by")
-        .eq("id", input.draftId)
-        .eq("business_unit_id", businessUnitId)
-        .single();
-      if (error) mapDbError(error);
-      if (data?.created_by && String(data.created_by) === userId) {
-        throw new SupermarketError(
-          "Segregation of duties: the preparer cannot post this replenishment.",
-          "UNAUTHORIZED",
-        );
+        assertNoSelfApproval({
+          preparerId: userId,
+          actorId: userId,
+          isOwner: access.isOwner,
+          enabled: access.sodPettyCash,
+          message: SOD_OWN_POST_MESSAGE,
+        });
+      } else {
+        const { data, error } = await supabase
+          .from("sm_petty_cash_transactions")
+          .select("created_by")
+          .eq("id", input.draftId)
+          .eq("business_unit_id", businessUnitId)
+          .single();
+        if (error) mapDbError(error);
+        assertNoSelfApproval({
+          preparerId: data?.created_by ? String(data.created_by) : null,
+          actorId: userId,
+          isOwner: access.isOwner,
+          enabled: access.sodPettyCash,
+          message: SOD_OWN_POST_MESSAGE,
+        });
       }
     }
     const { data, error } = await supabase.rpc("sm_save_petty_cash_replenishment", {
@@ -388,12 +412,13 @@ export async function reversePettyCashTransactionAction(id: string) {
       .eq("business_unit_id", businessUnitId)
       .single();
     if (originalError) mapDbError(originalError);
-    if (!access.isOwner) {
-      const actor = String(original?.posted_by || original?.created_by || "");
-      if (actor && actor === userId) {
-        throw new SupermarketError("Segregation of duties: the preparer cannot reverse this transaction.", "UNAUTHORIZED");
-      }
-    }
+    assertNoSelfApproval({
+      preparerId: original?.posted_by ? String(original.posted_by) : original?.created_by ? String(original.created_by) : null,
+      actorId: userId,
+      isOwner: access.isOwner,
+      enabled: access.sodPettyCash,
+      message: "You can’t reverse this transaction because you prepared it. Another authorized user must reverse it.",
+    });
     const { data, error } = await supabase.rpc("sm_reverse_petty_cash_transaction", { p_id: id });
     if (error) mapDbError(error);
     await writeSupermarketAudit(businessUnitId, {
@@ -491,9 +516,13 @@ export async function approvePettyCashReconciliationAction(id: string) {
     if (String(data?.status) !== "SUBMITTED") {
       throw new SupermarketError("Only a submitted reconciliation can be approved.", "CONFLICT");
     }
-    if (!access.isOwner && data?.prepared_by && String(data.prepared_by) === userId) {
-      throw new SupermarketError("Segregation of duties: the preparer cannot approve this reconciliation.", "UNAUTHORIZED");
-    }
+    assertNoSelfApproval({
+      preparerId: data?.prepared_by ? String(data.prepared_by) : null,
+      actorId: userId,
+      isOwner: access.isOwner,
+      enabled: access.sodPettyCash,
+      message: SOD_OWN_TRANSACTION_MESSAGE,
+    });
     const { error: updateError } = await supabase
       .from("sm_petty_cash_reconciliations")
       .update({

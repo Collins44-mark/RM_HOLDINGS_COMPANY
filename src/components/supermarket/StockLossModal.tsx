@@ -7,6 +7,7 @@ import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import { attachStock, batchExpiryStatus, useSupermarketInventory } from "@/lib/data/supermarket-inventory";
 import { STOCK_LOCATIONS, type StockLocation } from "@/lib/data/supermarket-purchasing";
+import { canApprovePreparedWork } from "@/lib/supermarket/sod";
 import {
   approveStockLossEventAction,
   getStockLossCapsAction,
@@ -43,7 +44,13 @@ export function StockLossModal({ onClose }: { onClose: () => void }) {
     [inventory.products, inventory.batches],
   );
 
-  const [caps, setCaps] = useState({ canCreate: false, canApprove: false, isOwner: false, userId: "" });
+  const [caps, setCaps] = useState({
+    canCreate: false,
+    canApprove: false,
+    isOwner: false,
+    userId: "",
+    sodStockAdjustment: true,
+  });
   const [step, setStep] = useState<"form" | "review">("form");
   const [eventId, setEventId] = useState<string | null>(null);
   const [status, setStatus] = useState("DRAFT");
@@ -383,7 +390,13 @@ export function StockLossModal({ onClose }: { onClose: () => void }) {
                 </span>
               </button>
             ) : null}
-            {caps.canApprove && status === "SUBMITTED" && (caps.isOwner || preparedBy !== caps.userId) ? (
+            {canApprovePreparedWork({
+              canApprove: caps.canApprove && status === "SUBMITTED",
+              isOwner: caps.isOwner,
+              sodEnabled: caps.sodStockAdjustment,
+              preparerId: preparedBy,
+              userId: caps.userId,
+            }) ? (
               <button
                 type="button"
                 disabled={Boolean(busy) || !eventId || confirmed === "approved"}
@@ -405,7 +418,13 @@ export function StockLossModal({ onClose }: { onClose: () => void }) {
                 </span>
               </button>
             ) : null}
-            {caps.canApprove && (status === "APPROVED" || confirmed === "posted") ? (
+            {canApprovePreparedWork({
+              canApprove: caps.canApprove && (status === "APPROVED" || confirmed === "posted"),
+              isOwner: caps.isOwner,
+              sodEnabled: caps.sodStockAdjustment,
+              preparerId: preparedBy,
+              userId: caps.userId,
+            }) ? (
               <button
                 type="button"
                 disabled={Boolean(busy) || !eventId || confirmed === "posted"}

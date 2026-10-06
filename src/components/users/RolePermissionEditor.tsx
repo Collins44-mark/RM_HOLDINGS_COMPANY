@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { saveRolePermissionsAction } from "@/actions/rbac";
+import { loadSodControlsAction, saveSodControlsAction } from "@/actions/supermarket/sod";
 import { AccessModal, PermissionSkeleton } from "@/components/users/AccessModal";
 import { PermissionTile } from "@/components/users/PermissionTile";
 import { isOwnerRole } from "@/lib/auth/rbac";
@@ -12,6 +13,12 @@ import {
 } from "@/lib/config/permissions";
 import { roleDefinition } from "@/lib/auth/role-options";
 import type { RoleSummary } from "@/lib/auth/rbac-types";
+import {
+  DEFAULT_SOD_CONTROLS,
+  SOD_CONTROL_FIELDS,
+  type SodControlKey,
+  type SodControls,
+} from "@/lib/supermarket/sod";
 
 export function RolePermissionEditor({
   role,
@@ -30,27 +37,47 @@ export function RolePermissionEditor({
     return groupPermissions(catalog);
   }, [role.code]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [ready, setReady] = useState(locked);
+  const [sod, setSod] = useState<SodControls>({ ...DEFAULT_SOD_CONTROLS });
+  const sodBaseline = useRef<SodControls>({ ...DEFAULT_SOD_CONTROLS });
+  const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const savingLock = useRef(false);
 
+  const sodConflict = useMemo(() => {
+    const pairs: Array<[string, string]> = [
+      ["supermarket.purchases.create", "supermarket.purchases.approve"],
+      ["supermarket.supplier_invoices.create", "supermarket.supplier_invoices.verify"],
+      ["supermarket.supplier_payments.create", "supermarket.supplier_payments.approve"],
+      ["supermarket.reconciliation.create", "supermarket.reconciliation.approve"],
+      ["supermarket.stock.edit", "supermarket.stock.approve"],
+      ["supermarket.petty_cash.create", "supermarket.petty_cash.approve"],
+      ["supermarket.banking.create", "supermarket.banking.approve"],
+    ];
+    return pairs.some(([create, approve]) => selected.has(create) && selected.has(approve));
+  }, [selected]);
+
   useEffect(() => {
-    if (locked) return;
     let cancelled = false;
     async function load() {
-      const response = await fetch(`/owner/users/role-grants?roleId=${encodeURIComponent(role.id)}`, {
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        if (!cancelled) setError("Unable to load role permissions.");
-        setReady(true);
-        return;
-      }
-      const data = (await response.json()) as { permissionCodes?: string[] };
+      const [grants, controls] = await Promise.all([
+        locked
+          ? Promise.resolve({ ok: true as const, permissionCodes: [] as string[] })
+          : fetch(`/owner/users/role-grants?roleId=${encodeURIComponent(role.id)}`, { cache: "no-store" }).then(
+              async (response) => {
+                if (!response.ok) return { ok: false as const };
+                const data = (await response.json()) as { permissionCodes?: string[] };
+                return { ok: true as const, permissionCodes: data.permissionCodes ?? [] };
+              },
+            ),
+        loadSodControlsAction(),
+      ]);
       if (cancelled) return;
-      setSelected(new Set(data.permissionCodes ?? []));
+      if (!locked && !grants.ok) setError("Unable to load role permissions.");
+      if (!locked && grants.ok) setSelected(new Set(grants.permissionCodes));
+      setSod(controls);
+      sodBaseline.current = controls;
       setReady(true);
     }
     void load();
@@ -67,6 +94,11 @@ export function RolePermissionEditor({
       else next.add(code);
       return next;
     });
+  }
+
+  function toggleSod(key: "blockSelfApproval" | SodControlKey) {
+    if (locked) return;
+    setSod((current) => ({ ...current, [key]: !current[key] }));
   }
 
   return (
@@ -93,8 +125,12 @@ export function RolePermissionEditor({
                 setSaving(true);
                 const codes = [...selected];
                 void (async () => {
-                  const result = await saveRolePermissionsAction(role.id, codes);
-                  if (result.error) {
+                  const sodChanged = JSON.stringify(sod) !== JSON.stringify(sodBaseline.current);
+                  const [roleResult, sodResult] = await Promise.all([
+                    saveRolePermissionsAction(role.id, codes),
+                    sodChanged ? saveSodControlsAction(sod) : Promise.resolve({} as { error?: string }),
+                  ]);
+                  if (roleResult.error || sodResult.error) {
                     setError("Unable to save changes.");
                     setSaving(false);
                     savingLock.current = false;
@@ -117,11 +153,14 @@ export function RolePermissionEditor({
         <p className="mb-3 rounded-[14px] border border-red-200/70 bg-red-50/80 px-3 py-2.5 text-sm text-[#9b2c2c]">{error}</p>
       ) : null}
       {locked ? (
-        <div className="rounded-[18px] border border-black/[0.04] bg-[#f8fafc]/90 px-5 py-5">
-          <p className="text-[15px] font-semibold text-navy">Owner</p>
-          <p className="mt-1 text-[13.5px] text-slate-500">All modules</p>
-          <p className="mt-1 text-[13.5px] text-slate-500">All implemented permissions</p>
-          <p className="mt-3 text-[13px] text-slate-500">Full system access. Owner permissions cannot be reduced.</p>
+        <div className="space-y-4">
+          <div className="rounded-[18px] border border-black/[0.04] bg-[#f8fafc]/90 px-5 py-5">
+            <p className="text-[15px] font-semibold text-navy">Owner</p>
+            <p className="mt-1 text-[13.5px] text-slate-500">All modules</p>
+            <p className="mt-1 text-[13.5px] text-slate-500">All implemented permissions</p>
+            <p className="mt-3 text-[13px] text-slate-500">Full system access. Owner permissions cannot be reduced.</p>
+          </div>
+          <SodSection sod={sod} locked onToggle={() => undefined} />
         </div>
       ) : !ready ? (
         <PermissionSkeleton />
@@ -155,8 +194,54 @@ export function RolePermissionEditor({
           {groups.length === 0 ? (
             <p className="text-[13.5px] text-slate-500">No operational permissions are registered for this role yet.</p>
           ) : null}
+          {sodConflict ? (
+            <p className="rounded-[14px] border border-[#f0e0b8] bg-[#fff8eb]/90 px-3 py-2.5 text-[13px] text-[#8a6a20]">
+              This role can both prepare and approve. Self-approval is still blocked by default unless you change Financial Controls.
+            </p>
+          ) : null}
+          <SodSection sod={sod} locked={false} onToggle={toggleSod} />
         </div>
       )}
     </AccessModal>
+  );
+}
+
+function SodSection({
+  sod,
+  locked,
+  onToggle,
+}: {
+  sod: SodControls;
+  locked: boolean;
+  onToggle: (key: "blockSelfApproval" | SodControlKey) => void;
+}) {
+  return (
+    <section className="space-y-3">
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Financial Controls</p>
+        <p className="mt-1 text-[12.5px] text-slate-500">
+          System defaults for supermarket segregation of duties. These apply to all users, including permission overrides.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <PermissionTile
+          label="Block self-approval"
+          hint="Default"
+          checked={sod.blockSelfApproval}
+          disabled={locked}
+          onChange={() => onToggle("blockSelfApproval")}
+        />
+        {SOD_CONTROL_FIELDS.map((item) => (
+          <PermissionTile
+            key={item.key}
+            label={item.label}
+            hint="Default"
+            checked={sod.blockSelfApproval && sod[item.key]}
+            disabled={locked || !sod.blockSelfApproval}
+            onChange={() => onToggle(item.key)}
+          />
+        ))}
+      </div>
+    </section>
   );
 }

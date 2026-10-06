@@ -7,9 +7,16 @@ import { writeSupermarketAudit } from "@/lib/audit";
 import {
   actionErrorMessage,
   mapDbError,
+  requireSupermarketContext,
   requireSupermarketPermission,
   SupermarketError,
 } from "@/lib/supermarket/access";
+import {
+  assertNoSelfApproval,
+  loadSodControls,
+  sodControlEnabled,
+  SOD_OWN_VERIFY_MESSAGE,
+} from "@/lib/supermarket/sod";
 
 export type PurchasingCaps = {
   canView: boolean;
@@ -22,6 +29,9 @@ export type PurchasingCaps = {
   canPaymentApprove: boolean;
   isOwner: boolean;
   userId: string;
+  sodPurchaseOrder: boolean;
+  sodSupplierInvoice: boolean;
+  sodSupplierPayment: boolean;
 };
 
 export async function getPurchasingCapsAction(): Promise<PurchasingCaps> {
@@ -29,6 +39,8 @@ export async function getPurchasingCapsAction(): Promise<PurchasingCaps> {
   const owner = isOwnerRole(user.roleCode);
   const has = (code: string) =>
     owner || user.permissions.some((matcher) => matcher !== "*" && matchPermission(code, matcher));
+  const { supabase, businessUnitId } = await requireSupermarketContext();
+  const sod = await loadSodControls(supabase, businessUnitId);
   return {
     canView: has("supermarket.purchases.view"),
     canCreate: has("supermarket.purchases.create"),
@@ -40,13 +52,10 @@ export async function getPurchasingCapsAction(): Promise<PurchasingCaps> {
     canPaymentApprove: has("supermarket.supplier_payments.approve"),
     isOwner: owner,
     userId: user.id,
+    sodPurchaseOrder: sodControlEnabled(sod, "purchaseOrder"),
+    sodSupplierInvoice: sodControlEnabled(sod, "supplierInvoice"),
+    sodSupplierPayment: sodControlEnabled(sod, "supplierPayment"),
   };
-}
-
-function assertSod(actorId: string | null, userId: string, isOwner: boolean, message: string) {
-  if (actorId && actorId === userId && !isOwner) {
-    throw new SupermarketError(message, "UNAUTHORIZED");
-  }
 }
 
 export async function submitPurchaseOrderAction(orderId: string) {
@@ -69,9 +78,28 @@ export async function submitPurchaseOrderAction(orderId: string) {
 
 export async function approvePurchaseOrderAction(orderId: string) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketPermission(
+    const { supabase, businessUnitId, userId } = await requireSupermarketPermission(
       "supermarket.purchases.approve",
     );
+    const user = await requireAuth();
+    const sod = await loadSodControls(supabase, businessUnitId);
+    const { data, error: loadError } = await supabase
+      .from("sm_purchase_orders")
+      .select("created_by, submitted_by, status")
+      .eq("id", orderId)
+      .eq("business_unit_id", businessUnitId)
+      .maybeSingle();
+    if (loadError) mapDbError(loadError);
+    if (!data) throw new SupermarketError("Purchase order not found.", "NOT_FOUND");
+    if (String(data.status) !== "SUBMITTED") {
+      throw new SupermarketError("Only a submitted purchase order can be approved.", "CONFLICT");
+    }
+    assertNoSelfApproval({
+      preparerId: data.created_by ? String(data.created_by) : data.submitted_by ? String(data.submitted_by) : null,
+      actorId: userId,
+      isOwner: isOwnerRole(user.roleCode),
+      enabled: sodControlEnabled(sod, "purchaseOrder"),
+    });
     const { error } = await supabase.rpc("sm_approve_purchase_order", { p_purchase_order_id: orderId });
     if (error) mapDbError(error);
     void writeSupermarketAudit(businessUnitId, {
@@ -280,7 +308,7 @@ export async function verifySupplierInvoiceAction(invoiceId: string) {
     const { supabase, businessUnitId, userId } = await requireSupermarketPermission(
       "supermarket.supplier_invoices.verify",
     );
-    const caps = await getPurchasingCapsAction();
+    const sod = await loadSodControls(supabase, businessUnitId);
     const { data, error: loadError } = await supabase
       .from("sm_supplier_invoices")
       .select("created_by")
@@ -288,7 +316,14 @@ export async function verifySupplierInvoiceAction(invoiceId: string) {
       .eq("business_unit_id", businessUnitId)
       .maybeSingle();
     if (loadError) mapDbError(loadError);
-    assertSod(data?.created_by ? String(data.created_by) : null, userId, caps.isOwner, "You cannot verify an invoice you prepared.");
+    const user = await requireAuth();
+    assertNoSelfApproval({
+      preparerId: data?.created_by ? String(data.created_by) : null,
+      actorId: userId,
+      isOwner: isOwnerRole(user.roleCode),
+      enabled: sodControlEnabled(sod, "supplierInvoice"),
+      message: SOD_OWN_VERIFY_MESSAGE,
+    });
     const { error } = await supabase.rpc("sm_verify_supplier_invoice", { p_invoice_id: invoiceId });
     if (error) mapDbError(error);
     await writeSupermarketAudit(businessUnitId, {
@@ -449,7 +484,8 @@ export async function approvePaymentRequestAction(requestId: string) {
     const { supabase, businessUnitId, userId } = await requireSupermarketPermission(
       "supermarket.supplier_payments.approve",
     );
-    const caps = await getPurchasingCapsAction();
+    const sod = await loadSodControls(supabase, businessUnitId);
+    const user = await requireAuth();
     const { data, error: loadError } = await supabase
       .from("sm_supplier_payment_requests")
       .select("prepared_by, status")
@@ -458,12 +494,15 @@ export async function approvePaymentRequestAction(requestId: string) {
       .maybeSingle();
     if (loadError) mapDbError(loadError);
     if (!data) throw new SupermarketError("Payment request not found.", "NOT_FOUND");
-    assertSod(
-      data.prepared_by ? String(data.prepared_by) : null,
-      userId,
-      caps.isOwner,
-      "You cannot approve a payment request you prepared.",
-    );
+    if (String(data.status) !== "SUBMITTED") {
+      throw new SupermarketError("Only a submitted payment request can be approved.", "CONFLICT");
+    }
+    assertNoSelfApproval({
+      preparerId: data.prepared_by ? String(data.prepared_by) : null,
+      actorId: userId,
+      isOwner: isOwnerRole(user.roleCode),
+      enabled: sodControlEnabled(sod, "supplierPayment"),
+    });
     const { error } = await supabase
       .from("sm_supplier_payment_requests")
       .update({

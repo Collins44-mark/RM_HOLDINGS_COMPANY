@@ -10,6 +10,7 @@ import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilte
 import { PageBackButton } from "@/components/ui/PageBackButton";
 import { addCents, centsToMoney, moneyToCents, variancePercent } from "@/lib/supermarket/money";
 import { displayStatus, type SalesReconciliationRecord } from "@/lib/supermarket/reconciliation";
+import { canApprovePreparedWork } from "@/lib/supermarket/sod";
 import { formatTzs } from "@/lib/format/currency";
 import {
   MoneyField,
@@ -56,6 +57,7 @@ export function SalesReconciliationPage() {
     canPost: false,
     isOwner: false,
     userId: "",
+    sodReconciliation: true,
   });
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const periodKey = `${period.start}:${period.end}`;
@@ -86,6 +88,7 @@ export function SalesReconciliationPage() {
         canPost: false,
         isOwner: result.capabilities.isOwner,
         userId: result.capabilities.userId,
+        sodReconciliation: result.capabilities.sodReconciliation,
       });
       setLoadedKey(`${period.start}:${period.end}`);
     });
@@ -114,8 +117,13 @@ export function SalesReconciliationPage() {
   const expectedTotal = moneyToCents(expected?.total);
   const variance = actualTotal - expectedTotal;
   const status = workflowStatus(record, variance);
-  const canApproveThis =
-    caps.canApprove && (caps.isOwner || !record?.preparedBy || record.preparedBy !== caps.userId);
+  const canApproveThis = canApprovePreparedWork({
+    canApprove: caps.canApprove,
+    isOwner: caps.isOwner,
+    sodEnabled: caps.sodReconciliation,
+    preparerId: record?.preparedBy,
+    userId: caps.userId,
+  });
   const actualByKey = {
     cash: actualCash,
     card: actualCard,

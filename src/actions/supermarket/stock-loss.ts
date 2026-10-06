@@ -8,9 +8,17 @@ import { writeSupermarketAudit } from "@/lib/audit";
 import {
   actionErrorMessage,
   mapDbError,
+  requireSupermarketContext,
   requireSupermarketPermission,
   SupermarketError,
 } from "@/lib/supermarket/access";
+import {
+  assertNoSelfApproval,
+  loadSodControls,
+  sodControlEnabled,
+  SOD_OWN_POST_MESSAGE,
+  SOD_OWN_TRANSACTION_MESSAGE,
+} from "@/lib/supermarket/sod";
 
 export type StockLossType = "LOSS" | "DAMAGE" | "EXPIRED";
 export type StockLossStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "POSTED";
@@ -38,11 +46,14 @@ export async function getStockLossCapsAction() {
   const owner = isOwnerRole(user.roleCode);
   const has = (code: string) =>
     owner || user.permissions.some((matcher) => matcher !== "*" && matchPermission(code, matcher));
+  const { supabase, businessUnitId } = await requireSupermarketContext();
+  const sod = await loadSodControls(supabase, businessUnitId);
   return {
     canCreate: has("supermarket.stock.edit"),
     canApprove: has("supermarket.stock.approve"),
     isOwner: owner,
     userId: user.id,
+    sodStockAdjustment: sodControlEnabled(sod, "stockAdjustment"),
   };
 }
 
@@ -316,9 +327,17 @@ export async function approveStockLossEventAction(eventId: string) {
       .maybeSingle();
     if (loadError) mapDbError(loadError);
     if (!data) throw new SupermarketError("Inventory event not found.", "NOT_FOUND");
-    if (data.prepared_by === userId && !isOwnerRole(user.roleCode)) {
-      throw new SupermarketError("You cannot approve an event you prepared.", "UNAUTHORIZED");
+    if (String(data.status) !== "SUBMITTED") {
+      throw new SupermarketError("Only a submitted event can be approved.", "CONFLICT");
     }
+    const sod = await loadSodControls(supabase, businessUnitId);
+    assertNoSelfApproval({
+      preparerId: data.prepared_by ? String(data.prepared_by) : null,
+      actorId: userId,
+      isOwner: isOwnerRole(user.roleCode),
+      enabled: sodControlEnabled(sod, "stockAdjustment"),
+      message: SOD_OWN_TRANSACTION_MESSAGE,
+    });
     const { error } = await supabase.rpc("sm_approve_stock_loss_event", { p_event_id: eventId });
     if (error) mapDbError(error);
     void writeSupermarketAudit(businessUnitId, {
@@ -336,10 +355,11 @@ export async function approveStockLossEventAction(eventId: string) {
 
 export async function postStockLossEventAction(eventId: string) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.stock.approve");
+    const { supabase, businessUnitId, userId } = await requireSupermarketPermission("supermarket.stock.approve");
+    const user = await requireAuth();
     const { data: before, error: loadError } = await supabase
       .from("sm_stock_loss_events")
-      .select("posted_adjustment_id, status, event_type, event_number")
+      .select("posted_adjustment_id, status, event_type, event_number, prepared_by")
       .eq("id", eventId)
       .eq("business_unit_id", businessUnitId)
       .maybeSingle();
@@ -347,6 +367,14 @@ export async function postStockLossEventAction(eventId: string) {
     if (before?.posted_adjustment_id || before?.status === "POSTED") {
       throw new SupermarketError("This inventory event has already been posted.", "CONFLICT");
     }
+    const sod = await loadSodControls(supabase, businessUnitId);
+    assertNoSelfApproval({
+      preparerId: before?.prepared_by ? String(before.prepared_by) : null,
+      actorId: userId,
+      isOwner: isOwnerRole(user.roleCode),
+      enabled: sodControlEnabled(sod, "stockAdjustment"),
+      message: SOD_OWN_POST_MESSAGE,
+    });
     const { data, error } = await supabase.rpc("sm_post_stock_loss_event", { p_event_id: eventId });
     if (error) mapDbError(error);
     void writeSupermarketAudit(businessUnitId, {

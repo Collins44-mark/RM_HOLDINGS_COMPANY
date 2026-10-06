@@ -20,6 +20,7 @@ import { EmptyState } from "@/components/ui/PageHeader";
 import { EXPENSE_CATEGORIES } from "@/lib/data/sample-supermarket-finance";
 import { formatTzs } from "@/lib/format/currency";
 import { moneyToCents } from "@/lib/supermarket/money";
+import { canApprovePreparedWork } from "@/lib/supermarket/sod";
 import {
   MoneyField,
   primaryButton,
@@ -41,7 +42,13 @@ export function PettyCashPage() {
   const [status, setStatus] = useState<PettyCashPostingStatus | "ALL">("ALL");
   const [category, setCategory] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [caps, setCaps] = useState({ canCreate: false, canApprove: false, isOwner: false, userId: "" });
+  const [caps, setCaps] = useState({
+    canCreate: false,
+    canApprove: false,
+    isOwner: false,
+    userId: "",
+    sodPettyCash: true,
+  });
   const [accounts, setAccounts] = useState<Array<{ id: string; bankName: string; accountName: string }>>([]);
   const [recon, setRecon] = useState<{ id: string; status: string; date: string; preparedBy: string | null } | null>(null);
   const [modal, setModal] = useState<"expense" | "replenish" | "reconcile" | null>(null);
@@ -77,6 +84,7 @@ export function PettyCashPage() {
         canApprove: result.capabilities.canApprove,
         isOwner: result.capabilities.isOwner,
         userId: result.capabilities.userId,
+        sodPettyCash: result.capabilities.sodPettyCash,
       });
     });
     return () => {
@@ -162,7 +170,14 @@ export function PettyCashPage() {
                 Reconcile Cash
               </button>
             ) : null}
-            {caps.canApprove && recon?.status === "SUBMITTED" && (caps.isOwner || recon.preparedBy !== caps.userId) ? (
+            {recon &&
+            canApprovePreparedWork({
+              canApprove: caps.canApprove && recon.status === "SUBMITTED",
+              isOwner: caps.isOwner,
+              sodEnabled: caps.sodPettyCash,
+              preparerId: recon.preparedBy,
+              userId: caps.userId,
+            }) ? (
               <button
                 type="button"
                 className={secondaryButton}
@@ -232,9 +247,13 @@ export function PettyCashPage() {
                       <td className="px-4 py-2.5">{row.createdByName}</td>
                       <td className="px-4 py-2.5">
                         {row.postingStatus === "DRAFT" &&
-                        caps.canApprove &&
-                        (caps.isOwner || row.createdBy !== caps.userId) &&
-                        (row.txnType === "EXPENSE" || row.txnType === "REPLENISHMENT") ? (
+                        canApprovePreparedWork({
+                          canApprove: caps.canApprove && (row.txnType === "EXPENSE" || row.txnType === "REPLENISHMENT"),
+                          isOwner: caps.isOwner,
+                          sodEnabled: caps.sodPettyCash,
+                          preparerId: row.createdBy,
+                          userId: caps.userId,
+                        }) ? (
                           <button
                             type="button"
                             className="text-[12.5px] font-semibold text-navy"

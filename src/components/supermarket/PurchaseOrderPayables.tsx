@@ -25,6 +25,7 @@ import {
 import type { Purchase, PurchaseOrder, SupplierInvoice, SupplierPaymentRequest } from "@/lib/supermarket/types";
 import { getApplicableTaxesAction } from "@/actions/supermarket/tax";
 import { payableTotal, taxLineLabel } from "@/lib/supermarket/tax";
+import { canApprovePreparedWork } from "@/lib/supermarket/sod";
 
 const emptyCaps: PurchasingCaps = {
   canView: false,
@@ -37,6 +38,9 @@ const emptyCaps: PurchasingCaps = {
   canPaymentApprove: false,
   isOwner: false,
   userId: "",
+  sodPurchaseOrder: true,
+  sodSupplierInvoice: true,
+  sodSupplierPayment: true,
 };
 
 export function PurchaseOrderWorkflow({
@@ -75,9 +79,13 @@ export function PurchaseOrderWorkflow({
 
   const canSubmit = caps.canCreate && order.status === "Draft";
   const canApprove =
-    caps.canApprove &&
-    order.status === "Submitted" &&
-    (caps.isOwner || order.createdBy !== caps.userId);
+    canApprovePreparedWork({
+      canApprove: caps.canApprove && order.status === "Submitted",
+      isOwner: caps.isOwner,
+      sodEnabled: caps.sodPurchaseOrder,
+      preparerId: order.createdBy,
+      userId: caps.userId,
+    });
   const canSend = caps.canCreate && order.status === "Approved";
   const invoice = invoices[0] ?? null;
   const canDownloadPurchase = Boolean(order.purchaseDocumentNumber);
@@ -378,7 +386,15 @@ function InvoicePanel({
             {busy === "submitInv" ? "Submitting…" : "Submit"}
           </button>
         ) : null}
-        {caps.canInvoiceVerify && invoice?.verificationStatus === "Submitted" && (caps.isOwner || invoice.createdBy !== caps.userId) ? (
+        {caps.canInvoiceVerify &&
+        invoice?.verificationStatus === "Submitted" &&
+        canApprovePreparedWork({
+          canApprove: true,
+          isOwner: caps.isOwner,
+          sodEnabled: caps.sodSupplierInvoice,
+          preparerId: invoice.createdBy,
+          userId: caps.userId,
+        }) ? (
           <button type="button" disabled={Boolean(busy)} className={primaryButton} onClick={() => run("verify", () => verifySupplierInvoice(invoice.id))}>
             {busy === "verify" ? "Verifying…" : "Verify"}
           </button>
@@ -466,7 +482,13 @@ function InvoicePanel({
                   </div>
                   <div className="flex items-center gap-2">
                     <StatusPill value={request.status} />
-                    {caps.canPaymentApprove && request.status === "Submitted" && (caps.isOwner || request.preparedBy !== caps.userId) ? (
+                    {canApprovePreparedWork({
+                      canApprove: caps.canPaymentApprove && request.status === "Submitted",
+                      isOwner: caps.isOwner,
+                      sodEnabled: caps.sodSupplierPayment,
+                      preparerId: request.preparedBy,
+                      userId: caps.userId,
+                    }) ? (
                       <button type="button" className={secondaryButton} onClick={() => run("payApprove", () => approvePaymentRequest(request.id))}>
                         Approve
                       </button>

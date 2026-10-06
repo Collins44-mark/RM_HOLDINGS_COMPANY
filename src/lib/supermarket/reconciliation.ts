@@ -11,6 +11,7 @@ export type ReconciliationCapabilities = {
   canPost: boolean;
   isOwner: boolean;
   userId: string;
+  sodReconciliation: boolean;
 };
 
 export type PaymentBreakdown = {

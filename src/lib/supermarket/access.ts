@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth/session";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { matchPermission } from "@/lib/config/permissions";
+import { permissionDeniedMessage } from "@/lib/supermarket/sod";
 
 export type SupermarketContext = {
   supabase: NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>;
@@ -160,6 +161,16 @@ export function mapDbError(error: { message: string; code?: string } | null): ne
   if (error.message.includes("duplicate") || error.code === "23505") {
     throw new SupermarketError(error.message.replace(/^.*?:\s*/, "") || "Duplicate record.", "CONFLICT");
   }
+  const sodLocked =
+    /self-approval|self-verification|you cannot approve this transaction because you prepared/i.test(
+      error.message,
+    );
+  if (sodLocked) {
+    throw new SupermarketError(
+      "You can’t approve this transaction because you prepared it. Another authorized user must approve it.",
+      "UNAUTHORIZED",
+    );
+  }
   if (
     error.message.includes("Insufficient stock") ||
     error.message.includes("Cannot return") ||
@@ -190,6 +201,7 @@ export function actionErrorMessage(error: unknown, meta?: SupermarketFailureLog)
   if (shouldLog) {
     logSupermarketFailure(meta ?? { operation: "supermarket.action", phase: "unknown" }, error);
   }
+  if (error instanceof Error && error.name === "SodError") return error.message;
   if (error instanceof SupermarketError) return error.message;
   if (error instanceof Error) return sanitizeLogMessage(error.message);
   return "Something went wrong. Please try again.";
@@ -218,9 +230,9 @@ export async function requireSupermarketPermission(permission: string): Promise<
     return ctx;
   }
 
-  const allowed = user.permissions.some((matcher) => matchPermission(permission, matcher));
+  const allowed = user.permissions.some((matcher) => matcher !== "*" && matchPermission(permission, matcher));
   if (!allowed) {
-    throw new SupermarketError("You do not have permission for this action.", "UNAUTHORIZED");
+    throw new SupermarketError(permissionDeniedMessage(permission), "UNAUTHORIZED");
   }
 
   return ctx;

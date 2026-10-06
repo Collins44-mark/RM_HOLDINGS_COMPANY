@@ -10,6 +10,7 @@ import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilte
 import { PageBackButton } from "@/components/ui/PageBackButton";
 import { moneyToCents } from "@/lib/supermarket/money";
 import { displayStatus, type CashReconciliationRecord } from "@/lib/supermarket/reconciliation";
+import { canApprovePreparedWork } from "@/lib/supermarket/sod";
 import { formatTzs } from "@/lib/format/currency";
 import { MoneyField, reconGlass, ReconActions, ReconPulse, StatusBadge, useReconPeriod } from "./shared";
 
@@ -29,7 +30,13 @@ export function CashReconciliationPage() {
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [caps, setCaps] = useState({ canCreate: false, canApprove: false });
+  const [caps, setCaps] = useState({
+    canCreate: false,
+    canApprove: false,
+    isOwner: false,
+    userId: "",
+    sodReconciliation: true,
+  });
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const periodKey = `${period.start}:${period.end}`;
   const pending = loadedKey !== periodKey;
@@ -50,7 +57,13 @@ export function CashReconciliationPage() {
       setActual(result.record?.actualCounted ?? "0.00");
       setReason(result.record?.varianceReason ?? "");
       setNotes(result.record?.notes ?? "");
-      setCaps({ canCreate: result.capabilities.canCreate, canApprove: result.capabilities.canApprove });
+      setCaps({
+        canCreate: result.capabilities.canCreate,
+        canApprove: result.capabilities.canApprove,
+        isOwner: result.capabilities.isOwner,
+        userId: result.capabilities.userId,
+        sodReconciliation: result.capabilities.sodReconciliation,
+      });
       setLoadedKey(`${period.start}:${period.end}`);
     });
     return () => {
@@ -161,7 +174,13 @@ export function CashReconciliationPage() {
         </label>
         <ReconActions
           canCreate={caps.canCreate}
-          canApprove={caps.canApprove}
+          canApprove={canApprovePreparedWork({
+            canApprove: caps.canApprove,
+            isOwner: caps.isOwner,
+            sodEnabled: caps.sodReconciliation,
+            preparerId: record?.preparedBy,
+            userId: caps.userId,
+          })}
           status={record?.status ?? null}
           saving={saving}
           onSave={() => void persist(false)}

@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/ui/PageHeader";
 import { formatTzs } from "@/lib/format/currency";
 import { moneyToCents } from "@/lib/supermarket/money";
 import { displayStatus, todayInDarEsSalaam, type StockReconciliationHeader, type StockReconciliationItem } from "@/lib/supermarket/reconciliation";
+import { canApprovePreparedWork } from "@/lib/supermarket/sod";
 import { reconGlass, ReconActions, ReconTableSkeletonRows, StatusBadge } from "./shared";
 
 type DraftRow = { physical: string; reason: string; notes: string };
@@ -30,7 +31,14 @@ export function StockReconciliationPage() {
   const [drafts, setDrafts] = useState<Record<string, DraftRow>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [caps, setCaps] = useState({ canCreate: false, canApprove: false, canPost: false });
+  const [caps, setCaps] = useState({
+    canCreate: false,
+    canApprove: false,
+    canPost: false,
+    isOwner: false,
+    userId: "",
+    sodReconciliation: true,
+  });
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const requestKey = `${date}:${categoryId}:${search}:${page}`;
   const pending = loadedKey !== requestKey;
@@ -60,6 +68,9 @@ export function StockReconciliationPage() {
         canCreate: result.capabilities.canCreate,
         canApprove: result.capabilities.canApprove,
         canPost: result.capabilities.canPost,
+        isOwner: result.capabilities.isOwner,
+        userId: result.capabilities.userId,
+        sodReconciliation: result.capabilities.sodReconciliation,
       });
       setDrafts((prev) => {
         const next = { ...prev };
@@ -254,8 +265,20 @@ export function StockReconciliationPage() {
       </div>
       <ReconActions
         canCreate={caps.canCreate}
-        canApprove={caps.canApprove}
-        canPost={caps.canPost}
+        canApprove={canApprovePreparedWork({
+          canApprove: caps.canApprove,
+          isOwner: caps.isOwner,
+          sodEnabled: caps.sodReconciliation,
+          preparerId: header?.preparedBy,
+          userId: caps.userId,
+        })}
+        canPost={canApprovePreparedWork({
+          canApprove: caps.canPost,
+          isOwner: caps.isOwner,
+          sodEnabled: caps.sodReconciliation,
+          preparerId: header?.preparedBy,
+          userId: caps.userId,
+        })}
         status={header?.status ?? null}
         saving={saving}
         onSave={() => void persist(false)}

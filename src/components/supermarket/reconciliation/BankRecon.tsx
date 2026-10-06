@@ -20,6 +20,7 @@ import { formatTzs } from "@/lib/format/currency";
 import { moneyToCents } from "@/lib/supermarket/money";
 import type { BankAccountRecord, BankReconciliationRecord, BankTransactionRecord } from "@/lib/supermarket/reconciliation";
 import { displayStatus } from "@/lib/supermarket/reconciliation";
+import { canApprovePreparedWork } from "@/lib/supermarket/sod";
 import { MoneyField, reconGlass, ReconActions, secondaryButton, StatusBadge, useReconPeriod } from "./shared";
 import { BankMovementsPage, BankingTabs } from "./BankMovements";
 import { formatImportedCount, StatementImportButton } from "./StatementImportModal";
@@ -90,6 +91,9 @@ function BankWorkspace({
   const [caps, setCaps] = useState({
     canCreate: seeded?.capabilities.canCreate ?? false,
     canApprove: seeded?.capabilities.canApprove ?? false,
+    isOwner: seeded?.capabilities.isOwner ?? false,
+    userId: seeded?.capabilities.userId ?? "",
+    sodReconciliation: seeded?.capabilities.sodReconciliation ?? true,
   });
   const [loadedKey, setLoadedKey] = useState<string | null>(
     seeded ? `${seeded.accountId ?? ""}:${period.start}:${period.end}` : null,
@@ -114,7 +118,13 @@ function BankWorkspace({
     setOpening(result.record?.statementOpeningBalance ?? result.accounts.find((a) => a.id === result.accountId)?.openingBalance ?? "0.00");
     setClosing(result.record?.statementClosingBalance ?? "0.00");
     setNotes(result.record?.notes ?? "");
-    setCaps({ canCreate: result.capabilities.canCreate, canApprove: result.capabilities.canApprove });
+    setCaps({
+      canCreate: result.capabilities.canCreate,
+      canApprove: result.capabilities.canApprove,
+      isOwner: result.capabilities.isOwner,
+      userId: result.capabilities.userId,
+      sodReconciliation: result.capabilities.sodReconciliation,
+    });
     setLoadedKey(`${result.accountId ?? ""}:${period.start}:${period.end}`);
   }
 
@@ -143,7 +153,13 @@ function BankWorkspace({
       );
       setClosing(result.record?.statementClosingBalance ?? "0.00");
       setNotes(result.record?.notes ?? "");
-      setCaps({ canCreate: result.capabilities.canCreate, canApprove: result.capabilities.canApprove });
+      setCaps({
+      canCreate: result.capabilities.canCreate,
+      canApprove: result.capabilities.canApprove,
+      isOwner: result.capabilities.isOwner,
+      userId: result.capabilities.userId,
+      sodReconciliation: result.capabilities.sodReconciliation,
+    });
       setLoadedKey(`${result.accountId ?? ""}:${period.start}:${period.end}`);
     });
     return () => {
@@ -427,7 +443,13 @@ function BankWorkspace({
           </button>
           <ReconActions
             canCreate={caps.canCreate}
-            canApprove={caps.canApprove}
+            canApprove={canApprovePreparedWork({
+              canApprove: caps.canApprove,
+              isOwner: caps.isOwner,
+              sodEnabled: caps.sodReconciliation,
+              preparerId: record?.preparedBy,
+              userId: caps.userId,
+            })}
             status={record?.status ?? null}
             saving={saving}
             onSave={() => {

@@ -7,10 +7,17 @@ import { writeSupermarketAudit } from "@/lib/audit";
 import {
   actionErrorMessage,
   mapDbError,
+  requireSupermarketContext,
   requireSupermarketPermission,
   SupermarketError,
 } from "@/lib/supermarket/access";
 import { addCents, centsToMoney, moneyToCents } from "@/lib/supermarket/money";
+import {
+  assertNoSelfApproval,
+  loadSodControls,
+  sodControlEnabled,
+  SOD_OWN_POST_MESSAGE,
+} from "@/lib/supermarket/sod";
 import type { BankAccountRecord, BankMatchStatus } from "@/lib/supermarket/reconciliation";
 
 export type BankMovementType = "DEPOSIT" | "WITHDRAWAL";
@@ -38,6 +45,8 @@ export type BankMovementCapabilities = {
   canCreate: boolean;
   canApprove: boolean;
   isOwner: boolean;
+  userId: string;
+  sodBanking: boolean;
 };
 
 async function bankingCaps(): Promise<BankMovementCapabilities> {
@@ -45,11 +54,15 @@ async function bankingCaps(): Promise<BankMovementCapabilities> {
   const owner = isOwnerRole(user.roleCode);
   const has = (code: string) =>
     owner || user.permissions.some((matcher) => matcher !== "*" && matchPermission(code, matcher));
+  const { supabase, businessUnitId } = await requireSupermarketContext();
+  const sod = await loadSodControls(supabase, businessUnitId);
   return {
     canView: has("supermarket.banking.view") || has("supermarket.reconciliation.view"),
     canCreate: has("supermarket.banking.create"),
     canApprove: has("supermarket.banking.approve"),
     isOwner: owner,
+    userId: user.id,
+    sodBanking: sodControlEnabled(sod, "banking"),
   };
 }
 
@@ -203,6 +216,7 @@ export async function saveBankMovementAction(input: {
     );
     const user = await requireAuth();
     const owner = isOwnerRole(user.roleCode);
+    const sod = await loadSodControls(supabase, businessUnitId);
     const amount = moneyToCents(input.amount);
     if (amount <= 0) throw new SupermarketError("Amount must be positive.", "VALIDATION");
     if (!input.accountId) throw new SupermarketError("Select a bank account.", "VALIDATION");
@@ -211,19 +225,30 @@ export async function saveBankMovementAction(input: {
       throw new SupermarketError("Choose deposit or withdrawal.", "VALIDATION");
     }
 
-    if (input.post && input.draftId && !owner) {
-      const { data: draft, error } = await supabase
-        .from("sm_bank_transactions")
-        .select("created_by, posting_status")
-        .eq("id", input.draftId)
-        .eq("business_unit_id", businessUnitId)
-        .single();
-      if (error) mapDbError(error);
-      if (draft?.created_by && String(draft.created_by) === userId) {
-        throw new SupermarketError(
-          "Segregation of duties: the preparer cannot post this transaction.",
-          "UNAUTHORIZED",
-        );
+    if (input.post) {
+      if (!input.draftId) {
+        assertNoSelfApproval({
+          preparerId: userId,
+          actorId: userId,
+          isOwner: owner,
+          enabled: sodControlEnabled(sod, "banking"),
+          message: SOD_OWN_POST_MESSAGE,
+        });
+      } else {
+        const { data: draft, error } = await supabase
+          .from("sm_bank_transactions")
+          .select("created_by, posting_status")
+          .eq("id", input.draftId)
+          .eq("business_unit_id", businessUnitId)
+          .single();
+        if (error) mapDbError(error);
+        assertNoSelfApproval({
+          preparerId: draft?.created_by ? String(draft.created_by) : null,
+          actorId: userId,
+          isOwner: owner,
+          enabled: sodControlEnabled(sod, "banking"),
+          message: SOD_OWN_POST_MESSAGE,
+        });
       }
     }
 
@@ -271,15 +296,14 @@ export async function reverseBankMovementAction(id: string) {
       .eq("business_unit_id", businessUnitId)
       .single();
     if (originalError) mapDbError(originalError);
-    if (!owner) {
-      const actor = String(original?.posted_by || original?.created_by || "");
-      if (actor && actor === userId) {
-        throw new SupermarketError(
-          "Segregation of duties: the preparer cannot reverse this transaction.",
-          "UNAUTHORIZED",
-        );
-      }
-    }
+    const sod = await loadSodControls(supabase, businessUnitId);
+    assertNoSelfApproval({
+      preparerId: original?.posted_by ? String(original.posted_by) : original?.created_by ? String(original.created_by) : null,
+      actorId: userId,
+      isOwner: owner,
+      enabled: sodControlEnabled(sod, "banking"),
+      message: "You can’t reverse this transaction because you prepared it. Another authorized user must reverse it.",
+    });
     const { data, error } = await supabase.rpc("sm_reverse_bank_cash_movement", { p_id: id });
     if (error) mapDbError(error);
     await writeSupermarketAudit(businessUnitId, {

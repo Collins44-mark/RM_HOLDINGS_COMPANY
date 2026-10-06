@@ -17,6 +17,7 @@ import { filterClass, inputClass, tableHead, tableScrollClass } from "@/componen
 import { EmptyState } from "@/components/ui/PageHeader";
 import { formatTzs } from "@/lib/format/currency";
 import { moneyToCents } from "@/lib/supermarket/money";
+import { canApprovePreparedWork } from "@/lib/supermarket/sod";
 import type { BankAccountRecord, BankMatchStatus } from "@/lib/supermarket/reconciliation";
 import { cn } from "@/lib/cn";
 import {
@@ -108,6 +109,9 @@ export function BankMovementsPage({
   const [caps, setCaps] = useState({
     canCreate: seeded?.capabilities.canCreate ?? false,
     canApprove: seeded?.capabilities.canApprove ?? false,
+    isOwner: seeded?.capabilities.isOwner ?? false,
+    userId: seeded?.capabilities.userId ?? "",
+    sodBanking: seeded?.capabilities.sodBanking ?? true,
   });
   const [modalOpen, setModalOpen] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
@@ -143,7 +147,13 @@ export function BankMovementsPage({
       setSummary(result.summary);
       setTotal(result.total);
       setPageSize(result.pageSize);
-      setCaps({ canCreate: result.capabilities.canCreate, canApprove: result.capabilities.canApprove });
+      setCaps({
+        canCreate: result.capabilities.canCreate,
+        canApprove: result.capabilities.canApprove,
+        isOwner: result.capabilities.isOwner,
+        userId: result.capabilities.userId,
+        sodBanking: result.capabilities.sodBanking,
+      });
     });
     return () => {
       active = false;
@@ -308,7 +318,14 @@ export function BankMovementsPage({
                             : "Matched"}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right">
-                        {row.postingStatus === "DRAFT" && caps.canApprove ? (
+                        {row.postingStatus === "DRAFT" &&
+                        canApprovePreparedWork({
+                          canApprove: caps.canApprove,
+                          isOwner: caps.isOwner,
+                          sodEnabled: caps.sodBanking,
+                          preparerId: row.createdBy,
+                          userId: caps.userId,
+                        }) ? (
                           <button
                             type="button"
                             className="text-[12.5px] font-semibold text-navy"
@@ -331,7 +348,15 @@ export function BankMovementsPage({
                             Post
                           </button>
                         ) : null}
-                        {row.postingStatus === "POSTED" && !row.reversedFromId && caps.canApprove ? (
+                        {row.postingStatus === "POSTED" &&
+                        !row.reversedFromId &&
+                        canApprovePreparedWork({
+                          canApprove: caps.canApprove,
+                          isOwner: caps.isOwner,
+                          sodEnabled: caps.sodBanking,
+                          preparerId: row.createdBy,
+                          userId: caps.userId,
+                        }) ? (
                           <button
                             type="button"
                             className="text-[12.5px] font-semibold text-navy"
