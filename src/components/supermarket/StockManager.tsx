@@ -4,11 +4,13 @@ import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Ban, ChevronDown, Clock3, MoreHorizontal, Package, Plus, Search, TimerReset, Warehouse, X } from "lucide-react";
+import { AlertTriangle, Ban, ChevronDown, Clock3, Loader2, MoreHorizontal, Package, Plus, Search, TimerReset, Warehouse, X } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { CategoryCreateModal, CategoryDropdownActions, ADD_CATEGORY_OPTION, MANAGE_CATEGORIES_OPTION, canCreateSupermarketCategory, canManageSupermarketCategories } from "@/components/supermarket/CategoryCreateModal";
 import { CategoryManageModal } from "@/components/supermarket/CategoryManageModal";
 import { StockLossModal } from "@/components/supermarket/StockLossModal";
+import { ContainedDrawer, DrawerCancel } from "@/components/ui/ContainedDrawer";
+import { primaryButton } from "@/components/supermarket/purchasing-ui";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { matchPermission } from "@/lib/config/permissions";
 import { cn } from "@/lib/cn";
@@ -187,6 +189,7 @@ export function StockManager() {
   }, [rows, inventory.batches, query, category, status, expiry, sort, kpiFocus]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset paging when filters change
     setPage(1);
   }, [query, category, status, expiry, sort, pageSize, kpiFocus]);
 
@@ -741,45 +744,55 @@ export function StockManager() {
         : null}
 
       {drawer === "adjust" ? (
-        <StockDrawer kicker="Inventory" title="Adjust Stock" onClose={closePanel}>
-          <AdjustStockForm
-            products={inventory.products}
-            batches={inventory.batches}
-            prefillProductId={prefillProductId}
-            actorName={user?.name || "Storekeeper"}
-            onCancel={closePanel}
-            onSubmit={async (input) => {
-              const result = await inventory.adjustStock(input);
-              if (result.error) return result.error;
-              closePanel();
-              return null;
-            }}
-          />
-        </StockDrawer>
+        <AdjustStockForm
+          products={inventory.products}
+          batches={inventory.batches}
+          prefillProductId={prefillProductId}
+          actorName={user?.name || "Storekeeper"}
+          onClose={closePanel}
+          onSubmit={async (input) => {
+            const result = await inventory.adjustStock(input);
+            if (result.error) return result.error;
+            return null;
+          }}
+        />
       ) : null}
 
       {drawer === "view" && selected ? (
-        <StockDrawer kicker="Product Master" title="View Stock" onClose={closePanel}>
+        <ContainedDrawer
+          title="View Stock"
+          subtitle={selected.sku}
+          onClose={closePanel}
+          footer={
+            canReceive ? (
+              <button
+                type="button"
+                className={primaryButton}
+                onClick={() => {
+                  closePanel();
+                  router.push("/supermarket/stock/receive-purchase");
+                }}
+              >
+                Receive Purchase
+              </button>
+            ) : undefined
+          }
+        >
           <StockDetails
             product={selected}
             batches={batchesForProduct(selected.id, inventory.batches)}
             movements={movementsForProduct(selected.id, inventory.movements)}
-            canReceive={canReceive}
-            onAddStock={() => {
-              closePanel();
-              router.push("/supermarket/stock/receive-purchase");
-            }}
           />
-        </StockDrawer>
+        </ContainedDrawer>
       ) : null}
 
       {drawer === "history" && selected ? (
-        <StockDrawer kicker="Movements" title="Stock History" onClose={closePanel}>
+        <ContainedDrawer title="Stock History" subtitle={selected.sku} onClose={closePanel}>
           <StockHistoryPanel
             product={selected}
             movements={movementsForProduct(selected.id, inventory.movements)}
           />
-        </StockDrawer>
+        </ContainedDrawer>
       ) : null}
 
       <CategoryCreateModal
@@ -868,6 +881,7 @@ function FullStockMovements({
   }, [movements, products, periodId, productId, type, user, query]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset paging when filters change
     setPage(1);
   }, [periodId, productId, type, user, query, pageSize]);
 
@@ -1305,61 +1319,6 @@ function ActionItem({
   );
 }
 
-function StockDrawer({
-  kicker,
-  title,
-  onClose,
-  children,
-}: {
-  kicker?: string;
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = previous;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
-
-  return (
-    <div className="fixed inset-0 z-[70] flex justify-end">
-      <button
-        type="button"
-        className="absolute inset-0 bg-navy/20 backdrop-blur-sm"
-        aria-label="Close"
-        onClick={onClose}
-      />
-      <aside className="relative flex h-full w-full max-w-[min(540px,100%)] flex-col border-l border-white/70 bg-white/82 shadow-[-24px_0_60px_rgba(15,35,64,0.12)] backdrop-blur-[28px]">
-        <div className="flex items-start justify-between px-5 py-5">
-          <div>
-            {kicker ? (
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">{kicker}</p>
-            ) : null}
-            <h2 className="mt-1 text-[22px] font-semibold tracking-[-0.04em] text-navy">{title}</h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-navy/[0.04] text-slate-500 hover:text-navy"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8">{children}</div>
-      </aside>
-    </div>
-  );
-}
-
 const ADJUST_REASONS = ["Physical Count", "Damage", "Expired", "Lost", "Correction", "Opening Balance"] as const;
 type AdjustDirection = "Increase" | "Decrease";
 
@@ -1381,14 +1340,14 @@ function AdjustStockForm({
   batches,
   prefillProductId,
   actorName,
-  onCancel,
+  onClose,
   onSubmit,
 }: {
   products: SupermarketProduct[];
   batches: StockBatch[];
   prefillProductId: string | null;
   actorName: string;
-  onCancel: () => void;
+  onClose: () => void;
   onSubmit: (input: AdjustStockInput) => string | null | Promise<string | null>;
 }) {
   const prefilled = products.find((item) => item.id === prefillProductId) ?? null;
@@ -1399,6 +1358,8 @@ function AdjustStockForm({
   const [reason, setReason] = useState<(typeof ADJUST_REASONS)[number]>("Physical Count");
   const [note, setNote] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [saveOk, setSaveOk] = useState(false);
 
   const selected = products.find((item) => item.id === selectedId) ?? null;
   const currentStock = selected ? currentStockFor(selected.id, batches) : 0;
@@ -1407,6 +1368,8 @@ function AdjustStockForm({
   const mapped = mapAdjustment(direction, reason);
   const delta = selected && validQty ? adjustmentDelta(mapped.kind, qty, mapped.correctionDirection) : 0;
   const nextStock = selected && validQty ? currentStock + delta : currentStock;
+  const dirty =
+    Boolean(quantity.trim()) || Boolean(note.trim()) || Boolean(selectedId && selectedId !== prefillProductId);
 
   const matches = useMemo(() => {
     const needle = productQuery.trim().toLowerCase();
@@ -1434,6 +1397,8 @@ function AdjustStockForm({
       setErrors(nextErrors);
       return;
     }
+    if (saveBusy || saveOk) return;
+    setSaveBusy(true);
     const submitError = await onSubmit({
       productId: selected!.id,
       kind: mapped.kind,
@@ -1443,15 +1408,44 @@ function AdjustStockForm({
       correctionDirection: mapped.correctionDirection,
       user: actorName,
     });
-    if (submitError) setErrors({ quantity: submitError });
+    if (submitError) {
+      setSaveBusy(false);
+      setErrors({ quantity: submitError });
+      return;
+    }
+    setSaveBusy(false);
+    setSaveOk(true);
+    window.setTimeout(() => onClose(), 280);
   }
 
   return (
+    <ContainedDrawer
+      title="Stock Adjustment"
+      subtitle={selected?.sku ?? selected?.name}
+      onClose={onClose}
+      dirty={dirty && !saveOk}
+      busy={saveBusy}
+      footer={
+        <>
+          <DrawerCancel disabled={saveBusy} />
+          <button
+            type="submit"
+            form="stock-adjust-form"
+            disabled={saveBusy || saveOk}
+            className={cn(primaryButton, "min-w-[9.75rem]")}
+          >
+            {saveBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.2} /> : null}
+            {saveOk ? "Saved ✓" : "Save Adjustment"}
+          </button>
+        </>
+      }
+    >
     <form
+      id="stock-adjust-form"
       className="space-y-6"
       onSubmit={(event) => {
         event.preventDefault();
-        submit();
+        void submit();
       }}
     >
       <section>
@@ -1546,16 +1540,8 @@ function AdjustStockForm({
           />
         </Field>
       </section>
-
-      <div className="flex justify-end gap-2 pt-1">
-        <button type="button" onClick={onCancel} className="h-11 rounded-[16px] px-4 text-[14px] font-medium text-slate-500">
-          Cancel
-        </button>
-        <button type="submit" className="h-11 rounded-[16px] bg-navy px-5 text-[14px] font-semibold text-white">
-          Save Adjustment
-        </button>
-      </div>
     </form>
+    </ContainedDrawer>
   );
 }
 
@@ -1563,14 +1549,10 @@ function StockDetails({
   product,
   batches,
   movements,
-  canReceive,
-  onAddStock,
 }: {
   product: ProductStockRow;
   batches: ReturnType<typeof batchesForProduct>;
   movements: MovementRow[];
-  canReceive: boolean;
-  onAddStock: () => void;
 }) {
   const recent = [...movements].reverse().slice(0, 5);
   return (
@@ -1637,18 +1619,6 @@ function StockDetails({
           </div>
         )}
       </section>
-
-      {canReceive ? (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={onAddStock}
-            className="h-11 rounded-[16px] bg-navy px-5 text-[14px] font-semibold text-white"
-          >
-            Receive Purchase
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }

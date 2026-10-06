@@ -9,12 +9,14 @@ import {
   ChevronDown,
   LayoutGrid,
   List,
+  Loader2,
   MoreHorizontal,
   Plus,
   ScanLine,
   Search,
-  X,
 } from "lucide-react";
+import { ContainedDrawer, DrawerCancel } from "@/components/ui/ContainedDrawer";
+import { primaryButton } from "@/components/supermarket/purchasing-ui";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { CategoryCreateModal, CategoryDropdownActions, ADD_CATEGORY_OPTION, MANAGE_CATEGORIES_OPTION, canCreateSupermarketCategory, canManageSupermarketCategories } from "@/components/supermarket/CategoryCreateModal";
 import { CategoryManageModal } from "@/components/supermarket/CategoryManageModal";
@@ -173,6 +175,8 @@ export function ProductsManager() {
   const [historyMovements, setHistoryMovements] = useState<ReturnType<typeof movementsForProduct>>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [saveOk, setSaveOk] = useState(false);
   const categoryTargetRef = useRef<"filter" | "form">("filter");
   const formCategories = inventory.categories
     .filter((item) => item.isActive || item.name === form.category)
@@ -267,6 +271,8 @@ export function ProductsManager() {
     setForm(formFromProduct(product));
     setErrors({});
     setBarcodeNotice(null);
+    setSaveBusy(false);
+    setSaveOk(false);
     setDrawer("edit");
   }
 
@@ -298,6 +304,8 @@ export function ProductsManager() {
     setHistoryMovements([]);
     setHistoryError(null);
     setHistoryLoading(false);
+    setSaveBusy(false);
+    setSaveOk(false);
   }
 
   function clearFilters() {
@@ -379,8 +387,12 @@ export function ProductsManager() {
       return;
     }
 
+    if (saveBusy || saveOk) return;
+    if (!selected) return;
+    setSaveBusy(true);
+
     const payload: SupermarketProduct = {
-      id: selected?.id ?? `prd-${Date.now()}`,
+      id: selected.id,
       name,
       sku,
       barcode,
@@ -391,11 +403,12 @@ export function ProductsManager() {
       reorderLevel,
       trackExpiry: form.trackExpiry,
       isActive: form.isActive,
-      createdAt: selected?.createdAt ?? new Date().toISOString(),
+      createdAt: selected.createdAt,
     };
 
     const saved = await upsertProduct(payload);
     if (saved.error || !saved.id) {
+      setSaveBusy(false);
       setErrors({ name: saved.error ?? "Unable to save product." });
       return;
     }
@@ -411,11 +424,14 @@ export function ProductsManager() {
         note: "Opening stock",
       });
       if (stockResult.error) {
+        setSaveBusy(false);
         setErrors({ stock: stockResult.error });
         return;
       }
     }
-    closePanel();
+    setSaveBusy(false);
+    setSaveOk(true);
+    window.setTimeout(() => closePanel(), 280);
   }
 
   function rowActions(product: ProductStockRow) {
@@ -708,9 +724,26 @@ export function ProductsManager() {
       </section>
 
       {drawer === "edit" ? (
-        <ProductDrawer
+        <ContainedDrawer
           title="Edit Product"
+          subtitle={form.sku || selected?.sku}
           onClose={closePanel}
+          dirty={Boolean(selected) && JSON.stringify(form) !== JSON.stringify(formFromProduct(selected!))}
+          busy={saveBusy}
+          footer={
+            <>
+              <DrawerCancel disabled={saveBusy} />
+              <button
+                type="submit"
+                form="product-edit-form"
+                disabled={saveBusy || saveOk}
+                className={cn(primaryButton, "min-w-[9.75rem]")}
+              >
+                {saveBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.2} /> : null}
+                {saveOk ? "Saved ✓" : "Save Changes"}
+              </button>
+            </>
+          }
         >
           <ProductForm
             form={form}
@@ -718,7 +751,6 @@ export function ProductsManager() {
             barcodeNotice={barcodeNotice}
             categories={formCategories}
             canAddCategory={canAddCategory}
-            submitLabel="Save Changes"
             stockLabel="Current Stock"
             stockReadOnly
             showExpiryDate={false}
@@ -731,24 +763,30 @@ export function ProductsManager() {
               categoryTargetRef.current = "form";
               setCategoryModalOpen(true);
             }}
-            onCancel={closePanel}
             onSubmit={saveProduct}
           />
-        </ProductDrawer>
+        </ContainedDrawer>
       ) : null}
 
       {drawer === "view" && selected ? (
-        <ProductDrawer title="Product details" onClose={closePanel}>
-          <ProductDetails
-            product={selected}
-            canEdit={canEdit}
-            onEdit={() => openEdit(selected.id)}
-          />
-        </ProductDrawer>
+        <ContainedDrawer
+          title="Product"
+          subtitle={selected.sku}
+          onClose={closePanel}
+          footer={
+            canEdit ? (
+              <button type="button" className={primaryButton} onClick={() => openEdit(selected.id)}>
+                Edit Product
+              </button>
+            ) : undefined
+          }
+        >
+          <ProductDetails product={selected} />
+        </ContainedDrawer>
       ) : null}
 
       {drawer === "history" && selected ? (
-        <ProductDrawer title="Stock History" onClose={closePanel}>
+        <ContainedDrawer title="Stock History" subtitle={selected.sku} onClose={closePanel}>
           {historyLoading ? (
             <p className="text-[13px] text-slate-500">Loading stock history…</p>
           ) : historyError ? (
@@ -756,7 +794,7 @@ export function ProductsManager() {
           ) : (
             <StockHistoryPanel product={selected} movements={historyMovements} />
           )}
-        </ProductDrawer>
+        </ContainedDrawer>
       ) : null}
 
       <CategoryCreateModal
@@ -1111,63 +1149,18 @@ function ActionItem({
   );
 }
 
-function ProductDrawer({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = previous;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
-
-  return (
-    <div className="fixed inset-0 z-[70] flex justify-end">
-      <button type="button" className="absolute inset-0 bg-navy/20 backdrop-blur-sm" aria-label="Close" onClick={onClose} />
-      <aside className="relative flex h-full w-full max-w-[min(520px,100%)] flex-col border-l border-white/70 bg-white/82 shadow-[-24px_0_60px_rgba(15,35,64,0.12)] backdrop-blur-[28px]">
-        <div className="flex items-center justify-between px-5 py-5">
-          <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">{title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-navy/[0.04] text-slate-500 hover:text-navy"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">{children}</div>
-      </aside>
-    </div>
-  );
-}
-
 function ProductForm({
   form,
   errors,
   barcodeNotice,
   categories,
   canAddCategory = false,
-  submitLabel,
   stockLabel: stockFieldLabel,
   stockReadOnly = false,
   showExpiryDate = true,
   onChange,
   onLookupBarcode,
   onAddCategory,
-  onCancel,
   onSubmit,
 }: {
   form: ProductFormState;
@@ -1175,14 +1168,12 @@ function ProductForm({
   barcodeNotice: string | null;
   categories: string[];
   canAddCategory?: boolean;
-  submitLabel: string;
   stockLabel: string;
   stockReadOnly?: boolean;
   showExpiryDate?: boolean;
   onChange: (form: ProductFormState) => void;
   onLookupBarcode: (code: string) => void;
   onAddCategory?: () => void;
-  onCancel: () => void;
   onSubmit: () => void;
 }) {
   const barcodeRef = useRef<HTMLInputElement>(null);
@@ -1197,6 +1188,7 @@ function ProductForm({
 
   return (
     <form
+      id="product-edit-form"
       className="space-y-6"
       onSubmit={(event) => {
         event.preventDefault();
@@ -1371,34 +1363,14 @@ function ProductForm({
           />
         </div>
       </section>
-
-      <div className="flex justify-end gap-2 pt-1">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="h-11 rounded-[14px] px-4 text-[14px] font-medium text-slate-600"
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          className="h-11 rounded-[14px] bg-navy px-4 text-[14px] font-semibold text-white"
-        >
-          {submitLabel}
-        </button>
-      </div>
     </form>
   );
 }
 
 function ProductDetails({
   product,
-  canEdit,
-  onEdit,
 }: {
   product: ProductStockRow;
-  canEdit: boolean;
-  onEdit: () => void;
 }) {
   const margin = product.sellingPrice - product.buyingPrice;
   const stockValue = product.stock * product.buyingPrice;
@@ -1436,18 +1408,6 @@ function ProductDetails({
         <DetailRow label="Expiry tracking" value={product.trackExpiry ? "On" : "Off"} />
         <DetailRow label="Status" value={product.isActive ? "Active" : "Inactive"} />
       </dl>
-
-      {canEdit ? (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={onEdit}
-            className="h-11 rounded-[14px] bg-navy px-4 text-[14px] font-semibold text-white"
-          >
-            Edit Product
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }
