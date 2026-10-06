@@ -713,7 +713,7 @@ export function buildPurchaseReportData(
 
   const amountPaid = periodPurchases.reduce((sum, item) => {
     if (item.paymentStatus === "Paid") return sum + item.totalCost;
-    if (item.paymentStatus === "Partial") return sum + Math.round(item.totalCost / 2);
+    if (item.paymentStatus === "Partial" || item.paymentStatus === "Partially Paid") return sum + Math.round(item.totalCost / 2);
     return sum;
   }, 0);
 
@@ -735,7 +735,7 @@ export function buildPurchaseReportData(
       const purchaseTotal = rows.reduce((sum, item) => sum + item.totalCost, 0);
       const paid = rows.reduce((sum, item) => {
         if (item.paymentStatus === "Paid") return sum + item.totalCost;
-        if (item.paymentStatus === "Partial") return sum + Math.round(item.totalCost / 2);
+        if (item.paymentStatus === "Partial" || item.paymentStatus === "Partially Paid") return sum + Math.round(item.totalCost / 2);
         return sum;
       }, 0);
       return {

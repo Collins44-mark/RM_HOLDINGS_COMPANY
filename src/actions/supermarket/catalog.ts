@@ -38,6 +38,8 @@ export async function fetchInventorySnapshotAction(): Promise<InventorySnapshot>
       suppliers: [],
       purchaseOrders: [],
       purchases: [],
+      supplierInvoices: [],
+      paymentRequests: [],
       loadedAt: new Date().toISOString(),
       error: actionErrorMessage(error),
     };
@@ -499,17 +501,13 @@ export async function sendPurchaseOrderAction(orderId: string) {
     const { supabase, businessUnitId } = await requireSupermarketPermission(
       "supermarket.purchases.create",
     );
-    const { error } = await supabase
-      .from("sm_purchase_orders")
-      .update({ status: "SENT", updated_at: new Date().toISOString() })
-      .eq("id", orderId)
-      .eq("business_unit_id", businessUnitId)
-      .eq("status", "DRAFT");
+    const { error } = await supabase.rpc("sm_send_purchase_order", {
+      p_purchase_order_id: orderId,
+    });
     if (error) mapDbError(error);
-    revalidateSupermarket();
     await writeSupermarketAudit(businessUnitId, {
       action: "purchase_order.sent",
-      description: "Sent a purchase order",
+      description: "Purchase order sent",
       severity: "medium",
       entityType: "purchase_order",
       entityId: orderId,
@@ -549,10 +547,19 @@ export async function receivePurchaseOrderAction(input: {
       p_notes: input.notes ?? "",
     });
     if (error) mapDbError(error);
-    revalidateSupermarket();
+
+    const { data: po } = await supabase
+      .from("sm_purchase_orders")
+      .select("status, po_number")
+      .eq("id", input.purchaseOrderId)
+      .maybeSingle();
+    const poStatus = String(po?.status ?? "");
     await writeSupermarketAudit(businessUnitId, {
-      action: "goods_receipt.created",
-      description: "Received a purchase order",
+      action: poStatus === "RECEIVED" ? "purchase.fully_received" : "goods_receipt.partial",
+      description:
+        poStatus === "RECEIVED"
+          ? `Purchase fully received for ${String(po?.po_number ?? "order")}`
+          : `Partial goods received for ${String(po?.po_number ?? "order")}`,
       severity: "medium",
       entityType: "goods_receipt",
       entityId: String(data),

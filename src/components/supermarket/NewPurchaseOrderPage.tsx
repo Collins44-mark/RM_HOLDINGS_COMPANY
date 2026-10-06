@@ -31,11 +31,11 @@ function todayIsoDate() {
 
 export function NewPurchaseOrderPage() {
   const router = useRouter();
-  const inventory = useSupermarketInventory();
+  const inventory = useSupermarketInventory({ purchasing: true });
   const poNumber = inventory.nextPurchaseOrderNumber();
-  const [supplierId, setSupplierId] = useState("sup-coastal");
+  const [supplierId, setSupplierId] = useState("");
   const [orderDate, setOrderDate] = useState(todayIsoDate);
-  const [expectedDate, setExpectedDate] = useState("2026-09-20");
+  const [expectedDate, setExpectedDate] = useState(todayIsoDate);
   const [notes, setNotes] = useState("");
   const [discount, setDiscount] = useState("0");
   const [tax, setTax] = useState("0");
@@ -89,7 +89,7 @@ export function NewPurchaseOrderPage() {
     setProductQuery("");
   }
 
-  async function save(status: "Draft" | "Sent") {
+  async function save(status: "Draft" | "Submitted") {
     const nextErrors: Record<string, string> = {};
     if (!supplierId) nextErrors.supplier = "Select a supplier.";
     if (!orderDate) nextErrors.orderDate = "Enter the order date.";
@@ -125,7 +125,7 @@ export function NewPurchaseOrderPage() {
       <div>
         <PageBackButton href="/supermarket/purchasing" prefetch />
         <h1 className="mt-4 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">New Purchase Order</h1>
-        <p className="mt-1.5 text-[13px] text-slate-500">Create a supplier order, then save as draft or send.</p>
+        <p className="mt-1.5 text-[13px] text-slate-500">Create a supplier order. Saving a draft does not increase stock or create a payable.</p>
       </div>
 
       <section className={glassPanel}>
@@ -138,6 +138,7 @@ export function NewPurchaseOrderPage() {
           <label className="block">
             <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Supplier *</span>
             <select value={supplierId} onChange={(event) => setSupplierId(event.target.value)} className={inputClass}>
+              <option value="">Select supplier</option>
               {inventory.suppliers.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
@@ -268,8 +269,8 @@ export function NewPurchaseOrderPage() {
         <button type="button" onClick={() => save("Draft")} className={secondaryButton}>
           Save Draft
         </button>
-        <button type="button" onClick={() => save("Sent")} className={primaryButton}>
-          Send Order
+        <button type="button" onClick={() => save("Submitted")} className={primaryButton}>
+          Submit
         </button>
       </div>
     </div>

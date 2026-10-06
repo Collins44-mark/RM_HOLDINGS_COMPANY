@@ -187,6 +187,11 @@ export function ReceivePurchasePage() {
 
       <section className={glassPanel}>
         <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Received quantities</h2>
+        <p className="mt-2 text-[13px] text-slate-500">
+          Total ordered {order.lines.reduce((sum, line) => sum + line.quantityOrdered, 0)} · Total received{" "}
+          {order.lines.reduce((sum, line) => sum + line.quantityReceived, 0)} · Remaining{" "}
+          {order.lines.reduce((sum, line) => sum + purchaseLineRemaining(line), 0)}
+        </p>
         <div className="mt-5 space-y-4">
           {order.lines.map((line) => {
             const remaining = purchaseLineRemaining(line);
@@ -204,13 +209,13 @@ export function ReceivePurchasePage() {
                   <div>
                     <h3 className="text-[15px] font-semibold text-navy">{line.productName}</h3>
                     <p className="mt-1 text-[12.5px] text-slate-500">
-                      Ordered {line.quantityOrdered} · Received {line.quantityReceived} · Remaining {remaining} · {formatTzs(line.buyingPrice)}
+                      Ordered {line.quantityOrdered} · Previously received {line.quantityReceived} · Remaining {remaining} · {formatTzs(line.buyingPrice)}
                     </p>
                   </div>
                 </div>
                 <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
                   <label>
-                    <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Quantity received</span>
+                    <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Receive now</span>
                     <input
                       inputMode="numeric"
                       value={state.received}
@@ -265,7 +270,7 @@ export function ReceivePurchasePage() {
           Cancel
         </Link>
         <button type="button" onClick={confirm} className={primaryButton}>
-          Confirm Receipt
+          Post Receipt
         </button>
       </div>
     </div>

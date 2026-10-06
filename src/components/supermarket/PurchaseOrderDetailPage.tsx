@@ -7,7 +7,8 @@ import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import { formatDisplayDate, useSupermarketInventory } from "@/lib/data/supermarket-inventory";
 import { purchaseLineRemaining, purchaseOrderGrandTotal, purchaseOrderSubtotal } from "@/lib/data/supermarket-purchasing";
-import { StatusPill, glassPanel, primaryButton, secondaryButton, tableHead } from "@/components/supermarket/purchasing-ui";
+import { StatusPill, glassPanel, primaryButton, tableHead } from "@/components/supermarket/purchasing-ui";
+import { PurchaseOrderWorkflow } from "@/components/supermarket/PurchaseOrderPayables";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 
 export function PurchaseOrderDetailPage() {
@@ -24,8 +25,11 @@ export function PurchaseOrderDetailPage() {
   }
 
   const purchases = inventory.purchases.filter((item) => item.purchaseOrderId === order.id);
+  const invoices = inventory.supplierInvoices.filter((item) => item.purchaseOrderId === order.id);
+  const requests = inventory.paymentRequests.filter((item) =>
+    invoices.some((invoice) => invoice.id === item.invoiceId),
+  );
   const canReceive = order.status === "Sent" || order.status === "Partially Received";
-  const canSend = order.status === "Draft";
 
   return (
     <div className="min-w-0 space-y-5 pb-10">
@@ -36,11 +40,6 @@ export function PurchaseOrderDetailPage() {
           <p className="mt-1.5 text-[13px] text-slate-500">{order.supplierName} · Ordered {formatDisplayDate(order.orderDate)}</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          {canSend ? (
-            <button type="button" onClick={() => inventory.sendPurchaseOrder(order.id)} className={secondaryButton}>
-              Send Order
-            </button>
-          ) : null}
           {canReceive ? (
             <Link href={`/supermarket/purchasing/${order.id}/receive`} className={primaryButton}>
               Receive Goods
@@ -109,6 +108,8 @@ export function PurchaseOrderDetailPage() {
           {order.notes ? <p className="mt-4 text-[13px] leading-5 text-slate-500">{order.notes}</p> : null}
         </aside>
       </section>
+
+      <PurchaseOrderWorkflow order={order} purchases={purchases} invoices={invoices} requests={requests} />
 
       <section className={glassPanel}>
         <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Receipts</h2>

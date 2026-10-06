@@ -126,6 +126,10 @@ export function mapPoStatus(status: string): PurchaseOrderStatus {
   switch (String(status).toUpperCase()) {
     case "DRAFT":
       return "Draft";
+    case "SUBMITTED":
+      return "Submitted";
+    case "APPROVED":
+      return "Approved";
     case "SENT":
       return "Sent";
     case "PARTIALLY_RECEIVED":
@@ -143,6 +147,10 @@ export function toDbPoStatus(status: PurchaseOrderStatus): string {
   switch (status) {
     case "Draft":
       return "DRAFT";
+    case "Submitted":
+      return "SUBMITTED";
+    case "Approved":
+      return "APPROVED";
     case "Sent":
       return "SENT";
     case "Partially Received":
@@ -159,7 +167,7 @@ export function mapPaymentStatus(status: string): PurchasePaymentStatus {
     case "PAID":
       return "Paid";
     case "PARTIAL":
-      return "Partial";
+      return "Partially Paid";
     default:
       return "Unpaid";
   }
@@ -183,6 +191,7 @@ export function mapPurchaseOrder(
     notes: String(row.notes ?? ""),
     lines,
     createdAt: String(row.created_at ?? ""),
+    createdBy: row.created_by ? String(row.created_by) : null,
   };
 }
 
@@ -306,6 +315,100 @@ export function mapPayment(row: Record<string, unknown>): PaymentRecord {
   };
 }
 
+export function mapVerificationStatus(status: string): import("@/lib/supermarket/types").SupplierInvoiceStatus {
+  switch (String(status).toUpperCase()) {
+    case "SUBMITTED":
+      return "Submitted";
+    case "VERIFIED":
+      return "Verified";
+    case "REJECTED":
+      return "Rejected";
+    default:
+      return "Draft";
+  }
+}
+
+export function mapPaymentRequestStatus(status: string): import("@/lib/supermarket/types").PaymentRequestStatus {
+  switch (String(status).toUpperCase()) {
+    case "SUBMITTED":
+      return "Submitted";
+    case "APPROVED":
+      return "Approved";
+    case "PAID":
+      return "Paid";
+    case "REJECTED":
+      return "Rejected";
+    default:
+      return "Draft";
+  }
+}
+
+export function mapSupplierInvoice(
+  row: Record<string, unknown>,
+  lines: import("@/lib/supermarket/types").SupplierInvoiceLine[],
+  supplierName: string,
+  poNumber: string,
+  receiptNumber: string,
+): import("@/lib/supermarket/types").SupplierInvoice {
+  const total = num(row.total);
+  const amountPaid = num(row.amount_paid);
+  const flagsRaw = Array.isArray(row.discrepancies) ? row.discrepancies : [];
+  return {
+    id: String(row.id),
+    number: String(row.invoice_number ?? ""),
+    supplierId: String(row.supplier_id),
+    supplierName,
+    purchaseOrderId: row.purchase_order_id ? String(row.purchase_order_id) : null,
+    purchaseOrderNumber: poNumber,
+    goodsReceiptId: row.goods_receipt_id ? String(row.goods_receipt_id) : null,
+    goodsReceiptNumber: receiptNumber,
+    invoiceDate: String(row.invoice_date ?? ""),
+    dueDate: row.due_date ? String(row.due_date) : "",
+    subtotal: num(row.subtotal),
+    tax: num(row.tax),
+    total,
+    amountPaid,
+    outstanding: Math.max(0, total - amountPaid),
+    verificationStatus: mapVerificationStatus(String(row.verification_status)),
+    paymentStatus: mapPaymentStatus(String(row.payment_status)),
+    notes: String(row.notes ?? ""),
+    rejectionReason: String(row.rejection_reason ?? ""),
+    discrepancies: flagsRaw.map((item) => {
+      const flag = item as Record<string, unknown>;
+      return {
+        type: String(flag.type ?? ""),
+        productId: flag.productId ? String(flag.productId) : undefined,
+        message: String(flag.message ?? ""),
+      };
+    }),
+    createdBy: row.created_by ? String(row.created_by) : null,
+    lines,
+  };
+}
+
+export function mapPaymentRequest(
+  row: Record<string, unknown>,
+  supplierName: string,
+  invoiceNumber: string,
+): import("@/lib/supermarket/types").SupplierPaymentRequest {
+  return {
+    id: String(row.id),
+    number: String(row.request_number ?? ""),
+    supplierId: String(row.supplier_id),
+    supplierName,
+    invoiceId: String(row.invoice_id),
+    invoiceNumber,
+    amount: num(row.amount),
+    method: String(row.method ?? ""),
+    dueDate: row.due_date ? String(row.due_date) : "",
+    reference: String(row.reference ?? ""),
+    notes: String(row.notes ?? ""),
+    status: mapPaymentRequestStatus(String(row.status)),
+    preparedBy: row.prepared_by ? String(row.prepared_by) : null,
+    postedPaymentId: row.posted_payment_id ? String(row.posted_payment_id) : null,
+  };
+}
+
 export function emptySnapshot(error: string | null = null): InventorySnapshot {
   return {
     products: [],
@@ -315,6 +418,8 @@ export function emptySnapshot(error: string | null = null): InventorySnapshot {
     suppliers: [],
     purchaseOrders: [],
     purchases: [],
+    supplierInvoices: [],
+    paymentRequests: [],
     loadedAt: null,
     error,
   };

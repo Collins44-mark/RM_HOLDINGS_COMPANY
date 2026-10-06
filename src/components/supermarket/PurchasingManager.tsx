@@ -160,6 +160,7 @@ export function PurchasingManager() {
             onQuery={setQuery}
             suppliers={suppliers}
             purchases={inventory.purchases}
+            invoices={inventory.supplierInvoices}
           />
         ) : null}
       </div>
@@ -355,11 +356,13 @@ function SuppliersView({
   onQuery,
   suppliers,
   purchases,
+  invoices,
 }: {
   query: string;
   onQuery: (value: string) => void;
   suppliers: Supplier[];
   purchases: ReturnType<typeof useSupermarketInventory>["purchases"];
+  invoices: ReturnType<typeof useSupermarketInventory>["supplierInvoices"];
 }) {
   return (
     <div className="space-y-5">
@@ -385,7 +388,7 @@ function SuppliersView({
               </div>
               <div className="text-right">
                 <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Outstanding</p>
-                <p className="mt-0.5 text-[13.5px] font-semibold text-navy">{formatTzs(supplierOutstanding(supplier.id, purchases))}</p>
+                <p className="mt-0.5 text-[13.5px] font-semibold text-navy">{formatTzs(supplierOutstanding(supplier.id, invoices))}</p>
               </div>
             </div>
           </Link>

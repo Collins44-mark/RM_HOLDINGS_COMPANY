@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 
 import { formatTzs } from "@/lib/format/currency";
 import { formatDisplayDate, useSupermarketInventory } from "@/lib/data/supermarket-inventory";
-import { purchaseOrderGrandTotal, supplierOutstanding, supplierPurchaseTotal } from "@/lib/data/supermarket-purchasing";
+import { purchaseOrderGrandTotal, supplierOutstanding, supplierPaidTotal, supplierPurchaseTotal } from "@/lib/data/supermarket-purchasing";
 import { StatusPill, glassCard, glassPanel, tableHead } from "@/components/supermarket/purchasing-ui";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 
@@ -24,7 +24,12 @@ export function SupplierDetailPage() {
 
   const orders = inventory.purchaseOrders.filter((item) => item.supplierId === supplier.id);
   const purchases = inventory.purchases.filter((item) => item.supplierId === supplier.id);
-  const outstanding = supplierOutstanding(supplier.id, inventory.purchases);
+  const outstanding = supplierOutstanding(supplier.id, inventory.supplierInvoices);
+  const paid = supplierPaidTotal(supplier.id, inventory.supplierInvoices);
+  const invoices = inventory.supplierInvoices.filter((item) => item.supplierId === supplier.id);
+  const payments = inventory.paymentRequests.filter(
+    (item) => item.supplierId === supplier.id && item.status === "Paid",
+  );
 
   return (
     <div className="min-w-0 space-y-5 pb-10">
@@ -53,7 +58,8 @@ export function SupplierDetailPage() {
           <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Balances</h2>
           <dl className="mt-4 space-y-3">
             <Info label="Total purchases" value={formatTzs(supplierPurchaseTotal(supplier.id, inventory.purchases))} />
-            <Info label="Outstanding balance" value={formatTzs(outstanding)} />
+            <Info label="Total paid" value={formatTzs(paid)} />
+            <Info label="Outstanding" value={formatTzs(outstanding)} />
             <Info label="Purchase orders" value={String(orders.length)} />
           </dl>
         </aside>
@@ -118,14 +124,87 @@ export function SupplierDetailPage() {
               ))}
             </tbody>
           </table>
+          {purchases.length === 0 ? (
+            <p className="px-4 py-6 text-[13px] text-slate-500">No purchases yet.</p>
+          ) : null}
         </div>
-        <div className="px-4 py-4">
-          <h3 className="text-[13px] font-semibold text-navy">Payments</h3>
-          <p className="mt-1 text-[13px] text-slate-500">
-            {outstanding > 0
-              ? `${formatTzs(outstanding)} remains outstanding across unpaid and partial purchases.`
-              : "No outstanding supplier balance."}
-          </p>
+      </section>
+
+      <section className={glassCard}>
+        <div className="px-4 pt-4">
+          <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Invoices</h2>
+        </div>
+        <div className="mt-2 overflow-x-auto">
+          <table className="min-w-full text-left text-[13px]">
+            <thead className={tableHead}>
+              <tr>
+                <th className="px-4 py-2 font-medium">Invoice</th>
+                <th className="px-4 py-2 font-medium">Date</th>
+                <th className="px-4 py-2 font-medium">Total</th>
+                <th className="px-4 py-2 font-medium">Paid</th>
+                <th className="px-4 py-2 font-medium">Outstanding</th>
+                <th className="px-4 py-2 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoices.map((item) => (
+                <tr key={item.id} className="border-t border-[#d5dee8]/80">
+                  <td className="px-4 py-3">
+                    {item.purchaseOrderId ? (
+                      <Link href={`/supermarket/purchasing/${item.purchaseOrderId}`} className="font-semibold text-navy hover:underline">
+                        {item.number}
+                      </Link>
+                    ) : (
+                      <span className="font-semibold text-navy">{item.number}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-slate-500">{formatDisplayDate(item.invoiceDate)}</td>
+                  <td className="px-4 py-3 font-semibold text-navy">{formatTzs(item.total)}</td>
+                  <td className="px-4 py-3 text-slate-500">{formatTzs(item.amountPaid)}</td>
+                  <td className="px-4 py-3 text-navy">{formatTzs(item.outstanding)}</td>
+                  <td className="px-4 py-3"><StatusPill value={item.verificationStatus} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {invoices.length === 0 ? (
+            <p className="px-4 py-6 text-[13px] text-slate-500">No supplier invoices.</p>
+          ) : null}
+        </div>
+      </section>
+
+      <section className={glassCard}>
+        <div className="px-4 pt-4">
+          <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Payments</h2>
+        </div>
+        <div className="mt-2 overflow-x-auto">
+          <table className="min-w-full text-left text-[13px]">
+            <thead className={tableHead}>
+              <tr>
+                <th className="px-4 py-2 font-medium">Request</th>
+                <th className="px-4 py-2 font-medium">Invoice</th>
+                <th className="px-4 py-2 font-medium">Amount</th>
+                <th className="px-4 py-2 font-medium">Method</th>
+                <th className="px-4 py-2 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payments.map((item) => (
+                <tr key={item.id} className="border-t border-[#d5dee8]/80">
+                  <td className="px-4 py-3 font-semibold text-navy">{item.number}</td>
+                  <td className="px-4 py-3 text-slate-500">{item.invoiceNumber}</td>
+                  <td className="px-4 py-3 font-semibold text-navy">{formatTzs(item.amount)}</td>
+                  <td className="px-4 py-3 text-slate-500">{item.method}</td>
+                  <td className="px-4 py-3"><StatusPill value={item.status} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {payments.length === 0 ? (
+            <p className="px-4 py-6 text-[13px] text-slate-500">
+              {outstanding > 0 ? `${formatTzs(outstanding)} outstanding. No posted payments yet.` : "No outstanding supplier balance."}
+            </p>
+          ) : null}
         </div>
       </section>
     </div>

@@ -2,6 +2,21 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import {
+  approvePaymentRequestAction,
+  approvePurchaseOrderAction,
+  getPurchasingCapsAction,
+  getSupplierInvoicePdfPayloadAction,
+  postPaymentRequestAction,
+  rejectSupplierInvoiceAction,
+  savePaymentRequestAction,
+  saveSupplierInvoiceAction,
+  submitPaymentRequestAction,
+  submitPurchaseOrderAction,
+  submitSupplierInvoiceAction,
+  verifySupplierInvoiceAction,
+  type PurchasingCaps,
+} from "@/actions/supermarket/purchasing-payables";
+import {
   adjustStockAction,
   createCategoryAction,
   createPurchaseOrderAction,
@@ -146,6 +161,8 @@ export async function refreshPurchasingWorkspace() {
   patchSnapshot({
     purchaseOrders: next.purchaseOrders,
     purchases: next.purchases,
+    supplierInvoices: next.supplierInvoices,
+    paymentRequests: next.paymentRequests,
     error: null,
   });
 }
@@ -437,8 +454,9 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
   });
   if (!result.ok) return { error: result.error, order: null as PurchaseOrder | null };
 
-  if (input.status === "Sent") {
-    await sendPurchaseOrderAction(result.id);
+  if (input.status === "Submitted") {
+    const submitted = await submitPurchaseOrderAction(result.id);
+    if (!submitted.ok) return { error: submitted.error, order: null as PurchaseOrder | null };
   }
 
   await refreshProductsWorkspace();
@@ -447,10 +465,23 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
   return { error: null, order };
 }
 
+export async function submitPurchaseOrder(orderId: string) {
+  const result = await submitPurchaseOrderAction(orderId);
+  if (!result.ok) return { error: result.error };
+  await refreshPurchasingWorkspace();
+  return { error: null };
+}
+
+export async function approvePurchaseOrder(orderId: string) {
+  const result = await approvePurchaseOrderAction(orderId);
+  if (!result.ok) return { error: result.error };
+  await refreshPurchasingWorkspace();
+  return { error: null };
+}
+
 export async function sendPurchaseOrder(orderId: string) {
   const result = await sendPurchaseOrderAction(orderId);
   if (!result.ok) return { error: result.error };
-  await refreshProductsWorkspace();
   await refreshPurchasingWorkspace();
   return { error: null };
 }
@@ -493,6 +524,73 @@ export async function receivePurchaseOrder(input: ReceivePurchaseOrderInput) {
     orderStatus: updatedOrder?.status,
   };
 }
+
+export async function saveSupplierInvoice(input: Parameters<typeof saveSupplierInvoiceAction>[0]) {
+  const result = await saveSupplierInvoiceAction(input);
+  if (!result.ok) return { error: result.error, id: null as string | null };
+  await refreshPurchasingWorkspace();
+  return { error: null, id: result.id };
+}
+
+export async function submitSupplierInvoice(invoiceId: string) {
+  const result = await submitSupplierInvoiceAction(invoiceId);
+  if (!result.ok) return { error: result.error };
+  await refreshPurchasingWorkspace();
+  return { error: null };
+}
+
+export async function verifySupplierInvoice(invoiceId: string) {
+  const result = await verifySupplierInvoiceAction(invoiceId);
+  if (!result.ok) return { error: result.error };
+  await refreshPurchasingWorkspace();
+  return { error: null };
+}
+
+export async function rejectSupplierInvoice(invoiceId: string, reason: string) {
+  const result = await rejectSupplierInvoiceAction(invoiceId, reason);
+  if (!result.ok) return { error: result.error };
+  await refreshPurchasingWorkspace();
+  return { error: null };
+}
+
+export async function savePaymentRequest(input: Parameters<typeof savePaymentRequestAction>[0]) {
+  const result = await savePaymentRequestAction(input);
+  if (!result.ok) return { error: result.error, id: null as string | null };
+  await refreshPurchasingWorkspace();
+  return { error: null, id: result.id };
+}
+
+export async function submitPaymentRequest(requestId: string) {
+  const result = await submitPaymentRequestAction(requestId);
+  if (!result.ok) return { error: result.error };
+  await refreshPurchasingWorkspace();
+  return { error: null };
+}
+
+export async function approvePaymentRequest(requestId: string) {
+  const result = await approvePaymentRequestAction(requestId);
+  if (!result.ok) return { error: result.error };
+  await refreshPurchasingWorkspace();
+  return { error: null };
+}
+
+export async function postPaymentRequest(requestId: string) {
+  const result = await postPaymentRequestAction(requestId);
+  if (!result.ok) return { error: result.error };
+  await refreshPurchasingWorkspace();
+  return { error: null };
+}
+
+export async function downloadSupplierInvoicePdf(invoiceId: string) {
+  const result = await getSupplierInvoicePdfPayloadAction(invoiceId);
+  if (!result.ok) return { error: result.error };
+  const { downloadSupplierInvoiceDocument } = await import("@/lib/data/supplier-invoice-pdf");
+  downloadSupplierInvoiceDocument(result.invoice);
+  return { error: null };
+}
+
+export { getPurchasingCapsAction };
+export type { PurchasingCaps };
 
 export const NEW_PRODUCT_BARCODE_KEY = "rm-supermarket-new-product-barcode";
 
@@ -541,8 +639,19 @@ export function useSupermarketInventory(options?: InventoryLoadOptions) {
     nextPurchaseOrderNumber,
     nextPurchaseNumber,
     createPurchaseOrder,
+    submitPurchaseOrder,
+    approvePurchaseOrder,
     sendPurchaseOrder,
     receivePurchaseOrder,
+    saveSupplierInvoice,
+    submitSupplierInvoice,
+    verifySupplierInvoice,
+    rejectSupplierInvoice,
+    savePaymentRequest,
+    submitPaymentRequest,
+    approvePaymentRequest,
+    postPaymentRequest,
+    downloadSupplierInvoicePdf,
     refresh: refreshInventorySnapshot,
     refreshProducts: retryProductsWorkspace,
     ensurePurchasing: ensurePurchasingWorkspaceLoaded,

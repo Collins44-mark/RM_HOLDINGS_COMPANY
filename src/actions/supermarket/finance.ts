@@ -45,7 +45,7 @@ export async function getFinanceSummaryAction(input: { from: string; to: string 
     const { supabase, businessUnitId } = await requireSupermarketContext();
     const fromIso = `${input.from}T00:00:00`;
     const toIso = `${input.to}T23:59:59`;
-    const [salesRes, expensesRes, paymentsRes, receiptsRes] = await Promise.all([
+    const [salesRes, expensesRes, paymentsRes, invoicesRes] = await Promise.all([
       supabase
         .from("sm_sales")
         .select("total, cogs")
@@ -66,16 +66,15 @@ export async function getFinanceSummaryAction(input: { from: string; to: string 
         .gte("payment_date", input.from)
         .lte("payment_date", input.to),
       supabase
-        .from("sm_goods_receipts")
-        .select("total_cost, payment_status, received_at")
+        .from("sm_supplier_invoices")
+        .select("total, amount_paid, verification_status")
         .eq("business_unit_id", businessUnitId)
-        .gte("received_at", fromIso)
-        .lte("received_at", toIso),
+        .eq("verification_status", "VERIFIED"),
     ]);
     if (salesRes.error) mapDbError(salesRes.error);
     if (expensesRes.error) mapDbError(expensesRes.error);
     if (paymentsRes.error) mapDbError(paymentsRes.error);
-    if (receiptsRes.error) mapDbError(receiptsRes.error);
+    if (invoicesRes.error) mapDbError(invoicesRes.error);
 
     // Zero rows across all four queries is SUCCESS — return explicit zeros.
     const revenue = (salesRes.data ?? []).reduce((s, r) => s + Number(r.total || 0), 0);
@@ -96,13 +95,8 @@ export async function getFinanceSummaryAction(input: { from: string; to: string 
       else cashBalance.cash += signed;
     }
 
-    const totalPurchases = (receiptsRes.data ?? []).reduce(
-      (s, r) => s + Number(r.total_cost || 0),
-      0,
-    );
-    const totalPaid = (receiptsRes.data ?? [])
-      .filter((r) => String(r.payment_status).toUpperCase() === "PAID")
-      .reduce((s, r) => s + Number(r.total_cost || 0), 0);
+    const totalPurchases = (invoicesRes.data ?? []).reduce((s, r) => s + Number(r.total || 0), 0);
+    const totalPaid = (invoicesRes.data ?? []).reduce((s, r) => s + Number(r.amount_paid || 0), 0);
 
     return {
       ok: true as const,

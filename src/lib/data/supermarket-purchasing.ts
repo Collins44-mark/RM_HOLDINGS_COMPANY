@@ -12,6 +12,8 @@ export type StockMovementCode = (typeof STOCK_MOVEMENT_CODES)[number];
 
 export const PURCHASE_ORDER_STATUSES = [
   "Draft",
+  "Submitted",
+  "Approved",
   "Sent",
   "Partially Received",
   "Received",
@@ -19,7 +21,7 @@ export const PURCHASE_ORDER_STATUSES = [
 ] as const;
 export type PurchaseOrderStatus = (typeof PURCHASE_ORDER_STATUSES)[number];
 
-export const PURCHASE_PAYMENT_STATUSES = ["Unpaid", "Partial", "Paid"] as const;
+export const PURCHASE_PAYMENT_STATUSES = ["Unpaid", "Partial", "Partially Paid", "Paid"] as const;
 export type PurchasePaymentStatus = (typeof PURCHASE_PAYMENT_STATUSES)[number];
 
 export const SUPPLIER_STATUSES = ["Active", "Inactive"] as const;
@@ -58,6 +60,7 @@ export type PurchaseOrder = {
   tax: number;
   lines: PurchaseOrderLine[];
   createdAt: string;
+  createdBy?: string | null;
 };
 
 export type PurchaseLine = {
@@ -98,7 +101,7 @@ export type CreatePurchaseOrderInput = {
     quantity: number;
     buyingPrice: number;
   }[];
-  status: Extract<PurchaseOrderStatus, "Draft" | "Sent">;
+  status: Extract<PurchaseOrderStatus, "Draft" | "Submitted">;
 };
 
 export type ReceivePurchaseLineInput = {
@@ -159,10 +162,12 @@ export function purchaseLineRemaining(line: Pick<PurchaseOrderLine, "quantityOrd
 }
 
 export function derivePurchaseOrderStatus(lines: PurchaseOrderLine[], current: PurchaseOrderStatus): PurchaseOrderStatus {
-  if (current === "Draft" || current === "Cancelled") return current;
+  if (current === "Draft" || current === "Submitted" || current === "Approved" || current === "Cancelled") {
+    return current;
+  }
   const ordered = lines.reduce((sum, line) => sum + line.quantityOrdered, 0);
   const received = lines.reduce((sum, line) => sum + line.quantityReceived, 0);
-  if (received <= 0) return "Sent";
+  if (received <= 0) return current === "Sent" ? "Sent" : current;
   if (received < ordered) return "Partially Received";
   return "Received";
 }
@@ -173,15 +178,21 @@ export function receivablePurchaseOrders(orders: PurchaseOrder[]) {
 
 export function purchaseOrderMatchesFocus(order: PurchaseOrder, focus: PurchaseOrderKpiFocus) {
   if (focus === "all" || focus === "value") return order.status !== "Cancelled";
-  if (focus === "open") return order.status === "Draft" || order.status === "Sent";
-  if (focus === "pending") return order.status === "Sent";
+  if (focus === "open")
+    return order.status === "Draft" || order.status === "Submitted" || order.status === "Approved" || order.status === "Sent";
+  if (focus === "pending") return order.status === "Sent" || order.status === "Approved" || order.status === "Submitted";
   if (focus === "partial") return order.status === "Partially Received";
   return order.status === "Received";
 }
 
 export function purchaseOrderKpis(orders: PurchaseOrder[]) {
   return {
-    open: orders.filter((order) => order.status === "Draft" || order.status === "Sent").length,
+    open: orders.filter((order) =>
+      order.status === "Draft" ||
+      order.status === "Submitted" ||
+      order.status === "Approved" ||
+      order.status === "Sent",
+    ).length,
     pending: orders.filter((order) => order.status === "Sent").length,
     partial: orders.filter((order) => order.status === "Partially Received").length,
     completed: orders.filter((order) => order.status === "Received").length,
@@ -191,14 +202,22 @@ export function purchaseOrderKpis(orders: PurchaseOrder[]) {
   };
 }
 
-export function supplierOutstanding(supplierId: string, purchases: Purchase[]) {
-  return purchases
-    .filter((item) => item.supplierId === supplierId)
-    .reduce((sum, item) => {
-      if (item.paymentStatus === "Paid") return sum;
-      if (item.paymentStatus === "Partial") return sum + Math.round(item.totalCost / 2);
-      return sum + item.totalCost;
-    }, 0);
+export function supplierOutstanding(
+  supplierId: string,
+  invoices: { supplierId: string; verificationStatus: string; outstanding: number }[],
+) {
+  return invoices
+    .filter((item) => item.supplierId === supplierId && item.verificationStatus === "Verified")
+    .reduce((sum, item) => sum + item.outstanding, 0);
+}
+
+export function supplierPaidTotal(
+  supplierId: string,
+  invoices: { supplierId: string; verificationStatus: string; amountPaid: number }[],
+) {
+  return invoices
+    .filter((item) => item.supplierId === supplierId && item.verificationStatus === "Verified")
+    .reduce((sum, item) => sum + item.amountPaid, 0);
 }
 
 export function supplierPurchaseTotal(supplierId: string, purchases: Purchase[]) {

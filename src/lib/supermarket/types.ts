@@ -72,6 +72,8 @@ export type Supplier = {
 
 export type PurchaseOrderStatus =
   | "Draft"
+  | "Submitted"
+  | "Approved"
   | "Sent"
   | "Partially Received"
   | "Received"
@@ -100,9 +102,72 @@ export type PurchaseOrder = {
   notes: string;
   lines: PurchaseOrderLine[];
   createdAt: string;
+  createdBy: string | null;
 };
 
-export type PurchasePaymentStatus = "Unpaid" | "Partial" | "Paid";
+export type PurchasePaymentStatus = "Unpaid" | "Partial" | "Partially Paid" | "Paid";
+
+export type SupplierInvoiceStatus = "Draft" | "Submitted" | "Verified" | "Rejected";
+export type PaymentRequestStatus = "Draft" | "Submitted" | "Approved" | "Paid" | "Rejected";
+
+export type SupplierInvoiceLine = {
+  id: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  quantity: number;
+  unitCost: number;
+  tax: number;
+  lineTotal: number;
+};
+
+export type SupplierInvoiceFlag = {
+  type: string;
+  productId?: string;
+  message: string;
+};
+
+export type SupplierInvoice = {
+  id: string;
+  number: string;
+  supplierId: string;
+  supplierName: string;
+  purchaseOrderId: string | null;
+  purchaseOrderNumber: string;
+  goodsReceiptId: string | null;
+  goodsReceiptNumber: string;
+  invoiceDate: string;
+  dueDate: string;
+  subtotal: number;
+  tax: number;
+  total: number;
+  amountPaid: number;
+  outstanding: number;
+  verificationStatus: SupplierInvoiceStatus;
+  paymentStatus: PurchasePaymentStatus;
+  notes: string;
+  rejectionReason: string;
+  discrepancies: SupplierInvoiceFlag[];
+  createdBy: string | null;
+  lines: SupplierInvoiceLine[];
+};
+
+export type SupplierPaymentRequest = {
+  id: string;
+  number: string;
+  supplierId: string;
+  supplierName: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  amount: number;
+  method: string;
+  dueDate: string;
+  reference: string;
+  notes: string;
+  status: PaymentRequestStatus;
+  preparedBy: string | null;
+  postedPaymentId: string | null;
+};
 
 export type PurchaseLine = {
   id?: string;
@@ -140,6 +205,8 @@ export type InventorySnapshot = {
   suppliers: Supplier[];
   purchaseOrders: PurchaseOrder[];
   purchases: Purchase[];
+  supplierInvoices: SupplierInvoice[];
+  paymentRequests: SupplierPaymentRequest[];
   loadedAt: string | null;
   error: string | null;
 };
@@ -231,6 +298,8 @@ export const EMPTY_INVENTORY_SNAPSHOT: InventorySnapshot = {
   suppliers: [],
   purchaseOrders: [],
   purchases: [],
+  supplierInvoices: [],
+  paymentRequests: [],
   loadedAt: null,
   error: null,
 };

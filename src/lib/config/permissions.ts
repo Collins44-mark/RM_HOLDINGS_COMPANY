@@ -110,7 +110,9 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "products", actions: [...CRUD] },
       { resource: "categories", actions: [...CRUD] },
       { resource: "suppliers", actions: [...CRUD] },
-      { resource: "purchases", actions: ["view", "create"] },
+      { resource: "purchases", actions: ["view", "create", "approve", "receive"] },
+      { resource: "supplier_invoices", actions: ["view", "create", "verify"] },
+      { resource: "supplier_payments", actions: ["view", "create", "approve"] },
       { resource: "sales", actions: ["view", "create"] },
       { resource: "stock", actions: ["view", "edit"] },
       { resource: "reconciliation", actions: ["view", "create", "approve", "post"] },
@@ -200,6 +202,8 @@ const RESOURCE_LABELS: Record<string, string> = {
   reconciliation: "Reconciliation",
   banking: "Banking",
   petty_cash: "Petty Cash",
+  supplier_invoices: "Supplier invoices",
+  supplier_payments: "Supplier payments",
   business_units: "Business Units",
 };
 

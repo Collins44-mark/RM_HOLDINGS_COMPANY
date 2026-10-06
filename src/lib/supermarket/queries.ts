@@ -8,10 +8,12 @@ import {
   mapBatch,
   mapCategory,
   mapMovement,
+  mapPaymentRequest,
   mapProduct,
   mapPurchase,
   mapPurchaseOrder,
   mapSupplier,
+  mapSupplierInvoice,
 } from "@/lib/supermarket/mappers";
 import type {
   InventorySnapshot,
@@ -22,6 +24,8 @@ import type {
   SupermarketProduct,
   Supplier,
   StockBatch,
+  SupplierInvoice,
+  SupplierPaymentRequest,
 } from "@/lib/supermarket/types";
 
 function queryErrorMessage(error: unknown) {
@@ -52,9 +56,14 @@ const RECEIPT_LIMIT = 100;
 const MOVEMENT_LIMIT = 200;
 
 const PO_COLUMNS =
-  "id, po_number, supplier_id, order_date, expected_date, status, discount, tax, notes, created_at, total";
+  "id, po_number, supplier_id, order_date, expected_date, status, discount, tax, notes, created_at, created_by, total";
 const RECEIPT_COLUMNS =
   "id, receipt_number, purchase_order_id, supplier_id, received_at, payment_status, total_cost, notes";
+const INVOICE_COLUMNS =
+  "id, invoice_number, supplier_id, purchase_order_id, goods_receipt_id, invoice_date, due_date, subtotal, tax, total, amount_paid, verification_status, payment_status, notes, rejection_reason, discrepancies, created_by";
+const INVOICE_ITEM_COLUMNS = "id, invoice_id, product_id, quantity, unit_cost, tax, line_total";
+const PAYMENT_REQUEST_COLUMNS =
+  "id, request_number, supplier_id, invoice_id, amount, method, due_date, reference, notes, status, prepared_by, posted_payment_id";
 const PO_ITEM_COLUMNS =
   "id, purchase_order_id, product_id, quantity_ordered, quantity_received, unit_cost";
 const RECEIPT_ITEM_COLUMNS =
@@ -82,6 +91,8 @@ export type ProductsWorkspace = {
 export type PurchasingWorkspace = {
   purchaseOrders: PurchaseOrder[];
   purchases: Purchase[];
+  supplierInvoices: SupplierInvoice[];
+  paymentRequests: SupplierPaymentRequest[];
   error: string | null;
 };
 
@@ -159,7 +170,7 @@ export async function loadPurchasingWorkspace(input?: {
 }): Promise<PurchasingWorkspace> {
   try {
     const { supabase, businessUnitId } = await requireSupermarketContext();
-    const [poRes, receiptsRes] = await Promise.all([
+    const [poRes, receiptsRes, invoiceRes, requestRes] = await Promise.all([
       supabase
         .from("sm_purchase_orders")
         .select(PO_COLUMNS)
@@ -172,10 +183,37 @@ export async function loadPurchasingWorkspace(input?: {
         .eq("business_unit_id", businessUnitId)
         .order("received_at", { ascending: false })
         .limit(RECEIPT_LIMIT),
+      supabase
+        .from("sm_supplier_invoices")
+        .select(INVOICE_COLUMNS)
+        .eq("business_unit_id", businessUnitId)
+        .order("created_at", { ascending: false })
+        .limit(RECEIPT_LIMIT),
+      supabase
+        .from("sm_supplier_payment_requests")
+        .select(PAYMENT_REQUEST_COLUMNS)
+        .eq("business_unit_id", businessUnitId)
+        .order("created_at", { ascending: false })
+        .limit(RECEIPT_LIMIT),
     ]);
-    const parentErr = firstQueryError(poRes, receiptsRes);
+    const invoiceMissing =
+      Boolean(invoiceRes.error) && /sm_supplier_invoices|does not exist|PGRST/i.test(invoiceRes.error?.message ?? "");
+    const requestMissing =
+      Boolean(requestRes.error) && /sm_supplier_payment_requests|does not exist|PGRST/i.test(requestRes.error?.message ?? "");
+    const parentErr = firstQueryError(
+      poRes,
+      receiptsRes,
+      invoiceMissing ? { error: null } : invoiceRes,
+      requestMissing ? { error: null } : requestRes,
+    );
     if (parentErr) {
-      return { purchaseOrders: [], purchases: [], error: failMessage(parentErr) };
+      return {
+        purchaseOrders: [],
+        purchases: [],
+        supplierInvoices: [],
+        paymentRequests: [],
+        error: failMessage(parentErr),
+      };
     }
 
     let productNameById = input?.productNameById;
@@ -196,6 +234,9 @@ export async function loadPurchasingWorkspace(input?: {
         (suppliersRes.data ?? []).map((s) => [s.id as string, String(s.name)]),
       );
     }
+    const names = productNameById ?? new Map<string, string>();
+    const skus = productSkuById ?? new Map<string, string>();
+    const supplierNamesById = supplierNameById ?? new Map<string, string>();
 
     const poIds = (poRes.data ?? []).map((row) => row.id as string);
     const receiptIds = (receiptsRes.data ?? []).map((row) => row.id as string);
@@ -210,7 +251,13 @@ export async function loadPurchasingWorkspace(input?: {
     ]);
     const itemsErr = firstQueryError(poItemsRes, receiptItemsRes);
     if (itemsErr) {
-      return { purchaseOrders: [], purchases: [], error: failMessage(itemsErr) };
+      return {
+        purchaseOrders: [],
+        purchases: [],
+        supplierInvoices: [],
+        paymentRequests: [],
+        error: failMessage(itemsErr),
+      };
     }
 
     const poItemsByPo = new Map<string, PurchaseOrder["lines"]>();
@@ -222,8 +269,8 @@ export async function loadPurchasingWorkspace(input?: {
       list.push({
         id: String(row.id),
         productId,
-        productName: productNameById.get(productId) ?? "Product",
-        sku: productSkuById.get(productId) ?? "",
+        productName: names.get(productId) ?? "Product",
+        sku: skus.get(productId) ?? "",
         quantityOrdered: Number(row.quantity_ordered) || 0,
         quantityReceived: Number(row.quantity_received) || 0,
         buyingPrice: Number(row.unit_cost) || 0,
@@ -236,7 +283,7 @@ export async function loadPurchasingWorkspace(input?: {
       return mapPurchaseOrder(
         row,
         poItemsByPo.get(String(row.id)) ?? [],
-        supplierNameById.get(String(row.supplier_id)) ?? "Supplier",
+        supplierNamesById.get(String(row.supplier_id)) ?? "Supplier",
       );
     });
 
@@ -249,8 +296,8 @@ export async function loadPurchasingWorkspace(input?: {
       list.push({
         id: String(row.id),
         productId,
-        productName: productNameById.get(productId) ?? "Product",
-        sku: productSkuById.get(productId) ?? "",
+        productName: names.get(productId) ?? "Product",
+        sku: skus.get(productId) ?? "",
         quantity: Number(row.quantity) || 0,
         buyingPrice: Number(row.unit_cost) || 0,
         mainStore: Number(row.main_store_qty) || 0,
@@ -260,22 +307,96 @@ export async function loadPurchasingWorkspace(input?: {
     }
 
     const poNumberById = new Map(purchaseOrders.map((po) => [po.id, po.number]));
-    const purchases = (receiptsRes.data ?? []).map((raw) => {
+    const receiptNumberById = new Map(
+      (receiptsRes.data ?? []).map((raw) => {
+        const row = raw as Record<string, unknown>;
+        return [String(row.id), String(row.receipt_number ?? "")] as const;
+      }),
+    );
+
+    const invoiceRows = invoiceMissing ? [] : (invoiceRes.data ?? []);
+    const requestRows = requestMissing ? [] : (requestRes.data ?? []);
+    const invoiceIds = invoiceRows.map((row) => row.id as string);
+    const invoiceItemsRes = invoiceIds.length
+      ? await supabase.from("sm_supplier_invoice_items").select(INVOICE_ITEM_COLUMNS).in("invoice_id", invoiceIds)
+      : { data: [] as Record<string, unknown>[], error: null };
+    if (invoiceItemsRes.error) {
+      return {
+        purchaseOrders: [],
+        purchases: [],
+        supplierInvoices: [],
+        paymentRequests: [],
+        error: failMessage(invoiceItemsRes.error),
+      };
+    }
+
+    const invoiceItemsById = new Map<string, SupplierInvoice["lines"]>();
+    for (const raw of invoiceItemsRes.data ?? []) {
       const row = raw as Record<string, unknown>;
-      const poId = row.purchase_order_id ? String(row.purchase_order_id) : null;
-      return mapPurchase(
+      const invoiceId = String(row.invoice_id);
+      const list = invoiceItemsById.get(invoiceId) ?? [];
+      const productId = String(row.product_id);
+      list.push({
+        id: String(row.id),
+        productId,
+        productName: names.get(productId) ?? "Product",
+        sku: skus.get(productId) ?? "",
+        quantity: Number(row.quantity) || 0,
+        unitCost: Number(row.unit_cost) || 0,
+        tax: Number(row.tax) || 0,
+        lineTotal: Number(row.line_total) || 0,
+      });
+      invoiceItemsById.set(invoiceId, list);
+    }
+
+    const supplierInvoices = invoiceRows.map((raw) => {
+      const row = raw as Record<string, unknown>;
+      const poId = row.purchase_order_id ? String(row.purchase_order_id) : "";
+      const receiptId = row.goods_receipt_id ? String(row.goods_receipt_id) : "";
+      return mapSupplierInvoice(
         row,
-        receiptItemsByReceipt.get(String(row.id)) ?? [],
-        supplierNameById.get(String(row.supplier_id)) ?? "Supplier",
-        poId ? poNumberById.get(poId) ?? null : null,
+        invoiceItemsById.get(String(row.id)) ?? [],
+        supplierNamesById.get(String(row.supplier_id)) ?? "Supplier",
+        poId ? poNumberById.get(poId) ?? "" : "",
+        receiptId ? receiptNumberById.get(receiptId) ?? "" : "",
       );
     });
 
-    return { purchaseOrders, purchases, error: null };
+    const invoiceNumberById = new Map(supplierInvoices.map((item) => [item.id, item.number]));
+    const paymentByPo = new Map<string, Purchase["paymentStatus"]>();
+    for (const invoice of supplierInvoices) {
+      if (invoice.purchaseOrderId) paymentByPo.set(invoice.purchaseOrderId, invoice.paymentStatus);
+    }
+
+    const purchases = (receiptsRes.data ?? []).map((raw) => {
+      const row = raw as Record<string, unknown>;
+      const poId = row.purchase_order_id ? String(row.purchase_order_id) : null;
+      const mapped = mapPurchase(
+        row,
+        receiptItemsByReceipt.get(String(row.id)) ?? [],
+        supplierNamesById.get(String(row.supplier_id)) ?? "Supplier",
+        poId ? poNumberById.get(poId) ?? null : null,
+      );
+      if (poId && paymentByPo.has(poId)) mapped.paymentStatus = paymentByPo.get(poId)!;
+      return mapped;
+    });
+
+    const paymentRequests = requestRows.map((raw) => {
+      const row = raw as Record<string, unknown>;
+      return mapPaymentRequest(
+        row,
+        supplierNamesById.get(String(row.supplier_id)) ?? "Supplier",
+        invoiceNumberById.get(String(row.invoice_id)) ?? "",
+      );
+    });
+
+    return { purchaseOrders, purchases, supplierInvoices, paymentRequests, error: null };
   } catch (error) {
     return {
       purchaseOrders: [],
       purchases: [],
+      supplierInvoices: [],
+      paymentRequests: [],
       error: queryErrorMessage(error),
     };
   }
@@ -414,6 +535,8 @@ export async function loadInventorySnapshot(): Promise<InventorySnapshot> {
     suppliers: productsWs.suppliers,
     purchaseOrders: purchasing.purchaseOrders,
     purchases: purchasing.purchases,
+    supplierInvoices: purchasing.supplierInvoices,
+    paymentRequests: purchasing.paymentRequests,
     movements: movements.movements,
     loadedAt: new Date().toISOString(),
     error: null,
