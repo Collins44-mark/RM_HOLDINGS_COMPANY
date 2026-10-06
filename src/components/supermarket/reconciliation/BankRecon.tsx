@@ -216,7 +216,7 @@ function BankWorkspace({
       {importNote ? <p className="text-[12.5px] font-medium text-[#3f8a5a]">Imported ✓ {importNote}</p> : null}
 
       <section className={`${reconGlass} px-4 py-4 sm:px-5`}>
-        {!accountsReady ? null : noAccounts ? (
+        {noAccounts ? (
           <EmptyState
             title="No bank accounts configured"
             description="Add a real supermarket bank account before reconciling statement lines. No sample accounts are created."
@@ -225,6 +225,7 @@ function BankWorkspace({
           <select
             className={cn(filterClass, "max-w-full sm:max-w-md")}
             value={accountId ?? ""}
+            disabled={!accountsReady}
             onChange={(e) => void reload(e.target.value || null)}
           >
             <option value="">Select account</option>
@@ -302,7 +303,7 @@ function BankWorkspace({
         </section>
       ) : null}
 
-      {mode === "reconcile" && accountsReady && !noAccounts ? (
+      {mode === "reconcile" && !noAccounts ? (
         <section className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
           <div className={`${reconGlass} flex min-h-[92px] flex-col justify-center px-4 py-3.5`}>
             <MoneyField label="Statement Opening" value={opening} onChange={setOpening} compact />
@@ -342,8 +343,7 @@ function BankWorkspace({
               </tr>
             </thead>
             <tbody>
-              {ready
-                ? transactions.map((txn) => (
+              {transactions.map((txn) => (
                 <tr key={txn.id} className="border-t border-black/[0.04]">
                   <td className="whitespace-nowrap px-4 py-3 text-[13px] text-navy">{txn.transactionDate}</td>
                   <td className="px-4 py-3 text-[13px] text-navy">{txn.reference || "—"}</td>
@@ -385,8 +385,7 @@ function BankWorkspace({
                     )}
                   </td>
                 </tr>
-              ))
-                : null}
+              ))}
             </tbody>
           </table>
         </div>

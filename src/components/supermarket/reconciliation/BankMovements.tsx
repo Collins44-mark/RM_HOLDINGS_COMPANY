@@ -206,7 +206,6 @@ export function BankMovementsPage({
       {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
       {reverseOk ? <p className="text-[12.5px] font-medium text-[#3f8a5a]">Reversed ✓</p> : null}
 
-      {accountsReady ? (
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
           ["Deposits", summary.deposits],
@@ -222,9 +221,8 @@ export function BankMovementsPage({
           </div>
         ))}
       </section>
-      ) : null}
 
-      {!accountsReady ? null : noAccounts ? (
+      {noAccounts ? (
         <div className={`${reconGlass} space-y-4 px-5 py-6`}>
           <EmptyState
             title="No bank accounts configured"
@@ -253,7 +251,7 @@ export function BankMovementsPage({
       ) : (
         <>
           <div className="grid grid-cols-1 gap-2 min-[520px]:grid-cols-2 xl:grid-cols-4">
-            <select className={filterClass} value={accountId} onChange={(e) => { setAccountId(e.target.value); setPage(1); }}>
+            <select className={filterClass} value={accountId} disabled={!accountsReady} onChange={(e) => { setAccountId(e.target.value); setPage(1); }}>
               <option value="">All accounts</option>
               {accounts?.map((account) => (
                 <option key={account.id} value={account.id}>

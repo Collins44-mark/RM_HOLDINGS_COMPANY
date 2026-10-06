@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { getBankMovementsWorkspaceAction } from "@/actions/supermarket/banking";
-import { getBankWorkspaceAction } from "@/actions/supermarket/reconciliation";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
 import { BankMovementsPage, BankingTabs } from "@/components/supermarket/reconciliation/BankMovements";
 import { BankReconPanel } from "@/components/supermarket/reconciliation/BankRecon";
@@ -16,19 +14,10 @@ function tabFromPath(pathname: string): "movements" | "reconcile" {
   return pathname.includes("/bank-reconciliation") ? "reconcile" : "movements";
 }
 
-export function BankingWorkspace({
-  asOf,
-  initialMovements,
-  initialRecon,
-}: {
-  asOf: string;
-  initialMovements: Awaited<ReturnType<typeof getBankMovementsWorkspaceAction>>;
-  initialRecon: Awaited<ReturnType<typeof getBankWorkspaceAction>>;
-}) {
+export function BankingWorkspace() {
   const pathname = usePathname();
   const [tab, setTab] = useState<"movements" | "reconcile">(() => tabFromPath(pathname));
   const { preset, setPreset, range, setRange, period } = useReconPeriod();
-  const seededPeriod = period.start === asOf && period.end === asOf;
 
   useEffect(() => {
     const next = tabFromPath(pathname);
@@ -72,20 +61,10 @@ export function BankingWorkspace({
       </header>
       <BankingTabs active={tab} onChange={syncTab} />
       <div className={tab === "movements" ? "" : "hidden"}>
-        <BankMovementsPage
-          omitChrome
-          periodStart={period.start}
-          periodEnd={period.end}
-          initial={seededPeriod ? initialMovements : undefined}
-        />
+        <BankMovementsPage omitChrome periodStart={period.start} periodEnd={period.end} />
       </div>
       <div className={tab === "reconcile" ? "" : "hidden"}>
-        <BankReconPanel
-          omitChrome
-          periodStart={period.start}
-          periodEnd={period.end}
-          initial={seededPeriod ? initialRecon : undefined}
-        />
+        <BankReconPanel omitChrome periodStart={period.start} periodEnd={period.end} />
       </div>
     </div>
   );

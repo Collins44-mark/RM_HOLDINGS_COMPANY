@@ -16,7 +16,6 @@ import {
   MoneyField,
   reconGlass,
   ReconActions,
-  ReconPulse,
   StatusBadge,
   useReconPeriod,
   type ReconBusy,
@@ -208,15 +207,9 @@ export function SalesReconciliationPage() {
         ].map((item) => (
           <div key={item.label} className={`${reconGlass} min-h-[104px] px-5 py-5 ${pending && ready ? "opacity-80" : ""}`}>
             <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{item.label}</p>
-            {pending && !ready ? (
-              <p className="mt-3">
-                <ReconPulse className="h-7 w-[58%]" />
-              </p>
-            ) : (
-              <p className="mt-2 text-[22px] font-semibold tracking-[-0.04em] text-navy">
-                {formatTzs(moneyToCents(item.value) / 100)}
-              </p>
-            )}
+            <p className="mt-2 text-[22px] font-semibold tracking-[-0.04em] text-navy">
+              {formatTzs(moneyToCents(item.value) / 100)}
+            </p>
           </div>
         ))}
       </section>

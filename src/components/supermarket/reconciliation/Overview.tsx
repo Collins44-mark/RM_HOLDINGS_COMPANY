@@ -9,7 +9,6 @@ import type { ReconciliationOverviewCard } from "@/lib/supermarket/reconciliatio
 import {
   RECON_OVERVIEW_SHELLS,
   reconGlass,
-  ReconPulse,
   StatusBadge,
   useReconPeriod,
 } from "./shared";
@@ -72,7 +71,7 @@ export function ReconciliationOverview() {
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {RECON_OVERVIEW_SHELLS.map((shell) => {
           const card = cards?.find((item) => item.kind === shell.kind);
-          const showPulse = pending && !card;
+          if (cards && !card) return null;
           return (
             <Link
               key={shell.kind}
@@ -80,26 +79,16 @@ export function ReconciliationOverview() {
               className={cn(
                 reconGlass,
                 "block min-h-[118px] px-5 py-5 transition hover:-translate-y-0.5",
-                pending && card ? "opacity-80" : "opacity-100",
+                pending && cards ? "opacity-80" : "opacity-100",
               )}
             >
               <div className="flex items-start justify-between gap-3">
                 <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">{shell.title}</h2>
-                {showPulse ? (
-                  <ReconPulse className="h-6 w-[88px] rounded-full" />
-                ) : (
-                  <StatusBadge label={card?.statusLabel ?? "Not Reconciled"} tone={card?.tone ?? "neutral"} />
-                )}
+                <StatusBadge label={card?.statusLabel ?? "Not Reconciled"} tone={card?.tone ?? "neutral"} />
               </div>
-              {showPulse ? (
-                <p className="mt-3">
-                  <ReconPulse className="h-4 w-[72%]" />
-                </p>
-              ) : (
-                <p className="mt-3 text-[13px] leading-5 text-slate-500">
-                  {card?.detail ?? "No reconciliation for this period"}
-                </p>
-              )}
+              <p className="mt-3 text-[13px] leading-5 text-slate-500">
+                {card?.detail ?? "No reconciliation for this period"}
+              </p>
             </Link>
           );
         })}

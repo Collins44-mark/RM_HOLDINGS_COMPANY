@@ -14,7 +14,7 @@ import { formatTzs } from "@/lib/format/currency";
 import { moneyToCents } from "@/lib/supermarket/money";
 import { displayStatus, todayInDarEsSalaam, type StockReconciliationHeader, type StockReconciliationItem } from "@/lib/supermarket/reconciliation";
 import { canApprovePreparedWork } from "@/lib/supermarket/sod";
-import { reconGlass, ReconActions, ReconTableSkeletonRows, StatusBadge, type ReconBusy, type ReconFeedback } from "./shared";
+import { reconGlass, ReconActions, StatusBadge, type ReconBusy, type ReconFeedback } from "./shared";
 
 type DraftRow = { physical: string; reason: string; notes: string };
 
@@ -42,8 +42,7 @@ export function StockReconciliationPage() {
   });
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const requestKey = `${date}:${categoryId}:${search}:${page}`;
-  const pending = loadedKey !== requestKey;
-  const ready = loadedKey !== null;
+  const ready = loadedKey === requestKey;
   const statusCode = header?.status ?? null;
   const countsLocked =
     statusCode === "SUBMITTED" ||
@@ -239,9 +238,7 @@ export function StockReconciliationPage() {
               </tr>
             </thead>
             <tbody>
-              {pending && !ready ? <ReconTableSkeletonRows rows={5} cols={8} /> : null}
-              {!pending || ready
-                ? items.map((item) => {
+              {items.map((item) => {
                 const draft = drafts[item.productId] ?? { physical: "", reason: "", notes: "" };
                 const physical = draft.physical === "" ? null : Number.parseInt(draft.physical, 10);
                 const varianceQty = countsLocked
@@ -295,12 +292,11 @@ export function StockReconciliationPage() {
                     </td>
                   </tr>
                 );
-              })
-                : null}
+              })}
             </tbody>
           </table>
         </div>
-        {ready && items.length === 0 ? (
+        {ready && !error && items.length === 0 ? (
           <div className="p-6">
             {header ? (
               <EmptyState

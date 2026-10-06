@@ -12,7 +12,7 @@ import { moneyToCents } from "@/lib/supermarket/money";
 import { displayStatus, type CashReconciliationRecord } from "@/lib/supermarket/reconciliation";
 import { canApprovePreparedWork } from "@/lib/supermarket/sod";
 import { formatTzs } from "@/lib/format/currency";
-import { MoneyField, reconGlass, ReconActions, ReconPulse, StatusBadge, useReconPeriod } from "./shared";
+import { MoneyField, reconGlass, ReconActions, StatusBadge, useReconPeriod } from "./shared";
 
 export function CashReconciliationPage() {
   const { preset, setPreset, range, setRange, period } = useReconPeriod();
@@ -143,15 +143,9 @@ export function CashReconciliationPage() {
         ].map(([label, value]) => (
           <div key={label} className={`${reconGlass} min-h-[104px] px-5 py-5 ${pending && ready ? "opacity-80" : ""}`}>
             <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</p>
-            {pending && !ready ? (
-              <p className="mt-3">
-                <ReconPulse className="h-7 w-[58%]" />
-              </p>
-            ) : (
-              <p className="mt-2 text-[20px] font-semibold tracking-[-0.04em] text-navy">
-                {formatTzs(moneyToCents(value) / 100)}
-              </p>
-            )}
+            <p className="mt-2 text-[20px] font-semibold tracking-[-0.04em] text-navy">
+              {formatTzs(moneyToCents(value) / 100)}
+            </p>
           </div>
         ))}
       </section>
