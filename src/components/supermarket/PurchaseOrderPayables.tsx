@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { formatTzs } from "@/lib/format/currency";
+import { cn } from "@/lib/cn";
 import { glassPanel, inputClass, primaryButton, secondaryButton, StatusPill } from "@/components/supermarket/purchasing-ui";
 import {
   approvePaymentRequest,
   approvePurchaseOrder,
+  downloadPurchaseDocumentPdf,
   downloadSupplierInvoicePdf,
   getPurchasingCapsAction,
   postPaymentRequest,
@@ -48,18 +51,25 @@ export function PurchaseOrderWorkflow({
 }) {
   const [caps, setCaps] = useState<PurchasingCaps>(emptyCaps);
   const [busy, setBusy] = useState("");
+  const [confirmed, setConfirmed] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     void getPurchasingCapsAction().then(setCaps);
   }, []);
 
-  async function run(label: string, fn: () => Promise<{ error?: string | null }>) {
+  async function run(label: string, successLabel: string, fn: () => Promise<{ error?: string | null }>) {
+    if (busy) return;
     setBusy(label);
     setMessage("");
     const result = await fn();
     setBusy("");
-    if (result.error) setMessage(result.error);
+    if (result.error) {
+      setConfirmed("");
+      setMessage(result.error);
+      return;
+    }
+    setConfirmed(successLabel);
   }
 
   const canSubmit = caps.canCreate && order.status === "Draft";
@@ -69,26 +79,56 @@ export function PurchaseOrderWorkflow({
     (caps.isOwner || order.createdBy !== caps.userId);
   const canSend = caps.canCreate && order.status === "Approved";
   const invoice = invoices[0] ?? null;
+  const canDownloadPurchase = Boolean(order.purchaseDocumentNumber);
 
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         {canSubmit ? (
-          <button type="button" disabled={Boolean(busy)} onClick={() => run("submit", () => submitPurchaseOrder(order.id))} className={secondaryButton}>
-            {busy === "submit" ? "Submitting…" : "Submit"}
-          </button>
+          <WorkflowButton
+            className={secondaryButton}
+            busy={busy === "submit"}
+            disabled={Boolean(busy)}
+            confirmed={confirmed === "Submitted"}
+            idleLabel="Submit"
+            successLabel="Submitted ✓"
+            onClick={() => run("submit", "Submitted", () => submitPurchaseOrder(order.id))}
+          />
         ) : null}
         {canApprove ? (
-          <button type="button" disabled={Boolean(busy)} onClick={() => run("approve", () => approvePurchaseOrder(order.id))} className={primaryButton}>
-            {busy === "approve" ? "Approving…" : "Approve"}
-          </button>
+          <WorkflowButton
+            className={primaryButton}
+            busy={busy === "approve"}
+            disabled={Boolean(busy)}
+            confirmed={confirmed === "Approved"}
+            idleLabel="Approve"
+            successLabel="Approved ✓"
+            onClick={() => run("approve", "Approved", () => approvePurchaseOrder(order.id))}
+          />
         ) : null}
         {canSend ? (
-          <button type="button" disabled={Boolean(busy)} onClick={() => run("send", () => sendPurchaseOrder(order.id))} className={secondaryButton}>
-            {busy === "send" ? "Sending…" : "Send Order"}
-          </button>
+          <WorkflowButton
+            className={secondaryButton}
+            busy={busy === "send"}
+            disabled={Boolean(busy)}
+            confirmed={confirmed === "Sent"}
+            idleLabel="Send Order"
+            successLabel="Sent ✓"
+            onClick={() => run("send", "Sent", () => sendPurchaseOrder(order.id))}
+          />
+        ) : null}
+        {canDownloadPurchase ? (
+          <WorkflowButton
+            className={secondaryButton}
+            busy={busy === "pdf"}
+            disabled={Boolean(busy)}
+            idleLabel="Download purchase PDF"
+            successLabel="Downloaded ✓"
+            onClick={() => run("pdf", "Downloaded", () => downloadPurchaseDocumentPdf(order.id))}
+          />
         ) : null}
       </div>
+      {confirmed ? <p className="text-[13px] font-medium text-[#3f8a5a]">{confirmed} ✓</p> : null}
       {message ? <p className="text-[13px] text-[#c45b66]">{message}</p> : null}
 
       {purchases.length > 0 ? (
@@ -308,7 +348,7 @@ function InvoicePanel({
                   invoiceId: invoice?.id,
                   supplierId: order.supplierId,
                   purchaseOrderId: order.id,
-                  goodsReceiptId: purchases[0]?.id ?? null,
+                  goodsReceiptId: purchases[0]?.receipts?.[0]?.id ?? null,
                   invoiceNumber,
                   invoiceDate,
                   dueDate,
@@ -439,5 +479,41 @@ function InvoicePanel({
       ) : null}
       {error ? <p className="mt-3 text-[13px] text-[#c45b66]">{error}</p> : null}
     </section>
+  );
+}
+
+function WorkflowButton({
+  className,
+  busy,
+  disabled,
+  confirmed,
+  idleLabel,
+  successLabel,
+  onClick,
+}: {
+  className: string;
+  busy: boolean;
+  disabled?: boolean;
+  confirmed?: boolean;
+  idleLabel: string;
+  successLabel: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled || busy}
+      onClick={onClick}
+      className={cn(className, "relative min-w-[8.75rem]")}
+    >
+      <span className={cn("inline-flex items-center justify-center gap-1.5", busy && "invisible")}>
+        {confirmed ? successLabel : idleLabel}
+      </span>
+      {busy ? (
+        <span className="absolute inset-0 flex items-center justify-center">
+          <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} />
+        </span>
+      ) : null}
+    </button>
   );
 }

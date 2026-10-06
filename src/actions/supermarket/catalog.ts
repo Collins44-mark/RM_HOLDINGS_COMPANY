@@ -447,7 +447,18 @@ export async function createPurchaseOrderAction(input: {
       0,
     );
     const discount = input.discount ?? 0;
-    const tax = input.tax ?? 0;
+    const { data: taxRows, error: taxError } = await supabase.rpc("sm_tax_lines_for_scope", {
+      p_bu: businessUnitId,
+      p_scope: "SUPPLIER_INVOICES",
+      p_on_date: input.orderDate,
+      p_tax_base: Math.max(0, subtotal - discount),
+    });
+    if (taxError) mapDbError(taxError);
+    const taxFromRules = ((taxRows ?? []) as Array<{ tax_amount: number }>).reduce(
+      (sum, line) => sum + (Number(line.tax_amount) || 0),
+      0,
+    );
+    const tax = taxFromRules;
     const total = Math.max(0, subtotal - discount + tax);
 
     const { data: po, error } = await supabase
@@ -482,8 +493,7 @@ export async function createPurchaseOrderAction(input: {
     const { error: itemsError } = await supabase.from("sm_purchase_order_items").insert(items);
     if (itemsError) mapDbError(itemsError);
 
-    revalidateSupermarket();
-    await writeSupermarketAudit(businessUnitId, {
+    void writeSupermarketAudit(businessUnitId, {
       action: "purchase_order.created",
       description: `Created purchase order ${String(poNumber)}`,
       severity: "medium",
@@ -505,7 +515,7 @@ export async function sendPurchaseOrderAction(orderId: string) {
       p_purchase_order_id: orderId,
     });
     if (error) mapDbError(error);
-    await writeSupermarketAudit(businessUnitId, {
+    void writeSupermarketAudit(businessUnitId, {
       action: "purchase_order.sent",
       description: "Purchase order sent",
       severity: "medium",
@@ -541,6 +551,13 @@ export async function receivePurchaseOrderAction(input: {
       batch_number: line.batchNumber ?? "",
     }));
 
+    const { data: before } = await supabase
+      .from("sm_purchase_orders")
+      .select("po_number, purchase_document_number")
+      .eq("id", input.purchaseOrderId)
+      .eq("business_unit_id", businessUnitId)
+      .maybeSingle();
+
     const { data, error } = await supabase.rpc("sm_receive_purchase_order", {
       p_purchase_order_id: input.purchaseOrderId,
       p_lines: payload,
@@ -548,13 +565,24 @@ export async function receivePurchaseOrderAction(input: {
     });
     if (error) mapDbError(error);
 
-    const { data: po } = await supabase
-      .from("sm_purchase_orders")
-      .select("status, po_number")
-      .eq("id", input.purchaseOrderId)
-      .maybeSingle();
+    const [{ data: po }, { data: receipt }] = await Promise.all([
+      supabase
+        .from("sm_purchase_orders")
+        .select("status, po_number, purchase_document_number")
+        .eq("id", input.purchaseOrderId)
+        .eq("business_unit_id", businessUnitId)
+        .maybeSingle(),
+      supabase
+        .from("sm_goods_receipts")
+        .select("receipt_number")
+        .eq("id", String(data))
+        .maybeSingle(),
+    ]);
     const poStatus = String(po?.status ?? "");
-    await writeSupermarketAudit(businessUnitId, {
+    const purchaseDocumentNumber = po?.purchase_document_number
+      ? String(po.purchase_document_number)
+      : "";
+    void writeSupermarketAudit(businessUnitId, {
       action: poStatus === "RECEIVED" ? "purchase.fully_received" : "goods_receipt.partial",
       description:
         poStatus === "RECEIVED"
@@ -564,7 +592,22 @@ export async function receivePurchaseOrderAction(input: {
       entityType: "goods_receipt",
       entityId: String(data),
     });
-    return { ok: true as const, id: data as string };
+    if (!before?.purchase_document_number && purchaseDocumentNumber) {
+      void writeSupermarketAudit(businessUnitId, {
+        action: "purchase_document.generated",
+        description: `Purchase document ${purchaseDocumentNumber} generated for ${String(po?.po_number ?? "order")}`,
+        severity: "medium",
+        entityType: "purchase_order",
+        entityId: input.purchaseOrderId,
+      });
+    }
+    return {
+      ok: true as const,
+      id: data as string,
+      receiptNumber: String(receipt?.receipt_number ?? ""),
+      purchaseDocumentNumber,
+      poStatus,
+    };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
   }

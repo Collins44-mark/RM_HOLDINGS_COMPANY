@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Check } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
@@ -32,6 +32,7 @@ export function ReceivePurchasePage() {
   } | null>(null);
   const [formError, setFormError] = useState("");
   const [lineErrors, setLineErrors] = useState<Record<string, string>>({});
+  const [posting, setPosting] = useState(false);
 
   const initialLines = useMemo<LineState[]>(
     () =>
@@ -70,7 +71,7 @@ export function ReceivePurchasePage() {
   }
 
   async function confirm() {
-    if (!order) return;
+    if (!order || posting) return;
     const current = order;
     const nextErrors: Record<string, string> = {};
     const payload: ReceivePurchaseLineInput[] = [];
@@ -118,11 +119,13 @@ export function ReceivePurchasePage() {
       return;
     }
 
+    setPosting(true);
     const result = await inventory.receivePurchaseOrder({
       purchaseOrderId: current.id,
       lines: payload,
       user: user?.name || "Storekeeper",
     });
+    setPosting(false);
     if (result.error || !result.purchase) {
       setFormError(result.error || "Unable to confirm receipt.");
       return;
@@ -148,7 +151,7 @@ export function ReceivePurchasePage() {
           <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#e7f4ea] text-[#3f8a5a]">
             <Check className="h-5 w-5" strokeWidth={2.2} />
           </span>
-          <h1 className="mt-4 text-[24px] font-semibold tracking-[-0.04em] text-navy">Goods received</h1>
+          <h1 className="mt-4 text-[24px] font-semibold tracking-[-0.04em] text-navy">Received ✓</h1>
           <p className="mt-2 text-[13.5px] text-slate-500">
             {success.number} updated {order.number} to {success.status}. Stock and stock movements were updated automatically.
           </p>
@@ -269,8 +272,13 @@ export function ReceivePurchasePage() {
         <Link href={`/supermarket/purchasing/${order.id}`} className={secondaryButton}>
           Cancel
         </Link>
-        <button type="button" onClick={confirm} className={primaryButton}>
-          Post Receipt
+        <button type="button" disabled={posting} onClick={confirm} className={cn(primaryButton, "relative min-w-[9.5rem]")}>
+          <span className={cn("inline-flex items-center justify-center", posting && "invisible")}>Post Receipt</span>
+          {posting ? (
+            <span className="absolute inset-0 flex items-center justify-center">
+              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} />
+            </span>
+          ) : null}
         </button>
       </div>
     </div>

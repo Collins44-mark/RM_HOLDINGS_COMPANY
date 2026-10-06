@@ -54,7 +54,7 @@ export async function submitPurchaseOrderAction(orderId: string) {
     const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.purchases.create");
     const { error } = await supabase.rpc("sm_submit_purchase_order", { p_purchase_order_id: orderId });
     if (error) mapDbError(error);
-    await writeSupermarketAudit(businessUnitId, {
+    void writeSupermarketAudit(businessUnitId, {
       action: "purchase_order.submitted",
       description: "Purchase order submitted",
       severity: "medium",
@@ -69,27 +69,12 @@ export async function submitPurchaseOrderAction(orderId: string) {
 
 export async function approvePurchaseOrderAction(orderId: string) {
   try {
-    const { supabase, businessUnitId, userId } = await requireSupermarketPermission(
+    const { supabase, businessUnitId } = await requireSupermarketPermission(
       "supermarket.purchases.approve",
-    );
-    const caps = await getPurchasingCapsAction();
-    const { data: po, error: loadError } = await supabase
-      .from("sm_purchase_orders")
-      .select("created_by, submitted_by, status")
-      .eq("id", orderId)
-      .eq("business_unit_id", businessUnitId)
-      .maybeSingle();
-    if (loadError) mapDbError(loadError);
-    if (!po) throw new SupermarketError("Purchase order not found.", "NOT_FOUND");
-    assertSod(
-      (po.created_by as string | null) ?? (po.submitted_by as string | null),
-      userId,
-      caps.isOwner,
-      "You cannot approve a purchase order you created.",
     );
     const { error } = await supabase.rpc("sm_approve_purchase_order", { p_purchase_order_id: orderId });
     if (error) mapDbError(error);
-    await writeSupermarketAudit(businessUnitId, {
+    void writeSupermarketAudit(businessUnitId, {
       action: "purchase_order.approved",
       description: "Purchase order approved",
       severity: "medium",
@@ -107,7 +92,7 @@ export async function sendApprovedPurchaseOrderAction(orderId: string) {
     const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.purchases.create");
     const { error } = await supabase.rpc("sm_send_purchase_order", { p_purchase_order_id: orderId });
     if (error) mapDbError(error);
-    await writeSupermarketAudit(businessUnitId, {
+    void writeSupermarketAudit(businessUnitId, {
       action: "purchase_order.sent",
       description: "Purchase order sent",
       severity: "medium",
@@ -601,6 +586,89 @@ export async function getSupplierInvoicePdfPayloadAction(invoiceId: string) {
           unitCost: Number(row.unit_cost) || 0,
           lineTotal: Number(row.line_total) || 0,
         })),
+      },
+    };
+  } catch (error) {
+    return { ok: false as const, error: actionErrorMessage(error) };
+  }
+}
+
+export async function getPurchaseDocumentPdfPayloadAction(purchaseOrderId: string) {
+  try {
+    const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.purchases.view");
+    const { data: po, error } = await supabase
+      .from("sm_purchase_orders")
+      .select(
+        "id, po_number, purchase_document_number, supplier_id, order_date, expected_date, status, discount, tax, total, notes",
+      )
+      .eq("id", purchaseOrderId)
+      .eq("business_unit_id", businessUnitId)
+      .maybeSingle();
+    if (error) mapDbError(error);
+    if (!po) throw new SupermarketError("Purchase order not found.", "NOT_FOUND");
+    if (!po.purchase_document_number) {
+      throw new SupermarketError("No purchase document exists until goods are received.", "VALIDATION");
+    }
+
+    const [{ data: supplier }, { data: items }, { data: receipts }, { data: invoices }] = await Promise.all([
+      supabase.from("sm_suppliers").select("name").eq("id", po.supplier_id).maybeSingle(),
+      supabase
+        .from("sm_purchase_order_items")
+        .select("product_id, quantity_ordered, quantity_received, unit_cost")
+        .eq("purchase_order_id", purchaseOrderId),
+      supabase
+        .from("sm_goods_receipts")
+        .select("id, receipt_number, received_at, total_cost")
+        .eq("purchase_order_id", purchaseOrderId)
+        .order("received_at", { ascending: true }),
+      supabase
+        .from("sm_supplier_invoices")
+        .select("payment_status, amount_paid, total, verification_status")
+        .eq("purchase_order_id", purchaseOrderId)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    const productIds = [...new Set((items ?? []).map((row) => String(row.product_id)))];
+    const { data: products } = productIds.length
+      ? await supabase.from("sm_products").select("id, name, sku").in("id", productIds)
+      : { data: [] as { id: string; name: string; sku: string }[] };
+    const nameById = new Map((products ?? []).map((row) => [String(row.id), String(row.name)]));
+
+    const receivedAt = receipts?.length ? String(receipts[receipts.length - 1]?.received_at ?? "") : "";
+    const verified = (invoices ?? []).find((row) => String(row.verification_status) === "VERIFIED");
+    const paymentSource = verified ?? invoices?.[0];
+    const paymentStatus = String(paymentSource?.payment_status ?? "UNPAID");
+
+    const lines = (items ?? [])
+      .filter((row) => (Number(row.quantity_received) || 0) > 0)
+      .map((row) => {
+        const quantity = Number(row.quantity_received) || 0;
+        const buyingPrice = Number(row.unit_cost) || 0;
+        return {
+          name: nameById.get(String(row.product_id)) ?? "Product",
+          quantity,
+          buyingPrice,
+          lineTotal: quantity * buyingPrice,
+        };
+      });
+    const subtotal = lines.reduce((sum, line) => sum + line.lineTotal, 0);
+
+    return {
+      ok: true as const,
+      document: {
+        number: String(po.purchase_document_number),
+        poNumber: String(po.po_number ?? ""),
+        supplierName: String(supplier?.name ?? "Supplier"),
+        orderDate: String(po.order_date ?? ""),
+        receivedDate: receivedAt.slice(0, 10),
+        status: String(po.status ?? ""),
+        discount: Number(po.discount) || 0,
+        tax: Number(po.tax) || 0,
+        subtotal,
+        grandTotal: Math.max(0, subtotal - (Number(po.discount) || 0) + (Number(po.tax) || 0)),
+        paymentStatus,
+        receipts: (receipts ?? []).map((row) => String(row.receipt_number ?? "")).filter(Boolean),
+        lines,
       },
     };
   } catch (error) {

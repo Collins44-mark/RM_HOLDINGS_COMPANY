@@ -26,6 +26,7 @@ import {
   secondaryButton,
   tableHead,
 } from "@/components/supermarket/purchasing-ui";
+import { downloadPurchaseDocumentPdf } from "@/lib/supermarket/inventory-store";
 
 type PurchasingTab = "orders" | "purchases" | "suppliers";
 
@@ -318,9 +319,18 @@ function PurchasesView({
                     <StatusPill value={item.status} />
                   </td>
                   <td className="px-4 py-3">
-                    <Link href={`/supermarket/purchasing/${item.purchaseOrderId}`} className="text-[13px] font-semibold text-navy hover:underline">
-                      View PO
-                    </Link>
+                    <div className="flex flex-col items-start gap-1">
+                      <Link href={`/supermarket/purchasing/${item.purchaseOrderId}`} className="text-[13px] font-semibold text-navy hover:underline">
+                        View
+                      </Link>
+                      <button
+                        type="button"
+                        className="text-[13px] font-semibold text-navy hover:underline"
+                        onClick={() => void downloadPurchaseDocumentPdf(item.purchaseOrderId)}
+                      >
+                        Download PDF
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -9,8 +9,8 @@ import {
   mapCategory,
   mapMovement,
   mapPaymentRequest,
+  mapPaymentStatus,
   mapProduct,
-  mapPurchase,
   mapPurchaseOrder,
   mapSupplier,
   mapSupplierInvoice,
@@ -55,8 +55,9 @@ const PO_LIMIT = 100;
 const RECEIPT_LIMIT = 100;
 const MOVEMENT_LIMIT = 200;
 
-const PO_COLUMNS =
+const PO_COLUMNS_BASE =
   "id, po_number, supplier_id, order_date, expected_date, status, discount, tax, notes, created_at, created_by, total";
+const PO_COLUMNS = `${PO_COLUMNS_BASE}, purchase_document_number`;
 const RECEIPT_COLUMNS =
   "id, receipt_number, purchase_order_id, supplier_id, received_at, payment_status, total_cost, notes";
 const INVOICE_COLUMNS =
@@ -170,7 +171,7 @@ export async function loadPurchasingWorkspace(input?: {
 }): Promise<PurchasingWorkspace> {
   try {
     const { supabase, businessUnitId } = await requireSupermarketContext();
-    const [poRes, receiptsRes, invoiceRes, requestRes] = await Promise.all([
+    const [poResPrimary, receiptsRes, invoiceRes, requestRes] = await Promise.all([
       supabase
         .from("sm_purchase_orders")
         .select(PO_COLUMNS)
@@ -196,6 +197,15 @@ export async function loadPurchasingWorkspace(input?: {
         .order("created_at", { ascending: false })
         .limit(RECEIPT_LIMIT),
     ]);
+    const poRes =
+      poResPrimary.error && /purchase_document_number/i.test(poResPrimary.error.message)
+        ? await supabase
+            .from("sm_purchase_orders")
+            .select(PO_COLUMNS_BASE)
+            .eq("business_unit_id", businessUnitId)
+            .order("created_at", { ascending: false })
+            .limit(PO_LIMIT)
+        : poResPrimary;
     const invoiceMissing =
       Boolean(invoiceRes.error) && /sm_supplier_invoices|does not exist|PGRST/i.test(invoiceRes.error?.message ?? "");
     const requestMissing =
@@ -368,18 +378,57 @@ export async function loadPurchasingWorkspace(input?: {
       if (invoice.purchaseOrderId) paymentByPo.set(invoice.purchaseOrderId, invoice.paymentStatus);
     }
 
-    const purchases = (receiptsRes.data ?? []).map((raw) => {
+    const purchasesByPo = new Map<string, Purchase>();
+    for (const raw of receiptsRes.data ?? []) {
       const row = raw as Record<string, unknown>;
-      const poId = row.purchase_order_id ? String(row.purchase_order_id) : null;
-      const mapped = mapPurchase(
-        row,
-        receiptItemsByReceipt.get(String(row.id)) ?? [],
-        supplierNamesById.get(String(row.supplier_id)) ?? "Supplier",
-        poId ? poNumberById.get(poId) ?? null : null,
-      );
-      if (poId && paymentByPo.has(poId)) mapped.paymentStatus = paymentByPo.get(poId)!;
-      return mapped;
-    });
+      const poId = row.purchase_order_id ? String(row.purchase_order_id) : "";
+      if (!poId) continue;
+      const receiptLines = receiptItemsByReceipt.get(String(row.id)) ?? [];
+      const receipt = {
+        id: String(row.id),
+        number: String(row.receipt_number ?? ""),
+        receivedAt: String(row.received_at ?? ""),
+        itemCount: receiptLines.reduce((sum, line) => sum + line.quantity, 0),
+        totalCost: Number(row.total_cost) || 0,
+      };
+      const existing = purchasesByPo.get(poId);
+      if (existing) {
+        existing.receipts.push(receipt);
+        existing.totalCost += receipt.totalCost;
+        existing.itemCount += receipt.itemCount;
+        if (receipt.receivedAt > existing.receivedAt) existing.receivedAt = receipt.receivedAt;
+        for (const line of receiptLines) {
+          const prior = existing.lines.find((item) => item.productId === line.productId);
+          if (prior) {
+            prior.quantity += line.quantity;
+            prior.mainStore += line.mainStore;
+            prior.salesFloor += line.salesFloor;
+          } else {
+            existing.lines.push({ ...line });
+          }
+        }
+        continue;
+      }
+      const po = purchaseOrders.find((item) => item.id === poId);
+      purchasesByPo.set(poId, {
+        id: poId,
+        number: po?.purchaseDocumentNumber || String(row.receipt_number ?? ""),
+        purchaseOrderId: poId,
+        purchaseOrderNumber: poNumberById.get(poId) ?? "",
+        supplierId: String(row.supplier_id),
+        supplierName: supplierNamesById.get(String(row.supplier_id)) ?? "Supplier",
+        receivedAt: receipt.receivedAt,
+        paymentStatus: paymentByPo.get(poId) ?? mapPaymentStatus(String(row.payment_status)),
+        totalCost: receipt.totalCost,
+        itemCount: receipt.itemCount,
+        status: po?.status === "Received" ? "Received" : "Partially Received",
+        lines: receiptLines.map((line) => ({ ...line })),
+        notes: String(row.notes ?? ""),
+        receivedBy: "",
+        receipts: [receipt],
+      });
+    }
+    const purchases = [...purchasesByPo.values()].sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
 
     const paymentRequests = requestRows.map((raw) => {
       const row = raw as Record<string, unknown>;

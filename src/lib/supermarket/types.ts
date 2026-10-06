@@ -92,6 +92,7 @@ export type PurchaseOrderLine = {
 export type PurchaseOrder = {
   id: string;
   number: string;
+  purchaseDocumentNumber: string | null;
   supplierId: string;
   supplierName: string;
   orderDate: string;
@@ -180,6 +181,14 @@ export type PurchaseLine = {
   salesFloor: number;
 };
 
+export type PurchaseReceiptSummary = {
+  id: string;
+  number: string;
+  receivedAt: string;
+  itemCount: number;
+  totalCost: number;
+};
+
 export type Purchase = {
   id: string;
   number: string;
@@ -191,10 +200,11 @@ export type Purchase = {
   paymentStatus: PurchasePaymentStatus;
   totalCost: number;
   itemCount: number;
-  status: "Received";
+  status: "Partially Received" | "Received";
   lines: PurchaseLine[];
   notes?: string;
   receivedBy: string;
+  receipts: PurchaseReceiptSummary[];
 };
 
 export type InventorySnapshot = {

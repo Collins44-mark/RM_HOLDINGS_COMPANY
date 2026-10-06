@@ -5,6 +5,7 @@ import {
   approvePaymentRequestAction,
   approvePurchaseOrderAction,
   getPurchasingCapsAction,
+  getPurchaseDocumentPdfPayloadAction,
   getSupplierInvoicePdfPayloadAction,
   postPaymentRequestAction,
   rejectSupplierInvoiceAction,
@@ -48,6 +49,7 @@ import type {
   ReceivePurchaseOrderInput,
   TransferStockInput,
 } from "@/lib/data/supermarket-purchasing";
+import { derivePurchaseOrderStatus } from "@/lib/data/supermarket-purchasing";
 
 export type AdjustStockInput = {
   productId: string;
@@ -101,6 +103,25 @@ function emit() {
 function patchSnapshot(partial: Partial<InventorySnapshot>) {
   snapshot = { ...snapshot, ...partial };
   emit();
+}
+
+function patchPurchaseOrder(orderId: string, patch: Partial<PurchaseOrder>) {
+  patchSnapshot({
+    purchaseOrders: snapshot.purchaseOrders.map((order) =>
+      order.id === orderId ? { ...order, ...patch } : order,
+    ),
+  });
+}
+
+function patchPurchase(purchase: Purchase) {
+  const exists = snapshot.purchases.some((item) => item.purchaseOrderId === purchase.purchaseOrderId);
+  patchSnapshot({
+    purchases: exists
+      ? snapshot.purchases.map((item) =>
+          item.purchaseOrderId === purchase.purchaseOrderId ? purchase : item,
+        )
+      : [purchase, ...snapshot.purchases],
+  });
 }
 
 export function subscribeInventory(onStoreChange: () => void) {
@@ -459,7 +480,6 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
     if (!submitted.ok) return { error: submitted.error, order: null as PurchaseOrder | null };
   }
 
-  await refreshProductsWorkspace();
   await refreshPurchasingWorkspace();
   const order = snapshot.purchaseOrders.find((item) => item.id === result.id) ?? null;
   return { error: null, order };
@@ -468,21 +488,24 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
 export async function submitPurchaseOrder(orderId: string) {
   const result = await submitPurchaseOrderAction(orderId);
   if (!result.ok) return { error: result.error };
-  await refreshPurchasingWorkspace();
+  patchPurchaseOrder(orderId, { status: "Submitted" });
+  void refreshPurchasingWorkspace();
   return { error: null };
 }
 
 export async function approvePurchaseOrder(orderId: string) {
   const result = await approvePurchaseOrderAction(orderId);
   if (!result.ok) return { error: result.error };
-  await refreshPurchasingWorkspace();
+  patchPurchaseOrder(orderId, { status: "Approved" });
+  void refreshPurchasingWorkspace();
   return { error: null };
 }
 
 export async function sendPurchaseOrder(orderId: string) {
   const result = await sendPurchaseOrderAction(orderId);
   if (!result.ok) return { error: result.error };
-  await refreshPurchasingWorkspace();
+  patchPurchaseOrder(orderId, { status: "Sent" });
+  void refreshPurchasingWorkspace();
   return { error: null };
 }
 
@@ -513,15 +536,80 @@ export async function receivePurchaseOrder(input: ReceivePurchaseOrderInput) {
   });
   if (!result.ok) return { error: result.error, purchase: null };
 
-  await refreshProductsWorkspace();
-  await refreshPurchasingWorkspace();
-  if (movementsLoaded) await refreshMovementsWorkspace();
-  const purchase = snapshot.purchases.find((item) => item.id === result.id) ?? null;
-  const updatedOrder = snapshot.purchaseOrders.find((item) => item.id === input.purchaseOrderId);
+  const nextLines = order.lines.map((line) => {
+    const received = input.lines.find((item) => item.productId === line.productId);
+    if (!received) return line;
+    return { ...line, quantityReceived: line.quantityReceived + received.quantity };
+  });
+  const nextStatus = derivePurchaseOrderStatus(nextLines, order.status);
+  const purchaseDocumentNumber = result.purchaseDocumentNumber || order.purchaseDocumentNumber;
+  patchPurchaseOrder(input.purchaseOrderId, {
+    lines: nextLines,
+    status: nextStatus,
+    purchaseDocumentNumber: purchaseDocumentNumber || order.purchaseDocumentNumber,
+  });
+
+  const existing = snapshot.purchases.find((item) => item.purchaseOrderId === order.id);
+  const receipt = {
+    id: result.id,
+    number: result.receiptNumber || result.id,
+    receivedAt: new Date().toISOString(),
+    itemCount: input.lines.reduce((sum, line) => sum + line.quantity, 0),
+    totalCost: input.lines.reduce((sum, line) => {
+      const poLine = order.lines.find((item) => item.productId === line.productId);
+      return sum + line.quantity * (poLine?.buyingPrice ?? 0);
+    }, 0),
+  };
+  const receivedLines = input.lines.map((line) => {
+    const poLine = order.lines.find((item) => item.productId === line.productId);
+    return {
+      id: `${result.id}-${line.productId}`,
+      productId: line.productId,
+      productName: poLine?.productName ?? "Product",
+      sku: poLine?.sku ?? "",
+      quantity: line.quantity,
+      buyingPrice: poLine?.buyingPrice ?? 0,
+      mainStore: line.mainStore,
+      salesFloor: line.salesFloor,
+    };
+  });
+  const mergedLines = existing
+    ? existing.lines.map((line) => {
+        const add = receivedLines.find((item) => item.productId === line.productId);
+        if (!add) return line;
+        return {
+          ...line,
+          quantity: line.quantity + add.quantity,
+          mainStore: line.mainStore + add.mainStore,
+          salesFloor: line.salesFloor + add.salesFloor,
+        };
+      }).concat(receivedLines.filter((line) => !existing.lines.some((item) => item.productId === line.productId)))
+    : receivedLines;
+  const purchase: Purchase = {
+    id: order.id,
+    number: purchaseDocumentNumber || receipt.number,
+    purchaseOrderId: order.id,
+    purchaseOrderNumber: order.number,
+    supplierId: order.supplierId,
+    supplierName: order.supplierName,
+    receivedAt: receipt.receivedAt,
+    paymentStatus: existing?.paymentStatus ?? "Unpaid",
+    totalCost: (existing?.totalCost ?? 0) + receipt.totalCost,
+    itemCount: (existing?.itemCount ?? 0) + receipt.itemCount,
+    status: nextStatus === "Received" ? "Received" : "Partially Received",
+    lines: mergedLines,
+    receivedBy: "",
+    receipts: [...(existing?.receipts ?? []), receipt],
+  };
+  patchPurchase(purchase);
+
+  void refreshProductsWorkspace();
+  void refreshPurchasingWorkspace();
+  if (movementsLoaded) void refreshMovementsWorkspace();
   return {
     error: null,
     purchase,
-    orderStatus: updatedOrder?.status,
+    orderStatus: nextStatus,
   };
 }
 
@@ -589,6 +677,14 @@ export async function downloadSupplierInvoicePdf(invoiceId: string) {
   return { error: null };
 }
 
+export async function downloadPurchaseDocumentPdf(purchaseOrderId: string) {
+  const result = await getPurchaseDocumentPdfPayloadAction(purchaseOrderId);
+  if (!result.ok) return { error: result.error };
+  const { downloadPurchaseDocument } = await import("@/lib/data/purchase-document-pdf");
+  downloadPurchaseDocument(result.document);
+  return { error: null };
+}
+
 export { getPurchasingCapsAction };
 export type { PurchasingCaps };
 
@@ -652,6 +748,7 @@ export function useSupermarketInventory(options?: InventoryLoadOptions) {
     approvePaymentRequest,
     postPaymentRequest,
     downloadSupplierInvoicePdf,
+    downloadPurchaseDocumentPdf,
     refresh: refreshInventorySnapshot,
     refreshProducts: retryProductsWorkspace,
     ensurePurchasing: ensurePurchasingWorkspaceLoaded,

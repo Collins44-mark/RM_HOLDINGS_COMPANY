@@ -181,6 +181,7 @@ export function mapPurchaseOrder(
   return {
     id: String(row.id),
     number: String(row.po_number ?? ""),
+    purchaseDocumentNumber: row.purchase_document_number ? String(row.purchase_document_number) : null,
     supplierId: String(row.supplier_id),
     supplierName,
     orderDate: String(row.order_date ?? ""),
@@ -216,6 +217,7 @@ export function mapPurchase(
     lines,
     notes: String(row.notes ?? ""),
     receivedBy: "",
+    receipts: [],
   };
 }
 

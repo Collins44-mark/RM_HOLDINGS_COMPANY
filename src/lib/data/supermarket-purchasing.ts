@@ -50,6 +50,7 @@ export type PurchaseOrderLine = {
 export type PurchaseOrder = {
   id: string;
   number: string;
+  purchaseDocumentNumber?: string | null;
   supplierId: string;
   supplierName: string;
   orderDate: string;
@@ -84,9 +85,10 @@ export type Purchase = {
   itemCount: number;
   totalCost: number;
   paymentStatus: PurchasePaymentStatus;
-  status: "Received";
+  status: "Partially Received" | "Received";
   lines: PurchaseLine[];
   receivedBy: string;
+  receipts: { id: string; number: string; receivedAt: string; itemCount: number; totalCost: number }[];
 };
 
 export type CreatePurchaseOrderInput = {
@@ -461,6 +463,7 @@ export function seedPurchases(): Purchase[] {
       paymentStatus: "Unpaid",
       status: "Received",
       receivedBy: "Collins Sarungi",
+      receipts: [],
       lines: [
         {
           productId: "prd-sugar-1",
@@ -486,6 +489,7 @@ export function seedPurchases(): Purchase[] {
       paymentStatus: "Paid",
       status: "Received",
       receivedBy: "John",
+      receipts: [],
       lines: [
         {
           productId: "prd-unga-2",

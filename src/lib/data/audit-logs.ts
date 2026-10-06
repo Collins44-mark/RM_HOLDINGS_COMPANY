@@ -85,6 +85,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "goods_receipt.created": "Goods received",
   "goods_receipt.partial": "Partial goods received",
   "purchase.fully_received": "Purchase fully received",
+  "purchase_document.generated": "Purchase document generated",
   "supplier_invoice.created": "Supplier invoice created",
   "supplier_invoice.submitted": "Supplier invoice submitted",
   "supplier_invoice.verified": "Supplier invoice verified",

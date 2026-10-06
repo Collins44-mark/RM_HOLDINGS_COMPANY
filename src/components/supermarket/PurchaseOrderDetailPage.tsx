@@ -25,6 +25,8 @@ export function PurchaseOrderDetailPage() {
   }
 
   const purchases = inventory.purchases.filter((item) => item.purchaseOrderId === order.id);
+  const purchase = purchases[0] ?? null;
+  const receipts = purchase?.receipts ?? [];
   const invoices = inventory.supplierInvoices.filter((item) => item.purchaseOrderId === order.id);
   const requests = inventory.paymentRequests.filter((item) =>
     invoices.some((invoice) => invoice.id === item.invoiceId),
@@ -38,6 +40,9 @@ export function PurchaseOrderDetailPage() {
           <PageBackButton href="/supermarket/purchasing" prefetch />
           <h1 className="mt-4 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">{order.number}</h1>
           <p className="mt-1.5 text-[13px] text-slate-500">{order.supplierName} · Ordered {formatDisplayDate(order.orderDate)}</p>
+          {order.purchaseDocumentNumber ? (
+            <p className="mt-1 text-[13px] font-medium text-navy">Purchase document {order.purchaseDocumentNumber}</p>
+          ) : null}
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           {canReceive ? (
@@ -98,6 +103,7 @@ export function PurchaseOrderDetailPage() {
           <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Summary</h2>
           <dl className="mt-4 space-y-2.5 text-[13.5px]">
             <Row label="Supplier" value={order.supplierName} />
+            <Row label="Status" value={order.status} />
             <Row label="Order date" value={formatDisplayDate(order.orderDate)} />
             <Row label="Expected" value={formatDisplayDate(order.expectedDate)} />
             <Row label="Subtotal" value={formatTzs(purchaseOrderSubtotal(order))} />
@@ -113,11 +119,11 @@ export function PurchaseOrderDetailPage() {
 
       <section className={glassPanel}>
         <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Receipts</h2>
-        {purchases.length === 0 ? (
+        {receipts.length === 0 ? (
           <p className="mt-3 text-[13px] text-slate-500">No goods have been received against this order yet.</p>
         ) : (
           <div className="mt-3 divide-y divide-[#d5dee8]/70">
-            {purchases.map((item) => (
+            {receipts.map((item) => (
               <div key={item.id} className="flex items-center justify-between gap-3 py-3">
                 <div>
                   <p className="text-[13.5px] font-semibold text-navy">{item.number}</p>
