@@ -288,6 +288,7 @@ export async function getReconciliationOverviewAction(input: { from: string; to:
         .select("id", { count: "exact", head: true })
         .eq("business_unit_id", businessUnitId)
         .eq("status", "UNMATCHED")
+        .eq("posting_status", "POSTED")
         .gte("transaction_date", input.from)
         .lte("transaction_date", input.to),
     ]);
@@ -1157,10 +1158,11 @@ export async function getBankWorkspaceAction(input: {
       supabase
         .from("sm_bank_transactions")
         .select(
-          "id, bank_account_id, transaction_date, reference, description, debit, credit, amount, source, external_reference, status",
+          "id, bank_account_id, transaction_date, reference, description, debit, credit, amount, source, external_reference, status, posting_status, movement_type",
         )
         .eq("business_unit_id", businessUnitId)
         .eq("bank_account_id", accountId)
+        .eq("posting_status", "POSTED")
         .gte("transaction_date", input.from)
         .lte("transaction_date", input.to)
         .order("transaction_date", { ascending: true })
@@ -1411,8 +1413,9 @@ export async function saveBankReconciliationAction(input: {
     if (accountError) mapDbError(accountError);
     const { data: systemTxns, error: sysError } = await ctx.supabase
       .from("sm_bank_transactions")
-      .select("amount, status, transaction_date, source")
+      .select("amount, status, transaction_date, source, posting_status")
       .eq("bank_account_id", input.accountId)
+      .eq("posting_status", "POSTED")
       .lte("transaction_date", input.to);
     if (sysError) mapDbError(sysError);
     const systemClosing = addCents(

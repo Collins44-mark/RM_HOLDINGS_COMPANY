@@ -21,9 +21,10 @@ import { moneyToCents } from "@/lib/supermarket/money";
 import type { BankAccountRecord, BankReconciliationRecord, BankTransactionRecord } from "@/lib/supermarket/reconciliation";
 import { displayStatus } from "@/lib/supermarket/reconciliation";
 import { MoneyField, primaryButton, reconGlass, ReconActions, secondaryButton, StatusBadge, useReconPeriod } from "./shared";
+import { BankMovementsPage, BankingTabs } from "./BankMovements";
 
 export function BankingPage() {
-  return <BankWorkspace mode="accounts" />;
+  return <BankMovementsPage />;
 }
 
 export function BankReconciliationPage() {
@@ -107,12 +108,10 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">
-            {mode === "accounts" ? "Banking" : "Bank Reconciliation"}
+            Banking
           </h1>
           <p className="mt-1.5 text-[13.5px] text-slate-500">
-            {mode === "accounts"
-              ? "Maintain supermarket bank accounts and enter statement lines."
-              : "Match imported statement lines to system bank payments."}
+            Manage bank deposits and withdrawals and reconcile bank movements.
           </p>
         </div>
         <div className="flex flex-col items-stretch gap-2 sm:items-end">
@@ -126,6 +125,7 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
           <StatusBadge label={status.label} tone={unmatched > 0 ? "variance" : status.tone} />
         </div>
       </header>
+      <BankingTabs active="reconcile" />
       {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
 
       <section className={`${reconGlass} space-y-3 px-5 py-5`}>
@@ -139,7 +139,7 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
             ))}
           </select>
         </div>
-        {mode === "accounts" && caps.canCreate ? (
+        {caps.canCreate ? (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
             <input className={inputClass} placeholder="Bank name" value={accountForm.bankName} onChange={(e) => setAccountForm((f) => ({ ...f, bankName: e.target.value }))} />
             <input className={inputClass} placeholder="Account name" value={accountForm.accountName} onChange={(e) => setAccountForm((f) => ({ ...f, accountName: e.target.value }))} />
@@ -160,7 +160,7 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
         ) : null}
       </section>
 
-      {mode === "accounts" && accountId && caps.canCreate ? (
+      {accountId && caps.canCreate ? (
         <section className={`${reconGlass} space-y-3 px-5 py-5`}>
           <h2 className="text-[15px] font-semibold text-navy">Statement line</h2>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-5">

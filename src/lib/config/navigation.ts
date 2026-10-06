@@ -153,7 +153,7 @@ export const SUPERMARKET_NAV: NavItem[] = [
       { href: "/supermarket/finance/expenses", label: "Expenses", icon: "wallet" },
       { href: "/supermarket/finance/payments", label: "Payments", icon: "money" },
       { href: "/supermarket/finance/cash-reconciliation", label: "Cash Reconciliation", icon: "money" },
-      { href: "/supermarket/finance/banking", label: "Banking", icon: "finance" },
+      { href: "/supermarket/finance/banking", label: "Deposits & Withdrawals", icon: "finance" },
       { href: "/supermarket/finance/bank-reconciliation", label: "Bank Reconciliation", icon: "audit" },
     ],
   },

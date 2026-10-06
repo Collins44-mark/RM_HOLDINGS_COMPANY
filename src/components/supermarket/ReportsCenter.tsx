@@ -10,6 +10,7 @@ import { primaryButton } from "@/components/supermarket/purchasing-ui";
 import { reportGlass, useReportPeriod } from "@/components/supermarket/report-shell";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
 import { getReconciliationReportStripAction } from "@/actions/supermarket/reconciliation";
+import { getBankMovementReportStripAction } from "@/actions/supermarket/banking";
 
 const CARDS: { kind: ReportKind; icon: typeof TrendingUp }[] = [
   { kind: "sales", icon: TrendingUp },
@@ -87,6 +88,7 @@ export function ReportsCenter() {
       ) : null}
 
       <ReconciliationReportStrip from={period.start} to={period.end} />
+      <BankMovementReportStrip from={period.start} to={period.end} />
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {CARDS.map((card) => {
@@ -163,6 +165,46 @@ function ReconciliationReportStrip({ from, to }: { from: string; to: string }) {
           <p className="mt-1 text-[12.5px] text-slate-500">
             {card.statusLabel} · {card.detail}
           </p>
+        </Link>
+      ))}
+    </section>
+  );
+}
+
+function BankMovementReportStrip({ from, to }: { from: string; to: string }) {
+  const [summary, setSummary] = useState<{ deposits: string; withdrawals: string; net: string; unmatched: number } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void getBankMovementReportStripAction({ from, to }).then((result) => {
+      if (!active || !result.ok) return;
+      setSummary({
+        deposits: result.deposits,
+        withdrawals: result.withdrawals,
+        net: result.net,
+        unmatched: result.unmatched,
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [from, to]);
+
+  if (!summary) return null;
+
+  const items = [
+    { title: "Bank deposits", detail: summary.deposits },
+    { title: "Bank withdrawals", detail: summary.withdrawals },
+    { title: "Net bank movement", detail: summary.net },
+    { title: "Unmatched bank lines", detail: String(summary.unmatched) },
+  ];
+
+  return (
+    <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {items.map((item) => (
+        <Link key={item.title} href="/supermarket/finance/banking" className={cn(reportGlass, "block px-4 py-4")}>
+          <p className="text-[13px] font-semibold text-navy">{item.title}</p>
+          <p className="mt-1 text-[12.5px] text-slate-500">{item.detail}</p>
         </Link>
       ))}
     </section>

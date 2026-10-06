@@ -92,6 +92,11 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "bank.reconciliation.approved": "Bank reconciliation approved",
   "bank.reconciliation.item.matched": "Bank transactions matched",
   "bank.statement.imported": "Bank statement imported",
+  "bank.deposit.created": "Bank deposit saved",
+  "bank.deposit.posted": "Bank deposit posted",
+  "bank.withdrawal.created": "Bank withdrawal saved",
+  "bank.withdrawal.posted": "Bank withdrawal posted",
+  "bank.transaction.reversed": "Bank transaction reversed",
 };
 
 export const AUDIT_MODULE_LABELS: Record<string, string> = {
