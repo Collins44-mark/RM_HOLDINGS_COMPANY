@@ -24,17 +24,23 @@ export function ReconciliationOverview() {
 
   useEffect(() => {
     let active = true;
-    void getReconciliationOverviewAction({ from: period.start, to: period.end }).then((result) => {
-      if (!active) return;
-      if (!result.ok) {
-        setError(result.error);
+    void getReconciliationOverviewAction({ from: period.start, to: period.end })
+      .then((result) => {
+        if (!active) return;
+        if (!result.ok) {
+          setError(result.error);
+          setLoadedKey(`${period.start}:${period.end}`);
+          return;
+        }
+        setError(null);
+        setCards(result.cards);
         setLoadedKey(`${period.start}:${period.end}`);
-        return;
-      }
-      setError(null);
-      setCards(result.cards);
-      setLoadedKey(`${period.start}:${period.end}`);
-    });
+      })
+      .catch(() => {
+        if (!active) return;
+        setError("Could not load reconciliation.");
+        setLoadedKey(`${period.start}:${period.end}`);
+      });
     return () => {
       active = false;
     };

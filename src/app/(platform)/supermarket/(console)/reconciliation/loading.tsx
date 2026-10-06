@@ -1,4 +1,12 @@
-import { RECON_OVERVIEW_SHELLS, reconGlass, ReconPulse } from "@/components/supermarket/reconciliation/shared";
+import { glassCard } from "@/components/supermarket/purchasing-ui";
+
+/** Server-only shell. Do not import reconciliation/shared.tsx (`"use client"`) from here. */
+const SHELLS = [
+  { kind: "sales", title: "Sales Reconciliation" },
+  { kind: "cash", title: "Cash Reconciliation" },
+  { kind: "stock", title: "Stock Reconciliation" },
+  { kind: "bank", title: "Bank Reconciliation" },
+] as const;
 
 export default function Loading() {
   return (
@@ -12,18 +20,16 @@ export default function Loading() {
             Review and confirm sales, cash, stock and bank balances.
           </p>
         </div>
-        <div className="h-11 w-full max-w-sm rounded-[14px] bg-white/70" />
+        <div className="h-11 w-full max-w-sm animate-pulse rounded-[14px] bg-white/70" />
       </header>
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {RECON_OVERVIEW_SHELLS.map((shell) => (
-          <div key={shell.kind} className={`${reconGlass} min-h-[118px] px-5 py-5`}>
+        {SHELLS.map((shell) => (
+          <div key={shell.kind} className={`${glassCard} min-h-[118px] px-5 py-5`}>
             <div className="flex items-start justify-between gap-3">
               <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">{shell.title}</h2>
-              <ReconPulse className="h-6 w-[88px] rounded-full" />
+              <div className="h-6 w-[88px] animate-pulse rounded-full bg-slate-200/80" />
             </div>
-            <p className="mt-3">
-              <ReconPulse className="h-4 w-[72%]" />
-            </p>
+            <div className="mt-3 h-4 w-[72%] animate-pulse rounded-md bg-slate-200/80" />
           </div>
         ))}
       </section>

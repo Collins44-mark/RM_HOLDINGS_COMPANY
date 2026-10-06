@@ -14,7 +14,7 @@ export const reconGlass = glassCard;
 export { filterClass, inputClass, primaryButton, secondaryButton };
 
 export function useReconPeriod() {
-  const asOf = todayInDarEsSalaam();
+  const [asOf] = useState(() => todayInDarEsSalaam());
   const [preset, setPreset] = useState<SalesPeriodPreset>("today");
   const [range, setRange] = useState<SalesDateRange>({ from: asOf, to: asOf });
   const period = useMemo(() => resolveSalesPeriod(preset, range, asOf), [preset, range, asOf]);
