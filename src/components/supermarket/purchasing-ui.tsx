@@ -20,6 +20,10 @@ export const primaryButton =
 export const secondaryButton =
   "inline-flex h-10 items-center justify-center rounded-full border border-white/80 bg-white/70 px-4 text-[13.5px] font-semibold text-navy shadow-[0_4px_12px_rgba(15,35,64,0.05)] transition duration-200 hover:bg-white";
 
+export function PulseBar({ className }: { className?: string }) {
+  return <span className={cn("inline-block animate-pulse rounded-md bg-slate-200/75", className)} />;
+}
+
 export function StatusPill({
   value,
 }: {

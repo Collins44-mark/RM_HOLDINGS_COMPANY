@@ -119,6 +119,7 @@ export type ReceivePurchaseOrderInput = {
   lines: ReceivePurchaseLineInput[];
   user?: string;
   receivedAt?: string;
+  requestId?: string;
 };
 
 export type TransferStockInput = {

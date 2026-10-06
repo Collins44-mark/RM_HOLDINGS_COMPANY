@@ -27,6 +27,7 @@ import {
   fetchProductsWorkspaceAction,
   fetchPurchasingWorkspaceAction,
   fetchStockMovementsAction,
+  getPurchaseOrderByIdAction,
   receivePurchaseOrderAction,
   sendPurchaseOrderAction,
   setCategoryActiveAction,
@@ -113,6 +114,10 @@ function upsertPurchaseOrder(order: PurchaseOrder) {
       ? snapshot.purchaseOrders.map((item) => (item.id === order.id ? { ...item, ...order } : item))
       : [order, ...snapshot.purchaseOrders.filter((item) => item.id !== order.id)],
   });
+}
+
+export function cachePurchaseOrder(order: PurchaseOrder) {
+  upsertPurchaseOrder(order);
 }
 
 function patchPurchaseOrder(orderId: string, patch: Partial<PurchaseOrder>) {
@@ -541,13 +546,21 @@ export async function sendPurchaseOrder(orderId: string) {
 }
 
 export async function receivePurchaseOrder(input: ReceivePurchaseOrderInput) {
-  const order = snapshot.purchaseOrders.find((item) => item.id === input.purchaseOrderId);
+  let order = snapshot.purchaseOrders.find((item) => item.id === input.purchaseOrderId);
+  if (!order) {
+    const loaded = await getPurchaseOrderByIdAction(input.purchaseOrderId);
+    if (loaded.status === "found") {
+      upsertPurchaseOrder(loaded.order);
+      order = loaded.order;
+    }
+  }
   if (!order) return { error: "Purchase order not found.", purchase: null as Purchase | null };
+  const current = order;
 
   const lines = input.lines
     .filter((line) => line.quantity > 0)
     .map((line) => {
-      const poLine = order.lines.find((item) => item.productId === line.productId);
+      const poLine = current.lines.find((item) => item.productId === line.productId);
       return {
         purchaseOrderItemId: poLine?.id ?? "",
         quantity: line.quantity,
@@ -563,11 +576,12 @@ export async function receivePurchaseOrder(input: ReceivePurchaseOrderInput) {
 
   const result = await receivePurchaseOrderAction({
     purchaseOrderId: input.purchaseOrderId,
+    requestId: input.requestId,
     lines,
   });
   if (!result.ok) return { error: result.error, purchase: null };
 
-  const nextLines = order.lines.map((line) => {
+  const nextLines = current.lines.map((line) => {
     const received = input.lines.find((item) => item.productId === line.productId);
     if (!received) return line;
     return { ...line, quantityReceived: line.quantityReceived + received.quantity };

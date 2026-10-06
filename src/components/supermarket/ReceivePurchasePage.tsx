@@ -1,15 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Check, Loader2 } from "lucide-react";
+import { getPurchaseOrderByIdAction } from "@/actions/supermarket/catalog";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
-import { formatDisplayDate, useSupermarketInventory } from "@/lib/data/supermarket-inventory";
-import { purchaseLineRemaining, type ReceivePurchaseLineInput } from "@/lib/data/supermarket-purchasing";
-import { glassPanel, inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
+import { cachePurchaseOrder, formatDisplayDate, receivePurchaseOrder } from "@/lib/data/supermarket-inventory";
+import { getInventorySnapshot } from "@/lib/supermarket/inventory-store";
+import {
+  purchaseLineRemaining,
+  type PurchaseOrder,
+  type ReceivePurchaseLineInput,
+} from "@/lib/data/supermarket-purchasing";
+import { glassPanel, inputClass, primaryButton, PulseBar, secondaryButton } from "@/components/supermarket/purchasing-ui";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 
 type LineState = {
@@ -20,11 +26,75 @@ type LineState = {
   salesFloor: string;
 };
 
+type LoadPhase = "loading" | "found" | "not_found" | "error" | "unauthorized";
+
+function emptyLines(order: PurchaseOrder): LineState[] {
+  return order.lines
+    .filter((line) => purchaseLineRemaining(line) > 0)
+    .map((line) => ({
+      productId: line.productId,
+      received: "",
+      destination: "Main Store" as const,
+      mainStore: "",
+      salesFloor: "",
+    }));
+}
+
+export function ReceivePurchaseShell({
+  subtitle,
+}: {
+  subtitle?: string;
+}) {
+  return (
+    <div className="min-w-0 space-y-5 pb-10">
+      <div>
+        <PageBackButton href="/supermarket/purchasing" prefetch />
+        <h1 className="mt-4 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">Receive Purchase</h1>
+        {subtitle ? (
+          <p className="mt-1.5 text-[13px] text-slate-500">{subtitle}</p>
+        ) : (
+          <p className="mt-1.5">
+            <PulseBar className="h-3.5 w-64" />
+          </p>
+        )}
+      </div>
+      <section className={glassPanel}>
+        <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Received quantities</h2>
+        <p className="mt-2">
+          <PulseBar className="h-3.5 w-72" />
+        </p>
+        <div className="mt-5 space-y-4">
+          {[0, 1].map((key) => (
+            <div key={key} className="rounded-[18px] border border-white/80 bg-white/65 p-4">
+              <PulseBar className="h-4 w-36" />
+              <p className="mt-2">
+                <PulseBar className="h-3 w-56" />
+              </p>
+              <div className="mt-4 h-12 rounded-[14px] bg-slate-100/80" />
+            </div>
+          ))}
+        </div>
+      </section>
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <span className={cn(secondaryButton, "pointer-events-none opacity-60")}>Cancel</span>
+        <span className={cn(primaryButton, "pointer-events-none min-w-[9.5rem] opacity-60")}>Post Receipt</span>
+      </div>
+    </div>
+  );
+}
+
 export function ReceivePurchasePage() {
   const params = useParams<{ poId: string }>();
+  const poId = Array.isArray(params.poId) ? params.poId[0] : params.poId;
   const { user } = useAuth();
-  const inventory = useSupermarketInventory({ purchasing: true });
-  const order = inventory.purchaseOrders.find((item) => item.id === params.poId);
+  const cachedOrder = poId
+    ? getInventorySnapshot().purchaseOrders.find((item) => item.id === poId) ?? null
+    : null;
+  const requestId = useRef("");
+  const postingLock = useRef(false);
+  const [phase, setPhase] = useState<LoadPhase>(!poId ? "not_found" : cachedOrder ? "found" : "loading");
+  const [order, setOrder] = useState<PurchaseOrder | null>(cachedOrder);
+  const [loadError, setLoadError] = useState("");
   const [success, setSuccess] = useState<{
     number: string;
     status: string;
@@ -33,45 +103,57 @@ export function ReceivePurchasePage() {
   const [formError, setFormError] = useState("");
   const [lineErrors, setLineErrors] = useState<Record<string, string>>({});
   const [posting, setPosting] = useState(false);
+  const [lines, setLines] = useState<LineState[]>(() => (cachedOrder ? emptyLines(cachedOrder) : []));
+  const seededFor = useRef<string | null>(cachedOrder?.id ?? null);
 
-  const initialLines = useMemo<LineState[]>(
-    () =>
-      (order?.lines ?? [])
-        .filter((line) => purchaseLineRemaining(line) > 0)
-        .map((line) => ({
-          productId: line.productId,
-          received: "",
-          destination: "Main Store",
-          mainStore: "",
-          salesFloor: "",
-        })),
-    [order],
-  );
-  const [lines, setLines] = useState<LineState[]>(initialLines);
+  useEffect(() => {
+    if (!poId) return;
+    let cancelled = false;
+    void getPurchaseOrderByIdAction(poId).then((result) => {
+      if (cancelled) return;
+      if (result.status === "found") {
+        cachePurchaseOrder(result.order);
+        setOrder(result.order);
+        setPhase("found");
+        if (seededFor.current !== result.order.id) {
+          seededFor.current = result.order.id;
+          setLines(emptyLines(result.order));
+        }
+        return;
+      }
+      if (result.status === "not_found") {
+        setOrder(null);
+        setPhase("not_found");
+        return;
+      }
+      setOrder((current) => (current?.id === poId ? current : null));
+      setPhase((current) => {
+        if (current === "found") return current;
+        if (result.status === "unauthorized") return "unauthorized";
+        return "error";
+      });
+      setLoadError(result.error);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [poId]);
 
-  if (!order) {
-    return (
-      <div className="min-w-0 pb-10">
-        <PageBackButton href="/supermarket/purchasing" prefetch />
-        <h1 className="mt-4 text-[24px] font-semibold text-navy">Purchase order not found.</h1>
-      </div>
-    );
-  }
-  if (order.status !== "Sent" && order.status !== "Partially Received" && !success) {
-    return (
-      <div className="min-w-0 pb-10">
-        <PageBackButton href={`/supermarket/purchasing/${order.id}`} prefetch />
-        <h1 className="mt-4 text-[24px] font-semibold text-navy">This order is not open for receiving.</h1>
-      </div>
-    );
-  }
+  const totals = useMemo(() => {
+    if (!order) return { ordered: 0, received: 0, remaining: 0 };
+    return {
+      ordered: order.lines.reduce((sum, line) => sum + line.quantityOrdered, 0),
+      received: order.lines.reduce((sum, line) => sum + line.quantityReceived, 0),
+      remaining: order.lines.reduce((sum, line) => sum + purchaseLineRemaining(line), 0),
+    };
+  }, [order]);
 
   function patchLine(productId: string, patch: Partial<LineState>) {
     setLines((current) => current.map((line) => (line.productId === productId ? { ...line, ...patch } : line)));
   }
 
   async function confirm() {
-    if (!order || posting) return;
+    if (!order || postingLock.current) return;
     const current = order;
     const nextErrors: Record<string, string> = {};
     const payload: ReceivePurchaseLineInput[] = [];
@@ -119,12 +201,16 @@ export function ReceivePurchasePage() {
       return;
     }
 
+    postingLock.current = true;
     setPosting(true);
-    const result = await inventory.receivePurchaseOrder({
+    if (!requestId.current) requestId.current = crypto.randomUUID();
+    const result = await receivePurchaseOrder({
       purchaseOrderId: current.id,
       lines: payload,
       user: user?.name || "Storekeeper",
+      requestId: requestId.current,
     });
+    postingLock.current = false;
     setPosting(false);
     if (result.error || !result.purchase) {
       setFormError(result.error || "Unable to confirm receipt.");
@@ -142,6 +228,48 @@ export function ReceivePurchasePage() {
         salesFloor: line.salesFloor,
       })),
     });
+  }
+
+  if (phase === "loading") {
+    return <ReceivePurchaseShell />;
+  }
+
+  if (phase === "not_found") {
+    return (
+      <div className="min-w-0 pb-10">
+        <PageBackButton href="/supermarket/purchasing" prefetch />
+        <h1 className="mt-4 text-[24px] font-semibold text-navy">Purchase order not found.</h1>
+      </div>
+    );
+  }
+
+  if (phase === "unauthorized") {
+    return (
+      <div className="min-w-0 pb-10">
+        <PageBackButton href="/supermarket/purchasing" prefetch />
+        <h1 className="mt-4 text-[24px] font-semibold text-navy">You don&apos;t have access to this purchase order.</h1>
+        {loadError ? <p className="mt-2 text-[13px] text-slate-500">{loadError}</p> : null}
+      </div>
+    );
+  }
+
+  if (phase === "error" || !order) {
+    return (
+      <div className="min-w-0 pb-10">
+        <PageBackButton href="/supermarket/purchasing" prefetch />
+        <h1 className="mt-4 text-[24px] font-semibold text-navy">We couldn&apos;t load this purchase order. Please try again.</h1>
+        {loadError ? <p className="mt-2 text-[13px] text-slate-500">{loadError}</p> : null}
+      </div>
+    );
+  }
+
+  if (order.status !== "Sent" && order.status !== "Partially Received" && !success) {
+    return (
+      <div className="min-w-0 pb-10">
+        <PageBackButton href={`/supermarket/purchasing/${order.id}`} prefetch />
+        <h1 className="mt-4 text-[24px] font-semibold text-navy">This order is not open for receiving.</h1>
+      </div>
+    );
   }
 
   if (success) {
@@ -191,9 +319,7 @@ export function ReceivePurchasePage() {
       <section className={glassPanel}>
         <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Received quantities</h2>
         <p className="mt-2 text-[13px] text-slate-500">
-          Total ordered {order.lines.reduce((sum, line) => sum + line.quantityOrdered, 0)} · Total received{" "}
-          {order.lines.reduce((sum, line) => sum + line.quantityReceived, 0)} · Remaining{" "}
-          {order.lines.reduce((sum, line) => sum + purchaseLineRemaining(line), 0)}
+          Total ordered {totals.ordered} · Total received {totals.received} · Remaining {totals.remaining}
         </p>
         <div className="mt-5 space-y-4">
           {order.lines.map((line) => {
@@ -272,7 +398,7 @@ export function ReceivePurchasePage() {
         <Link href={`/supermarket/purchasing/${order.id}`} className={secondaryButton}>
           Cancel
         </Link>
-        <button type="button" disabled={posting} onClick={confirm} className={cn(primaryButton, "relative min-w-[9.5rem]")}>
+        <button type="button" disabled={posting} onClick={() => void confirm()} className={cn(primaryButton, "relative min-w-[9.5rem]")}>
           <span className={cn("inline-flex items-center justify-center", posting && "invisible")}>Post Receipt</span>
           {posting ? (
             <span className="absolute inset-0 flex items-center justify-center">

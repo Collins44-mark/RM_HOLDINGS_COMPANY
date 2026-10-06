@@ -4,16 +4,21 @@ import { revalidatePath } from "next/cache";
 import {
   actionErrorMessage,
   mapDbError,
+  requireSupermarketContext,
   requireSupermarketPermission,
   SupermarketError,
 } from "@/lib/supermarket/access";
 import { writeSupermarketAudit } from "@/lib/audit";
+import { requireAuth } from "@/lib/auth/session";
+import { isOwnerRole } from "@/lib/auth/rbac";
+import { matchPermission } from "@/lib/config/permissions";
 import {
   loadCatalogOptions,
   loadInventorySnapshot,
   loadProductByBarcode,
   loadProductMovements,
   loadProductsWorkspace,
+  loadPurchaseOrderById,
   loadPurchasingWorkspace,
   loadStockMovements,
 } from "@/lib/supermarket/queries";
@@ -52,6 +57,35 @@ export async function fetchProductsWorkspaceAction() {
 
 export async function fetchPurchasingWorkspaceAction() {
   return loadPurchasingWorkspace();
+}
+
+export async function getPurchaseOrderByIdAction(poId: string) {
+  try {
+    await requireSupermarketContext();
+    const user = await requireAuth();
+    const owner = isOwnerRole(user.roleCode);
+    const allowed =
+      owner ||
+      user.permissions.some(
+        (matcher) =>
+          matcher !== "*" &&
+          (matchPermission("supermarket.purchases.view", matcher) ||
+            matchPermission("supermarket.purchases.create", matcher) ||
+            matchPermission("supermarket.purchases.receive", matcher)),
+      );
+    if (!allowed) {
+      throw new SupermarketError("You don't have access to this purchase order.", "UNAUTHORIZED");
+    }
+    const result = await loadPurchaseOrderById(poId);
+    if (result.status === "found") return { status: "found" as const, order: result.order };
+    if (result.status === "not_found") return { status: "not_found" as const };
+    return { status: "error" as const, error: result.error };
+  } catch (error) {
+    if (error instanceof SupermarketError && error.code === "UNAUTHORIZED") {
+      return { status: "unauthorized" as const, error: actionErrorMessage(error) };
+    }
+    return { status: "error" as const, error: actionErrorMessage(error) };
+  }
 }
 
 export async function fetchStockMovementsAction() {
@@ -537,6 +571,7 @@ export async function sendPurchaseOrderAction(orderId: string) {
 export async function receivePurchaseOrderAction(input: {
   purchaseOrderId: string;
   notes?: string;
+  requestId?: string;
   lines: {
     purchaseOrderItemId: string;
     quantity: number;
@@ -564,11 +599,24 @@ export async function receivePurchaseOrderAction(input: {
       .eq("business_unit_id", businessUnitId)
       .maybeSingle();
 
-    const { data, error } = await supabase.rpc("sm_receive_purchase_order", {
+    let { data, error } = await supabase.rpc("sm_receive_purchase_order", {
       p_purchase_order_id: input.purchaseOrderId,
       p_lines: payload,
       p_notes: input.notes ?? "",
+      p_request_id: input.requestId || null,
     });
+    if (
+      error &&
+      /p_request_id|could not find the function|does not exist/i.test(error.message)
+    ) {
+      const fallback = await supabase.rpc("sm_receive_purchase_order", {
+        p_purchase_order_id: input.purchaseOrderId,
+        p_lines: payload,
+        p_notes: input.notes ?? "",
+      });
+      data = fallback.data;
+      error = fallback.error;
+    }
     if (error) mapDbError(error);
 
     const [{ data: po }, { data: receipt }] = await Promise.all([

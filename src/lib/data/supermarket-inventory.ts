@@ -4,7 +4,6 @@ import type {
   Purchase,
   PurchaseOrder,
   StockLocation,
-  StockMovementCode,
   Supplier,
 } from "@/lib/data/supermarket-purchasing";
 import {
@@ -31,6 +30,7 @@ import {
   useSupermarketInventory,
   refreshInventorySnapshot,
   fetchProductMovements,
+  cachePurchaseOrder,
   NEW_PRODUCT_BARCODE_KEY,
 } from "@/lib/supermarket/inventory-store";
 
@@ -424,6 +424,7 @@ export {
   useSupermarketInventory,
   refreshInventorySnapshot,
   fetchProductMovements,
+  cachePurchaseOrder,
 };
 
 export type {

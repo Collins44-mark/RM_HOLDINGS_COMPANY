@@ -1,25 +1,113 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { getPurchaseOrderByIdAction } from "@/actions/supermarket/catalog";
 
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
-import { formatDisplayDate, useSupermarketInventory } from "@/lib/data/supermarket-inventory";
-import { purchaseLineRemaining, purchaseOrderGrandTotal, purchaseOrderSubtotal } from "@/lib/data/supermarket-purchasing";
-import { StatusPill, glassPanel, primaryButton, tableHead } from "@/components/supermarket/purchasing-ui";
+import { cachePurchaseOrder, formatDisplayDate, useSupermarketInventory } from "@/lib/data/supermarket-inventory";
+import {
+  purchaseLineRemaining,
+  purchaseOrderGrandTotal,
+  purchaseOrderSubtotal,
+  type PurchaseOrder,
+} from "@/lib/data/supermarket-purchasing";
+import { StatusPill, glassPanel, primaryButton, PulseBar, tableHead } from "@/components/supermarket/purchasing-ui";
 import { PurchaseOrderWorkflow } from "@/components/supermarket/PurchaseOrderPayables";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 
+type LoadPhase = "loading" | "found" | "not_found" | "error" | "unauthorized";
+
 export function PurchaseOrderDetailPage() {
   const params = useParams<{ poId: string }>();
+  const poId = Array.isArray(params.poId) ? params.poId[0] : params.poId;
   const inventory = useSupermarketInventory({ purchasing: true });
-  const order = inventory.purchaseOrders.find((item) => item.id === params.poId);
-  if (!order) {
+  const snapshotOrder = inventory.purchaseOrders.find((item) => item.id === poId);
+  const [phase, setPhase] = useState<LoadPhase>(() => {
+    if (!poId) return "not_found";
+    return snapshotOrder ? "found" : "loading";
+  });
+  const [targeted, setTargeted] = useState<PurchaseOrder | null>(snapshotOrder ?? null);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    if (!poId) return;
+    let cancelled = false;
+    void getPurchaseOrderByIdAction(poId).then((result) => {
+      if (cancelled) return;
+      if (result.status === "found") {
+        cachePurchaseOrder(result.order);
+        setTargeted(result.order);
+        setPhase("found");
+        return;
+      }
+      setTargeted((existing) => (existing?.id === poId ? existing : null));
+      if (result.status === "not_found") setPhase("not_found");
+      else if (result.status === "unauthorized") {
+        setPhase("unauthorized");
+        setLoadError(result.error);
+      } else {
+        setPhase("error");
+        setLoadError(result.error);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [poId]);
+
+  const order = targeted ?? snapshotOrder ?? null;
+
+  if (phase === "loading" && !order) {
+    return (
+      <div className="min-w-0 space-y-5 pb-10">
+        <div>
+          <PageBackButton href="/supermarket/purchasing" prefetch />
+          <h1 className="mt-4">
+            <PulseBar className="h-8 w-40" />
+          </h1>
+          <p className="mt-1.5">
+            <PulseBar className="h-3.5 w-56" />
+          </p>
+        </div>
+        <section className={glassPanel}>
+          <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Order lines</h2>
+          <div className="mt-4 space-y-3">
+            <PulseBar className="h-10 w-full" />
+            <PulseBar className="h-10 w-full" />
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  if (phase === "not_found") {
     return (
       <div className="min-w-0 pb-10">
         <PageBackButton href="/supermarket/purchasing" prefetch />
         <h1 className="mt-4 text-[24px] font-semibold text-navy">Purchase order not found.</h1>
+      </div>
+    );
+  }
+
+  if (phase === "unauthorized") {
+    return (
+      <div className="min-w-0 pb-10">
+        <PageBackButton href="/supermarket/purchasing" prefetch />
+        <h1 className="mt-4 text-[24px] font-semibold text-navy">You don&apos;t have access to this purchase order.</h1>
+        {loadError ? <p className="mt-2 text-[13px] text-slate-500">{loadError}</p> : null}
+      </div>
+    );
+  }
+
+  if (!order) {
+    return (
+      <div className="min-w-0 pb-10">
+        <PageBackButton href="/supermarket/purchasing" prefetch />
+        <h1 className="mt-4 text-[24px] font-semibold text-navy">We couldn&apos;t load this purchase order. Please try again.</h1>
+        {loadError ? <p className="mt-2 text-[13px] text-slate-500">{loadError}</p> : null}
       </div>
     );
   }

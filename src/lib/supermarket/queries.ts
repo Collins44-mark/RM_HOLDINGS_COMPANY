@@ -689,6 +689,81 @@ export async function loadProductByBarcode(barcode: string): Promise<{
   }
 }
 
+const PO_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type LoadPurchaseOrderByIdResult =
+  | { status: "found"; order: PurchaseOrder }
+  | { status: "not_found" }
+  | { status: "error"; error: string };
+
+/** One purchase order by database id — never loads the purchasing workspace. */
+export async function loadPurchaseOrderById(poId: string): Promise<LoadPurchaseOrderByIdResult> {
+  const id = poId.trim();
+  if (!PO_ID_PATTERN.test(id)) return { status: "not_found" };
+
+  try {
+    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const poPrimary = await supabase
+      .from("sm_purchase_orders")
+      .select(PO_COLUMNS)
+      .eq("id", id)
+      .eq("business_unit_id", businessUnitId)
+      .maybeSingle();
+    const poRes =
+      poPrimary.error && /purchase_document_number/i.test(poPrimary.error.message)
+        ? await supabase
+            .from("sm_purchase_orders")
+            .select(PO_COLUMNS_BASE)
+            .eq("id", id)
+            .eq("business_unit_id", businessUnitId)
+            .maybeSingle()
+        : poPrimary;
+    if (poRes.error) return { status: "error", error: failMessage(poRes.error) };
+    if (!poRes.data) return { status: "not_found" };
+
+    const row = poRes.data as Record<string, unknown>;
+    const supplierId = String(row.supplier_id ?? "");
+    const [itemsRes, supplierRes] = await Promise.all([
+      supabase.from("sm_purchase_order_items").select(PO_ITEM_COLUMNS).eq("purchase_order_id", id),
+      supplierId
+        ? supabase.from("sm_suppliers").select("id, name").eq("id", supplierId).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+    if (itemsRes.error) return { status: "error", error: failMessage(itemsRes.error) };
+    if (supplierRes.error) return { status: "error", error: failMessage(supplierRes.error) };
+
+    const itemRows = (itemsRes.data ?? []) as Record<string, unknown>[];
+    const productIds = [...new Set(itemRows.map((item) => String(item.product_id)).filter(Boolean))];
+    const productsRes = productIds.length
+      ? await supabase.from("sm_products").select("id, name, sku").in("id", productIds)
+      : { data: [] as Array<{ id: string; name: string; sku: string }>, error: null };
+    if (productsRes.error) return { status: "error", error: failMessage(productsRes.error) };
+
+    const names = new Map((productsRes.data ?? []).map((p) => [String(p.id), String(p.name)]));
+    const skus = new Map((productsRes.data ?? []).map((p) => [String(p.id), String(p.sku)]));
+    const lines: PurchaseOrder["lines"] = itemRows.map((item) => {
+      const productId = String(item.product_id);
+      return {
+        id: String(item.id),
+        productId,
+        productName: names.get(productId) ?? "Product",
+        sku: skus.get(productId) ?? "",
+        quantityOrdered: Number(item.quantity_ordered) || 0,
+        quantityReceived: Number(item.quantity_received) || 0,
+        buyingPrice: Number(item.unit_cost) || 0,
+      };
+    });
+
+    return {
+      status: "found",
+      order: mapPurchaseOrder(row, lines, String(supplierRes.data?.name ?? "Supplier")),
+    };
+  } catch (error) {
+    return { status: "error", error: queryErrorMessage(error) };
+  }
+}
+
 /** Lightweight check used by UI loaders. */
 export async function pingSupermarketTables() {
   try {
