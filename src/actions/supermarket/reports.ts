@@ -236,7 +236,7 @@ export async function fetchInventoryReportAction(
 ): Promise<{ ok: true; data: InventoryReportData } | { ok: false; error: string }> {
   try {
     const { supabase, businessUnitId } = await requireSupermarketContext();
-    const [productsRes, categoriesRes, suppliersRes, batchesRes] = await Promise.all([
+    const [productsRes, categoriesRes, suppliersRes, batchesRes, lossMovesRes] = await Promise.all([
       supabase
         .from("sm_products")
         .select(
@@ -256,11 +256,17 @@ export async function fetchInventoryReportAction(
         )
         .eq("business_unit_id", businessUnitId)
         .gt("quantity", 0),
+      supabase
+        .from("sm_stock_movements")
+        .select("movement_code, quantity")
+        .eq("business_unit_id", businessUnitId)
+        .in("movement_code", ["DAMAGE", "EXPIRED", "LOSS"]),
     ]);
     if (productsRes.error) mapDbError(productsRes.error);
     if (categoriesRes.error) mapDbError(categoriesRes.error);
     if (suppliersRes.error) mapDbError(suppliersRes.error);
     if (batchesRes.error) mapDbError(batchesRes.error);
+    if (lossMovesRes.error) mapDbError(lossMovesRes.error);
 
     const categories = (categoriesRes.data ?? []).map((row) =>
       mapCategory(row as Record<string, unknown>),
@@ -338,6 +344,21 @@ export async function fetchInventoryReportAction(
       })
       .filter((row): row is NonNullable<typeof row> => Boolean(row));
 
+    const lossMoves = { Loss: { count: 0, quantity: 0 }, Damage: { count: 0, quantity: 0 }, Expired: { count: 0, quantity: 0 } };
+    for (const row of lossMovesRes.data ?? []) {
+      const qty = Math.abs(Number(row.quantity) || 0);
+      if (row.movement_code === "LOSS") {
+        lossMoves.Loss.count += 1;
+        lossMoves.Loss.quantity += qty;
+      } else if (row.movement_code === "DAMAGE") {
+        lossMoves.Damage.count += 1;
+        lossMoves.Damage.quantity += qty;
+      } else if (row.movement_code === "EXPIRED") {
+        lossMoves.Expired.count += 1;
+        lossMoves.Expired.quantity += qty;
+      }
+    }
+
     const data: InventoryReportData = {
       periodLabel: "Current stock",
       periodDates: formatSalesDate(today),
@@ -352,7 +373,11 @@ export async function fetchInventoryReportAction(
       expiredItems: expiredUnits,
       expiredStockValue,
       deltas: { products: 0, stockUnits: 0, inventoryValue: 0, lowStock: 0 },
-      movements: [],
+      movements: [
+        { label: "Loss", count: lossMoves.Loss.count, quantity: lossMoves.Loss.quantity },
+        { label: "Damage", count: lossMoves.Damage.count, quantity: lossMoves.Damage.quantity },
+        { label: "Expired", count: lossMoves.Expired.count, quantity: lossMoves.Expired.quantity },
+      ],
       lowStockProducts: rows
         .filter((r) => r.status === "Low Stock")
         .slice(0, 20)

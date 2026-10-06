@@ -361,9 +361,9 @@ export function movementTypeLabel(type: StockMovementType, adjustmentKind?: Stoc
 }
 
 export function stockMovementKindLabel(item: Pick<StockMovement, "type" | "adjustmentKind" | "movementCode">): StockMovementFilter | string {
-  if (item.adjustmentKind === "Damage") return "Damaged";
-  if (item.adjustmentKind === "Expired") return "Expired";
-  if (item.adjustmentKind === "Lost") return "Lost";
+  if (item.adjustmentKind === "Damage" || item.movementCode === "DAMAGE") return "Damaged";
+  if (item.adjustmentKind === "Expired" || item.movementCode === "EXPIRED") return "Expired";
+  if (item.adjustmentKind === "Lost" || item.movementCode === "LOSS") return "Lost";
   if (item.movementCode === "PURCHASE_RECEIVED" || item.type === "Received") return "Purchase Received";
   if (item.movementCode === "STOCK_TRANSFER" || item.type === "Transfer") return "Transfer";
   if (item.movementCode === "STOCK_ADJUSTMENT" || item.type === "Adjustment") return "Stock Adjustment";

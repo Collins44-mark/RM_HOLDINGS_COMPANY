@@ -8,6 +8,7 @@ import { AlertTriangle, Ban, ChevronDown, Clock3, MoreHorizontal, Package, Plus,
 import { useAuth } from "@/components/auth/AuthProvider";
 import { CategoryCreateModal, CategoryDropdownActions, ADD_CATEGORY_OPTION, MANAGE_CATEGORIES_OPTION, canCreateSupermarketCategory, canManageSupermarketCategories } from "@/components/supermarket/CategoryCreateModal";
 import { CategoryManageModal } from "@/components/supermarket/CategoryManageModal";
+import { StockLossModal } from "@/components/supermarket/StockLossModal";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { matchPermission } from "@/lib/config/permissions";
 import { cn } from "@/lib/cn";
@@ -131,6 +132,7 @@ export function StockManager() {
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [lossOpen, setLossOpen] = useState(false);
 
   const rows = useMemo(
     () => inventory.products.map((product) => attachStock(product, inventory.batches)),
@@ -342,7 +344,7 @@ export function StockManager() {
             {actionsOpen ? (
               <>
                 <button type="button" className="fixed inset-0 z-[79] cursor-default" aria-label="Close stock actions" onClick={() => setActionsOpen(false)} />
-                <div className="absolute right-0 z-[80] mt-2 w-56 overflow-hidden rounded-[16px] border border-white/80 bg-white/95 py-1 shadow-[0_18px_50px_rgba(16,24,40,0.14)] backdrop-blur-xl">
+                <div className="absolute right-0 z-[80] mt-2 w-64 overflow-hidden rounded-[16px] border border-white/80 bg-white/95 py-1 shadow-[0_18px_50px_rgba(16,24,40,0.14)] backdrop-blur-xl">
                   <Link href="/supermarket/stock/receive-purchase" className="block px-3.5 py-2.5 text-[13px] font-medium text-navy hover:bg-[#f5f8fc]" onClick={() => setActionsOpen(false)}>
                     Receive Purchase
                   </Link>
@@ -355,6 +357,16 @@ export function StockManager() {
                   <Link href="/supermarket/stock/opening" className="block px-3.5 py-2.5 text-[13px] font-medium text-navy hover:bg-[#f5f8fc]" onClick={() => setActionsOpen(false)}>
                     Opening Stock
                   </Link>
+                  <button
+                    type="button"
+                    className="block w-full px-3.5 py-2.5 text-left text-[13px] font-medium text-navy hover:bg-[#f5f8fc]"
+                    onClick={() => {
+                      setActionsOpen(false);
+                      setLossOpen(true);
+                    }}
+                  >
+                    Record Loss / Damage / Expiry
+                  </button>
                 </div>
               </>
             ) : null}
@@ -771,6 +783,7 @@ export function StockManager() {
         open={categoryModalOpen}
         onClose={() => setCategoryModalOpen(false)}
       />
+      {lossOpen ? <StockLossModal onClose={() => setLossOpen(false)} /> : null}
       <CategoryManageModal
         open={manageCategoriesOpen}
         onClose={() => setManageCategoriesOpen(false)}

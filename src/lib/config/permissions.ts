@@ -114,7 +114,7 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "supplier_invoices", actions: ["view", "create", "verify"] },
       { resource: "supplier_payments", actions: ["view", "create", "approve"] },
       { resource: "sales", actions: ["view", "create"] },
-      { resource: "stock", actions: ["view", "edit"] },
+      { resource: "stock", actions: ["view", "edit", "approve"] },
       { resource: "reconciliation", actions: ["view", "create", "approve", "post"] },
       { resource: "banking", actions: ["view", "create", "approve"] },
       { resource: "petty_cash", actions: ["view", "create", "approve"] },
