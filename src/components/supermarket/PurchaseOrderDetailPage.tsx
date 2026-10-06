@@ -18,6 +18,9 @@ import {
 import { StatusPill, glassPanel, primaryButton, PulseBar, tableHead } from "@/components/supermarket/purchasing-ui";
 import { PurchaseOrderWorkflow } from "@/components/supermarket/PurchaseOrderPayables";
 import { PageBackButton } from "@/components/ui/PageBackButton";
+import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
+import { GoodsReceiptDocumentModal } from "@/components/supermarket/GoodsReceiptDocumentModal";
+import { downloadGoodsReceiptPdf } from "@/lib/supermarket/inventory-store";
 
 type LoadPhase = "loading" | "found" | "not_found" | "error" | "unauthorized";
 
@@ -32,6 +35,7 @@ export function PurchaseOrderDetailPage() {
   });
   const [targeted, setTargeted] = useState<PurchaseOrder | null>(snapshotOrder ?? null);
   const [loadError, setLoadError] = useState("");
+  const [receiptViewId, setReceiptViewId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!poId) return;
@@ -115,7 +119,7 @@ export function PurchaseOrderDetailPage() {
   }
 
   const purchases = inventory.purchases.filter((item) => item.purchaseOrderId === order.id);
-  const receipts = (purchases[0]?.receipts ?? []);
+  const receipts = [...new Map(purchases.flatMap((item) => item.receipts).map((item) => [item.id, item])).values()];
   const invoices = inventory.supplierInvoices.filter((item) => item.purchaseOrderId === order.id);
   const requests = inventory.paymentRequests.filter((item) =>
     invoices.some((invoice) => invoice.id === item.invoiceId),
@@ -218,17 +222,29 @@ export function PurchaseOrderDetailPage() {
 
       <section className={glassPanel}>
         <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Goods receipts</h2>
+        <p className="mt-1 text-[13px] text-slate-500">Warehouse receipts for this purchase order. Separate from the RM Holdings purchase document.</p>
         {receipts.length === 0 ? (
-          <p className="mt-3 text-[13px] text-slate-500">No goods have been received against this order yet.</p>
+          <p className="mt-3 text-[13px] text-slate-500">No goods receipts yet.</p>
         ) : (
           <div className="mt-3 divide-y divide-[#d5dee8]/70">
             {receipts.map((item) => (
               <div key={item.id} className="flex items-center justify-between gap-3 py-3">
-                <div>
+                <div className="min-w-0">
                   <p className="text-[13.5px] font-semibold text-navy">{item.number}</p>
-                  <p className="text-[12.5px] text-slate-500">{formatDisplayDate(item.receivedAt)} · {item.itemCount} items</p>
+                  <p className="text-[12.5px] text-slate-500">
+                    {formatDisplayDate(item.receivedAt)} · {order.supplierName} · {order.number}
+                  </p>
+                  <p className="mt-0.5 text-[12.5px] text-slate-500">
+                    {item.itemCount} items · {formatTzs(item.totalCost)}
+                  </p>
                 </div>
-                <p className="text-[13.5px] font-semibold text-navy">{formatTzs(item.totalCost)}</p>
+                <CompactActionsMenu
+                  ariaLabel={`Actions for ${item.number}`}
+                  items={[
+                    { label: "View Receipt", onSelect: () => setReceiptViewId(item.id) },
+                    { label: "Download PDF", onSelect: () => void downloadGoodsReceiptPdf(item.id) },
+                  ]}
+                />
               </div>
             ))}
           </div>
@@ -236,6 +252,7 @@ export function PurchaseOrderDetailPage() {
       </section>
 
       <PurchaseOrderWorkflow order={order} purchases={purchases} invoices={invoices} requests={requests} />
+      {receiptViewId ? <GoodsReceiptDocumentModal receiptId={receiptViewId} onClose={() => setReceiptViewId(null)} /> : null}
     </div>
   );
 }

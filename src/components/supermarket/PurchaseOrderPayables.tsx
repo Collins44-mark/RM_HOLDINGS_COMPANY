@@ -26,10 +26,14 @@ import {
   verifySupplierInvoice,
   type PurchasingCaps,
 } from "@/lib/supermarket/inventory-store";
+import type { PurchaseDocumentPdfPayload } from "@/lib/data/purchase-document-pdf";
+import { getPurchaseDocumentPdfPayloadAction } from "@/actions/supermarket/purchasing-payables";
 import type { Purchase, PurchaseOrder, SupplierInvoice, SupplierPaymentRequest } from "@/lib/supermarket/types";
 import { getApplicableTaxesAction } from "@/actions/supermarket/tax";
 import { payableTotal, taxLineLabel } from "@/lib/supermarket/tax";
 import { canApprovePreparedWork } from "@/lib/supermarket/sod";
+import { formatDisplayDate } from "@/lib/data/supermarket-inventory";
+import { stripTechnicalIds } from "@/lib/supermarket/payment-display";
 import { SupplierPaymentWorkspace, payableFromInvoice } from "@/components/supermarket/SupplierPaymentWorkspace";
 
 const emptyCaps: PurchasingCaps = {
@@ -65,6 +69,8 @@ export function PurchaseOrderWorkflow({
   const [message, setMessage] = useState("");
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentsOpen, setPaymentsOpen] = useState(false);
+  const [purchaseDocOpen, setPurchaseDocOpen] = useState(false);
 
   useEffect(() => {
     void getPurchasingCapsAction().then(setCaps);
@@ -165,8 +171,8 @@ export function PurchaseOrderWorkflow({
           <div className="mt-4">
             <dl className="space-y-2 text-[13.5px]">
               <Row label="Supplier invoice #" value={invoice.number} />
-              <Row label="Invoice date" value={invoice.invoiceDate || "—"} />
-              <Row label="Due date" value={invoice.dueDate || "—"} />
+              <Row label="Invoice date" value={invoice.invoiceDate ? formatDisplayDate(invoice.invoiceDate) : "—"} />
+              <Row label="Due date" value={invoice.dueDate ? formatDisplayDate(invoice.dueDate) : "—"} />
               <Row label="Invoice total" value={formatTzs(invoice.total)} />
               <Row label="Verification" value={invoice.verificationStatus} />
             </dl>
@@ -236,20 +242,37 @@ export function PurchaseOrderWorkflow({
 
       <section className={glassPanel}>
         <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Payments</h2>
-        <p className="mt-1 text-[13px] text-slate-500">Posted against a verified supplier invoice. Receiving goods does not mark the purchase paid.</p>
+        <p className="mt-1 text-[13px] text-slate-500">Settles this purchase’s outstanding. Not an operating expense.</p>
         {verified ? (
-          <dl className="mt-4 space-y-2 text-[13.5px]">
-            <Row label="Total payable" value={formatTzs(verified.total)} />
-            <Row label="Paid" value={formatTzs(verified.amountPaid)} />
-            <Row label="Outstanding" value={formatTzs(verified.outstanding)} strong />
-            <Row label="Payment status" value={verified.paymentStatus} />
+          <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-[13.5px] sm:grid-cols-4">
+            <div>
+              <dt className="text-[12px] text-slate-400">Total payable</dt>
+              <dd className="mt-0.5 text-navy">{formatTzs(verified.total)}</dd>
+            </div>
+            <div>
+              <dt className="text-[12px] text-slate-400">Paid</dt>
+              <dd className="mt-0.5 text-navy">{formatTzs(verified.amountPaid)}</dd>
+            </div>
+            <div>
+              <dt className="text-[12px] text-slate-400">Outstanding</dt>
+              <dd className="mt-0.5 font-semibold text-navy">{formatTzs(verified.outstanding)}</dd>
+            </div>
+            <div>
+              <dt className="text-[12px] text-slate-400">Status</dt>
+              <dd className="mt-0.5"><StatusPill value={verified.paymentStatus} /></dd>
+            </div>
           </dl>
         ) : (
           <p className="mt-4 text-[13px] text-slate-500">
-            {received ? "Awaiting a verified supplier invoice before payment can be recorded." : "No payment recorded."}
+            {received
+              ? "Awaiting verified supplier invoice. Payment can be recorded after a supplier invoice has been verified."
+              : "No payments recorded."}
           </p>
         )}
         <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <button type="button" className={secondaryButton} onClick={() => setPaymentsOpen(true)}>
+            View Payments
+          </button>
           {verified && verified.outstanding > 0 && caps.canPaymentCreate ? (
             <WorkflowButton
               className={primaryButton}
@@ -258,20 +281,25 @@ export function PurchaseOrderWorkflow({
               successLabel="Record Payment"
               onClick={() => setPaymentOpen(true)}
             />
+          ) : received ? (
+            <button type="button" disabled className={cn(secondaryButton, "opacity-50")}>
+              Record Payment
+            </button>
           ) : null}
         </div>
         <div className="mt-4 space-y-2">
           {requests.length === 0 ? (
-            <p className="text-[13px] text-slate-500">No payment recorded.</p>
+            <p className="text-[13px] text-slate-500">No payments recorded.</p>
           ) : (
             requests.map((request) => (
               <div key={request.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-white/80 bg-white/60 px-4 py-3">
                 <div>
                   <p className="text-[13.5px] font-semibold text-navy">
-                    {request.number} · {formatTzs(request.amount)}
+                    {paymentRequestTitle(request)} · {formatTzs(request.amount)}
                   </p>
                   <p className="text-[12.5px] text-slate-500">
-                    {request.method} · {request.reference || "No reference"}
+                    {paymentMethodLabel(request.method)}
+                    {request.reference ? ` · ${request.reference}` : ""}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -303,7 +331,7 @@ export function PurchaseOrderWorkflow({
                       busy={busy === `payPost-${request.id}`}
                       disabled={Boolean(busy)}
                       confirmed={confirmed === `Paid-${request.id}`}
-                      idleLabel="Record Payment"
+                      idleLabel="Post Payment"
                       successLabel="Paid ✓"
                       onClick={() =>
                         run(`payPost-${request.id}`, `Paid-${request.id}`, () => postPaymentRequest(request.id, order.id))
@@ -319,12 +347,15 @@ export function PurchaseOrderWorkflow({
 
       <section className={glassPanel}>
         <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">RM Holdings purchase document</h2>
-        <p className="mt-1 text-[13px] text-slate-500">System-generated from this purchase. Separate from the supplier invoice.</p>
+        <p className="mt-1 text-[13px] text-slate-500">System purchase document. Separate from goods receipts and the supplier invoice.</p>
         {order.purchaseDocumentNumber ? (
           <div className="mt-4">
             <p className="text-[18px] font-semibold tracking-[-0.03em] text-navy">{order.purchaseDocumentNumber}</p>
             <p className="mt-1 text-[13px] text-slate-500">Linked to {order.number}</p>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <button type="button" className={secondaryButton} onClick={() => setPurchaseDocOpen(true)}>
+                View Purchase
+              </button>
               <WorkflowButton
                 className={secondaryButton}
                 busy={busy === "pdf"}
@@ -370,8 +401,35 @@ export function PurchaseOrderWorkflow({
           onClose={() => setPaymentOpen(false)}
         />
       ) : null}
+      {paymentsOpen ? (
+        <PaymentHistoryModal
+          order={order}
+          verified={verified}
+          requests={requests}
+          onClose={() => setPaymentsOpen(false)}
+        />
+      ) : null}
+      {purchaseDocOpen ? (
+        <PurchaseDocumentPreviewModal purchaseOrderId={order.id} onClose={() => setPurchaseDocOpen(false)} />
+      ) : null}
     </div>
   );
+}
+
+function paymentMethodLabel(method: string) {
+  const code = method.toUpperCase().replace(/\s+/g, "_");
+  if (code === "MOBILE_MONEY") return "Mobile Money";
+  if (code === "CARD") return "Card";
+  if (code === "BANK") return "Bank";
+  if (code === "CASH") return "Cash";
+  return method || "Payment";
+}
+
+function paymentRequestTitle(request: SupplierPaymentRequest) {
+  const cleaned = stripTechnicalIds(request.notes);
+  if (cleaned && !/^[A-Z_]+$/.test(cleaned)) return cleaned;
+  const who = [request.supplierName, request.invoiceNumber].filter(Boolean).join(" • ");
+  return who ? `Supplier payment — ${who}` : "Supplier payment";
 }
 
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
@@ -622,6 +680,162 @@ function SupplierInvoiceModal({
           <input value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} placeholder="Rejection reason" className={`${inputClass} mt-3`} />
         ) : null}
         {error ? <p className="mt-3 text-[13px] text-[#c45b66]">{error}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function PaymentHistoryModal({
+  order,
+  verified,
+  requests,
+  onClose,
+}: {
+  order: PurchaseOrder;
+  verified: SupplierInvoice | null;
+  requests: SupplierPaymentRequest[];
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const paid = verified?.amountPaid ?? 0;
+  const outstanding = verified?.outstanding ?? 0;
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-[#0b2244]/20 p-3 backdrop-blur-sm sm:items-center">
+      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close payments" onClick={onClose} />
+      <div className="relative z-[81] max-h-[min(92dvh,92vh)] w-full max-w-lg overflow-y-auto rounded-[24px] border border-white/80 bg-white/95 p-5 shadow-[0_24px_60px_rgba(15,35,64,0.16)]">
+        <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">Payments</h2>
+        <p className="mt-1 text-[13px] text-slate-500">{order.number} · {order.supplierName}</p>
+        {verified ? (
+          <dl className="mt-4 grid grid-cols-3 gap-3 text-[13px]">
+            <div>
+              <dt className="text-slate-400">Paid</dt>
+              <dd className="mt-0.5 font-semibold text-navy">{formatTzs(paid)}</dd>
+            </div>
+            <div>
+              <dt className="text-slate-400">Outstanding</dt>
+              <dd className="mt-0.5 font-semibold text-navy">{formatTzs(outstanding)}</dd>
+            </div>
+            <div>
+              <dt className="text-slate-400">Status</dt>
+              <dd className="mt-0.5"><StatusPill value={verified.paymentStatus} /></dd>
+            </div>
+          </dl>
+        ) : null}
+        <div className="mt-4 space-y-2">
+          {requests.length === 0 ? (
+            <p className="text-[13.5px] text-slate-500">No payments recorded.</p>
+          ) : (
+            requests.map((request) => (
+              <div key={request.id} className="rounded-[16px] border border-white/80 bg-white/70 px-4 py-3">
+                <p className="text-[13.5px] font-semibold text-navy">{paymentRequestTitle(request)}</p>
+                <p className="mt-0.5 text-[12.5px] text-slate-500">
+                  {request.dueDate ? formatDisplayDate(request.dueDate) : request.number} · {formatTzs(request.amount)} · {paymentMethodLabel(request.method)}
+                </p>
+                <p className="mt-0.5 text-[12.5px] text-slate-400">
+                  {request.reference ? `Reference ${request.reference}` : "No bank reference"} · {request.status}
+                </p>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="mt-5 flex justify-end">
+          <button type="button" className={primaryButton} onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PurchaseDocumentPreviewModal({
+  purchaseOrderId,
+  onClose,
+}: {
+  purchaseOrderId: string;
+  onClose: () => void;
+}) {
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [payload, setPayload] = useState<PurchaseDocumentPdfPayload | null>(null);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getPurchaseDocumentPdfPayloadAction(purchaseOrderId).then((result) => {
+      if (cancelled) return;
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setPayload(result.document);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [purchaseOrderId]);
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-[#0b2244]/20 p-3 backdrop-blur-sm sm:items-center">
+      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close purchase document" onClick={onClose} />
+      <div className="relative z-[81] max-h-[min(92dvh,92vh)] w-full max-w-2xl overflow-y-auto rounded-[24px] border border-white/80 bg-white/95 p-5 shadow-[0_24px_60px_rgba(15,35,64,0.16)]">
+        {!payload && !error ? <p className="py-8 text-center text-[13.5px] text-slate-500">Loading purchase document…</p> : null}
+        {error ? <p className="py-8 text-center text-[13.5px] text-[#c45b66]">{error}</p> : null}
+        {payload ? (
+          <>
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">RM Holdings Ltd · Supermarket</p>
+            <h2 className="mt-1 text-[20px] font-semibold tracking-[-0.03em] text-navy">Purchase document</h2>
+            <p className="mt-1 text-[13.5px] text-slate-500">{payload.number} · {payload.poNumber} · {payload.supplierName}</p>
+            <p className="mt-3 text-[13px] text-slate-500">
+              Received {payload.receivedDate ? formatDisplayDate(payload.receivedDate) : "—"} · Paid {formatTzs(payload.amountPaid)} · Outstanding {formatTzs(payload.outstanding)}
+            </p>
+            <ul className="mt-4 space-y-2 text-[13.5px]">
+              {payload.lines.map((line) => (
+                <li key={`${line.name}-${line.quantity}`} className="flex justify-between gap-3">
+                  <span className="text-navy">{line.name} × {line.quantity}</span>
+                  <span className="font-semibold text-navy">{formatTzs(line.lineTotal)}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" className={secondaryButton} onClick={onClose}>
+            Close
+          </button>
+          <button
+            type="button"
+            disabled={busy || !payload}
+            className={cn(primaryButton, "relative min-w-[9.5rem]")}
+            onClick={() => {
+              if (busy) return;
+              setBusy(true);
+              void downloadPurchaseDocumentPdf(purchaseOrderId).then(() => setBusy(false));
+            }}
+          >
+            <span className={cn(busy && "invisible")}>Download PDF</span>
+            {busy ? (
+              <span className="absolute inset-0 flex items-center justify-center">
+                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} />
+              </span>
+            ) : null}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ import {
   approvePurchaseOrderAction,
   getPurchasingCapsAction,
   getPurchaseDocumentPdfPayloadAction,
+  getGoodsReceiptDocumentAction,
   getSupplierInvoicePdfPayloadAction,
   postPaymentRequestAction,
   rejectSupplierInvoiceAction,
@@ -772,6 +773,14 @@ export async function downloadPurchaseDocumentPdf(purchaseOrderId: string) {
   if (!result.ok) return { error: result.error };
   const { downloadPurchaseDocument } = await import("@/lib/data/purchase-document-pdf");
   downloadPurchaseDocument(result.document);
+  return { error: null };
+}
+
+export async function downloadGoodsReceiptPdf(receiptId: string) {
+  const result = await getGoodsReceiptDocumentAction(receiptId);
+  if (!result.ok) return { error: result.error };
+  const { downloadGoodsReceiptDocument } = await import("@/lib/data/goods-receipt-pdf");
+  downloadGoodsReceiptDocument(result.document);
   return { error: null };
 }
 

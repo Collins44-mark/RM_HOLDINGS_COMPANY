@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Plus, Search } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
@@ -27,6 +27,7 @@ import {
   tableHead,
 } from "@/components/supermarket/purchasing-ui";
 import { downloadPurchaseDocumentPdf } from "@/lib/supermarket/inventory-store";
+import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
 
 type PurchasingTab = "orders" | "purchases" | "suppliers";
 
@@ -291,6 +292,8 @@ function PurchasesView({
   purchases: ReturnType<typeof useSupermarketInventory>["purchases"];
   invoices: ReturnType<typeof useSupermarketInventory>["supplierInvoices"];
 }) {
+  const router = useRouter();
+
   function payablesFor(purchaseOrderId: string) {
     const verified = invoices.filter(
       (item) => item.purchaseOrderId === purchaseOrderId && item.verificationStatus === "Verified",
@@ -338,18 +341,19 @@ function PurchasesView({
                     <StatusPill value={payables.awaitingInvoice ? "Unpaid" : payables.status} />
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex flex-col items-start gap-1">
-                      <Link href={`/supermarket/purchasing/${item.purchaseOrderId}`} className="text-[13px] font-semibold text-navy hover:underline">
-                        View purchase
-                      </Link>
-                      <button
-                        type="button"
-                        className="text-[13px] font-semibold text-navy hover:underline"
-                        onClick={() => void downloadPurchaseDocumentPdf(item.purchaseOrderId)}
-                      >
-                        Download PDF
-                      </button>
-                    </div>
+                    <CompactActionsMenu
+                      ariaLabel={`Actions for ${item.number}`}
+                      items={[
+                        {
+                          label: "View Purchase",
+                          onSelect: () => router.push(`/supermarket/purchasing/${item.purchaseOrderId}`),
+                        },
+                        {
+                          label: "Download PDF",
+                          onSelect: () => void downloadPurchaseDocumentPdf(item.purchaseOrderId),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               );
@@ -361,21 +365,36 @@ function PurchasesView({
           {purchases.map((item) => {
             const payables = payablesFor(item.purchaseOrderId);
             return (
-            <Link key={item.id} href={`/supermarket/purchasing/${item.purchaseOrderId}`} className="block px-4 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[14px] font-semibold text-navy">{item.number}</p>
-                  <p className="mt-0.5 text-[12.5px] text-slate-500">{item.supplierName} · {item.purchaseOrderNumber}</p>
+            <div key={item.id} className="flex items-start justify-between gap-3 px-4 py-3">
+              <Link href={`/supermarket/purchasing/${item.purchaseOrderId}`} className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[14px] font-semibold text-navy">{item.number}</p>
+                    <p className="mt-0.5 text-[12.5px] text-slate-500">{item.supplierName} · {item.purchaseOrderNumber}</p>
+                  </div>
+                  <StatusPill value={payables.awaitingInvoice ? "Unpaid" : payables.status} />
                 </div>
-                <StatusPill value={payables.awaitingInvoice ? "Unpaid" : payables.status} />
-              </div>
-              <p className="mt-2 text-[13px] font-semibold text-navy">{formatTzs(item.totalCost)}</p>
-              <p className="mt-1 text-[12px] text-slate-400">
-                {payables.awaitingInvoice
-                  ? "Awaiting supplier invoice"
-                  : `Paid ${formatTzs(payables.paid)} · Outstanding ${formatTzs(payables.outstanding)}`}
-              </p>
-            </Link>
+                <p className="mt-2 text-[13px] font-semibold text-navy">{formatTzs(item.totalCost)}</p>
+                <p className="mt-1 text-[12px] text-slate-400">
+                  {payables.awaitingInvoice
+                    ? "Awaiting supplier invoice"
+                    : `Paid ${formatTzs(payables.paid)} · Outstanding ${formatTzs(payables.outstanding)}`}
+                </p>
+              </Link>
+              <CompactActionsMenu
+                ariaLabel={`Actions for ${item.number}`}
+                items={[
+                  {
+                    label: "View Purchase",
+                    onSelect: () => router.push(`/supermarket/purchasing/${item.purchaseOrderId}`),
+                  },
+                  {
+                    label: "Download PDF",
+                    onSelect: () => void downloadPurchaseDocumentPdf(item.purchaseOrderId),
+                  },
+                ]}
+              />
+            </div>
           );
           })}
         </div>

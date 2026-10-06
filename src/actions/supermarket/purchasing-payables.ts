@@ -895,3 +895,108 @@ export async function getPurchaseDocumentPdfPayloadAction(purchaseOrderId: strin
     return { ok: false as const, error: actionErrorMessage(error) };
   }
 }
+
+export type GoodsReceiptDocumentPayload = {
+  id: string;
+  number: string;
+  poNumber: string;
+  supplierName: string;
+  receivedDate: string;
+  receivedBy: string;
+  status: string;
+  itemCount: number;
+  total: number;
+  lines: {
+    name: string;
+    sku: string;
+    orderedQty: number;
+    receivedQty: number;
+    unitCost: number;
+    lineTotal: number;
+  }[];
+};
+
+export async function getGoodsReceiptDocumentAction(receiptId: string) {
+  try {
+    const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.purchases.view");
+    const { data: receipt, error } = await supabase
+      .from("sm_goods_receipts")
+      .select("id, receipt_number, purchase_order_id, supplier_id, received_at, total_cost, received_by, notes")
+      .eq("id", receiptId)
+      .eq("business_unit_id", businessUnitId)
+      .maybeSingle();
+    if (error) mapDbError(error);
+    if (!receipt) throw new SupermarketError("Goods receipt not found.", "NOT_FOUND");
+
+    const [{ data: supplier }, { data: po }, { data: items }, { data: receiver }] = await Promise.all([
+      supabase.from("sm_suppliers").select("name").eq("id", receipt.supplier_id).maybeSingle(),
+      receipt.purchase_order_id
+        ? supabase
+            .from("sm_purchase_orders")
+            .select("id, po_number, status")
+            .eq("id", receipt.purchase_order_id)
+            .eq("business_unit_id", businessUnitId)
+            .maybeSingle()
+        : Promise.resolve({ data: null as { id: string; po_number: string; status: string } | null }),
+      supabase
+        .from("sm_goods_receipt_items")
+        .select("product_id, quantity, unit_cost, line_total")
+        .eq("goods_receipt_id", receipt.id),
+      receipt.received_by
+        ? supabase.from("profiles").select("full_name").eq("id", receipt.received_by).maybeSingle()
+        : Promise.resolve({ data: null as { full_name?: string } | null }),
+    ]);
+    if (receipt.purchase_order_id && !po) {
+      throw new SupermarketError("Goods receipt not found.", "NOT_FOUND");
+    }
+
+    const productIds = [...new Set((items ?? []).map((row) => String(row.product_id)))];
+    const [{ data: products }, { data: poItems }] = await Promise.all([
+      productIds.length
+        ? supabase.from("sm_products").select("id, name, sku").in("id", productIds)
+        : Promise.resolve({ data: [] as Array<{ id: string; name: string; sku: string }> }),
+      po
+        ? supabase
+            .from("sm_purchase_order_items")
+            .select("product_id, quantity_ordered")
+            .eq("purchase_order_id", po.id)
+        : Promise.resolve({ data: [] as Array<{ product_id: string; quantity_ordered: number }> }),
+    ]);
+    const nameById = new Map(
+      (products ?? []).map((row) => [String(row.id), { name: String(row.name), sku: String(row.sku ?? "") }]),
+    );
+    const orderedById = new Map((poItems ?? []).map((row) => [String(row.product_id), Number(row.quantity_ordered) || 0]));
+    const lines = (items ?? []).map((row) => {
+      const product = nameById.get(String(row.product_id));
+      const receivedQty = Number(row.quantity) || 0;
+      const unitCost = Number(row.unit_cost) || 0;
+      const lineTotal = Number(row.line_total) || receivedQty * unitCost;
+      return {
+        name: product?.name ?? "Product",
+        sku: product?.sku ?? "",
+        orderedQty: orderedById.get(String(row.product_id)) ?? 0,
+        receivedQty,
+        unitCost,
+        lineTotal,
+      };
+    });
+    const poStatus = String(po?.status ?? "RECEIVED").toUpperCase();
+    return {
+      ok: true as const,
+      document: {
+        id: String(receipt.id),
+        number: String(receipt.receipt_number),
+        poNumber: String(po?.po_number ?? ""),
+        supplierName: String(supplier?.name ?? "Supplier"),
+        receivedDate: String(receipt.received_at ?? "").slice(0, 10),
+        receivedBy: String(receiver?.full_name ?? "Warehouse"),
+        status: poStatus === "PARTIALLY_RECEIVED" ? "Partial receipt" : "Received",
+        itemCount: lines.reduce((sum, line) => sum + line.receivedQty, 0),
+        total: Number(receipt.total_cost) || lines.reduce((sum, line) => sum + line.lineTotal, 0),
+        lines,
+      } satisfies GoodsReceiptDocumentPayload,
+    };
+  } catch (error) {
+    return { ok: false as const, error: actionErrorMessage(error) };
+  }
+}
