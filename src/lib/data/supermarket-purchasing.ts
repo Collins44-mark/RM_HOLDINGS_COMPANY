@@ -50,7 +50,7 @@ export type PurchaseOrderLine = {
 export type PurchaseOrder = {
   id: string;
   number: string;
-  purchaseDocumentNumber?: string | null;
+  purchaseDocumentNumber: string | null;
   supplierId: string;
   supplierName: string;
   orderDate: string;
@@ -61,7 +61,7 @@ export type PurchaseOrder = {
   tax: number;
   lines: PurchaseOrderLine[];
   createdAt: string;
-  createdBy?: string | null;
+  createdBy: string | null;
 };
 
 export type PurchaseLine = {
@@ -104,6 +104,7 @@ export type CreatePurchaseOrderInput = {
     buyingPrice: number;
   }[];
   status: Extract<PurchaseOrderStatus, "Draft" | "Submitted">;
+  requestId?: string;
 };
 
 export type ReceivePurchaseLineInput = {
@@ -310,6 +311,7 @@ export function seedPurchaseOrders(): PurchaseOrder[] {
     {
       id: "po-0025",
       number: "PO-0025",
+      purchaseDocumentNumber: null,
       supplierId: "sup-coastal",
       supplierName: "Coastal Traders",
       orderDate: "2026-09-16",
@@ -319,6 +321,7 @@ export function seedPurchaseOrders(): PurchaseOrder[] {
       discount: 0,
       tax: 0,
       createdAt: "2026-09-16T08:10:00.000Z",
+      createdBy: null,
       lines: [
         {
           id: "pol-0025-1",
@@ -343,6 +346,7 @@ export function seedPurchaseOrders(): PurchaseOrder[] {
     {
       id: "po-0024",
       number: "PO-0024",
+      purchaseDocumentNumber: null,
       supplierId: "sup-dar",
       supplierName: "Dar Wholesale",
       orderDate: "2026-09-12",
@@ -352,6 +356,7 @@ export function seedPurchaseOrders(): PurchaseOrder[] {
       discount: 0,
       tax: 0,
       createdAt: "2026-09-12T09:20:00.000Z",
+      createdBy: null,
       lines: [
         {
           id: "pol-0024-1",
@@ -376,6 +381,7 @@ export function seedPurchaseOrders(): PurchaseOrder[] {
     {
       id: "po-0023",
       number: "PO-0023",
+      purchaseDocumentNumber: null,
       supplierId: "sup-kilimo",
       supplierName: "Kilimo Supplies",
       orderDate: "2026-09-08",
@@ -385,6 +391,7 @@ export function seedPurchaseOrders(): PurchaseOrder[] {
       discount: 0,
       tax: 0,
       createdAt: "2026-09-08T11:00:00.000Z",
+      createdBy: null,
       lines: [
         {
           id: "pol-0023-1",
@@ -400,6 +407,7 @@ export function seedPurchaseOrders(): PurchaseOrder[] {
     {
       id: "po-0022",
       number: "PO-0022",
+      purchaseDocumentNumber: null,
       supplierId: "sup-harbor",
       supplierName: "Harbor Foods",
       orderDate: "2026-09-16",
@@ -409,6 +417,7 @@ export function seedPurchaseOrders(): PurchaseOrder[] {
       discount: 0,
       tax: 0,
       createdAt: "2026-09-16T07:40:00.000Z",
+      createdBy: null,
       lines: [
         {
           id: "pol-0022-1",
@@ -424,6 +433,7 @@ export function seedPurchaseOrders(): PurchaseOrder[] {
     {
       id: "po-0021",
       number: "PO-0021",
+      purchaseDocumentNumber: null,
       supplierId: "sup-coastal",
       supplierName: "Coastal Traders",
       orderDate: "2026-09-04",
@@ -433,6 +443,7 @@ export function seedPurchaseOrders(): PurchaseOrder[] {
       discount: 0,
       tax: 0,
       createdAt: "2026-09-04T14:15:00.000Z",
+      createdBy: null,
       lines: [
         {
           id: "pol-0021-1",

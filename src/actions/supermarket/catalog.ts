@@ -427,80 +427,86 @@ export async function createPurchaseOrderAction(input: {
   discount?: number;
   tax?: number;
   notes?: string;
+  submit?: boolean;
+  requestId?: string;
   lines: { productId: string; quantityOrdered: number; buyingPrice: number }[];
 }) {
   try {
-    const { supabase, businessUnitId, userId } = await requireSupermarketPermission(
+    const { supabase, businessUnitId } = await requireSupermarketPermission(
       "supermarket.purchases.create",
     );
     if (!input.supplierId) throw new SupermarketError("Select a supplier.", "VALIDATION");
     if (!input.lines.length) throw new SupermarketError("Add at least one line.", "VALIDATION");
 
-    const { data: poNumber, error: numError } = await supabase.rpc("sm_next_document_number", {
-      p_doc_type: "PO",
-      p_prefix: "PO-",
+    const { data, error } = await supabase.rpc("sm_create_purchase_order", {
+      p_supplier_id: input.supplierId,
+      p_order_date: input.orderDate,
+      p_expected_date: input.expectedDate || input.orderDate,
+      p_discount: input.discount ?? 0,
+      p_notes: input.notes ?? "",
+      p_lines: input.lines.map((line) => ({
+        product_id: line.productId,
+        quantity_ordered: line.quantityOrdered,
+        buying_price: line.buyingPrice,
+      })),
+      p_submit: Boolean(input.submit),
+      p_request_id: input.requestId || null,
     });
-    if (numError) mapDbError(numError);
-
-    const subtotal = input.lines.reduce(
-      (sum, line) => sum + line.quantityOrdered * line.buyingPrice,
-      0,
-    );
-    const discount = input.discount ?? 0;
-    const { data: taxRows, error: taxError } = await supabase.rpc("sm_tax_lines_for_scope", {
-      p_bu: businessUnitId,
-      p_scope: "SUPPLIER_INVOICES",
-      p_on_date: input.orderDate,
-      p_tax_base: Math.max(0, subtotal - discount),
-    });
-    if (taxError) mapDbError(taxError);
-    const taxFromRules = ((taxRows ?? []) as Array<{ tax_amount: number }>).reduce(
-      (sum, line) => sum + (Number(line.tax_amount) || 0),
-      0,
-    );
-    const tax = taxFromRules;
-    const total = Math.max(0, subtotal - discount + tax);
-
-    const { data: po, error } = await supabase
-      .from("sm_purchase_orders")
-      .insert({
-        business_unit_id: businessUnitId,
-        po_number: poNumber,
-        supplier_id: input.supplierId,
-        order_date: input.orderDate,
-        expected_date: input.expectedDate || null,
-        status: "DRAFT",
-        subtotal,
-        discount,
-        tax,
-        total,
-        notes: input.notes ?? "",
-        created_by: userId,
-      })
-      .select("id")
-      .single();
     if (error) mapDbError(error);
 
-    const items = input.lines.map((line) => ({
-      purchase_order_id: po.id,
-      product_id: line.productId,
-      quantity_ordered: line.quantityOrdered,
-      quantity_received: 0,
-      unit_cost: line.buyingPrice,
-      line_total: line.quantityOrdered * line.buyingPrice,
-    }));
+    const row = (data ?? {}) as {
+      id?: string;
+      po_number?: string;
+      status?: string;
+      discount?: number;
+      tax?: number;
+      created_at?: string;
+      created_by?: string | null;
+      replayed?: boolean;
+      items?: Array<{
+        id: string;
+        product_id: string;
+        quantity_ordered: number;
+        unit_cost: number;
+      }>;
+    };
+    if (!row.id) throw new SupermarketError("Unable to create purchase order.", "DATABASE");
 
-    const { error: itemsError } = await supabase.from("sm_purchase_order_items").insert(items);
-    if (itemsError) mapDbError(itemsError);
+    if (!row.replayed) {
+      void writeSupermarketAudit(businessUnitId, {
+        action: "purchase_order.created",
+        description: `Created purchase order ${String(row.po_number)}`,
+        severity: "medium",
+        entityType: "purchase_order",
+        entityId: String(row.id),
+      });
+      if (input.submit) {
+        void writeSupermarketAudit(businessUnitId, {
+          action: "purchase_order.submitted",
+          description: "Purchase order submitted",
+          severity: "medium",
+          entityType: "purchase_order",
+          entityId: String(row.id),
+        });
+      }
+    }
 
-    void writeSupermarketAudit(businessUnitId, {
-      action: "purchase_order.created",
-      description: `Created purchase order ${String(poNumber)}`,
-      severity: "medium",
-      entityType: "purchase_order",
-      entityId: String(po.id),
-    });
-    return { ok: true as const, id: po.id as string };
+    return {
+      ok: true as const,
+      id: String(row.id),
+      number: String(row.po_number ?? ""),
+      status: String(row.status ?? "DRAFT"),
+      discount: Number(row.discount) || 0,
+      tax: Number(row.tax) || 0,
+      createdAt: String(row.created_at ?? new Date().toISOString()),
+      createdBy: row.created_by ? String(row.created_by) : null,
+      items: (row.items ?? []).map((item) => ({
+        id: String(item.id),
+        productId: String(item.product_id),
+        quantityOrdered: Number(item.quantity_ordered) || 0,
+        buyingPrice: Number(item.unit_cost) || 0,
+      })),
+    };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
   }

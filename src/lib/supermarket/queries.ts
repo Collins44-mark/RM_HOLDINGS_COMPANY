@@ -288,13 +288,19 @@ export async function loadPurchasingWorkspace(input?: {
       poItemsByPo.set(poId, list);
     }
 
-    const purchaseOrders = (poRes.data ?? []).map((raw) => {
+    const mappedOrders = (poRes.data ?? []).map((raw) => {
       const row = raw as Record<string, unknown>;
       return mapPurchaseOrder(
         row,
         poItemsByPo.get(String(row.id)) ?? [],
         supplierNamesById.get(String(row.supplier_id)) ?? "Supplier",
       );
+    });
+    const seenPoIds = new Set<string>();
+    const purchaseOrders = mappedOrders.filter((order) => {
+      if (seenPoIds.has(order.id)) return false;
+      seenPoIds.add(order.id);
+      return true;
     });
 
     const receiptItemsByReceipt = new Map<string, Purchase["lines"]>();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, Search, X } from "lucide-react";
@@ -9,6 +9,7 @@ import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import { useSupermarketInventory, type SupermarketProduct } from "@/lib/data/supermarket-inventory";
 import { glassPanel, inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
+import { WorkflowButton } from "@/components/supermarket/PurchaseOrderPayables";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 
 type LineDraft = {
@@ -32,7 +33,9 @@ function todayIsoDate() {
 export function NewPurchaseOrderPage() {
   const router = useRouter();
   const inventory = useSupermarketInventory({ purchasing: true });
-  const poNumber = inventory.nextPurchaseOrderNumber();
+  const requestId = useRef<string | null>(null);
+  const [saving, setSaving] = useState<"Draft" | "Submitted" | "">("");
+  const [saved, setSaved] = useState<"Draft" | "Submitted" | "">("");
   const [supplierId, setSupplierId] = useState("");
   const [orderDate, setOrderDate] = useState(todayIsoDate);
   const [expectedDate, setExpectedDate] = useState(todayIsoDate);
@@ -90,6 +93,7 @@ export function NewPurchaseOrderPage() {
   }
 
   async function save(status: "Draft" | "Submitted") {
+    if (saving) return;
     const nextErrors: Record<string, string> = {};
     if (!supplierId) nextErrors.supplier = "Select a supplier.";
     if (!orderDate) nextErrors.orderDate = "Enter the order date.";
@@ -99,6 +103,10 @@ export function NewPurchaseOrderPage() {
       setErrors(nextErrors);
       return;
     }
+    setSaving(status);
+    setSaved("");
+    if (!requestId.current) requestId.current = crypto.randomUUID();
+    const createRequestId = requestId.current;
     const result = await inventory.createPurchaseOrder({
       supplierId,
       orderDate,
@@ -107,6 +115,7 @@ export function NewPurchaseOrderPage() {
       discount: discountValue,
       tax: taxValue,
       status,
+      requestId: createRequestId,
       lines: parsedLines.map((line) => ({
         productId: line.product.id,
         quantity: line.quantity,
@@ -114,9 +123,12 @@ export function NewPurchaseOrderPage() {
       })),
     });
     if (result.error || !result.order) {
+      setSaving("");
       setErrors({ lines: result.error || "Unable to save this purchase order." });
       return;
     }
+    setSaved(status);
+    setSaving("");
     router.push(`/supermarket/purchasing/${result.order.id}`);
   }
 
@@ -133,7 +145,7 @@ export function NewPurchaseOrderPage() {
         <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
           <label className="block">
             <span className="mb-1.5 block text-[13px] font-medium text-slate-500">PO Number</span>
-            <input value={poNumber} readOnly className={cn(inputClass, "bg-[#f7f9fc] text-slate-500")} />
+            <input value="Assigned when saved" readOnly className={cn(inputClass, "bg-[#f7f9fc] text-slate-500")} />
           </label>
           <label className="block">
             <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Supplier *</span>
@@ -266,12 +278,24 @@ export function NewPurchaseOrderPage() {
         <Link href="/supermarket/purchasing" className={secondaryButton}>
           Cancel
         </Link>
-        <button type="button" onClick={() => save("Draft")} className={secondaryButton}>
-          Save Draft
-        </button>
-        <button type="button" onClick={() => save("Submitted")} className={primaryButton}>
-          Submit
-        </button>
+        <WorkflowButton
+          className={secondaryButton}
+          busy={saving === "Draft"}
+          disabled={Boolean(saving)}
+          confirmed={saved === "Draft"}
+          idleLabel="Save Draft"
+          successLabel="Saved ✓"
+          onClick={() => void save("Draft")}
+        />
+        <WorkflowButton
+          className={primaryButton}
+          busy={saving === "Submitted"}
+          disabled={Boolean(saving)}
+          confirmed={saved === "Submitted"}
+          idleLabel="Submit"
+          successLabel="Submitted ✓"
+          onClick={() => void save("Submitted")}
+        />
       </div>
     </div>
   );

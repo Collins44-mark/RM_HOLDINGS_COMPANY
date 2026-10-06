@@ -69,7 +69,10 @@ export function PurchasingManager() {
   const kpis = useMemo(() => purchaseOrderKpis(inventory.purchaseOrders), [inventory.purchaseOrders]);
   const orders = useMemo(() => {
     const needle = query.trim().toLowerCase();
+    const seen = new Set<string>();
     return inventory.purchaseOrders.filter((order) => {
+      if (seen.has(order.id)) return false;
+      seen.add(order.id);
       if (!purchaseOrderMatchesFocus(order, focus)) return false;
       if (!needle) return true;
       return `${order.number} ${order.supplierName} ${order.status}`.toLowerCase().includes(needle);

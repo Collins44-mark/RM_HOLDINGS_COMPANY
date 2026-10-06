@@ -482,7 +482,7 @@ function InvoicePanel({
   );
 }
 
-function WorkflowButton({
+export function WorkflowButton({
   className,
   busy,
   disabled,

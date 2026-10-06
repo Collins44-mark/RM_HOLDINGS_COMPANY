@@ -50,6 +50,7 @@ import type {
   TransferStockInput,
 } from "@/lib/data/supermarket-purchasing";
 import { derivePurchaseOrderStatus } from "@/lib/data/supermarket-purchasing";
+import { mapPoStatus } from "@/lib/supermarket/mappers";
 
 export type AdjustStockInput = {
   productId: string;
@@ -103,6 +104,15 @@ function emit() {
 function patchSnapshot(partial: Partial<InventorySnapshot>) {
   snapshot = { ...snapshot, ...partial };
   emit();
+}
+
+function upsertPurchaseOrder(order: PurchaseOrder) {
+  const exists = snapshot.purchaseOrders.some((item) => item.id === order.id);
+  patchSnapshot({
+    purchaseOrders: exists
+      ? snapshot.purchaseOrders.map((item) => (item.id === order.id ? { ...item, ...order } : item))
+      : [order, ...snapshot.purchaseOrders.filter((item) => item.id !== order.id)],
+  });
 }
 
 function patchPurchaseOrder(orderId: string, patch: Partial<PurchaseOrder>) {
@@ -467,6 +477,8 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
     discount: input.discount,
     tax: input.tax,
     notes: input.notes,
+    submit: input.status === "Submitted",
+    requestId: input.requestId,
     lines: input.lines.map((line) => ({
       productId: line.productId,
       quantityOrdered: line.quantity,
@@ -475,13 +487,35 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
   });
   if (!result.ok) return { error: result.error, order: null as PurchaseOrder | null };
 
-  if (input.status === "Submitted") {
-    const submitted = await submitPurchaseOrderAction(result.id);
-    if (!submitted.ok) return { error: submitted.error, order: null as PurchaseOrder | null };
-  }
-
-  await refreshPurchasingWorkspace();
-  const order = snapshot.purchaseOrders.find((item) => item.id === result.id) ?? null;
+  const supplier = snapshot.suppliers.find((item) => item.id === input.supplierId);
+  const order: PurchaseOrder = {
+    id: result.id,
+    number: result.number,
+    purchaseDocumentNumber: null,
+    supplierId: input.supplierId,
+    supplierName: supplier?.name ?? "Supplier",
+    orderDate: input.orderDate,
+    expectedDate: input.expectedDate,
+    notes: input.notes ?? "",
+    status: mapPoStatus(result.status),
+    discount: result.discount,
+    tax: result.tax,
+    createdAt: result.createdAt,
+    createdBy: result.createdBy,
+    lines: result.items.map((item) => {
+      const product = snapshot.products.find((row) => row.id === item.productId);
+      return {
+        id: item.id,
+        productId: item.productId,
+        productName: product?.name ?? "Product",
+        sku: product?.sku ?? "",
+        quantityOrdered: item.quantityOrdered,
+        quantityReceived: 0,
+        buyingPrice: item.buyingPrice,
+      };
+    }),
+  };
+  upsertPurchaseOrder(order);
   return { error: null, order };
 }
 
@@ -489,7 +523,6 @@ export async function submitPurchaseOrder(orderId: string) {
   const result = await submitPurchaseOrderAction(orderId);
   if (!result.ok) return { error: result.error };
   patchPurchaseOrder(orderId, { status: "Submitted" });
-  void refreshPurchasingWorkspace();
   return { error: null };
 }
 
@@ -497,7 +530,6 @@ export async function approvePurchaseOrder(orderId: string) {
   const result = await approvePurchaseOrderAction(orderId);
   if (!result.ok) return { error: result.error };
   patchPurchaseOrder(orderId, { status: "Approved" });
-  void refreshPurchasingWorkspace();
   return { error: null };
 }
 
@@ -505,7 +537,6 @@ export async function sendPurchaseOrder(orderId: string) {
   const result = await sendPurchaseOrderAction(orderId);
   if (!result.ok) return { error: result.error };
   patchPurchaseOrder(orderId, { status: "Sent" });
-  void refreshPurchasingWorkspace();
   return { error: null };
 }
 
@@ -604,7 +635,6 @@ export async function receivePurchaseOrder(input: ReceivePurchaseOrderInput) {
   patchPurchase(purchase);
 
   void refreshProductsWorkspace();
-  void refreshPurchasingWorkspace();
   if (movementsLoaded) void refreshMovementsWorkspace();
   return {
     error: null,
