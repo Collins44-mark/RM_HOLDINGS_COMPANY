@@ -240,10 +240,7 @@ export function buildSalesReportData(
   const paymentForSales =
     paymentRaw === "Cash" || paymentRaw === "Mobile Money" || paymentRaw === "Card" ? paymentRaw : "all";
 
-  const periodSales =
-    paymentRaw === "Bank"
-      ? []
-      : filterSales(SUPERMARKET_SALES, {
+  const periodSales = filterSales(SUPERMARKET_SALES, {
           start: period.start,
           end: period.end,
           cashier,
@@ -266,10 +263,7 @@ export function buildSalesReportData(
   const span = daySpan(period.start, period.end);
   const prevEnd = shiftIsoDay(period.start, -1);
   const prevStart = shiftIsoDay(period.start, -span);
-  const previousSales =
-    paymentRaw === "Bank"
-      ? []
-      : filterSales(SUPERMARKET_SALES, {
+  const previousSales = filterSales(SUPERMARKET_SALES, {
           start: prevStart,
           end: prevEnd,
           cashier,

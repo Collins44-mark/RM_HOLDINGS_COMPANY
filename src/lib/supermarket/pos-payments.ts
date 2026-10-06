@@ -91,3 +91,20 @@ export function dbMethodFromPos(method: PosTenderMethod) {
   if (method === "Card") return "CARD";
   return "CASH";
 }
+
+export type SalesPaymentFilter = "all" | PosTenderMethod;
+
+export function salesPaymentColumnLabel(sale: {
+  payment: string;
+  paymentLines?: { method: string; provider?: string }[];
+}) {
+  const lines = sale.paymentLines ?? [];
+  if (lines.length > 1) return "Mixed";
+  const line = lines[0];
+  const method = line?.method ?? sale.payment;
+  const stored = parseStoredProvider(line?.provider);
+  if (paymentLineLabel(method) === "Mobile Money") {
+    return stored.name ? `Mobile Money — ${stored.name}` : "Mobile Money";
+  }
+  return paymentLineLabel(method, line?.provider);
+}

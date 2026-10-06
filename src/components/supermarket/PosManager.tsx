@@ -891,7 +891,7 @@ export function PosManager() {
               </dl>
 
               <div className="mt-5">
-                <p className="text-[13px] font-semibold text-navy">Payment Method</p>
+                <p className="text-[13px] font-semibold text-navy">Payment</p>
                 <div className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {POS_PAYMENT_METHODS.map((method) => {
                     const Icon = PAYMENT_META[method].icon;
@@ -910,6 +910,7 @@ export function PosManager() {
                             ]);
                           }
                         }}
+                        title={method === "Mixed" ? "Use multiple payment methods for this sale." : undefined}
                         className={cn(
                           "inline-flex h-11 items-center justify-center gap-1.5 rounded-[14px] border text-[12px] font-medium transition duration-200",
                           active
@@ -990,7 +991,10 @@ export function PosManager() {
 
               {payment === "Mixed" ? (
                 <div className="mt-4 space-y-3 rounded-[16px] border border-white/80 bg-[#eef3f8]/70 p-3.5">
-                  <p className="text-[12px] font-medium text-slate-500">Payment Split</p>
+                  <div>
+                    <p className="text-[12px] font-medium text-slate-500">Payment Split</p>
+                    <p className="mt-0.5 text-[11.5px] text-slate-400">Use multiple payment methods for this sale.</p>
+                  </div>
                   <div className="space-y-2.5">
                     {allocations.map((row) => (
                       <div key={row.key} className="rounded-[14px] border border-white/80 bg-white/80 p-2.5">

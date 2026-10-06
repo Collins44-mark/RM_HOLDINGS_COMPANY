@@ -35,7 +35,7 @@ import {
   type SupermarketSale,
 } from "@/lib/data/sample-supermarket-sales";
 import { refreshSales, useSupermarketSales } from "@/lib/supermarket/client-stores";
-import { paymentLineLabel, parseStoredProvider } from "@/lib/supermarket/pos-payments";
+import { paymentLineLabel, parseStoredProvider, POS_TENDER_METHODS, salesPaymentColumnLabel, type SalesPaymentFilter } from "@/lib/supermarket/pos-payments";
 import type { SupermarketSale as DbSale } from "@/lib/supermarket/types";
 
 function mapDbSale(sale: DbSale): SupermarketSale {
@@ -378,7 +378,7 @@ export function SalesManager() {
   const [periodPreset, setPeriodPreset] = useState<SalesPeriodPreset>("week");
   const [customRange, setCustomRange] = useState<SalesDateRange>({ from: "2026-09-01", to: "2026-09-14" });
   const [cashier, setCashier] = useState("all");
-  const [payment, setPayment] = useState<"all" | SalesPayment>("all");
+  const [payment, setPayment] = useState<SalesPaymentFilter>("all");
   const [status, setStatus] = useState<"all" | SalesStatus>("all");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -525,15 +525,15 @@ export function SalesManager() {
         <FilterSelect
           label="Payment method"
           value={payment}
-          onChange={(value) => setPayment(value as "all" | SalesPayment)}
+          onChange={(value) => setPayment(value as SalesPaymentFilter)}
           className="lg:w-auto lg:basis-[13.5rem]"
         >
             <option value="all">All Payment Methods</option>
-            <option value="Cash">Cash</option>
-            <option value="Mobile Money">Mobile Money</option>
-            <option value="Card">Card</option>
-            <option value="Bank">Bank</option>
-            <option value="Mixed">Mixed</option>
+            {POS_TENDER_METHODS.map((method) => (
+              <option key={method} value={method}>
+                {method}
+              </option>
+            ))}
         </FilterSelect>
         <FilterSelect
           label="Status"
@@ -631,7 +631,7 @@ export function SalesManager() {
                         <td className="whitespace-nowrap px-3 py-3 text-slate-500">
                           {sale.itemsCount} item{sale.itemsCount === 1 ? "" : "s"}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-3 text-slate-500">{sale.payment}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-slate-500">{salesPaymentColumnLabel(sale)}</td>
                         <td className="whitespace-nowrap px-3 py-3 text-[13.5px] font-semibold tracking-[-0.02em] text-navy">
                           {formatTzs(sale.amount)}
                         </td>
@@ -913,7 +913,7 @@ function SaleDetails({
           </div>
           <DetailRow
             icon={Wallet}
-            label="Payment Method"
+            label="Payment"
             value={
               sale.paymentLines && sale.paymentLines.length > 1
                 ? "Mixed"

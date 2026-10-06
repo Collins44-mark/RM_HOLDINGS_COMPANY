@@ -320,7 +320,6 @@ export function SalesReportDetail({
                 { value: "Cash", label: "Cash" },
                 { value: "Mobile Money", label: "Mobile Money" },
                 { value: "Card", label: "Card" },
-                { value: "Bank", label: "Bank" },
               ]}
             />
             <FilterField

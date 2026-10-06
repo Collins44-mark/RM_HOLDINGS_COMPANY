@@ -427,13 +427,10 @@ export function filterSales(
     const day = saleDay(sale.soldAt);
     if (day < filters.start || day > filters.end) return false;
     if (filters.cashier !== "all" && sale.cashier !== filters.cashier) return false;
-    if (filters.payment !== "all") {
-      if (filters.payment === "Mixed") {
-        if ((sale.paymentLines?.length ?? 0) < 2 && sale.payment !== "Mixed") return false;
-      } else if (sale.paymentLines?.length) {
-        if (!sale.paymentLines.some((line) => line.method === filters.payment) && sale.payment !== filters.payment) {
-          return false;
-        }
+    if (filters.payment !== "all" && filters.payment !== "Bank" && filters.payment !== "Mixed") {
+      const lines = sale.paymentLines ?? [];
+      if (lines.length > 0) {
+        if (!lines.some((line) => line.method === filters.payment)) return false;
       } else if (sale.payment !== filters.payment) {
         return false;
       }

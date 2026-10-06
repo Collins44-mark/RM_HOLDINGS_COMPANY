@@ -122,9 +122,12 @@ export async function fetchSalesReportAction(
       const paymentRows = (row.sm_sale_payments ?? []) as { method: string; amount: number; provider?: string }[];
       const uniqueMethods = [...new Set(paymentRows.map((p) => paymentLabel(p.method)))] as string[];
       const payment = (uniqueMethods.length > 1 ? "Mixed" : uniqueMethods[0] ?? "Cash") as SupermarketSale["payment"];
-      if (paymentFilter === "Mixed") {
-        if (uniqueMethods.length < 2) continue;
-      } else if (paymentFilter && !uniqueMethods.includes(paymentFilter)) {
+      if (
+        paymentFilter &&
+        paymentFilter !== "Mixed" &&
+        paymentFilter !== "Bank" &&
+        !uniqueMethods.includes(paymentFilter)
+      ) {
         continue;
       }
 
