@@ -168,7 +168,7 @@ export function StockReconciliationPage() {
         <StatusBadge label={status.label} tone={status.tone} />
       </header>
       {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
-      <div className="flex flex-wrap gap-2">
+      <div className="grid grid-cols-1 gap-2 min-[640px]:grid-cols-2 lg:grid-cols-[minmax(11.25rem,13.75rem)_minmax(15rem,17.5rem)_minmax(0,1fr)]">
         <input type="date" className={filterClass} value={date} onChange={(e) => { setDate(e.target.value); setPage(1); }} />
         <select className={filterClass} value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setPage(1); }}>
           <option value="">All categories</option>
@@ -178,7 +178,12 @@ export function StockReconciliationPage() {
             </option>
           ))}
         </select>
-        <input className={filterClass} placeholder="Search product or SKU" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+        <input
+          className={`${filterClass} min-[640px]:col-span-2 lg:col-span-1`}
+          placeholder="Search product or SKU"
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+        />
       </div>
       {dirtyCount > 0 ? <p className="text-[12.5px] text-slate-500">Unsaved counts are kept on this page until you save.</p> : null}
       <div className={`${reconGlass} overflow-hidden`}>
