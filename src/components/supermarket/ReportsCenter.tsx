@@ -9,7 +9,7 @@ import { downloadReportPdf } from "@/lib/data/supermarket-reports-pdf";
 import { primaryButton } from "@/components/supermarket/purchasing-ui";
 import { reportGlass, useReportPeriod } from "@/components/supermarket/report-shell";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
-import { getReconciliationReportStripAction } from "@/actions/supermarket/reconciliation";
+import { getReconciliationReportStripAction } from "@/actions/supermarket/reconciliation-overview";
 import { getBankMovementReportStripAction } from "@/actions/supermarket/banking";
 import { getPettyCashReportStripAction } from "@/actions/supermarket/petty-cash";
 import { formatTzs } from "@/lib/format/currency";

@@ -11,7 +11,7 @@ import { PageBackButton } from "@/components/ui/PageBackButton";
 import { addCents, centsToMoney, moneyToCents, variancePercent } from "@/lib/supermarket/money";
 import { displayStatus, type SalesReconciliationRecord } from "@/lib/supermarket/reconciliation";
 import { formatTzs } from "@/lib/format/currency";
-import { MoneyField, reconGlass, ReconActions, StatusBadge, useReconPeriod } from "./shared";
+import { MoneyField, reconGlass, ReconActions, ReconPulse, StatusBadge, useReconPeriod } from "./shared";
 
 export function SalesReconciliationPage() {
   const { preset, setPreset, range, setRange, period } = useReconPeriod();
@@ -26,6 +26,10 @@ export function SalesReconciliationPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [caps, setCaps] = useState({ canCreate: false, canApprove: false, canPost: false });
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const periodKey = `${period.start}:${period.end}`;
+  const pending = loadedKey !== periodKey;
+  const ready = loadedKey !== null;
 
   useEffect(() => {
     let active = true;
@@ -33,6 +37,7 @@ export function SalesReconciliationPage() {
       if (!active) return;
       if (!result.ok) {
         setError(result.error);
+        setLoadedKey(`${period.start}:${period.end}`);
         return;
       }
       setError(null);
@@ -49,6 +54,7 @@ export function SalesReconciliationPage() {
         canApprove: result.capabilities.canApprove,
         canPost: false,
       });
+      setLoadedKey(`${period.start}:${period.end}`);
     });
     return () => {
       active = false;
@@ -139,11 +145,17 @@ export function SalesReconciliationPage() {
           { label: "Actual", value: centsToMoney(actualTotal) },
           { label: "Variance", value: centsToMoney(variance) },
         ].map((item) => (
-          <div key={item.label} className={`${reconGlass} px-5 py-5`}>
+          <div key={item.label} className={`${reconGlass} min-h-[104px] px-5 py-5 ${pending && ready ? "opacity-80" : ""}`}>
             <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{item.label}</p>
-            <p className="mt-2 text-[22px] font-semibold tracking-[-0.04em] text-navy">
-              {formatTzs(moneyToCents(item.value) / 100)}
-            </p>
+            {pending && !ready ? (
+              <p className="mt-3">
+                <ReconPulse className="h-7 w-[58%]" />
+              </p>
+            ) : (
+              <p className="mt-2 text-[22px] font-semibold tracking-[-0.04em] text-navy">
+                {formatTzs(moneyToCents(item.value) / 100)}
+              </p>
+            )}
           </div>
         ))}
       </section>

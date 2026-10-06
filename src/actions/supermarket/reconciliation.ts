@@ -15,7 +15,6 @@ import { addCents, centsToMoney, moneyToCents } from "@/lib/supermarket/money";
 import {
   breakdownFromCents,
   classifyPaymentMethod,
-  displayStatus,
   periodBounds,
   type BankAccountRecord,
   type BankMatchStatus,
@@ -23,7 +22,6 @@ import {
   type BankTransactionRecord,
   type CashReconciliationRecord,
   type ReconciliationCapabilities,
-  type ReconciliationOverviewCard,
   type ReconciliationStatus,
   type SalesReconciliationRecord,
   type StockReconciliationHeader,
@@ -241,143 +239,13 @@ export async function getReconciliationCapabilitiesAction() {
   }
 }
 
-export async function getReconciliationOverviewAction(input: { from: string; to: string }) {
-  try {
-    const { supabase, businessUnitId } = await requireSupermarketPermission(
-      "supermarket.reconciliation.view",
-    );
-    const [salesRes, cashRes, stockRes, bankRes, unmatchedRes] = await Promise.all([
-      supabase
-        .from("sm_sales_reconciliations")
-        .select("status, variance, period_start, period_end")
-        .eq("business_unit_id", businessUnitId)
-        .eq("period_start", input.from)
-        .eq("period_end", input.to)
-        .neq("status", "VOID")
-        .maybeSingle(),
-      supabase
-        .from("sm_cash_reconciliations")
-        .select("status, variance, period_start, period_end")
-        .eq("business_unit_id", businessUnitId)
-        .eq("period_start", input.from)
-        .eq("period_end", input.to)
-        .neq("status", "VOID")
-        .maybeSingle(),
-      supabase
-        .from("sm_stock_reconciliations")
-        .select("status, variance_count, variance_value, stocktake_date")
-        .eq("business_unit_id", businessUnitId)
-        .gte("stocktake_date", input.from)
-        .lte("stocktake_date", input.to)
-        .neq("status", "VOID")
-        .order("stocktake_date", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from("sm_bank_reconciliations")
-        .select("status, difference, unmatched_count, statement_start, statement_end")
-        .eq("business_unit_id", businessUnitId)
-        .eq("statement_start", input.from)
-        .eq("statement_end", input.to)
-        .neq("status", "VOID")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from("sm_bank_transactions")
-        .select("id", { count: "exact", head: true })
-        .eq("business_unit_id", businessUnitId)
-        .eq("status", "UNMATCHED")
-        .eq("posting_status", "POSTED")
-        .gte("transaction_date", input.from)
-        .lte("transaction_date", input.to),
-    ]);
-    if (salesRes.error) mapDbError(salesRes.error);
-    if (cashRes.error) mapDbError(cashRes.error);
-    if (stockRes.error) mapDbError(stockRes.error);
-    if (bankRes.error) mapDbError(bankRes.error);
-    if (unmatchedRes.error) mapDbError(unmatchedRes.error);
-
-    const sales = salesRes.data as Record<string, unknown> | null;
-    const cash = cashRes.data as Record<string, unknown> | null;
-    const stock = stockRes.data as Record<string, unknown> | null;
-    const bank = bankRes.data as Record<string, unknown> | null;
-    const salesDisplay = displayStatus(
-      sales ? asStatus(sales.status) : null,
-      moneyToCents(sales?.variance),
-    );
-    const cashDisplay = displayStatus(cash ? asStatus(cash.status) : null, moneyToCents(cash?.variance));
-    const stockVarianceCount = Number(stock?.variance_count ?? 0);
-    const unmatched = unmatchedRes.count ?? Number(bank?.unmatched_count ?? 0);
-
-    const cards: ReconciliationOverviewCard[] = [
-      {
-        kind: "sales",
-        href: "/supermarket/sales/reconciliation",
-        title: "Sales Reconciliation",
-        statusLabel: salesDisplay.label,
-        detail: sales
-          ? `Variance ${centsToMoney(moneyToCents(sales.variance))}`
-          : "No reconciliation for this period",
-        tone: salesDisplay.tone,
-      },
-      {
-        kind: "cash",
-        href: "/supermarket/finance/cash-reconciliation",
-        title: "Cash Reconciliation",
-        statusLabel: cashDisplay.label,
-        detail: cash
-          ? `Variance ${centsToMoney(moneyToCents(cash.variance))}`
-          : "No reconciliation for this period",
-        tone: cashDisplay.tone,
-      },
-      {
-        kind: "stock",
-        href: "/supermarket/stock/reconciliation",
-        title: "Stock Reconciliation",
-        statusLabel: stock
-          ? stockVarianceCount === 0
-            ? displayStatus(asStatus(stock.status), 0).label
-            : `${stockVarianceCount} variance${stockVarianceCount === 1 ? "" : "s"}`
-          : "No stocktake started",
-        detail: stock
-          ? `Variance value ${centsToMoney(moneyToCents(stock.variance_value))}`
-          : "Physical counts have not been recorded",
-        tone: !stock ? "neutral" : stockVarianceCount === 0 ? "ok" : "variance",
-      },
-      {
-        kind: "bank",
-        href: "/supermarket/finance/bank-reconciliation",
-        title: "Bank Reconciliation",
-        statusLabel: bank
-          ? unmatched === 0
-            ? displayStatus(asStatus(bank.status), moneyToCents(bank.difference)).label
-            : `${unmatched} unmatched`
-          : unmatched > 0
-            ? `${unmatched} unmatched`
-            : "No bank transactions imported",
-        detail: bank
-          ? `Difference ${centsToMoney(moneyToCents(bank.difference))}`
-          : unmatched > 0
-            ? "Statement lines await matching"
-            : "Add a bank account and import statement lines",
-        tone: unmatched > 0 || moneyToCents(bank?.difference) !== 0 ? "variance" : bank ? "ok" : "neutral",
-      },
-    ];
-
-    return { ok: true as const, cards, capabilities: await capabilities() };
-  } catch (error) {
-    return { ok: false as const, error: actionErrorMessage(error) };
-  }
-}
 
 export async function getSalesReconciliationWorkspaceAction(input: { from: string; to: string }) {
   try {
     const { supabase, businessUnitId } = await requireSupermarketPermission(
       "supermarket.reconciliation.view",
     );
-    const expected = await expectedSalesTotals(supabase, businessUnitId, input.from, input.to);
-    const { data, error } = await supabase
+    const reconQuery = supabase
       .from("sm_sales_reconciliations")
       .select(
         "id, reconciliation_date, period_start, period_end, expected_cash, expected_card, expected_mobile, expected_other, expected_total, expected_sales, unpaid_credit, actual_cash, actual_card, actual_mobile, actual_other, actual_total, variance, variance_reason, notes, status, prepared_by, approved_by, prepared_at, approved_at",
@@ -387,7 +255,12 @@ export async function getSalesReconciliationWorkspaceAction(input: { from: strin
       .eq("period_end", input.to)
       .neq("status", "VOID")
       .maybeSingle();
-    if (error) mapDbError(error);
+    const [expected, reconRes] = await Promise.all([
+      expectedSalesTotals(supabase, businessUnitId, input.from, input.to),
+      reconQuery,
+    ]);
+    if (reconRes.error) mapDbError(reconRes.error);
+    const data = reconRes.data;
     const liveExpected = breakdownFromCents(expected.cents);
     liveExpected.total = centsToMoney(expected.expectedTotal);
     return {
@@ -539,25 +412,28 @@ export async function getCashReconciliationWorkspaceAction(input: { from: string
     const { supabase, businessUnitId } = await requireSupermarketPermission(
       "supermarket.reconciliation.view",
     );
-    const expected = await expectedCashTotals(supabase, businessUnitId, input.from, input.to);
-    const { data, error } = await supabase
-      .from("sm_cash_reconciliations")
-      .select(
-        "id, reconciliation_date, period_start, period_end, opening_balance, cash_in, cash_out, expected_closing, actual_counted, variance, variance_reason, notes, status, prepared_by, approved_by",
-      )
-      .eq("business_unit_id", businessUnitId)
-      .eq("period_start", input.from)
-      .eq("period_end", input.to)
-      .neq("status", "VOID")
-      .maybeSingle();
-    if (error) mapDbError(error);
-    const fundRes = await supabase
-      .from("sm_petty_cash_funds")
-      .select("id, opening_balance")
-      .eq("business_unit_id", businessUnitId)
-      .eq("status", "ACTIVE")
-      .maybeSingle();
+    const [expected, reconRes, fundRes] = await Promise.all([
+      expectedCashTotals(supabase, businessUnitId, input.from, input.to),
+      supabase
+        .from("sm_cash_reconciliations")
+        .select(
+          "id, reconciliation_date, period_start, period_end, opening_balance, cash_in, cash_out, expected_closing, actual_counted, variance, variance_reason, notes, status, prepared_by, approved_by",
+        )
+        .eq("business_unit_id", businessUnitId)
+        .eq("period_start", input.from)
+        .eq("period_end", input.to)
+        .neq("status", "VOID")
+        .maybeSingle(),
+      supabase
+        .from("sm_petty_cash_funds")
+        .select("id")
+        .eq("business_unit_id", businessUnitId)
+        .eq("status", "ACTIVE")
+        .maybeSingle(),
+    ]);
+    if (reconRes.error) mapDbError(reconRes.error);
     if (fundRes.error) mapDbError(fundRes.error);
+    const data = reconRes.data;
     let petty = 0;
     if (fundRes.data?.id) {
       const { data: pettyBalance, error: pettyError } = await supabase.rpc("sm_petty_cash_balance", {
@@ -1647,16 +1523,3 @@ export async function approveBankReconciliationAction(id: string) {
   }
 }
 
-export async function getReconciliationReportStripAction(input: { from: string; to: string }) {
-  const overview = await getReconciliationOverviewAction(input);
-  if (!overview.ok) return overview;
-  return {
-    ok: true as const,
-    cards: overview.cards.map((card) => ({
-      title: card.title,
-      statusLabel: card.statusLabel,
-      detail: card.detail,
-      href: card.href,
-    })),
-  };
-}

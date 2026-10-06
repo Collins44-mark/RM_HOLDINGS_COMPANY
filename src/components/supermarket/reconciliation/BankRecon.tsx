@@ -20,7 +20,7 @@ import { formatTzs } from "@/lib/format/currency";
 import { moneyToCents } from "@/lib/supermarket/money";
 import type { BankAccountRecord, BankReconciliationRecord, BankTransactionRecord } from "@/lib/supermarket/reconciliation";
 import { displayStatus } from "@/lib/supermarket/reconciliation";
-import { MoneyField, primaryButton, reconGlass, ReconActions, secondaryButton, StatusBadge, useReconPeriod } from "./shared";
+import { MoneyField, primaryButton, reconGlass, ReconActions, ReconTableSkeletonRows, secondaryButton, StatusBadge, useReconPeriod } from "./shared";
 import { BankMovementsPage, BankingTabs } from "./BankMovements";
 
 export function BankingPage() {
@@ -44,6 +44,10 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [caps, setCaps] = useState({ canCreate: false, canApprove: false });
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const requestKey = `${accountId ?? ""}:${period.start}:${period.end}`;
+  const pending = loadedKey !== requestKey;
+  const ready = loadedKey !== null;
   const [accountForm, setAccountForm] = useState({ bankName: "", accountName: "", accountReference: "", openingBalance: "0.00" });
   const [line, setLine] = useState({ transactionDate: asOf, reference: "", description: "", debit: "0.00", credit: "0.00" });
 
@@ -62,6 +66,7 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
     setClosing(result.record?.statementClosingBalance ?? "0.00");
     setNotes(result.record?.notes ?? "");
     setCaps({ canCreate: result.capabilities.canCreate, canApprove: result.capabilities.canApprove });
+    setLoadedKey(`${result.accountId ?? ""}:${period.start}:${period.end}`);
   }
 
   useEffect(() => {
@@ -70,6 +75,7 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
       if (!active) return;
       if (!result.ok) {
         setError(result.error);
+        setLoadedKey(`${accountId ?? ""}:${period.start}:${period.end}`);
         return;
       }
       setError(null);
@@ -85,6 +91,7 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
       setClosing(result.record?.statementClosingBalance ?? "0.00");
       setNotes(result.record?.notes ?? "");
       setCaps({ canCreate: result.capabilities.canCreate, canApprove: result.capabilities.canApprove });
+      setLoadedKey(`${result.accountId ?? ""}:${period.start}:${period.end}`);
     });
     return () => {
       active = false;
@@ -250,7 +257,9 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
               </tr>
             </thead>
             <tbody>
-              {transactions.map((txn) => (
+              {pending && !ready ? <ReconTableSkeletonRows rows={5} cols={8} /> : null}
+              {ready
+                ? transactions.map((txn) => (
                 <tr key={txn.id} className="border-t border-black/[0.04]">
                   <td className="px-4 py-2.5">{txn.transactionDate}</td>
                   <td className="px-4 py-2.5">{txn.reference || "—"}</td>
@@ -279,11 +288,12 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
                     )}
                   </td>
                 </tr>
-              ))}
+              ))
+                : null}
             </tbody>
           </table>
         </div>
-        {transactions.length === 0 ? (
+        {ready && transactions.length === 0 ? (
           <div className="p-6">
             <EmptyState
               title="No bank transactions imported"

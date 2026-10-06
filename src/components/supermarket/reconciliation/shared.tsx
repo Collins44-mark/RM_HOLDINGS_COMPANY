@@ -21,6 +21,38 @@ export function useReconPeriod() {
   return { preset, setPreset, range, setRange, period, asOf };
 }
 
+export function ReconPulse({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn("inline-block h-3.5 animate-pulse rounded-md bg-slate-200/80", className)}
+      aria-hidden
+    />
+  );
+}
+
+export function ReconTableSkeletonRows({ rows = 5, cols }: { rows?: number; cols: number }) {
+  return (
+    <>
+      {Array.from({ length: rows }, (_, row) => (
+        <tr key={row} className="border-t border-black/[0.04]">
+          {Array.from({ length: cols }, (_, col) => (
+            <td key={col} className="px-4 py-3">
+              <ReconPulse className={col === 0 ? "w-[62%]" : "w-[44%]"} />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  );
+}
+
+export const RECON_OVERVIEW_SHELLS = [
+  { kind: "sales" as const, href: "/supermarket/sales/reconciliation", title: "Sales Reconciliation" },
+  { kind: "cash" as const, href: "/supermarket/finance/cash-reconciliation", title: "Cash Reconciliation" },
+  { kind: "stock" as const, href: "/supermarket/stock/reconciliation", title: "Stock Reconciliation" },
+  { kind: "bank" as const, href: "/supermarket/finance/bank-reconciliation", title: "Bank Reconciliation" },
+];
+
 export function StatusBadge({ label, tone }: { label: string; tone: "neutral" | "ok" | "variance" }) {
   const cls =
     tone === "ok"

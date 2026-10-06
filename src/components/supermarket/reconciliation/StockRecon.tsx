@@ -13,7 +13,7 @@ import { EmptyState } from "@/components/ui/PageHeader";
 import { formatTzs } from "@/lib/format/currency";
 import { moneyToCents } from "@/lib/supermarket/money";
 import { displayStatus, todayInDarEsSalaam, type StockReconciliationHeader, type StockReconciliationItem } from "@/lib/supermarket/reconciliation";
-import { reconGlass, ReconActions, StatusBadge } from "./shared";
+import { reconGlass, ReconActions, ReconTableSkeletonRows, StatusBadge } from "./shared";
 
 type DraftRow = { physical: string; reason: string; notes: string };
 
@@ -31,6 +31,10 @@ export function StockReconciliationPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [caps, setCaps] = useState({ canCreate: false, canApprove: false, canPost: false });
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const requestKey = `${date}:${categoryId}:${search}:${page}`;
+  const pending = loadedKey !== requestKey;
+  const ready = loadedKey !== null;
 
   useEffect(() => {
     let active = true;
@@ -43,6 +47,7 @@ export function StockReconciliationPage() {
       if (!active) return;
       if (!result.ok) {
         setError(result.error);
+        setLoadedKey(`${date}:${categoryId}:${search}:${page}`);
         return;
       }
       setError(null);
@@ -68,6 +73,7 @@ export function StockReconciliationPage() {
         }
         return next;
       });
+      setLoadedKey(`${date}:${categoryId}:${search}:${page}`);
     });
     return () => {
       active = false;
@@ -180,7 +186,9 @@ export function StockReconciliationPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => {
+              {pending && !ready ? <ReconTableSkeletonRows rows={5} cols={8} /> : null}
+              {!pending || ready
+                ? items.map((item) => {
                 const draft = drafts[item.productId] ?? { physical: "", reason: "", notes: "" };
                 const physical = draft.physical === "" ? null : Number.parseInt(draft.physical, 10);
                 const varianceQty = physical == null || Number.isNaN(physical) ? 0 : physical - item.systemQty;
@@ -220,11 +228,12 @@ export function StockReconciliationPage() {
                     </td>
                   </tr>
                 );
-              })}
+              })
+                : null}
             </tbody>
           </table>
         </div>
-        {items.length === 0 ? (
+        {ready && items.length === 0 ? (
           <div className="p-6">
             <EmptyState title="No stocktake started" description="Active products for this business unit will appear here. Empty inventory is not an error." />
           </div>

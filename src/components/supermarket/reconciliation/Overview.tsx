@@ -2,17 +2,25 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getReconciliationOverviewAction } from "@/actions/supermarket/reconciliation";
+import { getReconciliationOverviewAction } from "@/actions/supermarket/reconciliation-overview";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
-import { EmptyState } from "@/components/ui/PageHeader";
 import { cn } from "@/lib/cn";
 import type { ReconciliationOverviewCard } from "@/lib/supermarket/reconciliation";
-import { reconGlass, StatusBadge, useReconPeriod } from "./shared";
+import {
+  RECON_OVERVIEW_SHELLS,
+  reconGlass,
+  ReconPulse,
+  StatusBadge,
+  useReconPeriod,
+} from "./shared";
 
 export function ReconciliationOverview() {
   const { preset, setPreset, range, setRange, period } = useReconPeriod();
   const [cards, setCards] = useState<ReconciliationOverviewCard[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const periodKey = `${period.start}:${period.end}`;
+  const pending = loadedKey !== periodKey;
 
   useEffect(() => {
     let active = true;
@@ -20,11 +28,12 @@ export function ReconciliationOverview() {
       if (!active) return;
       if (!result.ok) {
         setError(result.error);
-        setCards([]);
+        setLoadedKey(`${period.start}:${period.end}`);
         return;
       }
       setError(null);
       setCards(result.cards);
+      setLoadedKey(`${period.start}:${period.end}`);
     });
     return () => {
       active = false;
@@ -55,27 +64,40 @@ export function ReconciliationOverview() {
       {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {(cards ?? []).map((card) => (
-          <Link
-            key={card.kind}
-            href={`${card.href}?from=${period.start}&to=${period.end}`}
-            className={cn(reconGlass, "block px-5 py-5 transition hover:-translate-y-0.5")}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">{card.title}</h2>
-              <StatusBadge label={card.statusLabel} tone={card.tone} />
-            </div>
-            <p className="mt-3 text-[13px] leading-5 text-slate-500">{card.detail}</p>
-          </Link>
-        ))}
+        {RECON_OVERVIEW_SHELLS.map((shell) => {
+          const card = cards?.find((item) => item.kind === shell.kind);
+          const showPulse = pending && !card;
+          return (
+            <Link
+              key={shell.kind}
+              href={`${shell.href}?from=${period.start}&to=${period.end}`}
+              className={cn(
+                reconGlass,
+                "block min-h-[118px] px-5 py-5 transition hover:-translate-y-0.5",
+                pending && card ? "opacity-80" : "opacity-100",
+              )}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">{shell.title}</h2>
+                {showPulse ? (
+                  <ReconPulse className="h-6 w-[88px] rounded-full" />
+                ) : (
+                  <StatusBadge label={card?.statusLabel ?? "Not Reconciled"} tone={card?.tone ?? "neutral"} />
+                )}
+              </div>
+              {showPulse ? (
+                <p className="mt-3">
+                  <ReconPulse className="h-4 w-[72%]" />
+                </p>
+              ) : (
+                <p className="mt-3 text-[13px] leading-5 text-slate-500">
+                  {card?.detail ?? "No reconciliation for this period"}
+                </p>
+              )}
+            </Link>
+          );
+        })}
       </section>
-
-      {cards && cards.length === 0 && !error ? (
-        <EmptyState
-          title="No reconciliation today"
-          description="Sales, cash, stock and bank controls appear here once you open a period and save a reconciliation from live supermarket records."
-        />
-      ) : null}
     </div>
   );
 }
