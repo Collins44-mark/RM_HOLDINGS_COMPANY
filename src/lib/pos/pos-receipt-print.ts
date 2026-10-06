@@ -115,6 +115,15 @@ function invoiceLabel(sale: PosCompletedSale) {
 
 function paymentLines(sale: PosCompletedSale) {
   const lines: { label: string; value: string }[] = [{ label: "Payment", value: asText(sale.payment) }];
+  if (sale.allocations?.length) {
+    for (const row of sale.allocations) {
+      lines.push({
+        label: row.provider ? `${row.method} · ${row.provider}` : row.method,
+        value: formatTzs(asAmount(row.amount)),
+      });
+    }
+    return lines;
+  }
   if (sale.payment === "Mobile Money") {
     lines.push({ label: "Provider", value: asText(sale.mobileProvider) });
   }

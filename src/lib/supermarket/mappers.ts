@@ -263,6 +263,7 @@ export function mapSale(
   items: SupermarketSale["items"],
   cashierName: string,
   paymentLabel: SupermarketSale["payment"],
+  payments: SupermarketSale["payments"] = [],
 ): SupermarketSale {
   const statusRaw = String(row.status ?? "COMPLETED").toUpperCase();
   const status: SupermarketSale["status"] =
@@ -282,6 +283,7 @@ export function mapSale(
     cashierId: row.cashier_id ? String(row.cashier_id) : null,
     customer: String(row.customer_name ?? "Walk-in Customer"),
     payment: paymentLabel,
+    payments,
     status,
     items,
     subtotal: num(row.subtotal),

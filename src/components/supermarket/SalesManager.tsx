@@ -7,7 +7,6 @@ import {
   Check,
   ChevronDown,
   Coins,
-  Download,
   FileText,
   MoreHorizontal,
   Package,
@@ -23,9 +22,7 @@ import {
 import { ComparisonIndicator } from "@/components/finance/ComparisonIndicator";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
-import { downloadSalesReportPdf } from "@/lib/data/supermarket-sales-report";
 import {
-  SALES_CASHIERS,
   filterSales,
   formatSalesDate,
   resolveSalesPeriod,
@@ -38,16 +35,17 @@ import {
   type SupermarketSale,
 } from "@/lib/data/sample-supermarket-sales";
 import { refreshSales, useSupermarketSales } from "@/lib/supermarket/client-stores";
+import { paymentLineLabel } from "@/lib/supermarket/pos-payments";
 import type { SupermarketSale as DbSale } from "@/lib/supermarket/types";
 
 function mapDbSale(sale: DbSale): SupermarketSale {
   const soldAt = sale.date;
-  const payment: SalesPayment =
-    sale.payment === "Bank" || sale.payment === "Mixed" ? "Cash" : sale.payment;
+  const payment: SalesPayment = sale.payment;
   const status: SalesStatus =
     sale.status === "Refunded" || sale.status === "Partial Refund" ? "Refunded" : "Completed";
+  const invoice = sale.invoiceNumber || sale.id;
   return {
-    id: sale.id,
+    id: invoice,
     soldAt,
     dateLabel: formatSalesDate(soldAt),
     timeLabel: soldAt.includes("T") ? soldAt.slice(11, 16) : "—",
@@ -55,6 +53,11 @@ function mapDbSale(sale: DbSale): SupermarketSale {
     cashier: sale.cashier,
     store: "Main Store",
     payment,
+    paymentLines: (sale.payments ?? []).map((line) => ({
+      method: line.method,
+      amount: line.amount,
+      provider: line.provider,
+    })),
     itemsCount: sale.items.reduce((sum, item) => sum + item.quantity, 0),
     amount: sale.total,
     status,
@@ -72,6 +75,7 @@ const glass =
   "rounded-[24px] border border-white/65 bg-white/76 shadow-[0_10px_28px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-xl";
 const filterClass =
   "h-10 w-full min-w-0 rounded-full border border-white/75 bg-white/88 px-3.5 text-[13px] text-navy shadow-[0_6px_18px_rgba(15,35,64,0.06),inset_0_1px_0_rgba(255,255,255,0.95)] outline-none backdrop-blur-xl transition duration-200 focus:border-white focus:bg-white";
+const selectFilterClass = cn(filterClass, "appearance-none pr-9");
 const tableHead =
   "bg-[#eef3f8]/80 text-[10.5px] font-medium uppercase tracking-[0.14em] text-slate-400";
 
@@ -352,7 +356,6 @@ export function SalesManager() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [fullDetails, setFullDetails] = useState(false);
-  const [exporting, setExporting] = useState(false);
 
   const period = useMemo(() => {
     const asOf = new Date().toISOString().slice(0, 10);
@@ -368,6 +371,10 @@ export function SalesManager() {
   const liveSales = useMemo(
     () => salesState.sales.map(mapDbSale),
     [salesState.sales],
+  );
+  const cashiers = useMemo(
+    () => ["all", ...[...new Set(liveSales.map((sale) => sale.cashier).filter(Boolean))].sort()],
+    [liveSales],
   );
 
   const filtered = useMemo(
@@ -413,30 +420,6 @@ export function SalesManager() {
     setDetailsOpen(false);
     setSelectedId(null);
     setFullDetails(false);
-  }
-
-  function exportReport() {
-    if (exporting) return;
-    setExporting(true);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        try {
-          downloadSalesReportPdf({
-            sales: filtered,
-            periodLabel: periodPreset === "range" ? "Date Range" : period.label,
-            periodDates:
-              period.start === period.end
-                ? formatSalesDate(period.start)
-                : `${formatSalesDate(period.start)} - ${formatSalesDate(period.end)}`,
-            cashierLabel: cashier === "all" ? "All Cashiers" : cashier,
-            paymentLabel: payment === "all" ? "All Payment Methods" : payment,
-            statusLabel: status === "all" ? "All Status" : status,
-          });
-        } finally {
-          setExporting(false);
-        }
-      });
-    });
   }
 
   function printSale(sale: SupermarketSale) {
@@ -496,36 +479,50 @@ export function SalesManager() {
           onPreset={setPeriodPreset}
           onRange={setCustomRange}
         />
-        <select
-          value={cashier}
-          onChange={(event) => setCashier(event.target.value)}
-          className={cn(filterClass, "lg:w-auto lg:basis-[10.5rem]")}
-        >
-          {SALES_CASHIERS.map((item) => (
-            <option key={item} value={item}>
-              {item === "all" ? "All Cashiers" : item}
-            </option>
-          ))}
-        </select>
-        <select
-          value={payment}
-          onChange={(event) => setPayment(event.target.value as "all" | SalesPayment)}
-          className={cn(filterClass, "lg:w-auto lg:basis-[13.5rem]")}
-        >
-          <option value="all">All Payment Methods</option>
-          <option value="Cash">Cash</option>
-          <option value="Mobile Money">Mobile Money</option>
-          <option value="Card">Card</option>
-        </select>
-        <select
-          value={status}
-          onChange={(event) => setStatus(event.target.value as "all" | SalesStatus)}
-          className={cn(filterClass, "lg:w-auto lg:basis-[10rem]")}
-        >
-          <option value="all">All Status</option>
-          <option value="Completed">Completed</option>
-          <option value="Refunded">Refunded</option>
-        </select>
+        <label className="relative min-w-0 lg:w-auto lg:basis-[10.5rem]">
+          <span className="sr-only">Cashier</span>
+          <select
+            value={cashier}
+            onChange={(event) => setCashier(event.target.value)}
+            className={cn(selectFilterClass, "lg:w-auto")}
+          >
+            {cashiers.map((item) => (
+              <option key={item} value={item}>
+                {item === "all" ? "All Cashiers" : item}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={2} />
+        </label>
+        <label className="relative min-w-0 lg:w-auto lg:basis-[13.5rem]">
+          <span className="sr-only">Payment method</span>
+          <select
+            value={payment}
+            onChange={(event) => setPayment(event.target.value as "all" | SalesPayment)}
+            className={cn(selectFilterClass, "lg:w-auto")}
+          >
+            <option value="all">All Payment Methods</option>
+            <option value="Cash">Cash</option>
+            <option value="Mobile Money">Mobile Money</option>
+            <option value="Card">Card</option>
+            <option value="Bank">Bank</option>
+            <option value="Mixed">Mixed</option>
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={2} />
+        </label>
+        <label className="relative min-w-0 lg:w-auto lg:basis-[10rem]">
+          <span className="sr-only">Status</span>
+          <select
+            value={status}
+            onChange={(event) => setStatus(event.target.value as "all" | SalesStatus)}
+            className={cn(selectFilterClass, "lg:w-auto")}
+          >
+            <option value="all">All Status</option>
+            <option value="Completed">Completed</option>
+            <option value="Refunded">Refunded</option>
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={2} />
+        </label>
         <label className="relative block min-w-0 flex-1 lg:basis-[min(100%,16rem)]">
           <span className="sr-only">Search sales</span>
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
@@ -536,15 +533,6 @@ export function SalesManager() {
             className={cn(filterClass, "pl-10")}
           />
         </label>
-        <button
-          type="button"
-          onClick={exportReport}
-          disabled={exporting}
-          className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_8px_18px_rgba(11,34,68,0.18)] transition duration-200 hover:bg-[#102a52] disabled:opacity-70"
-        >
-          <Download className="h-4 w-4" strokeWidth={2.1} />
-          {exporting ? "Preparing PDF..." : "Export"}
-        </button>
       </section>
 
       <section
@@ -901,7 +889,25 @@ function SaleDetails({
             <DetailRow icon={UserRound} label="Cashier" value={sale.cashier} />
             <DetailRow icon={Store} label="Store" value={sale.store} />
           </div>
-          <DetailRow icon={Wallet} label="Payment Method" value={sale.payment} />
+          <DetailRow
+            icon={Wallet}
+            label="Payment Method"
+            value={
+              sale.paymentLines && sale.paymentLines.length > 1
+                ? "Mixed"
+                : paymentLineLabel(sale.paymentLines?.[0]?.method ?? sale.payment, sale.paymentLines?.[0]?.provider)
+            }
+          />
+          {sale.paymentLines && sale.paymentLines.length > 0 ? (
+            <div className="rounded-[14px] border border-white/70 bg-white/45 px-3 py-2.5">
+              {sale.paymentLines.map((line, index) => (
+                <div key={`${line.method}-${index}`} className="flex items-center justify-between gap-3 py-0.5 text-[13px]">
+                  <span className="text-slate-500">{paymentLineLabel(line.method, line.provider)}</span>
+                  <span className="font-medium text-navy">{formatTzs(line.amount)}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-5">
@@ -1257,7 +1263,11 @@ function receiptMarkup(sale: SupermarketSale) {
     </head><body>
     <h1>Receipt #${sale.id}</h1>
     <p>${sale.dateLabel} ${sale.timeLabel} · ${sale.status}</p>
-    <p>Customer: ${sale.customer}<br>Cashier: ${sale.cashier}<br>Payment: ${sale.payment}</p>
+    <p>Customer: ${sale.customer}<br>Cashier: ${sale.cashier}<br>Payment: ${
+      sale.paymentLines?.length
+        ? sale.paymentLines.map((line) => `${line.provider ? `${line.method} · ${line.provider}` : line.method} ${formatTzs(line.amount)}`).join("; ")
+        : sale.payment
+    }</p>
     <table>${rows}</table>
     <p><strong>Total ${formatTzs(saleTotal(sale))}</strong></p>
     </body></html>`;

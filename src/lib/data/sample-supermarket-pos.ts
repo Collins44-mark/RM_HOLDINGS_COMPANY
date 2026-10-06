@@ -22,25 +22,10 @@ export const POS_CATEGORIES = [
 ] as const;
 
 export type PosCategory = (typeof POS_CATEGORIES)[number];
-export type PosPaymentMethod = "Cash" | "Mobile Money" | "Card" | "Mixed";
-export type PosMobileProvider = "M-Pesa" | "Airtel Money" | "Tigo Pesa" | "Halopesa";
+export type PosPaymentMethod = "Cash" | "Mobile Money" | "Card" | "Bank" | "Mixed";
+export type PosMobileProvider = string;
 
-export const POS_PAYMENT_METHODS: PosPaymentMethod[] = ["Cash", "Mobile Money", "Card", "Mixed"];
-export const POS_MOBILE_PROVIDERS: PosMobileProvider[] = [
-  "M-Pesa",
-  "Airtel Money",
-  "Tigo Pesa",
-  "Halopesa",
-];
-
-export const POS_CUSTOMERS = [
-  "Walk-in Customer",
-  "Mary N.",
-  "Amina S.",
-  "Peter M.",
-  "Grace K.",
-  "David R.",
-] as const;
+export const POS_PAYMENT_METHODS: PosPaymentMethod[] = ["Cash", "Mobile Money", "Card", "Bank", "Mixed"];
 
 export type PosProduct = {
   id: string;
@@ -84,6 +69,7 @@ export type PosCompletedSale = {
   cardAmount?: number;
   mixedCash?: number;
   mixedMobile?: number;
+  allocations?: { method: string; amount: number; provider?: string }[];
 };
 
 export type PosHeldSale = {
@@ -101,6 +87,13 @@ export type PosHeldSale = {
   cardConfirmed: boolean;
   mixedCash: string;
   mixedMobile: string;
+  allocations: {
+    key: string;
+    method: "Cash" | "Mobile Money" | "Card" | "Bank";
+    amount: string;
+    provider: string;
+    bankAccountId: string;
+  }[];
 };
 
 export const POS_PRODUCTS: PosProduct[] = [
@@ -235,6 +228,7 @@ export function createCompletedSaleSnapshot(input: {
   cardAmount: number;
   mixedCash: number;
   mixedMobile: number;
+  allocations?: { method: string; amount: number; provider?: string }[];
 }): PosCompletedSale {
   const items = input.items.map((item) => ({ ...item }));
   const sale: PosCompletedSale = {
@@ -267,6 +261,7 @@ export function createCompletedSaleSnapshot(input: {
     sale.mixedCash = input.mixedCash;
     sale.mixedMobile = input.mixedMobile;
   }
+  if (input.allocations?.length) sale.allocations = input.allocations;
 
   return sale;
 }

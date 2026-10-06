@@ -70,7 +70,7 @@ export async function fetchSalesReportAction(
         supabase
           .from("sm_sales")
           .select(
-            "id, invoice_number, sale_date, cashier_id, customer_name, status, subtotal, discount, tax, total, cogs, sm_sale_items(id, product_id, quantity, unit_price, line_total, discount), sm_sale_payments(method, amount)",
+            "id, invoice_number, sale_date, cashier_id, customer_name, status, subtotal, discount, tax, total, cogs, sm_sale_items(id, product_id, quantity, unit_price, line_total, discount), sm_sale_payments(method, amount, provider)",
           )
           .eq("business_unit_id", businessUnitId)
           .gte("sale_date", fromIso)
@@ -119,10 +119,14 @@ export async function fetchSalesReportAction(
     const sales: SupermarketSale[] = [];
 
     for (const row of salesRows ?? []) {
-      const payments = (row.sm_sale_payments ?? []) as { method: string; amount: number }[];
-      const methods = [...new Set(payments.map((p) => paymentLabel(p.method)))];
-      const payment = (methods.length > 1 ? "Cash" : methods[0] ?? "Cash") as SupermarketSale["payment"];
-      if (paymentFilter && payment !== paymentFilter) continue;
+      const paymentRows = (row.sm_sale_payments ?? []) as { method: string; amount: number; provider?: string }[];
+      const uniqueMethods = [...new Set(paymentRows.map((p) => paymentLabel(p.method)))] as string[];
+      const payment = (uniqueMethods.length > 1 ? "Mixed" : uniqueMethods[0] ?? "Cash") as SupermarketSale["payment"];
+      if (paymentFilter === "Mixed") {
+        if (uniqueMethods.length < 2) continue;
+      } else if (paymentFilter && !uniqueMethods.includes(paymentFilter)) {
+        continue;
+      }
 
       const cashier = cashierName.get(row.cashier_id) ?? "Cashier";
       if (cashierFilter && cashier !== cashierFilter) continue;
@@ -139,10 +143,13 @@ export async function fetchSalesReportAction(
       itemsSold += saleItems;
       totalRevenue += amount;
 
-      const pay = paymentMap.get(payment) ?? { amount: 0, count: 0 };
-      pay.amount += amount;
-      pay.count += 1;
-      paymentMap.set(payment, pay);
+      for (const rowPayment of paymentRows) {
+        const methodName = paymentLabel(rowPayment.method);
+        const pay = paymentMap.get(methodName) ?? { amount: 0, count: 0 };
+        pay.amount += Number(rowPayment.amount) || 0;
+        pay.count += 1;
+        paymentMap.set(methodName, pay);
+      }
 
       const c = cashierMap.get(cashier) ?? { sales: 0, itemsSold: 0, revenue: 0 };
       c.sales += 1;
@@ -165,7 +172,7 @@ export async function fetchSalesReportAction(
       }
 
       sales.push({
-        id: row.id,
+        id: String(row.invoice_number ?? row.id),
         soldAt: String(row.sale_date),
         dateLabel: day,
         timeLabel: String(row.sale_date).includes("T") ? String(row.sale_date).slice(11, 16) : "—",

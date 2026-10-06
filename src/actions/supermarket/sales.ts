@@ -35,7 +35,8 @@ function paymentMethodToDb(method: string) {
   if (m === "MOBILE_MONEY" || m === "MOBILE") return "MOBILE_MONEY";
   if (m === "CARD") return "CARD";
   if (m === "BANK") return "BANK";
-  return "CASH";
+  if (m === "CASH") return "CASH";
+  return "";
 }
 
 function paymentMethodFromDb(method: string) {
@@ -70,6 +71,25 @@ export async function completeSaleAction(input: {
     if (!input.items.length) throw new SupermarketError("Cart is empty.", "VALIDATION");
     if (!input.payments.length) throw new SupermarketError("Add a payment.", "VALIDATION");
 
+    const payments = input.payments.map((payment) => {
+      const method = paymentMethodToDb(payment.method);
+      if (!method) throw new SupermarketError("Invalid payment method.", "VALIDATION");
+      const amount = Number(payment.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new SupermarketError("Each payment must have a positive amount.", "VALIDATION");
+      }
+      const provider = payment.provider?.trim() ?? "";
+      if (method === "MOBILE_MONEY" && !provider) {
+        throw new SupermarketError("Select a Mobile Money provider.", "VALIDATION");
+      }
+      return {
+        method,
+        amount,
+        provider,
+        reference: payment.reference?.trim() ?? "",
+      };
+    });
+
     const { data, error } = await supabase.rpc("sm_complete_sale", {
       p_items: input.items.map((item) => ({
         product_id: item.productId,
@@ -78,12 +98,7 @@ export async function completeSaleAction(input: {
         discount: item.discount ?? 0,
         promotion_id: item.promotionId ?? null,
       })),
-      p_payments: input.payments.map((p) => ({
-        method: paymentMethodToDb(p.method),
-        amount: p.amount,
-        provider: p.provider ?? "",
-        reference: p.reference ?? "",
-      })),
+      p_payments: payments,
       p_customer_name: input.customerName ?? "Walk-in Customer",
       p_discount: input.discount ?? 0,
       p_tax: 0,
@@ -116,6 +131,114 @@ export async function completeSaleAction(input: {
   }
 }
 
+const WALK_IN_CUSTOMER = "Walk-in Customer";
+
+export async function getPosCheckoutOptionsAction() {
+  try {
+    const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.sales.create");
+    const [customersRes, historyRes, providersRes, usedProvidersRes, banksRes] = await Promise.all([
+      supabase
+        .from("sm_pos_customers")
+        .select("id, name")
+        .eq("business_unit_id", businessUnitId)
+        .order("name")
+        .limit(200),
+      supabase
+        .from("sm_sales")
+        .select("customer_name")
+        .eq("business_unit_id", businessUnitId)
+        .neq("customer_name", WALK_IN_CUSTOMER)
+        .limit(400),
+      supabase
+        .from("sm_payment_providers")
+        .select("name")
+        .eq("business_unit_id", businessUnitId)
+        .eq("method", "MOBILE_MONEY")
+        .eq("is_active", true)
+        .order("name"),
+      supabase
+        .from("sm_sale_payments")
+        .select("provider")
+        .eq("method", "MOBILE_MONEY")
+        .neq("provider", "")
+        .limit(400),
+      supabase
+        .from("sm_bank_accounts")
+        .select("id, bank_name, account_name")
+        .eq("business_unit_id", businessUnitId)
+        .eq("is_active", true)
+        .order("bank_name"),
+    ]);
+    if (customersRes.error) mapDbError(customersRes.error);
+    if (historyRes.error) mapDbError(historyRes.error);
+    if (providersRes.error) mapDbError(providersRes.error);
+    if (usedProvidersRes.error) mapDbError(usedProvidersRes.error);
+    if (banksRes.error) mapDbError(banksRes.error);
+
+    const names = new Set<string>();
+    for (const row of customersRes.data ?? []) {
+      const name = String(row.name ?? "").trim();
+      if (name && name !== WALK_IN_CUSTOMER) names.add(name);
+    }
+    for (const row of historyRes.data ?? []) {
+      const name = String(row.customer_name ?? "").trim();
+      if (name && name !== WALK_IN_CUSTOMER) names.add(name);
+    }
+
+    const providers = new Set<string>();
+    for (const row of providersRes.data ?? []) {
+      const name = String(row.name ?? "").trim();
+      if (name) providers.add(name);
+    }
+    for (const row of usedProvidersRes.data ?? []) {
+      const name = String(row.provider ?? "").trim();
+      if (name) providers.add(name);
+    }
+
+    return {
+      ok: true as const,
+      customers: [...names].sort((a, b) => a.localeCompare(b)),
+      mobileProviders: [...providers].sort((a, b) => a.localeCompare(b)),
+      bankAccounts: (banksRes.data ?? []).map((row) => ({
+        id: String(row.id),
+        label: `${String(row.bank_name)} — ${String(row.account_name)}`,
+      })),
+    };
+  } catch (error) {
+    return { ok: false as const, error: actionErrorMessage(error) };
+  }
+}
+
+export async function createPosCustomerAction(input: { name: string; phone?: string }) {
+  try {
+    const { supabase, businessUnitId, userId } = await requireSupermarketPermission("supermarket.sales.create");
+    const name = input.name.trim();
+    if (!name) throw new SupermarketError("Enter a customer name.", "VALIDATION");
+    if (name.toLowerCase() === WALK_IN_CUSTOMER.toLowerCase()) {
+      throw new SupermarketError("Walk-in Customer is already available.", "VALIDATION");
+    }
+    const { data, error } = await supabase
+      .from("sm_pos_customers")
+      .insert({
+        business_unit_id: businessUnitId,
+        name,
+        phone: input.phone?.trim() ?? "",
+        created_by: userId,
+      })
+      .select("name")
+      .maybeSingle();
+    if (error) {
+      if (error.code === "23505") {
+        return { ok: true as const, name };
+      }
+      mapDbError(error);
+    }
+    return { ok: true as const, name: String(data?.name ?? name) };
+  } catch (error) {
+    return { ok: false as const, error: actionErrorMessage(error) };
+  }
+}
+
 export async function listSalesAction(input?: {
   from?: string;
   to?: string;
@@ -130,7 +253,7 @@ export async function listSalesAction(input?: {
     let query = supabase
       .from("sm_sales")
       .select(
-        "id, invoice_number, sale_date, cashier_id, customer_name, status, subtotal, discount, tax, total, cogs, sm_sale_items(id, product_id, quantity, unit_price, line_total), sm_sale_payments(method, amount)",
+        "id, invoice_number, sale_date, cashier_id, customer_name, status, subtotal, discount, tax, total, cogs, sm_sale_items(id, product_id, quantity, unit_price, line_total), sm_sale_payments(method, amount, provider)",
         { count: "exact" },
       )
       .eq("business_unit_id", businessUnitId)
@@ -163,8 +286,14 @@ export async function listSalesAction(input?: {
     const productById = new Map((products ?? []).map((p) => [p.id, p.name]));
 
     const sales = (data ?? []).map((row) => {
-      const payments = (row.sm_sale_payments ?? []) as { method: string; amount: number }[];
-      const methods = [...new Set(payments.map((p) => paymentMethodFromDb(p.method)))];
+      const payments = ((row.sm_sale_payments ?? []) as { method: string; amount: number; provider?: string }[]).map(
+        (payment) => ({
+          method: paymentMethodFromDb(payment.method) as SupermarketSale["payments"][number]["method"],
+          amount: Number(payment.amount) || 0,
+          provider: String(payment.provider ?? "").trim(),
+        }),
+      );
+      const methods = [...new Set(payments.map((p) => p.method))];
       const paymentLabel = methods.length > 1 ? "Mixed" : methods[0] ?? "Cash";
       const items = ((row.sm_sale_items ?? []) as Record<string, unknown>[]).map((item) => ({
         id: String(item.id),
@@ -179,6 +308,7 @@ export async function listSalesAction(input?: {
         items,
         cashierById.get(row.cashier_id) ?? "Cashier",
         paymentLabel as SupermarketSale["payment"],
+        payments,
       );
     });
 

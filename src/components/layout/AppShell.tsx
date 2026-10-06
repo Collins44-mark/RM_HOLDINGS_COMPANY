@@ -31,7 +31,9 @@ export function AppShell({
   const pathname = usePathname();
   const sidebarWidth = collapsed ? SIDEBAR_WIDTH.collapsed : SIDEBAR_WIDTH.expanded;
   const isAddProductPage = pathname === "/supermarket/products/new";
-  const showFooter = pathname !== "/owner" && pathname !== "/dashboard" && !isAddProductPage;
+  const isPosPage = pathname === "/supermarket/pos";
+  const showFooter =
+    pathname !== "/owner" && pathname !== "/dashboard" && !isAddProductPage && !isPosPage;
   const t = useT();
   const { nav, workspace, moduleCode } = navigationForPath(user, pathname, businessUnits);
   const localizedNav = localizeNavItems(nav, t);

@@ -223,6 +223,12 @@ export type InventorySnapshot = {
 
 export type SalePaymentMethod = "Cash" | "Mobile Money" | "Card" | "Bank";
 
+export type SalePaymentLine = {
+  method: SalePaymentMethod;
+  amount: number;
+  provider: string;
+};
+
 export type SupermarketSale = {
   id: string;
   invoiceNumber: string;
@@ -231,6 +237,7 @@ export type SupermarketSale = {
   cashierId: string | null;
   customer: string;
   payment: SalePaymentMethod | "Mixed";
+  payments: SalePaymentLine[];
   status: "Completed" | "Refunded" | "Partial Refund" | "Void";
   items: {
     id: string;

@@ -18,7 +18,7 @@ export const SALES_PERIODS = [
 export type SalesPeriodId = (typeof SALES_PERIODS)[number]["id"];
 export type SalesPeriodPreset = "today" | "yesterday" | "week" | "month" | "year" | "range";
 export type SalesDateRange = { from: string; to: string };
-export type SalesPayment = "Cash" | "Mobile Money" | "Card";
+export type SalesPayment = "Cash" | "Mobile Money" | "Card" | "Bank" | "Mixed";
 export type SalesStatus = "Completed" | "Refunded";
 
 export type SaleLineItem = {
@@ -36,6 +36,7 @@ export type SupermarketSale = {
   cashier: string;
   store: string;
   payment: SalesPayment;
+  paymentLines?: { method: SalesPayment; amount: number; provider?: string }[];
   itemsCount: number;
   amount: number;
   status: SalesStatus;
@@ -426,7 +427,17 @@ export function filterSales(
     const day = saleDay(sale.soldAt);
     if (day < filters.start || day > filters.end) return false;
     if (filters.cashier !== "all" && sale.cashier !== filters.cashier) return false;
-    if (filters.payment !== "all" && sale.payment !== filters.payment) return false;
+    if (filters.payment !== "all") {
+      if (filters.payment === "Mixed") {
+        if ((sale.paymentLines?.length ?? 0) < 2 && sale.payment !== "Mixed") return false;
+      } else if (sale.paymentLines?.length) {
+        if (!sale.paymentLines.some((line) => line.method === filters.payment) && sale.payment !== filters.payment) {
+          return false;
+        }
+      } else if (sale.payment !== filters.payment) {
+        return false;
+      }
+    }
     if (filters.status !== "all" && sale.status !== filters.status) return false;
     if (!needle) return true;
     const haystack = [

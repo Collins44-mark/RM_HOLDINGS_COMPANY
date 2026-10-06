@@ -7,9 +7,11 @@ import {
   ArrowLeftRight,
   ArrowRight,
   Banknote,
+  Building2,
   Check,
   ChevronDown,
   CreditCard,
+  Loader2,
   Minus,
   MoreHorizontal,
   Pause,
@@ -23,8 +25,6 @@ import {
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import {
-  POS_CUSTOMERS,
-  POS_MOBILE_PROVIDERS,
   POS_PAYMENT_METHODS,
   createCompletedSaleSnapshot,
   exactBarcodeMatch,
@@ -38,12 +38,22 @@ import {
   type PosCartItem,
   type PosCompletedSale,
   type PosHeldSale,
-  type PosMobileProvider,
   type PosPaymentMethod,
   type PosProduct,
 } from "@/lib/data/sample-supermarket-pos";
+import {
+  allocatedTotal,
+  dbMethodFromPos,
+  newPosPaymentSplit,
+  splitAmount,
+  WALK_IN_CUSTOMER,
+  type PosCheckoutBankAccount,
+  type PosPaymentSplit,
+  type PosTenderMethod,
+} from "@/lib/supermarket/pos-payments";
 import { attachStock, rememberNewProductBarcode, useSupermarketInventory } from "@/lib/data/supermarket-inventory";
 import { completePosSale } from "@/lib/supermarket/client-stores";
+import { createPosCustomerAction, getPosCheckoutOptionsAction } from "@/actions/supermarket/sales";
 import { getApplicableTaxesAction } from "@/actions/supermarket/tax";
 import { taxLineLabel, type TaxPricingMode } from "@/lib/supermarket/tax";
 import { APP_TIMEZONE } from "@/lib/config/app";
@@ -76,6 +86,7 @@ const PAYMENT_META: Record<
   Cash: { icon: Banknote, label: "Cash" },
   "Mobile Money": { icon: Smartphone, label: "Mobile Money" },
   Card: { icon: CreditCard, label: "Card" },
+  Bank: { icon: Building2, label: "Bank" },
   Mixed: { icon: ArrowLeftRight, label: "Mixed" },
 };
 
@@ -108,17 +119,22 @@ export function PosManager() {
   const [scanNotice, setScanNotice] = useState("");
   const [category, setCategory] = useState<string>("all");
   const [items, setItems] = useState<PosCartItem[]>([]);
-  const [customers, setCustomers] = useState<string[]>([...POS_CUSTOMERS]);
-  const [customer, setCustomer] = useState("Walk-in Customer");
+  const [customers, setCustomers] = useState<string[]>([]);
+  const [customer, setCustomer] = useState(WALK_IN_CUSTOMER);
   const [discountPercent, setDiscountPercent] = useState(0);
   const [payment, setPayment] = useState<PosPaymentMethod>("Cash");
   const [cashReceived, setCashReceived] = useState("");
-  const [mobileProvider, setMobileProvider] = useState<PosMobileProvider>("M-Pesa");
+  const [mobileProvider, setMobileProvider] = useState("");
   const [mobileAmount, setMobileAmount] = useState("");
   const [cardAmount, setCardAmount] = useState("");
   const [cardConfirmed, setCardConfirmed] = useState(false);
-  const [mixedCash, setMixedCash] = useState("");
-  const [mixedMobile, setMixedMobile] = useState("");
+  const [bankAccountId, setBankAccountId] = useState("");
+  const [allocations, setAllocations] = useState<PosPaymentSplit[]>(() => [
+    newPosPaymentSplit("Cash"),
+    newPosPaymentSplit("Mobile Money"),
+  ]);
+  const [mobileProviders, setMobileProviders] = useState<string[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<PosCheckoutBankAccount[]>([]);
   const [heldSales, setHeldSales] = useState<PosHeldSale[]>([]);
   const [completed, setCompleted] = useState<PosCompletedSale | null>(null);
   const [saleError, setSaleError] = useState("");
@@ -140,10 +156,13 @@ export function PosManager() {
   const cashValue = parseMoneyInput(cashReceived);
   const mobilePaid = mobileAmount === "" ? totals.totalDue : parseMoneyInput(mobileAmount);
   const cardPaid = cardAmount === "" ? totals.totalDue : parseMoneyInput(cardAmount);
-  const mixedTotal = parseMoneyInput(mixedCash) + parseMoneyInput(mixedMobile);
+  const mixedTotal = allocatedTotal(allocations);
+  const remainingMix = Math.max(0, totals.totalDue - mixedTotal);
   const cashChange = cashValue - totals.totalDue;
+  const selectedBank = bankAccounts.find((account) => account.id === bankAccountId) ?? null;
   const invoiceLabel = completed?.invoice ?? formatInvoiceNumber(invoiceNumber);
   const stamp = completed?.soldAt ?? invoiceStamp;
+  const customerOptions = [WALK_IN_CUSTOMER, ...customers.filter((name) => name !== WALK_IN_CUSTOMER)];
 
   useEffect(() => {
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE }).format(new Date());
@@ -151,6 +170,14 @@ export function PosManager() {
       if (result.ok) {
         setTaxRates(result.lines.map((line) => ({ name: line.taxName, rate: line.taxRate, pricingMode: line.pricingMode })));
       }
+    });
+    void getPosCheckoutOptionsAction().then((result) => {
+      if (!result.ok) return;
+      setCustomers(result.customers);
+      setMobileProviders(result.mobileProviders);
+      setBankAccounts(result.bankAccounts);
+      setMobileProvider((current) => current || result.mobileProviders[0] || "");
+      setBankAccountId((current) => current || result.bankAccounts[0]?.id || "");
     });
   }, []);
 
@@ -175,11 +202,23 @@ export function PosManager() {
     if (payment === "Mobile Money" && mobilePaid !== totals.totalDue) {
       return "Mobile Money amount must equal Total Due.";
     }
+    if (payment === "Mobile Money" && !mobileProvider.trim()) return "Select a Mobile Money provider.";
+    if (payment === "Bank" && !bankAccountId) return "Select a bank account.";
     if (payment === "Card" && cardPaid !== totals.totalDue) return "Card amount must equal Total Due.";
     if (payment === "Card" && !cardConfirmed) return "Confirm card payment to complete this sale.";
-    if (payment === "Mixed" && mixedTotal !== totals.totalDue) return "Combined payment must equal Total Due.";
+    if (payment === "Mixed") {
+      const live = allocations.filter((row) => splitAmount(row) > 0);
+      if (live.length === 0) return "Add at least one payment amount.";
+      if (live.some((row) => row.method === "Mobile Money" && !row.provider.trim())) {
+        return "Select a Mobile Money provider for each mobile payment.";
+      }
+      if (live.some((row) => row.method === "Bank" && !row.bankAccountId)) {
+        return "Select a bank account for each bank payment.";
+      }
+      if (mixedTotal !== totals.totalDue) return "Allocated payments must equal Total Due.";
+    }
     return "";
-  }, [items.length, payment, cashValue, totals.totalDue, mobilePaid, cardPaid, cardConfirmed, mixedTotal]);
+  }, [items.length, payment, cashValue, totals.totalDue, mobilePaid, mobileProvider, cardPaid, cardConfirmed, mixedTotal, allocations, bankAccountId]);
 
   const canComplete = !completed && validation === "" && !completing;
 
@@ -219,8 +258,9 @@ export function PosManager() {
       mobileAmount,
       cardAmount,
       cardConfirmed,
-      mixedCash,
-      mixedMobile,
+      mixedCash: "",
+      mixedMobile: "",
+      allocations,
     };
   }
 
@@ -236,8 +276,7 @@ export function PosManager() {
     setMobileAmount(sale.mobileAmount);
     setCardAmount(sale.cardAmount);
     setCardConfirmed(sale.cardConfirmed);
-    setMixedCash(sale.mixedCash);
-    setMixedMobile(sale.mixedMobile);
+    setAllocations(sale.allocations?.length ? sale.allocations : [newPosPaymentSplit("Cash"), newPosPaymentSplit("Mobile Money")]);
     setCompleted(null);
   }
 
@@ -245,16 +284,16 @@ export function PosManager() {
     setInvoiceNumber(nextInvoice);
     setInvoiceStamp(new Date());
     setItems([]);
-    setCustomer("Walk-in Customer");
+    setCustomer(WALK_IN_CUSTOMER);
     setDiscountPercent(0);
     setPayment("Cash");
     setCashReceived("");
-    setMobileProvider("M-Pesa");
+    setMobileProvider(mobileProviders[0] ?? "");
     setMobileAmount("");
     setCardAmount("");
     setCardConfirmed(false);
-    setMixedCash("");
-    setMixedMobile("");
+    setBankAccountId(bankAccounts[0]?.id ?? "");
+    setAllocations([newPosPaymentSplit("Cash"), newPosPaymentSplit("Mobile Money")]);
     setCompleted(null);
     setQuery("");
     setCategory("all");
@@ -392,17 +431,29 @@ export function PosManager() {
     setCompleting(true);
     setSaleError("");
     const snapshotItems = items.map((item) => ({ ...item }));
+    const mixedRows = allocations.filter((row) => splitAmount(row) > 0);
     const payments =
       payment === "Mixed"
-        ? [
-            { method: "Cash", amount: parseMoneyInput(mixedCash) },
-            { method: "Mobile Money", amount: parseMoneyInput(mixedMobile), provider: mobileProvider },
-          ].filter((p) => p.amount > 0)
+        ? mixedRows.map((row) => ({
+            method: dbMethodFromPos(row.method),
+            amount: splitAmount(row),
+            provider: row.method === "Bank" ? bankAccounts.find((account) => account.id === row.bankAccountId)?.label ?? row.provider : row.provider,
+            reference: row.method === "Bank" ? row.bankAccountId : "",
+          }))
         : payment === "Mobile Money"
-          ? [{ method: "Mobile Money", amount: mobilePaid, provider: mobileProvider }]
+          ? [{ method: "MOBILE_MONEY", amount: mobilePaid, provider: mobileProvider }]
           : payment === "Card"
-            ? [{ method: "Card", amount: cardPaid }]
-            : [{ method: "Cash", amount: totals.totalDue }];
+            ? [{ method: "CARD", amount: cardPaid }]
+            : payment === "Bank"
+              ? [
+                  {
+                    method: "BANK",
+                    amount: totals.totalDue,
+                    provider: selectedBank?.label ?? "",
+                    reference: bankAccountId,
+                  },
+                ]
+              : [{ method: "CASH", amount: totals.totalDue }];
 
     const result = await completePosSale({
       customerName: customer,
@@ -438,8 +489,13 @@ export function PosManager() {
       change: cashChange,
       mobileAmount: mobilePaid,
       cardAmount: cardPaid,
-      mixedCash: parseMoneyInput(mixedCash),
-      mixedMobile: parseMoneyInput(mixedMobile),
+      mixedCash: mixedRows.filter((row) => row.method === "Cash").reduce((sum, row) => sum + splitAmount(row), 0),
+      mixedMobile: mixedRows.filter((row) => row.method === "Mobile Money").reduce((sum, row) => sum + splitAmount(row), 0),
+      allocations: mixedRows.map((row) => ({
+        method: row.method,
+        amount: splitAmount(row),
+        provider: row.method === "Bank" ? bankAccounts.find((account) => account.id === row.bankAccountId)?.label ?? row.provider : row.provider,
+      })),
     });
     setCompleted(sale);
     setInvoiceNumber((n) => n + 1);
@@ -502,11 +558,16 @@ export function PosManager() {
     }
   }
 
-  function addCustomer(name: string) {
+  async function addCustomer(name: string) {
     const next = name.trim();
     if (!next) return;
-    setCustomers((current) => (current.includes(next) ? current : [...current, next]));
-    setCustomer(next);
+    const result = await createPosCustomerAction({ name: next });
+    if (!result.ok) {
+      setSaleError(result.error);
+      return;
+    }
+    setCustomers((current) => (current.includes(result.name) ? current : [...current, result.name].sort((a, b) => a.localeCompare(b))));
+    setCustomer(result.name);
     setAddCustomerOpen(false);
   }
 
@@ -732,7 +793,7 @@ export function PosManager() {
                     onChange={(event) => setCustomer(event.target.value)}
                     className={cn(control, "appearance-none pl-10 pr-9")}
                   >
-                    {customers.map((item) => (
+                    {customerOptions.map((item) => (
                       <option key={item} value={item}>
                         {item}
                       </option>
@@ -829,7 +890,7 @@ export function PosManager() {
 
               <div className="mt-5">
                 <p className="text-[13px] font-semibold text-navy">Payment Method</p>
-                <div className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
                   {POS_PAYMENT_METHODS.map((method) => {
                     const Icon = PAYMENT_META[method].icon;
                     const active = payment === method;
@@ -840,6 +901,9 @@ export function PosManager() {
                         onClick={() => {
                           setPayment(method);
                           setCardConfirmed(false);
+                          if (method === "Mixed" && allocations.every((row) => splitAmount(row) === 0)) {
+                            setAllocations([newPosPaymentSplit("Cash"), newPosPaymentSplit("Mobile Money")]);
+                          }
                         }}
                         className={cn(
                           "inline-flex h-11 items-center justify-center gap-1.5 rounded-[14px] border text-[12px] font-medium transition duration-200",
@@ -878,24 +942,11 @@ export function PosManager() {
 
               {payment === "Mobile Money" ? (
                 <div className="mt-4 space-y-3 rounded-[16px] border border-white/80 bg-[#eef3f8]/70 p-3.5">
-                  <p className="text-[12px] font-medium text-slate-500">Provider</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {POS_MOBILE_PROVIDERS.map((provider) => (
-                      <button
-                        key={provider}
-                        type="button"
-                        onClick={() => setMobileProvider(provider)}
-                        className={cn(
-                          "h-9 rounded-[12px] border text-[12px] font-medium transition duration-200",
-                          mobileProvider === provider
-                            ? "border-[#0b2244] bg-[#0b2244] text-white"
-                            : "border-[#d8e1eb] bg-white text-navy hover:bg-white",
-                        )}
-                      >
-                        {provider}
-                      </button>
-                    ))}
-                  </div>
+                  <ProviderField
+                    value={mobileProvider}
+                    providers={mobileProviders}
+                    onChange={setMobileProvider}
+                  />
                   <MoneyField
                     id="mobile-amount"
                     label="Amount"
@@ -930,15 +981,123 @@ export function PosManager() {
                 </div>
               ) : null}
 
+              {payment === "Bank" ? (
+                <div className="mt-4 space-y-3 rounded-[16px] border border-white/80 bg-[#eef3f8]/70 p-3.5">
+                  <BankAccountField accounts={bankAccounts} value={bankAccountId} onChange={setBankAccountId} />
+                  <p className="text-[12.5px] text-slate-500">Amount due {formatTzs(totals.totalDue)}</p>
+                </div>
+              ) : null}
+
               {payment === "Mixed" ? (
                 <div className="mt-4 space-y-3 rounded-[16px] border border-white/80 bg-[#eef3f8]/70 p-3.5">
-                  <MoneyField id="mixed-cash" label="Cash" value={mixedCash} onChange={setMixedCash} />
-                  <MoneyField id="mixed-mobile" label="Mobile Money" value={mixedMobile} onChange={setMixedMobile} />
-                  <div className="flex items-center justify-between text-[13px]">
-                    <span className="text-slate-500">Total</span>
-                    <span className={cn("font-semibold", mixedTotal === totals.totalDue ? "text-navy" : "text-[#c24646]")}>
-                      {formatTzs(mixedTotal)}
-                    </span>
+                  <p className="text-[12px] font-medium text-slate-500">Payment Split</p>
+                  <div className="space-y-2.5">
+                    {allocations.map((row) => (
+                      <div key={row.key} className="rounded-[14px] border border-white/80 bg-white/80 p-2.5">
+                        <div className="flex items-start gap-2">
+                          <label className="relative min-w-0 flex-1">
+                            <span className="sr-only">Method</span>
+                            <select
+                              value={row.method}
+                              onChange={(event) => {
+                                const method = event.target.value as PosTenderMethod;
+                                setAllocations((current) =>
+                                  current.map((item) =>
+                                    item.key === row.key
+                                      ? {
+                                          ...item,
+                                          method,
+                                          provider: method === "Mobile Money" ? item.provider || mobileProviders[0] || "" : "",
+                                          bankAccountId: method === "Bank" ? item.bankAccountId || bankAccounts[0]?.id || "" : "",
+                                        }
+                                      : item,
+                                  ),
+                                );
+                              }}
+                              className={cn(control, "h-9 appearance-none pr-8 text-[12.5px]")}
+                            >
+                              {(["Cash", "Mobile Money", "Card", "Bank"] as const).map((method) => (
+                                <option key={method} value={method}>
+                                  {method}
+                                </option>
+                              ))}
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                          </label>
+                          <button
+                            type="button"
+                            disabled={allocations.length <= 1}
+                            onClick={() => setAllocations((current) => current.filter((item) => item.key !== row.key))}
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-[#f4f7fb] hover:text-navy disabled:opacity-30"
+                            aria-label="Remove payment"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" strokeWidth={1.9} />
+                          </button>
+                        </div>
+                        {row.method === "Mobile Money" ? (
+                          <div className="mt-2">
+                            <ProviderField
+                              value={row.provider}
+                              providers={mobileProviders}
+                              onChange={(provider) =>
+                                setAllocations((current) =>
+                                  current.map((item) => (item.key === row.key ? { ...item, provider } : item)),
+                                )
+                              }
+                            />
+                          </div>
+                        ) : null}
+                        {row.method === "Bank" ? (
+                          <div className="mt-2">
+                            <BankAccountField
+                              accounts={bankAccounts}
+                              value={row.bankAccountId}
+                              onChange={(bankAccountId) =>
+                                setAllocations((current) =>
+                                  current.map((item) => (item.key === row.key ? { ...item, bankAccountId } : item)),
+                                )
+                              }
+                            />
+                          </div>
+                        ) : null}
+                        <div className="mt-2">
+                          <MoneyField
+                            id={`split-${row.key}`}
+                            label="Amount"
+                            value={row.amount}
+                            onChange={(amount) =>
+                              setAllocations((current) =>
+                                current.map((item) => (item.key === row.key ? { ...item, amount } : item)),
+                              )
+                            }
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAllocations((current) => [...current, newPosPaymentSplit("Cash")])}
+                    className={cn(glassBtn, "h-9 w-full gap-1 text-[12.5px] font-medium")}
+                  >
+                    <Plus className="h-3.5 w-3.5" strokeWidth={2.2} />
+                    Add Payment
+                  </button>
+                  <div className="space-y-1.5 pt-1 text-[13px]">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Total Due</span>
+                      <span className="font-semibold text-navy">{formatTzs(totals.totalDue)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Allocated</span>
+                      <span className={cn("font-semibold", mixedTotal === totals.totalDue ? "text-navy" : "text-[#c24646]")}>
+                        {formatTzs(mixedTotal)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Remaining</span>
+                      <span className="font-semibold text-navy">{formatTzs(remainingMix)}</span>
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -953,26 +1112,13 @@ export function PosManager() {
                 onClick={completeSale}
                 className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-[16px] bg-[#0b2244] text-[14.5px] font-semibold text-white shadow-[0_12px_24px_rgba(11,34,68,0.2),inset_0_1px_0_rgba(255,255,255,0.12)] transition duration-200 hover:bg-[#102a52] hover:shadow-[0_14px_28px_rgba(11,34,68,0.24)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:shadow-[0_12px_24px_rgba(11,34,68,0.2)]"
               >
-                {completing ? "Processing sale..." : "Complete Sale"}
+                {completing ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} /> : null}
+                Complete Sale
                 {!completing ? <ArrowRight className="h-4 w-4" strokeWidth={2.2} /> : null}
               </button>
             </>
           )}
         </section>
-      </div>
-
-      <div className="flex flex-col gap-2 px-1 pb-1 text-[12px] text-slate-400 sm:flex-row sm:items-center sm:justify-between">
-        <p className="flex flex-wrap gap-x-4 gap-y-1">
-          <span><kbd className="font-medium text-slate-500">⌘</kbd> N New Sale</span>
-          <span><kbd className="font-medium text-slate-500">⌘</kbd> F Focus Search</span>
-          <span><kbd className="font-medium text-slate-500">⌘</kbd> H Hold Sale</span>
-        </p>
-        <p className="inline-flex items-center gap-2">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#1f8a4c]" />
-          Online
-          <span className="text-slate-300">·</span>
-          Main Store
-        </p>
       </div>
     </div>
   );
@@ -1003,6 +1149,78 @@ function MoneyField({
           className="h-full w-full bg-transparent text-[13.5px] text-navy outline-none"
         />
       </span>
+    </label>
+  );
+}
+
+function ProviderField({
+  value,
+  providers,
+  onChange,
+}: {
+  value: string;
+  providers: string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="relative block">
+      <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Provider</span>
+      {providers.length > 0 ? (
+        <>
+          <select
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            className={cn(control, "appearance-none pr-9")}
+          >
+            <option value="">Select provider</option>
+            {providers.map((provider) => (
+              <option key={provider} value={provider}>
+                {provider}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3.5 bottom-3.5 h-4 w-4 text-slate-400" strokeWidth={2} />
+        </>
+      ) : (
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="Provider name"
+          className={control}
+        />
+      )}
+    </label>
+  );
+}
+
+function BankAccountField({
+  accounts,
+  value,
+  onChange,
+}: {
+  accounts: PosCheckoutBankAccount[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  if (accounts.length === 0) {
+    return <p className="text-[12.5px] text-slate-500">No bank accounts are configured.</p>;
+  }
+  return (
+    <label className="relative block">
+      <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Bank account</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={cn(control, "appearance-none pr-9")}
+      >
+        <option value="">Select account</option>
+        {accounts.map((account) => (
+          <option key={account.id} value={account.id}>
+            {account.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-3.5 bottom-3.5 h-4 w-4 text-slate-400" strokeWidth={2} />
     </label>
   );
 }
@@ -1065,15 +1283,22 @@ function CartRow({
   );
 }
 
-function AddCustomerForm({ onAdd, onCancel }: { onAdd: (name: string) => void; onCancel: () => void }) {
+function AddCustomerForm({ onAdd, onCancel }: { onAdd: (name: string) => Promise<void> | void; onCancel: () => void }) {
   const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
   return (
     <form
       className="mt-2 rounded-[16px] border border-[#e6edf4] bg-[#f8fafc] p-3"
-      onSubmit={(event) => {
+      onSubmit={async (event) => {
         event.preventDefault();
-        onAdd(name);
-        setName("");
+        if (saving) return;
+        setSaving(true);
+        try {
+          await onAdd(name);
+          setName("");
+        } finally {
+          setSaving(false);
+        }
       }}
     >
       <label className="block">
@@ -1082,7 +1307,7 @@ function AddCustomerForm({ onAdd, onCancel }: { onAdd: (name: string) => void; o
           autoFocus
           value={name}
           onChange={(event) => setName(event.target.value)}
-          placeholder="e.g. Asha M."
+          placeholder="Customer name"
           className={control}
         />
       </label>
@@ -1090,7 +1315,8 @@ function AddCustomerForm({ onAdd, onCancel }: { onAdd: (name: string) => void; o
         <button type="button" onClick={onCancel} className="h-8 rounded-full px-3 text-[12.5px] font-medium text-slate-500 hover:text-navy">
           Cancel
         </button>
-        <button type="submit" className="h-8 rounded-full bg-[#0b2244] px-3.5 text-[12.5px] font-medium text-white">
+        <button type="submit" disabled={saving} className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#0b2244] px-3.5 text-[12.5px] font-medium text-white disabled:opacity-60">
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.2} /> : null}
           Add
         </button>
       </div>
