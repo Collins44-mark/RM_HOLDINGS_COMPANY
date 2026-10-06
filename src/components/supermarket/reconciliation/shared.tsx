@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   resolveSalesPeriod,
@@ -105,29 +106,33 @@ export function ReconActions({
         ? "Submitted ✓"
         : feedback === "approved"
           ? "Approved ✓"
-          : feedback === "posted"
+          : feedback === "posted" || status === "POSTED"
             ? "Posted ✓"
             : null;
   return (
     <div className="flex flex-wrap items-center gap-2">
       {canCreate && !locked ? (
         <button type="button" className={secondaryButton} disabled={mutating} onClick={onSave}>
-          {current === "save" ? "Saving" : "Save Draft"}
+          {current === "save" ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : null}
+          Save Draft
         </button>
       ) : null}
       {canCreate && !locked && status !== "SUBMITTED" ? (
         <button type="button" className={primaryButton} disabled={mutating} onClick={onSubmit}>
-          {current === "submit" ? "Submitting" : "Submit"}
+          {current === "submit" ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : null}
+          Submit
         </button>
       ) : null}
       {canApprove && status === "SUBMITTED" ? (
         <button type="button" className={primaryButton} disabled={mutating} onClick={onApprove}>
-          {current === "approve" ? "Approving" : "Approve"}
+          {current === "approve" ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : null}
+          Approve
         </button>
       ) : null}
       {canPost && status === "APPROVED" && onPost ? (
         <button type="button" className={primaryButton} disabled={mutating} onClick={onPost}>
-          {current === "post" ? "Posting" : "Post to stock"}
+          {current === "post" ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : null}
+          Post to stock
         </button>
       ) : null}
       {note ? (

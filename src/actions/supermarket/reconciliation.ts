@@ -78,6 +78,12 @@ function assertEditable(status: string) {
   }
 }
 
+function assertStocktakeMutable(status: string) {
+  if (status === "SUBMITTED" || status === "APPROVED" || status === "POSTED" || status === "VOID") {
+    throw new SupermarketError("This stocktake can no longer be edited.", "CONFLICT");
+  }
+}
+
 async function assertReconSod(ctx: Ctx, preparedBy: string | null) {
   const sod = await loadSodControls(ctx.supabase, ctx.businessUnitId);
   assertNoSelfApproval({
@@ -626,20 +632,9 @@ export async function getStockReconciliationWorkspaceAction(input: {
     const page = Math.max(1, input.page ?? 1);
     const from = (page - 1) * STOCKTAKE_PAGE_SIZE;
     const to = from + STOCKTAKE_PAGE_SIZE - 1;
-    let productsQuery = supabase
-      .from("sm_products")
-      .select("id, name, sku, buying_price, category_id", { count: "exact" })
-      .eq("business_unit_id", businessUnitId)
-      .eq("is_active", true)
-      .order("name")
-      .range(from, to);
-    if (input.categoryId) productsQuery = productsQuery.eq("category_id", input.categoryId);
-    if (input.search?.trim()) {
-      const q = input.search.trim().replace(/[%(),]/g, "");
-      if (q) productsQuery = productsQuery.or(`name.ilike.%${q}%,sku.ilike.%${q}%`);
-    }
-    const [productsRes, categoriesRes, headerRes] = await Promise.all([
-      productsQuery,
+    const search = input.search?.trim().replace(/[%(),]/g, "") ?? "";
+
+    const [categoriesRes, headerRes] = await Promise.all([
       supabase
         .from("sm_categories")
         .select("id, name")
@@ -656,13 +651,98 @@ export async function getStockReconciliationWorkspaceAction(input: {
         .neq("status", "VOID")
         .maybeSingle(),
     ]);
-    if (productsRes.error) mapDbError(productsRes.error);
     if (categoriesRes.error) mapDbError(categoriesRes.error);
     if (headerRes.error) mapDbError(headerRes.error);
 
+    const header: StockReconciliationHeader | null = headerRes.data
+      ? {
+          id: String(headerRes.data.id),
+          stocktakeDate: String(headerRes.data.stocktake_date),
+          categoryId: headerRes.data.category_id ? String(headerRes.data.category_id) : null,
+          notes: String(headerRes.data.notes ?? ""),
+          status: asStatus(headerRes.data.status),
+          varianceCount: Number(headerRes.data.variance_count || 0),
+          varianceValue: centsToMoney(moneyToCents(headerRes.data.variance_value)),
+          preparedBy: headerRes.data.prepared_by ? String(headerRes.data.prepared_by) : null,
+          approvedBy: headerRes.data.approved_by ? String(headerRes.data.approved_by) : null,
+          postedAt: headerRes.data.posted_at ? String(headerRes.data.posted_at) : null,
+        }
+      : null;
+    const frozen = Boolean(header && header.status !== "DRAFT");
+    const capabilities = await capabilitiesFor("stock_reconciliation");
+    const categories = (categoriesRes.data ?? []).map((row) => ({ id: String(row.id), name: String(row.name) }));
+
+    if (frozen && header) {
+      const { data: savedRows, error: itemsError } = await supabase
+        .from("sm_stock_reconciliation_items")
+        .select(
+          "id, product_id, system_qty, physical_qty, variance_qty, unit_cost, variance_value, reason, notes, posted_adjustment_id",
+        )
+        .eq("reconciliation_id", header.id);
+      if (itemsError) mapDbError(itemsError);
+      const saved = savedRows ?? [];
+      const ids = [...new Set(saved.map((row) => String(row.product_id)))];
+      const { data: productRows, error: productError } = ids.length
+        ? await supabase
+            .from("sm_products")
+            .select("id, name, sku, buying_price, category_id")
+            .eq("business_unit_id", businessUnitId)
+            .in("id", ids)
+        : { data: [], error: null };
+      if (productError) mapDbError(productError);
+      const productsById = new Map((productRows ?? []).map((row) => [String(row.id), row]));
+      const filtered: StockReconciliationItem[] = [];
+      for (const row of saved) {
+        const product = productsById.get(String(row.product_id));
+        if (!product) continue;
+        if (input.categoryId && String(product.category_id ?? "") !== input.categoryId) continue;
+        if (search) {
+          const hay = `${product.name} ${product.sku ?? ""}`.toLowerCase();
+          if (!hay.includes(search.toLowerCase())) continue;
+        }
+        const physicalQty =
+          row.physical_qty == null || row.physical_qty === "" ? null : Number(row.physical_qty);
+        filtered.push({
+          id: String(row.id),
+          productId: String(row.product_id),
+          name: String(product.name),
+          sku: String(product.sku ?? ""),
+          systemQty: Number(row.system_qty || 0),
+          physicalQty,
+          varianceQty: Number(row.variance_qty || 0),
+          unitCost: centsToMoney(moneyToCents(row.unit_cost)),
+          varianceValue: centsToMoney(moneyToCents(row.variance_value)),
+          reason: String(row.reason ?? ""),
+          notes: String(row.notes ?? ""),
+          postedAdjustmentId: row.posted_adjustment_id ? String(row.posted_adjustment_id) : null,
+        });
+      }
+      filtered.sort((a, b) => a.name.localeCompare(b.name));
+      return {
+        ok: true as const,
+        header,
+        items: filtered.slice(from, to + 1),
+        page,
+        pageSize: STOCKTAKE_PAGE_SIZE,
+        total: filtered.length,
+        categories,
+        capabilities,
+      };
+    }
+
+    let productsQuery = supabase
+      .from("sm_products")
+      .select("id, name, sku, buying_price, category_id", { count: "exact" })
+      .eq("business_unit_id", businessUnitId)
+      .eq("is_active", true)
+      .order("name")
+      .range(from, to);
+    if (input.categoryId) productsQuery = productsQuery.eq("category_id", input.categoryId);
+    if (search) productsQuery = productsQuery.or(`name.ilike.%${search}%,sku.ilike.%${search}%`);
+    const productsRes = await productsQuery;
+    if (productsRes.error) mapDbError(productsRes.error);
     const products = productsRes.data ?? [];
     const productIds = products.map((row) => String(row.id));
-    const frozen = headerRes.data && asStatus(headerRes.data.status) !== "DRAFT";
     const [batchesRes, itemsRes] = await Promise.all([
       productIds.length
         ? supabase
@@ -671,14 +751,14 @@ export async function getStockReconciliationWorkspaceAction(input: {
             .eq("business_unit_id", businessUnitId)
             .in("product_id", productIds)
         : Promise.resolve({ data: [], error: null }),
-      headerRes.data?.id
+      header?.id && productIds.length
         ? supabase
             .from("sm_stock_reconciliation_items")
             .select(
               "id, product_id, system_qty, physical_qty, variance_qty, unit_cost, variance_value, reason, notes, posted_adjustment_id",
             )
-            .eq("reconciliation_id", headerRes.data.id)
-            .in("product_id", productIds.length ? productIds : ["00000000-0000-0000-0000-000000000000"])
+            .eq("reconciliation_id", header.id)
+            .in("product_id", productIds)
         : Promise.resolve({ data: [], error: null }),
     ]);
     if (batchesRes.error) mapDbError(batchesRes.error);
@@ -697,47 +777,27 @@ export async function getStockReconciliationWorkspaceAction(input: {
       const productId = String(product.id);
       const saved = savedByProduct.get(productId);
       const liveQty = qtyByProduct.get(productId) ?? 0;
-      const systemQty = frozen && saved ? Number(saved.system_qty || 0) : liveQty;
       const physicalQty =
         saved?.physical_qty == null || saved.physical_qty === ""
           ? null
           : Number(saved.physical_qty);
-      const varianceQty = physicalQty == null ? 0 : physicalQty - systemQty;
-      const unitCost = frozen && saved ? centsToMoney(moneyToCents(saved.unit_cost)) : centsToMoney(moneyToCents(product.buying_price));
-      const varianceValue =
-        frozen && saved
-          ? centsToMoney(moneyToCents(saved.variance_value))
-          : centsToMoney(varianceQty * moneyToCents(unitCost));
+      const varianceQty = physicalQty == null ? 0 : physicalQty - liveQty;
+      const unitCost = centsToMoney(moneyToCents(product.buying_price));
       return {
         id: saved ? String(saved.id) : null,
         productId,
         name: String(product.name),
         sku: String(product.sku ?? ""),
-        systemQty,
+        systemQty: liveQty,
         physicalQty,
         varianceQty,
         unitCost,
-        varianceValue,
+        varianceValue: centsToMoney(varianceQty * moneyToCents(unitCost)),
         reason: saved ? String(saved.reason ?? "") : "",
         notes: saved ? String(saved.notes ?? "") : "",
         postedAdjustmentId: saved?.posted_adjustment_id ? String(saved.posted_adjustment_id) : null,
       };
     });
-
-    const header: StockReconciliationHeader | null = headerRes.data
-      ? {
-          id: String(headerRes.data.id),
-          stocktakeDate: String(headerRes.data.stocktake_date),
-          categoryId: headerRes.data.category_id ? String(headerRes.data.category_id) : null,
-          notes: String(headerRes.data.notes ?? ""),
-          status: asStatus(headerRes.data.status),
-          varianceCount: Number(headerRes.data.variance_count || 0),
-          varianceValue: centsToMoney(moneyToCents(headerRes.data.variance_value)),
-          preparedBy: headerRes.data.prepared_by ? String(headerRes.data.prepared_by) : null,
-          approvedBy: headerRes.data.approved_by ? String(headerRes.data.approved_by) : null,
-          postedAt: headerRes.data.posted_at ? String(headerRes.data.posted_at) : null,
-        }
-      : null;
 
     return {
       ok: true as const,
@@ -746,8 +806,8 @@ export async function getStockReconciliationWorkspaceAction(input: {
       page,
       pageSize: STOCKTAKE_PAGE_SIZE,
       total: productsRes.count ?? items.length,
-      categories: (categoriesRes.data ?? []).map((row) => ({ id: String(row.id), name: String(row.name) })),
-      capabilities: await capabilitiesFor("stock_reconciliation"),
+      categories,
+      capabilities,
     };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -852,7 +912,21 @@ export async function saveStockReconciliationAction(input: {
   try {
     const ctx = await reconCtx("supermarket.stock_reconciliation.create");
     let id = input.id ?? null;
-    if (id) {
+    const { data: existingForDate, error: existingError } = await ctx.supabase
+      .from("sm_stock_reconciliations")
+      .select("id, status")
+      .eq("business_unit_id", ctx.businessUnitId)
+      .eq("stocktake_date", input.date)
+      .neq("status", "VOID")
+      .maybeSingle();
+    if (existingError) mapDbError(existingError);
+    if (existingForDate) {
+      if (id && String(existingForDate.id) !== id) {
+        throw new SupermarketError("A stocktake already exists for this date.", "CONFLICT");
+      }
+      id = String(existingForDate.id);
+      assertStocktakeMutable(String(existingForDate.status));
+    } else if (id) {
       const { data: existing, error } = await ctx.supabase
         .from("sm_stock_reconciliations")
         .select("id, status")
@@ -860,7 +934,7 @@ export async function saveStockReconciliationAction(input: {
         .eq("business_unit_id", ctx.businessUnitId)
         .single();
       if (error) mapDbError(error);
-      assertEditable(String(existing?.status));
+      assertStocktakeMutable(String(existing?.status));
     } else {
       const { data, error } = await ctx.supabase
         .from("sm_stock_reconciliations")
@@ -959,68 +1033,29 @@ export async function postStockReconciliationAction(id: string) {
     const ctx = await reconCtx("supermarket.stock_reconciliation.post");
     const { data: header, error } = await ctx.supabase
       .from("sm_stock_reconciliations")
-      .select("id, status, posted_at")
+      .select("id, status, posted_at, prepared_by")
       .eq("id", id)
       .eq("business_unit_id", ctx.businessUnitId)
       .single();
     if (error) mapDbError(error);
     if (String(header?.status) === "POSTED" || header?.posted_at) {
-      throw new SupermarketError("This stocktake has already been posted.", "CONFLICT");
+      return { ok: true as const, alreadyPosted: true };
     }
     if (String(header?.status) !== "APPROVED") {
       throw new SupermarketError("Stock variances can be posted only after approval.", "CONFLICT");
     }
-    const { data: items, error: itemsError } = await ctx.supabase
-      .from("sm_stock_reconciliation_items")
-      .select("id, product_id, variance_qty, reason, notes, posted_adjustment_id")
-      .eq("reconciliation_id", id);
-    if (itemsError) mapDbError(itemsError);
-
-    for (const item of items ?? []) {
-      if (item.posted_adjustment_id) continue;
-      const variance = Number(item.variance_qty || 0);
-      if (variance === 0) continue;
-      const quantity = Math.abs(variance);
-      const { data: adjId, error: adjError } = await ctx.supabase.rpc("sm_adjust_stock", {
-        p_product_id: item.product_id,
-        p_kind: "Correction",
-        p_quantity: quantity,
-        p_location: "Main Store",
-        p_reason: String(item.reason || "Stocktake variance"),
-        p_note: `STOCKTAKE:${id}`,
-        p_correction_direction: variance > 0 ? "increase" : "decrease",
-      });
-      if (adjError) mapDbError(adjError);
-      const { error: markError } = await ctx.supabase
-        .from("sm_stock_reconciliation_items")
-        .update({ posted_adjustment_id: adjId })
-        .eq("id", item.id)
-        .is("posted_adjustment_id", null);
-      if (markError) mapDbError(markError);
-    }
-
-    const { data: remaining, error: remainingError } = await ctx.supabase
-      .from("sm_stock_reconciliation_items")
-      .select("id")
-      .eq("reconciliation_id", id)
-      .neq("variance_qty", 0)
-      .is("posted_adjustment_id", null);
-    if (remainingError) mapDbError(remainingError);
-    if ((remaining ?? []).length > 0) {
-      throw new SupermarketError("Not all stock variances could be posted.", "CONFLICT");
-    }
-
-    const { error: postError } = await ctx.supabase
-      .from("sm_stock_reconciliations")
-      .update({
-        status: "POSTED",
-        posted_by: ctx.userId,
-        posted_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id)
-      .eq("status", "APPROVED");
+    await assertReconSod(ctx, header?.prepared_by ? String(header.prepared_by) : null);
+    const { data: outcome, error: postError } = await ctx.supabase.rpc("sm_post_stock_reconciliation", {
+      p_id: id,
+    });
     if (postError) mapDbError(postError);
+    const result = String(outcome ?? "");
+    if (result === "ALREADY_POSTED") {
+      return { ok: true as const, alreadyPosted: true };
+    }
+    if (result !== "POSTED") {
+      throw new SupermarketError("Stocktake could not be posted.", "CONFLICT");
+    }
 
     await writeSupermarketAudit(ctx.businessUnitId, {
       action: "stock.reconciliation.posted",
@@ -1029,7 +1064,7 @@ export async function postStockReconciliationAction(id: string) {
       entityType: "sm_stock_reconciliations",
       entityId: id,
     });
-    return { ok: true as const };
+    return { ok: true as const, alreadyPosted: false };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
   }

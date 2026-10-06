@@ -149,7 +149,7 @@ export function periodBounds(from: string, to: string) {
 export function displayStatus(status: ReconciliationStatus | null | undefined, varianceCents: number) {
   if (!status) return { label: "Not Reconciled", tone: "neutral" as const };
   if (status === "VOID") return { label: "Void", tone: "neutral" as const };
-  if (status === "POSTED") return { label: "Posted", tone: "ok" as const };
+  if (status === "POSTED") return { label: "Posted ✓", tone: "ok" as const };
   if (status === "APPROVED") {
     return varianceCents === 0
       ? { label: "Balanced", tone: "ok" as const }

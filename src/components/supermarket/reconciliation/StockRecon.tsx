@@ -14,7 +14,7 @@ import { formatTzs } from "@/lib/format/currency";
 import { moneyToCents } from "@/lib/supermarket/money";
 import { displayStatus, todayInDarEsSalaam, type StockReconciliationHeader, type StockReconciliationItem } from "@/lib/supermarket/reconciliation";
 import { canApprovePreparedWork } from "@/lib/supermarket/sod";
-import { reconGlass, ReconActions, ReconTableSkeletonRows, StatusBadge } from "./shared";
+import { reconGlass, ReconActions, ReconTableSkeletonRows, StatusBadge, type ReconBusy, type ReconFeedback } from "./shared";
 
 type DraftRow = { physical: string; reason: string; notes: string };
 
@@ -30,7 +30,8 @@ export function StockReconciliationPage() {
   const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [drafts, setDrafts] = useState<Record<string, DraftRow>>({});
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState<ReconBusy>(null);
+  const [feedback, setFeedback] = useState<ReconFeedback>(null);
   const [caps, setCaps] = useState({
     canCreate: false,
     canApprove: false,
@@ -43,6 +44,12 @@ export function StockReconciliationPage() {
   const requestKey = `${date}:${categoryId}:${search}:${page}`;
   const pending = loadedKey !== requestKey;
   const ready = loadedKey !== null;
+  const statusCode = header?.status ?? null;
+  const countsLocked =
+    statusCode === "SUBMITTED" ||
+    statusCode === "APPROVED" ||
+    statusCode === "POSTED" ||
+    statusCode === "VOID";
 
   useEffect(() => {
     let active = true;
@@ -73,9 +80,14 @@ export function StockReconciliationPage() {
         sodReconciliation: result.capabilities.sodReconciliation,
       });
       setDrafts((prev) => {
-        const next = { ...prev };
+        const locked =
+          result.header?.status === "SUBMITTED" ||
+          result.header?.status === "APPROVED" ||
+          result.header?.status === "POSTED" ||
+          result.header?.status === "VOID";
+        const next = locked ? {} : { ...prev };
         for (const item of result.items) {
-          if (next[item.productId]) continue;
+          if (!locked && next[item.productId]) continue;
           next[item.productId] = {
             physical: item.physicalQty == null ? "" : String(item.physicalQty),
             reason: item.reason,
@@ -91,9 +103,28 @@ export function StockReconciliationPage() {
     };
   }, [date, categoryId, search, page]);
 
-  const dirtyCount = useMemo(() => Object.keys(drafts).length, [drafts]);
+  const dirtyCount = useMemo(() => (countsLocked ? 0 : Object.keys(drafts).length), [countsLocked, drafts]);
   const status = displayStatus(header?.status ?? null, moneyToCents(header?.varianceValue));
   const pages = Math.max(1, Math.ceil(total / pageSize));
+
+  function applyWorkspace(result: Extract<Awaited<ReturnType<typeof getStockReconciliationWorkspaceAction>>, { ok: true }>) {
+    setHeader(result.header);
+    setItems(result.items);
+    setTotal(result.total);
+    setPageSize(result.pageSize);
+    setCategories(result.categories);
+    setDrafts(() => {
+      const next: Record<string, DraftRow> = {};
+      for (const item of result.items) {
+        next[item.productId] = {
+          physical: item.physicalQty == null ? "" : String(item.physicalQty),
+          reason: item.reason,
+          notes: item.notes,
+        };
+      }
+      return next;
+    });
+  }
 
   function rowItems(): Array<{ productId: string; physicalQty: number | null; reason: string; notes: string }> {
     return items.map((item) => {
@@ -109,7 +140,9 @@ export function StockReconciliationPage() {
   }
 
   async function persist(submit: boolean) {
-    setSaving(true);
+    if (countsLocked) return;
+    setBusy(submit ? "submit" : "save");
+    setFeedback(null);
     const result = await saveStockReconciliationAction({
       id: header?.id,
       date,
@@ -117,42 +150,44 @@ export function StockReconciliationPage() {
       items: rowItems(),
       submit,
     });
-    setSaving(false);
+    setBusy(null);
     if (!result.ok) {
       setError(result.error);
       return;
     }
     const refreshed = await getStockReconciliationWorkspaceAction({ date, categoryId: categoryId || null, search, page });
-    if (refreshed.ok) {
-      setHeader(refreshed.header);
-      setItems(refreshed.items);
-    }
+    if (refreshed.ok) applyWorkspace(refreshed);
+    setFeedback(submit ? "submitted" : "saved");
   }
 
   async function approve() {
     if (!header) return;
-    setSaving(true);
+    setBusy("approve");
+    setFeedback(null);
     const result = await approveStockReconciliationAction(header.id);
-    setSaving(false);
+    setBusy(null);
     if (!result.ok) {
       setError(result.error);
       return;
     }
     const refreshed = await getStockReconciliationWorkspaceAction({ date, categoryId: categoryId || null, search, page });
-    if (refreshed.ok) setHeader(refreshed.header);
+    if (refreshed.ok) applyWorkspace(refreshed);
+    setFeedback("approved");
   }
 
   async function post() {
     if (!header) return;
-    setSaving(true);
+    setBusy("post");
+    setFeedback(null);
     const result = await postStockReconciliationAction(header.id);
-    setSaving(false);
+    setBusy(null);
     if (!result.ok) {
       setError(result.error);
       return;
     }
     const refreshed = await getStockReconciliationWorkspaceAction({ date, categoryId: categoryId || null, search, page });
-    if (refreshed.ok) setHeader(refreshed.header);
+    if (refreshed.ok) applyWorkspace(refreshed);
+    setFeedback("posted");
   }
 
   return (
@@ -162,14 +197,16 @@ export function StockReconciliationPage() {
         <div>
           <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">Stock Reconciliation</h1>
           <p className="mt-1.5 text-[13.5px] text-slate-500">
-            Count physical stock against system quantity. Variances post only after approval.
+            {statusCode === "POSTED"
+              ? "This stocktake is closed. Live stock already reflects the physical count."
+              : "Count physical stock against system quantity. Variances post only after approval."}
           </p>
         </div>
         <StatusBadge label={status.label} tone={status.tone} />
       </header>
       {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
       <div className="grid grid-cols-1 gap-2 min-[640px]:grid-cols-2 lg:grid-cols-[minmax(11.25rem,13.75rem)_minmax(15rem,17.5rem)_minmax(0,1fr)]">
-        <input type="date" className={filterClass} value={date} onChange={(e) => { setDate(e.target.value); setPage(1); }} />
+        <input type="date" className={filterClass} value={date} onChange={(e) => { setDate(e.target.value); setPage(1); setDrafts({}); setFeedback(null); }} />
         <select className={filterClass} value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setPage(1); }}>
           <option value="">All categories</option>
           {categories.map((category) => (
@@ -207,40 +244,54 @@ export function StockReconciliationPage() {
                 ? items.map((item) => {
                 const draft = drafts[item.productId] ?? { physical: "", reason: "", notes: "" };
                 const physical = draft.physical === "" ? null : Number.parseInt(draft.physical, 10);
-                const varianceQty = physical == null || Number.isNaN(physical) ? 0 : physical - item.systemQty;
-                const varianceValue = varianceQty * moneyToCents(item.unitCost);
+                const varianceQty = countsLocked
+                  ? item.varianceQty
+                  : physical == null || Number.isNaN(physical)
+                    ? 0
+                    : physical - item.systemQty;
+                const varianceValue = countsLocked
+                  ? moneyToCents(item.varianceValue)
+                  : varianceQty * moneyToCents(item.unitCost);
                 return (
                   <tr key={item.productId} className="border-t border-black/[0.04]">
                     <td className="px-4 py-2.5 font-medium text-navy">{item.name}</td>
                     <td className="px-4 py-2.5 text-slate-500">{item.sku}</td>
                     <td className="px-4 py-2.5 tabular-nums">{item.systemQty}</td>
                     <td className="px-4 py-2.5">
-                      <input
-                        className={`${inputClass} h-9 w-20`}
-                        value={draft.physical}
-                        inputMode="numeric"
-                        onChange={(e) =>
-                          setDrafts((prev) => ({
-                            ...prev,
-                            [item.productId]: { ...draft, physical: e.target.value },
-                          }))
-                        }
-                      />
+                      {countsLocked ? (
+                        <span className="tabular-nums text-navy">{physical ?? "—"}</span>
+                      ) : (
+                        <input
+                          className={`${inputClass} h-9 w-20`}
+                          value={draft.physical}
+                          inputMode="numeric"
+                          onChange={(e) =>
+                            setDrafts((prev) => ({
+                              ...prev,
+                              [item.productId]: { ...draft, physical: e.target.value },
+                            }))
+                          }
+                        />
+                      )}
                     </td>
                     <td className="px-4 py-2.5 tabular-nums">{varianceQty}</td>
                     <td className="px-4 py-2.5 tabular-nums">{formatTzs(moneyToCents(item.unitCost) / 100)}</td>
                     <td className="px-4 py-2.5 tabular-nums">{formatTzs(varianceValue / 100)}</td>
                     <td className="px-4 py-2.5">
-                      <input
-                        className={`${inputClass} h-9`}
-                        value={draft.reason}
-                        onChange={(e) =>
-                          setDrafts((prev) => ({
-                            ...prev,
-                            [item.productId]: { ...draft, reason: e.target.value },
-                          }))
-                        }
-                      />
+                      {countsLocked ? (
+                        <span className="text-slate-600">{draft.reason || "—"}</span>
+                      ) : (
+                        <input
+                          className={`${inputClass} h-9`}
+                          value={draft.reason}
+                          onChange={(e) =>
+                            setDrafts((prev) => ({
+                              ...prev,
+                              [item.productId]: { ...draft, reason: e.target.value },
+                            }))
+                          }
+                        />
+                      )}
                     </td>
                   </tr>
                 );
@@ -251,7 +302,18 @@ export function StockReconciliationPage() {
         </div>
         {ready && items.length === 0 ? (
           <div className="p-6">
-            <EmptyState title="No stocktake started" description="Active products for this business unit will appear here. Empty inventory is not an error." />
+            {header ? (
+              <EmptyState
+                title={statusCode === "POSTED" ? "Posted stocktake" : "No matching products"}
+                description={
+                  statusCode === "POSTED"
+                    ? "This date has a completed stocktake. Adjust category or search to see counted lines."
+                    : "No products on this stocktake match the current filters."
+                }
+              />
+            ) : (
+              <EmptyState title="No stocktake started" description="Active products for this business unit will appear here. Empty inventory is not an error." />
+            )}
           </div>
         ) : null}
       </div>
@@ -269,7 +331,7 @@ export function StockReconciliationPage() {
         </div>
       </div>
       <ReconActions
-        canCreate={caps.canCreate}
+        canCreate={caps.canCreate && !countsLocked}
         canApprove={canApprovePreparedWork({
           canApprove: caps.canApprove,
           isOwner: caps.isOwner,
@@ -285,7 +347,8 @@ export function StockReconciliationPage() {
           userId: caps.userId,
         })}
         status={header?.status ?? null}
-        saving={saving}
+        busy={busy}
+        feedback={feedback}
         onSave={() => void persist(false)}
         onSubmit={() => void persist(true)}
         onApprove={() => void approve()}
