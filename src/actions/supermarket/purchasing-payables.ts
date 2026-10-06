@@ -461,6 +461,177 @@ export async function savePaymentRequestAction(input: {
   }
 }
 
+export type OutstandingSupplierPayable = {
+  invoiceId: string;
+  invoiceNumber: string;
+  supplierId: string;
+  supplierName: string;
+  purchaseOrderId: string | null;
+  purchaseOrderNumber: string;
+  purchaseDocumentNumber: string;
+  invoiceDate: string;
+  dueDate: string;
+  total: number;
+  amountPaid: number;
+  outstanding: number;
+  paymentStatus: string;
+};
+
+export async function listOutstandingSupplierPayablesAction(input?: {
+  query?: string;
+  supplierId?: string;
+}): Promise<{ ok: true; payables: OutstandingSupplierPayable[] } | { ok: false; error: string }> {
+  try {
+    const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.supplier_payments.create");
+    let request = supabase
+      .from("sm_supplier_invoices")
+      .select(
+        "id, invoice_number, supplier_id, purchase_order_id, invoice_date, due_date, total, amount_paid, payment_status",
+      )
+      .eq("business_unit_id", businessUnitId)
+      .eq("verification_status", "VERIFIED")
+      .in("payment_status", ["UNPAID", "PARTIAL"])
+      .order("due_date", { ascending: true, nullsFirst: false })
+      .limit(50);
+    if (input?.supplierId) request = request.eq("supplier_id", input.supplierId);
+    const { data, error } = await request;
+    if (error) mapDbError(error);
+    const rows = (data ?? []).filter((row) => Number(row.total) - Number(row.amount_paid) > 0);
+    const supplierIds = [...new Set(rows.map((row) => String(row.supplier_id)))];
+    const poIds = [...new Set(rows.map((row) => row.purchase_order_id).filter(Boolean).map(String))];
+    const [suppliersRes, posRes] = await Promise.all([
+      supplierIds.length
+        ? supabase.from("sm_suppliers").select("id, name").in("id", supplierIds)
+        : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
+      poIds.length
+        ? supabase.from("sm_purchase_orders").select("id, po_number, purchase_document_number").in("id", poIds)
+        : Promise.resolve({
+            data: [] as Array<{ id: string; po_number: string; purchase_document_number: string | null }>,
+          }),
+    ]);
+    const supplierName = new Map((suppliersRes.data ?? []).map((row) => [String(row.id), String(row.name)]));
+    const pos = new Map(
+      (posRes.data ?? []).map((row) => [
+        String(row.id),
+        {
+          number: String(row.po_number),
+          document: row.purchase_document_number ? String(row.purchase_document_number) : "",
+        },
+      ]),
+    );
+    const needle = (input?.query ?? "").trim().toLowerCase();
+    const payables = rows
+      .map((row) => {
+        const po = row.purchase_order_id ? pos.get(String(row.purchase_order_id)) : undefined;
+        const total = Number(row.total) || 0;
+        const amountPaid = Number(row.amount_paid) || 0;
+        return {
+          invoiceId: String(row.id),
+          invoiceNumber: String(row.invoice_number),
+          supplierId: String(row.supplier_id),
+          supplierName: supplierName.get(String(row.supplier_id)) ?? "Supplier",
+          purchaseOrderId: row.purchase_order_id ? String(row.purchase_order_id) : null,
+          purchaseOrderNumber: po?.number ?? "",
+          purchaseDocumentNumber: po?.document ?? "",
+          invoiceDate: String(row.invoice_date ?? ""),
+          dueDate: String(row.due_date ?? ""),
+          total,
+          amountPaid,
+          outstanding: Math.max(0, total - amountPaid),
+          paymentStatus: String(row.payment_status ?? "UNPAID"),
+        };
+      })
+      .filter((item) => {
+        if (!needle) return true;
+        return `${item.supplierName} ${item.purchaseOrderNumber} ${item.purchaseDocumentNumber} ${item.invoiceNumber}`
+          .toLowerCase()
+          .includes(needle);
+      });
+    return { ok: true as const, payables };
+  } catch (error) {
+    return { ok: false as const, error: actionErrorMessage(error) };
+  }
+}
+
+export async function createLinkedSupplierPaymentAction(input: {
+  invoiceId: string;
+  amount: number;
+  method: "CASH" | "MOBILE_MONEY" | "CARD" | "BANK";
+  dueDate?: string | null;
+  reference?: string;
+  notes?: string;
+}) {
+  try {
+    const { supabase, businessUnitId, userId } = await requireSupermarketPermission(
+      "supermarket.supplier_payments.create",
+    );
+    const { data: invoice, error: invoiceError } = await supabase
+      .from("sm_supplier_invoices")
+      .select("id, supplier_id, total, amount_paid, verification_status, invoice_number, purchase_order_id")
+      .eq("id", input.invoiceId)
+      .eq("business_unit_id", businessUnitId)
+      .maybeSingle();
+    if (invoiceError) mapDbError(invoiceError);
+    if (!invoice) throw new SupermarketError("Invoice not found.", "NOT_FOUND");
+    if (invoice.verification_status !== "VERIFIED") {
+      throw new SupermarketError("Only verified invoices can be paid.", "VALIDATION");
+    }
+    const outstanding = Math.max(0, Number(invoice.total) - Number(invoice.amount_paid));
+    if (!(input.amount > 0) || input.amount > outstanding) {
+      throw new SupermarketError("Requested amount cannot exceed outstanding.", "VALIDATION");
+    }
+    const [{ data: supplier }, { data: po }] = await Promise.all([
+      supabase.from("sm_suppliers").select("name").eq("id", invoice.supplier_id).maybeSingle(),
+      invoice.purchase_order_id
+        ? supabase.from("sm_purchase_orders").select("po_number").eq("id", invoice.purchase_order_id).maybeSingle()
+        : Promise.resolve({ data: null as { po_number?: string } | null }),
+    ]);
+    const description = `Supplier payment — ${String(supplier?.name ?? "Supplier")} • ${String(invoice.invoice_number)}${
+      po?.po_number ? ` • ${po.po_number}` : ""
+    }`;
+
+    const { data: number, error: numError } = await supabase.rpc("sm_next_document_number", {
+      p_doc_type: "PAYREQ",
+      p_prefix: "PR-",
+    });
+    if (numError) mapDbError(numError);
+    const { data, error } = await supabase
+      .from("sm_supplier_payment_requests")
+      .insert({
+        business_unit_id: businessUnitId,
+        request_number: number,
+        supplier_id: invoice.supplier_id,
+        invoice_id: invoice.id,
+        amount: input.amount,
+        method: input.method,
+        due_date: input.dueDate || null,
+        reference: input.reference ?? "",
+        notes: input.notes?.trim() || description,
+        status: "SUBMITTED",
+        prepared_by: userId,
+        prepared_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+    if (error) mapDbError(error);
+    const requestId = String(data.id);
+    await writeSupermarketAudit(businessUnitId, {
+      action: "supplier_payment_request.created",
+      description: `${description} submitted`,
+      severity: "medium",
+      entityType: "supplier_payment_request",
+      entityId: requestId,
+    });
+    return {
+      ok: true as const,
+      id: requestId,
+      purchaseOrderId: invoice.purchase_order_id ? String(invoice.purchase_order_id) : null,
+    };
+  } catch (error) {
+    return { ok: false as const, error: actionErrorMessage(error) };
+  }
+}
+
 export async function submitPaymentRequestAction(requestId: string) {
   try {
     const { supabase, businessUnitId } = await requireSupermarketPermission(

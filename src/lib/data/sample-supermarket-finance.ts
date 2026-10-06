@@ -282,15 +282,20 @@ export const EXPENSE_STATUSES = ["Recorded", "Paid"] as const;
 export const FINANCE_PAYMENT_METHODS = ["Cash", "Mobile Money", "Card", "Bank"] as const;
 
 /** Money-in types do not reduce Net Profit. Supplier payments settle payables only. */
-export const MONEY_IN_PAYMENT_TYPES = ["Customer Receipt", "Other Income"] as const;
+export const MONEY_IN_PAYMENT_TYPES = ["Customer Receipt", "Bank Deposit", "Other Income"] as const;
 export const MONEY_OUT_PAYMENT_TYPES = [
   "Supplier Payment",
   "Expense Payment",
   "Customer Refund",
+  "Bank Withdrawal",
+  "Petty Cash",
   "Other Payment",
 ] as const;
 
-export const PAYMENT_TYPES = [...MONEY_IN_PAYMENT_TYPES, ...MONEY_OUT_PAYMENT_TYPES] as const;
+export const GENERIC_MONEY_IN_PAYMENT_TYPES = ["Customer Receipt", "Other Income"] as const;
+export const GENERIC_MONEY_OUT_PAYMENT_TYPES = ["Expense Payment", "Customer Refund", "Other Payment"] as const;
+
+export const PAYMENT_TYPES = [...MONEY_IN_PAYMENT_TYPES, ...MONEY_OUT_PAYMENT_TYPES, "Bank reversal"] as const;
 
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 export type ExpenseStatus = (typeof EXPENSE_STATUSES)[number];
@@ -637,11 +642,7 @@ export function paymentSummaryCards(payments: MockPayment[]) {
 }
 
 export function paymentDisplayDescription(payment: MockPayment) {
-  if (payment.description.trim()) return payment.description;
-  if (payment.paymentType === "Supplier Payment" && payment.supplier) {
-    return `Payment to ${payment.supplier}`;
-  }
-  return payment.paymentType;
+  return payment.description.trim() || payment.paymentType;
 }
 
 export const FINANCE_ACTIVITY_AS_OF = "2026-09-16";

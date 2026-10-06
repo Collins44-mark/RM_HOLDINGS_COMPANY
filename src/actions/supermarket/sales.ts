@@ -9,6 +9,11 @@ import {
   SupermarketError,
 } from "@/lib/supermarket/access";
 import { writeSupermarketAudit } from "@/lib/audit";
+import {
+  humanPaymentDescription,
+  notePrefixId,
+  paymentDisplayType,
+} from "@/lib/supermarket/payment-display";
 import { mapExpense, mapPayment, mapPromotion, mapSale } from "@/lib/supermarket/mappers";
 import type {
   ExpenseRecord,
@@ -573,6 +578,12 @@ export async function createPaymentAction(input: {
       input.direction === "IN" ? "supermarket.sales.create" : "supermarket.purchases.create",
     );
     if (!(input.amount > 0)) throw new SupermarketError("Amount must be positive.", "VALIDATION");
+    if (String(input.kind).toUpperCase() === "SUPPLIER_PAYMENT") {
+      throw new SupermarketError(
+        "Supplier payments must be recorded against an outstanding purchase.",
+        "VALIDATION",
+      );
+    }
 
     const { data, error } = await supabase
       .from("sm_payments")
@@ -611,6 +622,23 @@ export async function deletePaymentAction(id: string) {
     const { supabase, businessUnitId } = await requireSupermarketPermission(
       "supermarket.purchases.create",
     );
+    const { data: existing, error: loadError } = await supabase
+      .from("sm_payments")
+      .select("id, kind, notes, supplier_invoice_id, payment_request_id")
+      .eq("id", id)
+      .eq("business_unit_id", businessUnitId)
+      .maybeSingle();
+    if (loadError) mapDbError(loadError);
+    if (!existing) throw new SupermarketError("Payment not found.", "NOT_FOUND");
+    const notes = String(existing.notes ?? "");
+    if (
+      existing.supplier_invoice_id ||
+      existing.payment_request_id ||
+      String(existing.kind).toUpperCase() === "SUPPLIER_PAYMENT" ||
+      /^(BANK_|PETTY_CASH)/i.test(notes)
+    ) {
+      throw new SupermarketError("Posted linked payments cannot be deleted. Use the supported reversal if available.", "CONFLICT");
+    }
     const { error } = await supabase
       .from("sm_payments")
       .delete()
@@ -700,14 +728,104 @@ export async function listPaymentsAction(): Promise<
     const { supabase, businessUnitId } = await requireSupermarketContext();
     const { data, error } = await supabase
       .from("sm_payments")
-      .select("*")
+      .select(
+        "id, direction, kind, method, amount, payment_date, reference, notes, created_at, supplier_id, supplier_invoice_id, expense_id, payment_request_id",
+      )
       .eq("business_unit_id", businessUnitId)
       .order("payment_date", { ascending: false })
       .limit(200);
     if (error) mapDbError(error);
+
+    const rows = data ?? [];
+    const supplierIds = [...new Set(rows.map((row) => row.supplier_id).filter(Boolean).map(String))];
+    const invoiceIds = [...new Set(rows.map((row) => row.supplier_invoice_id).filter(Boolean).map(String))];
+    const expenseIds = [...new Set(rows.map((row) => row.expense_id).filter(Boolean).map(String))];
+    const bankIds = [
+      ...new Set(
+        rows
+          .flatMap((row) => [
+            notePrefixId(String(row.notes ?? ""), "BANK_DEPOSIT"),
+            notePrefixId(String(row.notes ?? ""), "BANK_WITHDRAWAL"),
+            notePrefixId(String(row.notes ?? ""), "BANK_REVERSAL"),
+          ])
+          .filter(Boolean),
+      ),
+    ] as string[];
+    const pettyIds = [
+      ...new Set(
+        rows
+          .map((row) => notePrefixId(String(row.notes ?? ""), "PETTY_CASH_EXPENSE"))
+          .filter(Boolean),
+      ),
+    ] as string[];
+
+    const [suppliersRes, invoicesRes, expensesRes, bankRes, pettyRes] = await Promise.all([
+      supplierIds.length
+        ? supabase.from("sm_suppliers").select("id, name").in("id", supplierIds)
+        : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
+      invoiceIds.length
+        ? supabase
+            .from("sm_supplier_invoices")
+            .select("id, invoice_number, purchase_order_id")
+            .in("id", invoiceIds)
+        : Promise.resolve({ data: [] as Array<{ id: string; invoice_number: string; purchase_order_id: string | null }> }),
+      expenseIds.length
+        ? supabase.from("sm_expenses").select("id, description").in("id", expenseIds)
+        : Promise.resolve({ data: [] as Array<{ id: string; description: string }> }),
+      bankIds.length
+        ? supabase
+            .from("sm_bank_transactions")
+            .select("id, sm_bank_accounts(bank_name, account_name)")
+            .in("id", bankIds)
+        : Promise.resolve({ data: [] as Array<{ id: string; sm_bank_accounts: { bank_name: string; account_name: string } | null }> }),
+      pettyIds.length
+        ? supabase.from("sm_petty_cash_transactions").select("id, description").in("id", pettyIds)
+        : Promise.resolve({ data: [] as Array<{ id: string; description: string }> }),
+    ]);
+
+    const supplierName = new Map((suppliersRes.data ?? []).map((row) => [String(row.id), String(row.name)]));
+    const invoices = new Map(
+      (invoicesRes.data ?? []).map((row) => [
+        String(row.id),
+        { number: String(row.invoice_number), poId: row.purchase_order_id ? String(row.purchase_order_id) : null },
+      ]),
+    );
+    const expenseName = new Map((expensesRes.data ?? []).map((row) => [String(row.id), String(row.description)]));
+    const bankLabel = new Map(
+      (bankRes.data ?? []).map((row) => {
+        const account = Array.isArray(row.sm_bank_accounts) ? row.sm_bank_accounts[0] : row.sm_bank_accounts;
+        const label = account
+          ? `${account.bank_name} • ${account.account_name || "RM Holdings"}`
+          : "RM Holdings";
+        return [String(row.id), label] as const;
+      }),
+    );
+    const pettyLabel = new Map((pettyRes.data ?? []).map((row) => [String(row.id), String(row.description)]));
+
     return {
       ok: true,
-      payments: (data ?? []).map((row) => mapPayment(row as Record<string, unknown>)),
+      payments: rows.map((row) => {
+        const mapped = mapPayment(row as Record<string, unknown>);
+        const invoice = mapped.supplierInvoiceId ? invoices.get(mapped.supplierInvoiceId) : undefined;
+        const bankId =
+          notePrefixId(mapped.notes, "BANK_DEPOSIT") ||
+          notePrefixId(mapped.notes, "BANK_WITHDRAWAL") ||
+          notePrefixId(mapped.notes, "BANK_REVERSAL");
+        const pettyId = notePrefixId(mapped.notes, "PETTY_CASH_EXPENSE");
+        return {
+          ...mapped,
+          displayType: paymentDisplayType(mapped),
+          displayDescription: humanPaymentDescription({
+            ...mapped,
+            supplierName: mapped.supplierId ? supplierName.get(mapped.supplierId) : null,
+            invoiceNumber: invoice?.number,
+            expenseDescription: mapped.expenseId ? expenseName.get(mapped.expenseId) : null,
+            bankLabel: bankId ? bankLabel.get(bankId) : null,
+            pettyCashLabel: pettyId ? pettyLabel.get(pettyId) : null,
+          }),
+          linkedPurchaseOrderId: invoice?.poId ?? null,
+        };
+      }),
     };
   } catch (error) {
     return {

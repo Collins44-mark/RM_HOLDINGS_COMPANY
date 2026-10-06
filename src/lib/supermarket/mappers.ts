@@ -15,6 +15,7 @@ import type {
   ExpenseRecord,
   PaymentRecord,
 } from "@/lib/supermarket/types";
+import { humanPaymentDescription, paymentDisplayType } from "@/lib/supermarket/payment-display";
 
 function num(value: unknown, fallback = 0) {
   const n = typeof value === "number" ? value : Number(value);
@@ -304,16 +305,30 @@ export function mapExpense(row: Record<string, unknown>): ExpenseRecord {
 }
 
 export function mapPayment(row: Record<string, unknown>): PaymentRecord {
+  const notes = String(row.notes ?? "");
+  const kind = String(row.kind ?? "");
+  const direction: PaymentRecord["direction"] = String(row.direction).toUpperCase() === "OUT" ? "OUT" : "IN";
+  const linked =
+    Boolean(row.supplier_invoice_id) ||
+    Boolean(row.payment_request_id) ||
+    /^(BANK_|PETTY_CASH)/i.test(notes);
   return {
     id: String(row.id),
-    direction: String(row.direction).toUpperCase() === "OUT" ? "OUT" : "IN",
-    kind: String(row.kind ?? ""),
+    direction,
+    kind,
     method: String(row.method ?? ""),
     amount: num(row.amount),
     paymentDate: String(row.payment_date ?? ""),
     reference: String(row.reference ?? ""),
-    notes: String(row.notes ?? ""),
+    notes,
     createdAt: String(row.created_at ?? ""),
+    supplierId: row.supplier_id ? String(row.supplier_id) : null,
+    supplierInvoiceId: row.supplier_invoice_id ? String(row.supplier_invoice_id) : null,
+    expenseId: row.expense_id ? String(row.expense_id) : null,
+    displayDescription: humanPaymentDescription({ kind, direction, notes }),
+    displayType: paymentDisplayType({ kind, direction, notes }),
+    linkedPurchaseOrderId: null,
+    immutable: linked,
   };
 }
 

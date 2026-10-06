@@ -19,10 +19,8 @@ import {
   getPurchasingCapsAction,
   postPaymentRequest,
   rejectSupplierInvoice,
-  savePaymentRequest,
   saveSupplierInvoice,
   sendPurchaseOrder,
-  submitPaymentRequest,
   submitPurchaseOrder,
   submitSupplierInvoice,
   verifySupplierInvoice,
@@ -32,6 +30,7 @@ import type { Purchase, PurchaseOrder, SupplierInvoice, SupplierPaymentRequest }
 import { getApplicableTaxesAction } from "@/actions/supermarket/tax";
 import { payableTotal, taxLineLabel } from "@/lib/supermarket/tax";
 import { canApprovePreparedWork } from "@/lib/supermarket/sod";
+import { SupplierPaymentWorkspace, payableFromInvoice } from "@/components/supermarket/SupplierPaymentWorkspace";
 
 const emptyCaps: PurchasingCaps = {
   canView: false,
@@ -352,9 +351,22 @@ export function PurchaseOrderWorkflow({
         />
       ) : null}
       {paymentOpen && verified ? (
-        <RecordPaymentModal
-          order={order}
-          invoice={verified}
+        <SupplierPaymentWorkspace
+          initialPayable={payableFromInvoice({
+            invoiceId: verified.id,
+            invoiceNumber: verified.number,
+            supplierId: verified.supplierId,
+            supplierName: verified.supplierName || order.supplierName,
+            purchaseOrderId: order.id,
+            purchaseOrderNumber: order.number,
+            purchaseDocumentNumber: order.purchaseDocumentNumber,
+            invoiceDate: verified.invoiceDate,
+            dueDate: verified.dueDate,
+            total: verified.total,
+            amountPaid: verified.amountPaid,
+            outstanding: verified.outstanding,
+            paymentStatus: verified.paymentStatus,
+          })}
           onClose={() => setPaymentOpen(false)}
         />
       ) : null}
@@ -609,108 +621,6 @@ function SupplierInvoiceModal({
         {invoice?.verificationStatus === "Submitted" && caps.canInvoiceVerify ? (
           <input value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} placeholder="Rejection reason" className={`${inputClass} mt-3`} />
         ) : null}
-        {error ? <p className="mt-3 text-[13px] text-[#c45b66]">{error}</p> : null}
-      </div>
-    </div>
-  );
-}
-
-function RecordPaymentModal({
-  order,
-  invoice,
-  onClose,
-}: {
-  order: PurchaseOrder;
-  invoice: SupplierInvoice;
-  onClose: () => void;
-}) {
-  const [payAmount, setPayAmount] = useState(String(invoice.outstanding));
-  const [payMethod, setPayMethod] = useState<"CASH" | "MOBILE_MONEY" | "CARD" | "BANK">("BANK");
-  const [payDue, setPayDue] = useState("");
-  const [payRef, setPayRef] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
-
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  return (
-    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-[#0b2244]/20 p-3 backdrop-blur-sm sm:items-center">
-      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close payment" onClick={onClose} />
-      <div className="relative z-[81] w-full max-w-md rounded-[24px] border border-white/80 bg-white/95 p-5 shadow-[0_24px_60px_rgba(15,35,64,0.16)]">
-        <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">Record payment</h2>
-        <p className="mt-1 text-[13px] text-slate-500">
-          {order.number} · {order.supplierName} · Supplier invoice {invoice.number} · Outstanding {formatTzs(invoice.outstanding)}
-        </p>
-        <div className="mt-4 space-y-3">
-          <label>
-            <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Amount</span>
-            <input inputMode="decimal" value={payAmount} onChange={(event) => setPayAmount(event.target.value)} className={inputClass} />
-          </label>
-          <label>
-            <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Method</span>
-            <select value={payMethod} onChange={(event) => setPayMethod(event.target.value as typeof payMethod)} className={inputClass}>
-              <option value="BANK">Bank</option>
-              <option value="CASH">Cash</option>
-              <option value="MOBILE_MONEY">Mobile money</option>
-              <option value="CARD">Card</option>
-            </select>
-          </label>
-          <label>
-            <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Payment due date</span>
-            <input type="date" value={payDue} onChange={(event) => setPayDue(event.target.value)} className={inputClass} />
-          </label>
-          <label>
-            <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Reference</span>
-            <input value={payRef} onChange={(event) => setPayRef(event.target.value)} className={inputClass} />
-          </label>
-        </div>
-        <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <button type="button" className={secondaryButton} onClick={onClose}>
-            Close
-          </button>
-          <WorkflowButton
-            className={primaryButton}
-            busy={busy}
-            disabled={busy}
-            confirmed={confirmed}
-            idleLabel="Submit payment request"
-            successLabel="Submitted ✓"
-            onClick={() => {
-              if (busy) return;
-              setBusy(true);
-              setError("");
-              void (async () => {
-                const saved = await savePaymentRequest({
-                  invoiceId: invoice.id,
-                  purchaseOrderId: order.id,
-                  amount: Number(payAmount),
-                  method: payMethod,
-                  dueDate: payDue,
-                  reference: payRef,
-                });
-                if (saved.error || !saved.id) {
-                  setBusy(false);
-                  setError(saved.error || "Unable to save payment request.");
-                  return;
-                }
-                const submitted = await submitPaymentRequest(saved.id, order.id);
-                setBusy(false);
-                if (submitted.error) {
-                  setError(submitted.error);
-                  return;
-                }
-                setConfirmed(true);
-              })();
-            }}
-          />
-        </div>
         {error ? <p className="mt-3 text-[13px] text-[#c45b66]">{error}</p> : null}
       </div>
     </div>

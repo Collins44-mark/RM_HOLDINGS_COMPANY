@@ -33,7 +33,8 @@ import {
   secondaryButton,
 } from "@/components/supermarket/purchasing-ui";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
-import { RecordExpenseModal, RecordPaymentModal } from "@/components/supermarket/FinanceRecordModals";
+import { PaymentModeChooser, RecordExpenseModal, RecordPaymentModal } from "@/components/supermarket/FinanceRecordModals";
+import { SupplierPaymentWorkspace } from "@/components/supermarket/SupplierPaymentWorkspace";
 
 const PRODUCT_PROFIT_HINT =
   "Product Profit is calculated from the difference between each product's selling price and buying price multiplied by the quantity sold.";
@@ -118,7 +119,7 @@ export function FinanceOverview() {
     return { from: today, to: today };
   });
   const [expenseOpen, setExpenseOpen] = useState(false);
-  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState<"choose" | "supplier" | "other" | null>(null);
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
   const [paymentCount, setPaymentCount] = useState(0);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -260,7 +261,7 @@ export function FinanceOverview() {
           icon={<Banknote className="h-4 w-4" strokeWidth={1.9} />}
           tone="border-sky-200/30 bg-sky-50/30"
           iconTone="border-sky-200/45 bg-white/70 text-sky-600"
-          primaryAction={{ label: "+ Record Payment", onClick: () => setPaymentOpen(true) }}
+          primaryAction={{ label: "+ Record Payment", onClick: () => setPaymentOpen("choose") }}
           secondaryHref="/supermarket/finance/payments"
           secondaryLabel="View Payments →"
         />
@@ -303,7 +304,15 @@ export function FinanceOverview() {
       </section>
 
       {expenseOpen ? <RecordExpenseModal onClose={() => setExpenseOpen(false)} /> : null}
-      {paymentOpen ? <RecordPaymentModal onClose={() => setPaymentOpen(false)} /> : null}
+      {paymentOpen === "choose" ? (
+        <PaymentModeChooser
+          onClose={() => setPaymentOpen(null)}
+          onSupplier={() => setPaymentOpen("supplier")}
+          onOther={() => setPaymentOpen("other")}
+        />
+      ) : null}
+      {paymentOpen === "supplier" ? <SupplierPaymentWorkspace onClose={() => setPaymentOpen(null)} /> : null}
+      {paymentOpen === "other" ? <RecordPaymentModal onClose={() => setPaymentOpen(null)} /> : null}
     </div>
   );
 }

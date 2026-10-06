@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { Search, Trash2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
@@ -8,6 +9,7 @@ import {
   FINANCE_PAYMENT_METHODS,
   MONEY_IN_PAYMENT_TYPES,
   MONEY_OUT_PAYMENT_TYPES,
+  PAYMENT_TYPES,
   filterMockPayments,
   formatFinanceDate,
   paymentDirection,
@@ -24,8 +26,9 @@ import {
 } from "@/lib/data/sample-supermarket-sales";
 import { FinanceBackLink } from "@/components/supermarket/FinanceBackLink";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
-import { RecordPaymentModal } from "@/components/supermarket/FinanceRecordModals";
-import { filterClass, primaryButton, tableHead } from "@/components/supermarket/purchasing-ui";
+import { PaymentModeChooser, RecordPaymentModal } from "@/components/supermarket/FinanceRecordModals";
+import { SupplierPaymentWorkspace } from "@/components/supermarket/SupplierPaymentWorkspace";
+import { filterClass, primaryButton, secondaryButton, tableHead } from "@/components/supermarket/purchasing-ui";
 import { removePayment, useSupermarketFinance } from "@/lib/supermarket/client-stores";
 import type { PaymentRecord } from "@/lib/supermarket/types";
 
@@ -45,6 +48,8 @@ function methodFromDb(method: string): FinancePaymentMethod {
 }
 
 function paymentTypeFromRecord(payment: PaymentRecord): PaymentType {
+  const display = payment.displayType;
+  if ((PAYMENT_TYPES as readonly string[]).includes(display)) return display as PaymentType;
   const kind = payment.kind.toUpperCase();
   if (kind === "SUPPLIER_PAYMENT") return "Supplier Payment";
   if (kind === "EXPENSE_PAYMENT") return "Expense Payment";
@@ -59,7 +64,7 @@ function mapPayment(payment: PaymentRecord): MockPayment {
   return {
     id: payment.id,
     paymentType: paymentTypeFromRecord(payment),
-    description: payment.notes || payment.kind,
+    description: payment.displayDescription || payment.notes,
     amount: payment.amount,
     paymentMethod: methodFromDb(payment.method),
     date: payment.paymentDate.slice(0, 10),
@@ -71,7 +76,7 @@ function mapPayment(payment: PaymentRecord): MockPayment {
 }
 
 export function FinancePaymentsPage() {
-  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState<"choose" | "supplier" | "other" | null>(null);
   const [query, setQuery] = useState("");
   const [paymentType, setPaymentType] = useState<"all" | PaymentType>("all");
   const [paymentMethod, setPaymentMethod] = useState<"all" | FinancePaymentMethod>("all");
@@ -133,8 +138,11 @@ export function FinancePaymentsPage() {
             onRange={setCustomRange}
             ariaLabel="Payments period"
           />
-          <button type="button" onClick={() => setPaymentOpen(true)} className={cn(primaryButton, "w-full sm:w-auto")}>
-            + Record Payment
+          <button type="button" onClick={() => setPaymentOpen("supplier")} className={cn(primaryButton, "w-full sm:w-auto")}>
+            + Supplier Payment
+          </button>
+          <button type="button" onClick={() => setPaymentOpen("other")} className={cn(secondaryButton, "w-full sm:w-auto")}>
+            + Other Payment
           </button>
         </div>
       </header>
@@ -216,6 +224,7 @@ export function FinancePaymentsPage() {
             <tbody>
               {rows.map((row) => {
                 const direction = paymentDirection(row.paymentType);
+                const source = finance.payments.find((item) => item.id === row.id);
                 return (
                   <tr key={row.id} className="border-t border-white/50">
                     <td className="whitespace-nowrap px-5 py-3.5 text-[13.5px] tabular-nums text-slate-600">
@@ -228,7 +237,13 @@ export function FinancePaymentsPage() {
                       </p>
                     </td>
                     <td className="min-w-0 px-5 py-3.5 text-[13.5px] font-semibold text-navy">
-                      {paymentDisplayDescription(row)}
+                      {source?.linkedPurchaseOrderId ? (
+                        <Link href={`/supermarket/purchasing/${source.linkedPurchaseOrderId}`} className="hover:underline">
+                          {paymentDisplayDescription(row)}
+                        </Link>
+                      ) : (
+                        paymentDisplayDescription(row)
+                      )}
                       {row.paymentType === "Supplier Payment" ? (
                         <span className="mt-0.5 block text-[11.5px] font-normal text-slate-400">
                           Settles supplier outstanding — not an operating expense
@@ -252,6 +267,9 @@ export function FinancePaymentsPage() {
                     </td>
                     <td className="px-5 py-3.5 text-[13.5px] text-slate-600">{row.reference || "—"}</td>
                     <td className="px-5 py-3.5">
+                      {source?.immutable ? (
+                        <span className="text-[12.5px] text-slate-400">Posted</span>
+                      ) : (
                       <button
                         type="button"
                         disabled={deletingId === row.id}
@@ -262,6 +280,7 @@ export function FinancePaymentsPage() {
                         <Trash2 className="h-3.5 w-3.5" strokeWidth={1.9} />
                         Delete
                       </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -280,6 +299,7 @@ export function FinancePaymentsPage() {
         <div className="space-y-3 p-4 md:hidden">
           {rows.map((row) => {
             const direction = paymentDirection(row.paymentType);
+            const source = finance.payments.find((item) => item.id === row.id);
             return (
               <article
                 key={row.id}
@@ -287,7 +307,15 @@ export function FinancePaymentsPage() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-[14px] font-semibold text-navy">{paymentDisplayDescription(row)}</p>
+                    <p className="text-[14px] font-semibold text-navy">
+                      {source?.linkedPurchaseOrderId ? (
+                        <Link href={`/supermarket/purchasing/${source.linkedPurchaseOrderId}`} className="hover:underline">
+                          {paymentDisplayDescription(row)}
+                        </Link>
+                      ) : (
+                        paymentDisplayDescription(row)
+                      )}
+                    </p>
                     <p className="mt-0.5 text-[12px] text-slate-500">
                       {formatFinanceDate(row.date)} · {row.paymentType}
                     </p>
@@ -316,15 +344,19 @@ export function FinancePaymentsPage() {
                     <dd className="mt-0.5 font-medium text-navy">{row.reference || "—"}</dd>
                   </div>
                 </dl>
-                <button
-                  type="button"
-                  disabled={deletingId === row.id}
-                  onClick={() => void onDelete(row.id)}
-                  className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium text-[#c45b66] transition hover:bg-rose-50 disabled:opacity-50"
-                >
-                  <Trash2 className="h-3.5 w-3.5" strokeWidth={1.9} />
-                  Delete
-                </button>
+                {source?.immutable ? (
+                  <p className="mt-3 text-[12.5px] text-slate-400">Posted</p>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={deletingId === row.id}
+                    onClick={() => void onDelete(row.id)}
+                    className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium text-[#c45b66] transition hover:bg-rose-50 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" strokeWidth={1.9} />
+                    Delete
+                  </button>
+                )}
               </article>
             );
           })}
@@ -334,7 +366,15 @@ export function FinancePaymentsPage() {
         </div>
       </section>
 
-      {paymentOpen ? <RecordPaymentModal onClose={() => setPaymentOpen(false)} /> : null}
+      {paymentOpen === "choose" ? (
+        <PaymentModeChooser
+          onClose={() => setPaymentOpen(null)}
+          onSupplier={() => setPaymentOpen("supplier")}
+          onOther={() => setPaymentOpen("other")}
+        />
+      ) : null}
+      {paymentOpen === "supplier" ? <SupplierPaymentWorkspace onClose={() => setPaymentOpen(null)} /> : null}
+      {paymentOpen === "other" ? <RecordPaymentModal onClose={() => setPaymentOpen(null)} /> : null}
     </div>
   );
 }

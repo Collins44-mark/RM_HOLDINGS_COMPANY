@@ -298,6 +298,13 @@ export type PaymentRecord = {
   reference: string;
   notes: string;
   createdAt: string;
+  supplierId: string | null;
+  supplierInvoiceId: string | null;
+  expenseId: string | null;
+  displayDescription: string;
+  displayType: string;
+  linkedPurchaseOrderId: string | null;
+  immutable: boolean;
 };
 
 export const EMPTY_INVENTORY_SNAPSHOT: InventorySnapshot = {
