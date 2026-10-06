@@ -8,7 +8,7 @@ import {
 } from "@/actions/supermarket/reconciliation";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
 import { PageBackButton } from "@/components/ui/PageBackButton";
-import { centsToMoney, moneyToCents } from "@/lib/supermarket/money";
+import { moneyToCents } from "@/lib/supermarket/money";
 import { displayStatus, type CashReconciliationRecord } from "@/lib/supermarket/reconciliation";
 import { formatTzs } from "@/lib/format/currency";
 import { MoneyField, reconGlass, ReconActions, StatusBadge, useReconPeriod } from "./shared";
@@ -21,6 +21,8 @@ export function CashReconciliationPage() {
     cashIn: "0.00",
     cashOut: "0.00",
     expectedClosing: "0.00",
+    pettyCash: "0.00",
+    totalCash: "0.00",
   });
   const [actual, setActual] = useState("0.00");
   const [reason, setReason] = useState("");
@@ -111,12 +113,14 @@ export function CashReconciliationPage() {
         </div>
       </header>
       {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {[
-          ["Opening cash", live.openingBalance],
-          ["Cash in", live.cashIn],
-          ["Cash out", live.cashOut],
-          ["Expected closing", live.expectedClosing],
+          ["Opening main cash", live.openingBalance],
+          ["Main cash in", live.cashIn],
+          ["Main cash out", live.cashOut],
+          ["Expected main cash", live.expectedClosing],
+          ["Expected petty cash", live.pettyCash],
+          ["Expected total cash", live.totalCash],
         ].map(([label, value]) => (
           <div key={label} className={`${reconGlass} px-5 py-5`}>
             <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</p>
@@ -127,9 +131,9 @@ export function CashReconciliationPage() {
         ))}
       </section>
       <section className={`${reconGlass} space-y-4 px-5 py-6`}>
-        <MoneyField label="Actual cash count" value={actual} onChange={setActual} large />
-        <p className="text-[14px] text-slate-500">
-          Variance {formatTzs(variance / 100)} ({centsToMoney(variance)})
+        <MoneyField label="Actual main cash count" value={actual} onChange={setActual} large />
+        <p className="text-[13px] text-slate-500">
+          Main cash variance {formatTzs(variance / 100)}. Petty cash is counted separately on Petty Cash.
         </p>
         <label className="block">
           <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">

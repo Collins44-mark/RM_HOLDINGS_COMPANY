@@ -11,6 +11,7 @@ export type FinanceSoldLine = {
 
 export type FinanceCashBalance = {
   cash: number;
+  pettyCash?: number;
   mobileMoney: number;
   card: number;
   bank: number;
@@ -65,7 +66,7 @@ export function totalProductProfit(lines: FinanceSoldLine[]) {
 }
 
 export function totalCashOnHand(balance: FinanceCashBalance) {
-  return balance.cash + balance.mobileMoney + balance.card + balance.bank;
+  return balance.cash + (balance.pettyCash ?? 0) + balance.mobileMoney + balance.card + balance.bank;
 }
 
 export function supplierOutstandingAmount(input: FinanceSupplierOutstanding) {

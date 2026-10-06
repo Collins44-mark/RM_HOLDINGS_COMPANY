@@ -34,6 +34,7 @@ export type ReportUnitRow = {
 
 export type ReportCashSummary = {
   cash: number;
+  pettyCash?: number;
   mobileMoney: number;
   card: number;
   bank: number;
@@ -77,6 +78,7 @@ function formatLocalDate(date: Date) {
 
 const EMPTY_CASH: ReportCashSummary = {
   cash: 0,
+  pettyCash: 0,
   mobileMoney: 0,
   card: 0,
   bank: 0,
@@ -149,7 +151,7 @@ async function loadSupermarketCashSummary(from: Date, to: Date): Promise<ReportC
       return { ...EMPTY_CASH, available: false };
     }
 
-    const cashBalance = { cash: 0, mobileMoney: 0, card: 0, bank: 0 };
+    const cashBalance = { cash: 0, pettyCash: 0, mobileMoney: 0, card: 0, bank: 0 };
     for (const payment of data ?? []) {
       const amount = Number(payment.amount) || 0;
       const signed = payment.direction === "OUT" ? -amount : amount;
@@ -157,11 +159,16 @@ async function loadSupermarketCashSummary(from: Date, to: Date): Promise<ReportC
       if (method === "MOBILE_MONEY") cashBalance.mobileMoney += signed;
       else if (method === "CARD") cashBalance.card += signed;
       else if (method === "BANK") cashBalance.bank += signed;
+      else if (method === "PETTY_CASH") cashBalance.pettyCash += signed;
       else cashBalance.cash += signed;
     }
 
     const total =
-      cashBalance.cash + cashBalance.mobileMoney + cashBalance.card + cashBalance.bank;
+      cashBalance.cash +
+      cashBalance.pettyCash +
+      cashBalance.mobileMoney +
+      cashBalance.card +
+      cashBalance.bank;
 
     return {
       ...cashBalance,

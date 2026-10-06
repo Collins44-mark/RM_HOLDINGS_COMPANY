@@ -97,6 +97,14 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "bank.withdrawal.created": "Bank withdrawal saved",
   "bank.withdrawal.posted": "Bank withdrawal posted",
   "bank.transaction.reversed": "Bank transaction reversed",
+  "petty_cash.fund.created": "Petty cash fund created",
+  "petty_cash.expense.created": "Petty cash expense created",
+  "petty_cash.expense.posted": "Petty cash expense posted",
+  "petty_cash.replenishment.created": "Petty cash replenishment created",
+  "petty_cash.replenishment.posted": "Petty cash replenishment posted",
+  "petty_cash.transaction.reversed": "Petty cash transaction reversed",
+  "petty_cash.reconciled": "Petty cash reconciled",
+  "petty_cash.adjustment.approved": "Petty cash adjustment approved",
 };
 
 export const AUDIT_MODULE_LABELS: Record<string, string> = {

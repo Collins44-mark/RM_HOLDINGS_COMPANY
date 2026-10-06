@@ -13,6 +13,7 @@ export type FinanceSummaryPayload = {
   netProfit: number;
   cashBalance: {
     cash: number;
+    pettyCash: number;
     mobileMoney: number;
     card: number;
     bank: number;
@@ -55,6 +56,7 @@ export async function getFinanceSummaryAction(input: { from: string; to: string 
         .from("sm_expenses")
         .select("amount")
         .eq("business_unit_id", businessUnitId)
+        .neq("status", "VOID")
         .gte("expense_date", input.from)
         .lte("expense_date", input.to),
       supabase
@@ -82,7 +84,7 @@ export async function getFinanceSummaryAction(input: { from: string; to: string 
     const expenses = (expensesRes.data ?? []).reduce((s, r) => s + Number(r.amount || 0), 0);
     const netProfit = productProfit - expenses;
 
-    const cashBalance = { cash: 0, mobileMoney: 0, card: 0, bank: 0 };
+    const cashBalance = { cash: 0, pettyCash: 0, mobileMoney: 0, card: 0, bank: 0 };
     for (const payment of paymentsRes.data ?? []) {
       const amount = Number(payment.amount) || 0;
       const signed = payment.direction === "OUT" ? -amount : amount;
@@ -90,6 +92,7 @@ export async function getFinanceSummaryAction(input: { from: string; to: string 
       if (method === "MOBILE_MONEY") cashBalance.mobileMoney += signed;
       else if (method === "CARD") cashBalance.card += signed;
       else if (method === "BANK") cashBalance.bank += signed;
+      else if (method === "PETTY_CASH") cashBalance.pettyCash += signed;
       else cashBalance.cash += signed;
     }
 

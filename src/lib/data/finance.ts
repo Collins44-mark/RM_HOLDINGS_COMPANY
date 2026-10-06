@@ -364,6 +364,7 @@ async function loadSupermarketPeriodPoints(from: Date, to: Date): Promise<Period
         .from("sm_expenses")
         .select("expense_date, amount, category")
         .eq("business_unit_id", bu.id)
+        .neq("status", "VOID")
         .gte("expense_date", fromDate)
         .lte("expense_date", toDate),
     ]);

@@ -551,6 +551,22 @@ export async function getCashReconciliationWorkspaceAction(input: { from: string
       .neq("status", "VOID")
       .maybeSingle();
     if (error) mapDbError(error);
+    const fundRes = await supabase
+      .from("sm_petty_cash_funds")
+      .select("id, opening_balance")
+      .eq("business_unit_id", businessUnitId)
+      .eq("status", "ACTIVE")
+      .maybeSingle();
+    if (fundRes.error) mapDbError(fundRes.error);
+    let petty = 0;
+    if (fundRes.data?.id) {
+      const { data: pettyBalance, error: pettyError } = await supabase.rpc("sm_petty_cash_balance", {
+        p_fund_id: fundRes.data.id,
+        p_as_of: input.to,
+      });
+      if (pettyError) mapDbError(pettyError);
+      petty = moneyToCents(pettyBalance);
+    }
     return {
       ok: true as const,
       live: {
@@ -558,6 +574,8 @@ export async function getCashReconciliationWorkspaceAction(input: { from: string
         cashIn: centsToMoney(expected.cashIn),
         cashOut: centsToMoney(expected.cashOut),
         expectedClosing: centsToMoney(expected.expectedClosing),
+        pettyCash: centsToMoney(petty),
+        totalCash: centsToMoney(addCents(expected.expectedClosing, petty)),
       },
       record: data ? mapCashRow(data as Record<string, unknown>) : null,
       capabilities: await capabilities(),

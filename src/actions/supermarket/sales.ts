@@ -672,8 +672,9 @@ export async function listExpensesAction(): Promise<
     const { supabase, businessUnitId } = await requireSupermarketContext();
     const { data, error } = await supabase
       .from("sm_expenses")
-      .select("*")
+      .select("id, category, description, amount, expense_date, payment_status, created_at, status")
       .eq("business_unit_id", businessUnitId)
+      .neq("status", "VOID")
       .order("expense_date", { ascending: false });
     if (error) mapDbError(error);
     return {
@@ -826,6 +827,7 @@ export async function getReportAggregatesAction(input: { from: string; to: strin
         .from("sm_expenses")
         .select("amount, expense_date")
         .eq("business_unit_id", businessUnitId)
+        .neq("status", "VOID")
         .gte("expense_date", input.from)
         .lte("expense_date", input.to),
       supabase

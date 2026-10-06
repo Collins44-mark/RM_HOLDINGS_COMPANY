@@ -515,6 +515,7 @@ export async function fetchProfitLossReportAction(
         .from("sm_expenses")
         .select("amount, category, expense_date, description")
         .eq("business_unit_id", businessUnitId)
+        .neq("status", "VOID")
         .gte("expense_date", period.start)
         .lte("expense_date", period.end),
       supabase

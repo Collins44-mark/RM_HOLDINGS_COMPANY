@@ -64,6 +64,7 @@ function normalizeFinanceSummary(
     netProfit: asAmount(input?.netProfit),
     cashBalance: {
       cash: asAmount(cash?.cash),
+      pettyCash: asAmount(cash?.pettyCash),
       mobileMoney: asAmount(cash?.mobileMoney),
       card: asAmount(cash?.card),
       bank: asAmount(cash?.bank),
@@ -273,8 +274,17 @@ export function FinanceOverview() {
           secondaryLabel="Open Reports →"
         />
         <ActionCard
+          title="Petty Cash"
+          description="Petty cash expenses, replenishments and fund balance"
+          icon={<Wallet className="h-4 w-4" strokeWidth={1.9} />}
+          tone="border-white/40 bg-white/40"
+          iconTone="border-white/70 bg-white/80 text-navy"
+          secondaryHref="/supermarket/finance/petty-cash"
+          secondaryLabel="Open Petty Cash →"
+        />
+        <ActionCard
           title="Cash Reconciliation"
-          description="Count physical cash against recorded cash movements"
+          description="Expected main cash versus physical count"
           icon={<Banknote className="h-4 w-4" strokeWidth={1.9} />}
           tone="border-white/40 bg-white/40"
           iconTone="border-white/70 bg-white/80 text-navy"
@@ -402,10 +412,16 @@ function KpiCard({
 function CashBalanceCard({ summary }: { summary: FinanceSummary }) {
   const rows = [
     {
-      label: "Cash",
+      label: "Main cash",
       amount: summary.cashBalance.cash,
       icon: <Banknote className="h-4 w-4" strokeWidth={1.9} />,
-      tone: "border-emerald-200/45 bg-white/70 text-emerald-600",
+      tone: "border-white/70 bg-white/70 text-navy",
+    },
+    {
+      label: "Petty cash",
+      amount: summary.cashBalance.pettyCash ?? 0,
+      icon: <Wallet className="h-4 w-4" strokeWidth={1.9} />,
+      tone: "border-white/70 bg-white/70 text-navy",
     },
     {
       label: "Mobile Money",
