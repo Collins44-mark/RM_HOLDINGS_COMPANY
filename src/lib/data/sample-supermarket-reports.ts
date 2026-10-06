@@ -369,6 +369,19 @@ export type InventoryReportData = {
     lowStock: number;
   };
   movements: { label: string; count: number; quantity: number }[];
+  writeOffs: {
+    loss: { events: number; quantity: number; value: number };
+    damage: { events: number; quantity: number; value: number };
+    expired: { events: number; quantity: number; value: number };
+  };
+  writeOffRows: {
+    date: string;
+    product: string;
+    type: "Loss" | "Damage" | "Expired";
+    quantity: number;
+    value: number;
+    reason: string;
+  }[];
   lowStockProducts: {
     name: string;
     sku: string;
@@ -617,6 +630,12 @@ export function buildInventoryReportData(
       { label: "Adjusted", count: 3, quantity: 14 },
       { label: "Transferred", count: 2, quantity: 13 },
     ],
+    writeOffs: {
+      loss: { events: 0, quantity: 0, value: 0 },
+      damage: { events: 0, quantity: 0, value: 0 },
+      expired: { events: 0, quantity: 0, value: 0 },
+    },
+    writeOffRows: [],
     lowStockProducts,
     valuation: filteredRows
       .slice()

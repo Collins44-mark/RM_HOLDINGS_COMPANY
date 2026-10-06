@@ -385,6 +385,77 @@ export function InventoryReportDetail({
       </section>
 
       <article className={cn(glass, "min-w-0 overflow-hidden")}>
+        <div className="px-4 pb-3 pt-4 sm:px-5 sm:pt-5">
+          <h2 className="text-[15px] font-semibold tracking-[-0.02em] text-navy">Stock Loss & Write-offs</h2>
+          <p className="mt-0.5 text-[12px] text-slate-500">
+            Posted loss, damage and expired write-offs for the selected period, valued at buying cost.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-2 px-4 pb-3 sm:grid-cols-3 sm:px-5">
+          {(
+            [
+              { label: "Loss", row: data?.writeOffs.loss },
+              { label: "Damage", row: data?.writeOffs.damage },
+              { label: "Expired", row: data?.writeOffs.expired },
+            ] as const
+          ).map((item) => (
+            <div
+              key={item.label}
+              className="rounded-[14px] border border-[#e8eef5] bg-[#f7f9fc]/80 px-3.5 py-3"
+            >
+              <p className="text-[12.5px] font-semibold text-navy">{item.label}</p>
+              {pending ? (
+                <ReportSkeletonBar className="mt-2 h-4 w-40" />
+              ) : (
+                <p className="mt-1 text-[12.5px] text-slate-500">
+                  {(item.row?.events ?? 0).toLocaleString("en-US")}{" "}
+                  {(item.row?.events ?? 0) === 1 ? "event" : "events"} ·{" "}
+                  {(item.row?.quantity ?? 0).toLocaleString("en-US")} units ·{" "}
+                  <span className="font-medium text-navy">{formatTzs(item.row?.value ?? 0)}</span>
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-left text-[13px]">
+            <thead className="bg-[#f3f6fa]/90 text-[10.5px] font-medium uppercase tracking-[0.1em] text-slate-400">
+              <tr>
+                <th className="px-4 py-2.5 sm:px-5">Date</th>
+                <th className="px-3 py-2.5">Product</th>
+                <th className="px-3 py-2.5">Type</th>
+                <th className="px-3 py-2.5">Quantity</th>
+                <th className="px-3 py-2.5">Value</th>
+                <th className="px-4 py-2.5 sm:px-5">Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pending ? (
+                <ReportSkeletonTableRows rows={3} cols={6} />
+              ) : (data?.writeOffRows ?? []).length > 0 ? (
+                (data?.writeOffRows ?? []).map((row, index) => (
+                  <tr key={`${row.date}-${row.product}-${row.type}-${index}`} className="border-t border-[#e8eef5]">
+                    <td className="px-4 py-3 text-slate-500 sm:px-5">{row.date}</td>
+                    <td className="px-3 py-3 font-medium text-navy">{row.product}</td>
+                    <td className="px-3 py-3 text-slate-500">{row.type}</td>
+                    <td className="px-3 py-3 text-slate-500">{row.quantity.toLocaleString("en-US")}</td>
+                    <td className="px-3 py-3 font-semibold text-navy">{formatTzs(row.value)}</td>
+                    <td className="px-4 py-3 text-slate-500 sm:px-5">{row.reason}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6} className="px-5 py-8 text-center text-slate-500">
+                    No posted loss, damage or expired write-offs in this period.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article className={cn(glass, "min-w-0 overflow-hidden")}>
         <div className="flex flex-col gap-3 px-4 pb-3 pt-4 sm:flex-row sm:items-end sm:justify-between sm:px-5 sm:pt-5">
           <div className="min-w-0">
             <h2 className="text-[15px] font-semibold tracking-[-0.02em] text-navy">Inventory Valuation</h2>

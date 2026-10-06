@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { APP_TIMEZONE } from "@/lib/config/app";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
@@ -15,7 +16,7 @@ import {
   submitStockLossEventAction,
   type StockLossType,
 } from "@/actions/supermarket/stock-loss";
-import { refreshInventorySnapshot } from "@/lib/supermarket/inventory-store";
+import { refreshMovementsWorkspace, refreshProductsWorkspace } from "@/lib/supermarket/inventory-store";
 import { inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
 
 const REASONS: Record<StockLossType, readonly string[]> = {
@@ -56,6 +57,7 @@ export function StockLossModal({ onClose }: { onClose: () => void }) {
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
+  const [confirmed, setConfirmed] = useState<"submitted" | "approved" | "posted" | "">("");
   const [done, setDone] = useState("");
   const [preparedBy, setPreparedBy] = useState("");
   const [openEvents, setOpenEvents] = useState<
@@ -324,7 +326,10 @@ export function StockLossModal({ onClose }: { onClose: () => void }) {
                   setDone("Draft saved. Stock was not changed.");
                 }}
               >
-                {busy === "draft" ? "Saving…" : "Save Draft"}
+                <span className="inline-flex items-center gap-1.5">
+                  {busy === "draft" ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : null}
+                  Save Draft
+                </span>
               </button>
             ) : null}
             <button
@@ -346,37 +351,43 @@ export function StockLossModal({ onClose }: { onClose: () => void }) {
             <button type="button" className={secondaryButton} onClick={() => setStep("form")}>
               Back
             </button>
-            {caps.canCreate && status === "DRAFT" ? (
+            {caps.canCreate && (status === "DRAFT" || confirmed === "submitted") ? (
               <button
                 type="button"
-                disabled={Boolean(busy)}
-                className={primaryButton}
+                disabled={Boolean(busy) || confirmed === "submitted"}
+                className={cn(primaryButton, "min-w-[7.75rem]")}
                 onClick={async () => {
                   setBusy("submit");
                   setError("");
-                  const saved = await persist();
-                  if (!saved.id) {
-                    setBusy("");
-                    setError(saved.error ?? "Unable to save.");
-                    return;
-                  }
-                  const submitted = await submitStockLossEventAction(saved.id);
+                  const submitted = await submitStockLossEventAction({
+                    eventId: eventId ?? undefined,
+                    eventType,
+                    productId,
+                    quantity: qty,
+                    location,
+                    eventDate,
+                    reason,
+                    notes,
+                  });
                   setBusy("");
                   if (!submitted.ok) return setError(submitted.error);
+                  setEventId(submitted.id);
                   setStatus("SUBMITTED");
                   setPreparedBy(caps.userId);
-                  if (caps.canApprove && caps.isOwner) return;
-                  setDone("Submitted for approval. Stock was not changed.");
+                  setConfirmed("submitted");
                 }}
               >
-                {busy === "submit" ? "Submitting…" : "Submit"}
+                <span className="inline-flex items-center gap-1.5">
+                  {busy === "submit" ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : null}
+                  {confirmed === "submitted" ? "Submitted ✓" : "Submit"}
+                </span>
               </button>
             ) : null}
             {caps.canApprove && status === "SUBMITTED" && (caps.isOwner || preparedBy !== caps.userId) ? (
               <button
                 type="button"
-                disabled={Boolean(busy) || !eventId}
-                className={primaryButton}
+                disabled={Boolean(busy) || !eventId || confirmed === "approved"}
+                className={cn(primaryButton, "min-w-[7.75rem]")}
                 onClick={async () => {
                   if (!eventId) return;
                   setBusy("approve");
@@ -385,16 +396,20 @@ export function StockLossModal({ onClose }: { onClose: () => void }) {
                   setBusy("");
                   if (!result.ok) return setError(result.error);
                   setStatus("APPROVED");
+                  setConfirmed("approved");
                 }}
               >
-                {busy === "approve" ? "Approving…" : "Approve"}
+                <span className="inline-flex items-center gap-1.5">
+                  {busy === "approve" ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : null}
+                  {confirmed === "approved" ? "Approved ✓" : "Approve"}
+                </span>
               </button>
             ) : null}
-            {caps.canApprove && status === "APPROVED" ? (
+            {caps.canApprove && (status === "APPROVED" || confirmed === "posted") ? (
               <button
                 type="button"
-                disabled={Boolean(busy) || !eventId}
-                className={primaryButton}
+                disabled={Boolean(busy) || !eventId || confirmed === "posted"}
+                className={cn(primaryButton, "min-w-[7.75rem]")}
                 onClick={async () => {
                   if (!eventId) return;
                   setBusy("post");
@@ -405,12 +420,17 @@ export function StockLossModal({ onClose }: { onClose: () => void }) {
                     setError(posted.error);
                     return;
                   }
-                  await refreshInventorySnapshot();
                   setBusy("");
-                  setDone("Posted through the existing stock adjustment engine. Stock was updated.");
+                  setStatus("POSTED");
+                  setConfirmed("posted");
+                  void refreshProductsWorkspace();
+                  void refreshMovementsWorkspace();
                 }}
               >
-                {busy === "post" ? "Posting…" : "Post"}
+                <span className="inline-flex items-center gap-1.5">
+                  {busy === "post" ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : null}
+                  {confirmed === "posted" ? "Posted ✓" : "Post"}
+                </span>
               </button>
             ) : null}
           </>

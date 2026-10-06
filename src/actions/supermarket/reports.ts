@@ -230,13 +230,16 @@ export async function fetchSalesReportAction(
 }
 
 export async function fetchInventoryReportAction(
-  _preset: SalesPeriodPreset,
-  _range: SalesDateRange,
+  preset: SalesPeriodPreset,
+  range: SalesDateRange,
   _filters: InventoryReportFilters = {},
 ): Promise<{ ok: true; data: InventoryReportData } | { ok: false; error: string }> {
   try {
     const { supabase, businessUnitId } = await requireSupermarketContext();
-    const [productsRes, categoriesRes, suppliersRes, batchesRes, lossMovesRes] = await Promise.all([
+    const { period, periodLabel, periodDates } = periodMeta(preset, range);
+    const fromIso = `${period.start}T00:00:00`;
+    const toIso = `${period.end}T23:59:59`;
+    const [productsRes, categoriesRes, suppliersRes, batchesRes, lossMovesRes, writeOffRes] = await Promise.all([
       supabase
         .from("sm_products")
         .select(
@@ -260,13 +263,27 @@ export async function fetchInventoryReportAction(
         .from("sm_stock_movements")
         .select("movement_code, quantity")
         .eq("business_unit_id", businessUnitId)
-        .in("movement_code", ["DAMAGE", "EXPIRED", "LOSS"]),
+        .in("movement_code", ["DAMAGE", "EXPIRED", "LOSS"])
+        .gte("created_at", fromIso)
+        .lte("created_at", toIso),
+      supabase
+        .from("sm_stock_loss_events")
+        .select("event_date, event_type, quantity, unit_cost, reason, product_id")
+        .eq("business_unit_id", businessUnitId)
+        .eq("status", "POSTED")
+        .gte("event_date", period.start)
+        .lte("event_date", period.end)
+        .order("event_date", { ascending: false })
+        .limit(100),
     ]);
     if (productsRes.error) mapDbError(productsRes.error);
     if (categoriesRes.error) mapDbError(categoriesRes.error);
     if (suppliersRes.error) mapDbError(suppliersRes.error);
     if (batchesRes.error) mapDbError(batchesRes.error);
     if (lossMovesRes.error) mapDbError(lossMovesRes.error);
+    if (writeOffRes.error && !writeOffRes.error.message.toLowerCase().includes("does not exist")) {
+      mapDbError(writeOffRes.error);
+    }
 
     const categories = (categoriesRes.data ?? []).map((row) =>
       mapCategory(row as Record<string, unknown>),
@@ -359,9 +376,41 @@ export async function fetchInventoryReportAction(
       }
     }
 
+    const writeOffs = {
+      loss: { events: 0, quantity: 0, value: 0 },
+      damage: { events: 0, quantity: 0, value: 0 },
+      expired: { events: 0, quantity: 0, value: 0 },
+    };
+    const writeOffTypeLabel = (code: string): "Loss" | "Damage" | "Expired" | null => {
+      if (code === "LOSS") return "Loss";
+      if (code === "DAMAGE") return "Damage";
+      if (code === "EXPIRED") return "Expired";
+      return null;
+    };
+    const writeOffRows = (writeOffRes.data ?? [])
+      .map((row) => {
+        const type = writeOffTypeLabel(String(row.event_type));
+        if (!type) return null;
+        const quantity = Math.abs(Number(row.quantity) || 0);
+        const unitCost = Number(row.unit_cost) || 0;
+        const bucket = type === "Loss" ? writeOffs.loss : type === "Damage" ? writeOffs.damage : writeOffs.expired;
+        bucket.events += 1;
+        bucket.quantity += quantity;
+        bucket.value += quantity * unitCost;
+        return {
+          date: String(row.event_date ?? ""),
+          product: products.find((p) => p.id === row.product_id)?.name ?? "Product",
+          type,
+          quantity,
+          value: quantity * unitCost,
+          reason: String(row.reason ?? ""),
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => Boolean(row));
+
     const data: InventoryReportData = {
-      periodLabel: "Current stock",
-      periodDates: formatSalesDate(today),
+      periodLabel,
+      periodDates,
       comparisonLabel: "",
       totalProducts: rows.length,
       totalStockUnits: totalUnits,
@@ -378,6 +427,8 @@ export async function fetchInventoryReportAction(
         { label: "Damage", count: lossMoves.Damage.count, quantity: lossMoves.Damage.quantity },
         { label: "Expired", count: lossMoves.Expired.count, quantity: lossMoves.Expired.quantity },
       ],
+      writeOffs,
+      writeOffRows,
       lowStockProducts: rows
         .filter((r) => r.status === "Low Stock")
         .slice(0, 20)

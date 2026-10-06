@@ -212,6 +212,58 @@ function renderInventoryPdf(data: InventoryReportData) {
   );
 
   doc.addSectionTable(
+    "Stock Loss & Write-offs",
+    [
+      { key: "type", label: "Type", width: 90 },
+      { key: "events", label: "Events", width: 80, align: "right" },
+      { key: "quantity", label: "Quantity", width: 90, align: "right" },
+      { key: "value", label: "Value Impact", width: 251, align: "right" },
+    ],
+    [
+      {
+        type: "Loss",
+        events: formatPdfNumber(data.writeOffs.loss.events),
+        quantity: formatPdfNumber(data.writeOffs.loss.quantity),
+        value: formatPdfTzs(data.writeOffs.loss.value),
+      },
+      {
+        type: "Damage",
+        events: formatPdfNumber(data.writeOffs.damage.events),
+        quantity: formatPdfNumber(data.writeOffs.damage.quantity),
+        value: formatPdfTzs(data.writeOffs.damage.value),
+      },
+      {
+        type: "Expired",
+        events: formatPdfNumber(data.writeOffs.expired.events),
+        quantity: formatPdfNumber(data.writeOffs.expired.quantity),
+        value: formatPdfTzs(data.writeOffs.expired.value),
+      },
+    ],
+  );
+
+  if (data.writeOffRows.length > 0) {
+    doc.addFlowingSectionTable(
+      "Write-off Detail",
+      [
+        { key: "date", label: "Date", width: 78 },
+        { key: "product", label: "Product", width: 130 },
+        { key: "type", label: "Type", width: 62 },
+        { key: "qty", label: "Qty", width: 48, align: "right" },
+        { key: "value", label: "Value", width: 95, align: "right" },
+        { key: "reason", label: "Reason", width: 98 },
+      ],
+      data.writeOffRows.map((row) => ({
+        date: row.date,
+        product: row.product,
+        type: row.type,
+        qty: formatPdfNumber(row.quantity),
+        value: formatPdfTzs(row.value),
+        reason: row.reason,
+      })),
+    );
+  }
+
+  doc.addSectionTable(
     "Stock Movement",
     [
       { key: "movement", label: "Movement", width: 220 },
