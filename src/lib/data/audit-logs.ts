@@ -77,6 +77,21 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "expense.created": "Expense created",
   "payment.created": "Payment created",
   "payment.deleted": "Payment deleted",
+  "sales.reconciliation.created": "Sales reconciliation saved",
+  "sales.reconciliation.submitted": "Sales reconciliation submitted",
+  "sales.reconciliation.approved": "Sales reconciliation approved",
+  "cash.reconciliation.created": "Cash reconciliation saved",
+  "cash.reconciliation.submitted": "Cash reconciliation submitted",
+  "cash.reconciliation.approved": "Cash reconciliation approved",
+  "stock.reconciliation.created": "Stock reconciliation saved",
+  "stock.reconciliation.submitted": "Stock reconciliation submitted",
+  "stock.reconciliation.approved": "Stock reconciliation approved",
+  "stock.reconciliation.posted": "Stock reconciliation posted",
+  "bank.reconciliation.created": "Bank reconciliation saved",
+  "bank.reconciliation.submitted": "Bank reconciliation submitted",
+  "bank.reconciliation.approved": "Bank reconciliation approved",
+  "bank.reconciliation.item.matched": "Bank transactions matched",
+  "bank.statement.imported": "Bank statement imported",
 };
 
 export const AUDIT_MODULE_LABELS: Record<string, string> = {

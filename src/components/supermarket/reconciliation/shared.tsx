@@ -1,0 +1,113 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { cn } from "@/lib/cn";
+import {
+  resolveSalesPeriod,
+  type SalesDateRange,
+  type SalesPeriodPreset,
+} from "@/lib/data/sample-supermarket-sales";
+import { todayInDarEsSalaam } from "@/lib/supermarket/reconciliation";
+import { filterClass, glassCard, inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
+
+export const reconGlass = glassCard;
+export { filterClass, inputClass, primaryButton, secondaryButton };
+
+export function useReconPeriod() {
+  const asOf = todayInDarEsSalaam();
+  const [preset, setPreset] = useState<SalesPeriodPreset>("today");
+  const [range, setRange] = useState<SalesDateRange>({ from: asOf, to: asOf });
+  const period = useMemo(() => resolveSalesPeriod(preset, range, asOf), [preset, range, asOf]);
+  return { preset, setPreset, range, setRange, period, asOf };
+}
+
+export function StatusBadge({ label, tone }: { label: string; tone: "neutral" | "ok" | "variance" }) {
+  const cls =
+    tone === "ok"
+      ? "bg-[#e7f4ea] text-[#3f8a5a]"
+      : tone === "variance"
+        ? "bg-[#fff8eb] text-[#b5812a]"
+        : "bg-[#f3f6fa] text-slate-500";
+  return (
+    <span className={cn("inline-flex h-6 items-center rounded-full px-2.5 text-[11.5px] font-medium", cls)}>
+      {label}
+    </span>
+  );
+}
+
+export function ReconActions({
+  canCreate,
+  canApprove,
+  canPost,
+  status,
+  saving,
+  onSave,
+  onSubmit,
+  onApprove,
+  onPost,
+}: {
+  canCreate: boolean;
+  canApprove: boolean;
+  canPost?: boolean;
+  status: string | null;
+  saving: boolean;
+  onSave: () => void;
+  onSubmit: () => void;
+  onApprove: () => void;
+  onPost?: () => void;
+}) {
+  const locked = status === "APPROVED" || status === "POSTED" || status === "VOID";
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {canCreate && !locked ? (
+        <button type="button" className={secondaryButton} disabled={saving} onClick={onSave}>
+          {saving ? "Saving…" : "Save Draft"}
+        </button>
+      ) : null}
+      {canCreate && !locked && status !== "SUBMITTED" ? (
+        <button type="button" className={primaryButton} disabled={saving} onClick={onSubmit}>
+          Submit
+        </button>
+      ) : null}
+      {canApprove && status === "SUBMITTED" ? (
+        <button type="button" className={primaryButton} disabled={saving} onClick={onApprove}>
+          Approve
+        </button>
+      ) : null}
+      {canPost && status === "APPROVED" && onPost ? (
+        <button type="button" className={primaryButton} disabled={saving} onClick={onPost}>
+          Post to stock
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+export function MoneyField({
+  label,
+  value,
+  onChange,
+  readOnly,
+  large,
+}: {
+  label: string;
+  value: string;
+  onChange?: (value: string) => void;
+  readOnly?: boolean;
+  large?: boolean;
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">
+        {label}
+      </span>
+      <input
+        className={cn(inputClass, large && "h-14 text-[22px] font-semibold tracking-[-0.04em]")}
+        value={value}
+        readOnly={readOnly}
+        inputMode="decimal"
+        onChange={(event) => onChange?.(event.target.value)}
+      />
+    </label>
+  );
+}

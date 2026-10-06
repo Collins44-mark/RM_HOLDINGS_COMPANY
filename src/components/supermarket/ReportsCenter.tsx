@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BarChart3, Boxes, Check, Download, ShoppingBag, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { REPORT_KIND_META, type ReportKind } from "@/lib/data/sample-supermarket-reports";
@@ -9,6 +9,7 @@ import { downloadReportPdf } from "@/lib/data/supermarket-reports-pdf";
 import { primaryButton } from "@/components/supermarket/purchasing-ui";
 import { reportGlass, useReportPeriod } from "@/components/supermarket/report-shell";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
+import { getReconciliationReportStripAction } from "@/actions/supermarket/reconciliation";
 
 const CARDS: { kind: ReportKind; icon: typeof TrendingUp }[] = [
   { kind: "sales", icon: TrendingUp },
@@ -85,6 +86,8 @@ export function ReportsCenter() {
         </p>
       ) : null}
 
+      <ReconciliationReportStrip from={period.start} to={period.end} />
+
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {CARDS.map((card) => {
           const meta = REPORT_KIND_META[card.kind];
@@ -133,5 +136,35 @@ export function ReportsCenter() {
         })}
       </section>
     </div>
+  );
+}
+
+function ReconciliationReportStrip({ from, to }: { from: string; to: string }) {
+  const [cards, setCards] = useState<Array<{ title: string; statusLabel: string; detail: string; href: string }>>([]);
+
+  useEffect(() => {
+    let active = true;
+    void getReconciliationReportStripAction({ from, to }).then((result) => {
+      if (!active || !result.ok) return;
+      setCards(result.cards);
+    });
+    return () => {
+      active = false;
+    };
+  }, [from, to]);
+
+  if (!cards.length) return null;
+
+  return (
+    <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {cards.map((card) => (
+        <Link key={card.href} href={card.href} className={cn(reportGlass, "block px-4 py-4")}>
+          <p className="text-[13px] font-semibold text-navy">{card.title}</p>
+          <p className="mt-1 text-[12.5px] text-slate-500">
+            {card.statusLabel} · {card.detail}
+          </p>
+        </Link>
+      ))}
+    </section>
   );
 }

@@ -272,6 +272,24 @@ export function FinanceOverview() {
           secondaryHref="/supermarket/reports"
           secondaryLabel="Open Reports →"
         />
+        <ActionCard
+          title="Cash Reconciliation"
+          description="Count physical cash against recorded cash movements"
+          icon={<Banknote className="h-4 w-4" strokeWidth={1.9} />}
+          tone="border-white/40 bg-white/40"
+          iconTone="border-white/70 bg-white/80 text-navy"
+          secondaryHref="/supermarket/finance/cash-reconciliation"
+          secondaryLabel="Open Cash Reconciliation →"
+        />
+        <ActionCard
+          title="Bank Reconciliation"
+          description="Match statement lines to recorded bank payments"
+          icon={<Building2 className="h-4 w-4" strokeWidth={1.9} />}
+          tone="border-white/40 bg-white/40"
+          iconTone="border-white/70 bg-white/80 text-navy"
+          secondaryHref="/supermarket/finance/bank-reconciliation"
+          secondaryLabel="Open Bank Reconciliation →"
+        />
       </section>
 
       {expenseOpen ? <RecordExpenseModal onClose={() => setExpenseOpen(false)} /> : null}

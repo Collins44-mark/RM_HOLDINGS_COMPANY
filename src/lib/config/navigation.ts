@@ -119,6 +119,7 @@ export const SUPERMARKET_NAV: NavItem[] = [
       { href: "/supermarket/pos", label: "POS / New Sale", icon: "cart" },
       { href: "/supermarket/sales", label: "Sales", icon: "cart", exact: true },
       { href: "/supermarket/returns", label: "Returns", icon: "clipboard" },
+      { href: "/supermarket/reconciliation", label: "Reconciliation", icon: "audit" },
     ],
   },
   {
@@ -129,6 +130,7 @@ export const SUPERMARKET_NAV: NavItem[] = [
     children: [
       { href: "/supermarket/products", label: "Products", icon: "package" },
       { href: "/supermarket/stock", label: "Stock", icon: "warehouse", exact: true },
+      { href: "/supermarket/stock/reconciliation", label: "Stock Reconciliation", icon: "clipboard" },
     ],
   },
   {
@@ -146,6 +148,14 @@ export const SUPERMARKET_NAV: NavItem[] = [
     label: "Finance",
     icon: "finance",
     exact: true,
+    children: [
+      { href: "/supermarket/finance", label: "Overview", icon: "finance", exact: true },
+      { href: "/supermarket/finance/expenses", label: "Expenses", icon: "wallet" },
+      { href: "/supermarket/finance/payments", label: "Payments", icon: "money" },
+      { href: "/supermarket/finance/cash-reconciliation", label: "Cash Reconciliation", icon: "money" },
+      { href: "/supermarket/finance/banking", label: "Banking", icon: "finance" },
+      { href: "/supermarket/finance/bank-reconciliation", label: "Bank Reconciliation", icon: "audit" },
+    ],
   },
   {
     href: "/supermarket/reports",

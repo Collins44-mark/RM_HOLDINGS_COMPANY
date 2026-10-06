@@ -113,6 +113,7 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "purchases", actions: ["view", "create"] },
       { resource: "sales", actions: ["view", "create"] },
       { resource: "stock", actions: ["view", "edit"] },
+      { resource: "reconciliation", actions: ["view", "create", "approve", "post"] },
     ]).map((code) => ({ module: "supermarket", code, name: titleize(code) })),
     ...expand("property", [
       { resource: "properties", actions: [...CRUD] },
@@ -194,6 +195,7 @@ const MODULE_LABELS: Record<string, string> = {
 
 const RESOURCE_LABELS: Record<string, string> = {
   stock: "Inventory",
+  reconciliation: "Reconciliation",
   business_units: "Business Units",
 };
 
