@@ -17,6 +17,7 @@ import {
 } from "@/lib/data/sample-supermarket-promotions";
 import { useSupermarketInventory } from "@/lib/data/supermarket-inventory";
 import { savePromotion, useSupermarketPromotions } from "@/lib/supermarket/client-stores";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 type Mode = "create" | "edit";
 
@@ -132,6 +133,11 @@ export function PromotionFormPage({
 }) {
   const router = useRouter();
   const live = useSupermarketPromotions();
+  const { hasPermission } = useAuth();
+  const canSave =
+    mode === "edit"
+      ? hasPermission("supermarket.promotions.edit")
+      : hasPermission("supermarket.promotions.create");
   const inventory = useSupermarketInventory();
   const typeOptions = useMemo(
     () =>
@@ -299,6 +305,7 @@ export function PromotionFormPage({
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
+    if (!canSave) return;
     const promotion = buildPromotion();
     if (!promotion) return;
     setSaving(true);
@@ -772,9 +779,11 @@ export function PromotionFormPage({
           >
             Cancel
           </button>
+          {canSave ? (
           <button type="submit" disabled={saving} className={cn(primaryButton, "w-full sm:w-auto")}>
             {saving ? "Saving…" : mode === "edit" ? "Save Changes" : "Create Promotion"}
           </button>
+          ) : null}
         </div>
       </form>
     </div>

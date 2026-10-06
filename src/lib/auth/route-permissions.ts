@@ -1,4 +1,4 @@
-import { hasAllPermissions, hasAnyPermission, type AccessIdentity } from "@/lib/auth/rbac";
+import { hasAllPermissions, hasAnyPermission, hasPermission, type AccessIdentity } from "@/lib/auth/rbac";
 
 export const SUPERMARKET_FINANCE_VIEW_PERMISSIONS = [
   "supermarket.supplier_payments.view",
@@ -32,7 +32,7 @@ const ROUTE_PERMISSION_RULES: RoutePermissionRule[] = [
   { prefix: "/supermarket/products", any: ["supermarket.products.view"] },
   {
     prefix: "/supermarket/stock/reconciliation",
-    any: ["supermarket.stock.view", "supermarket.reconciliation.view"],
+    any: ["supermarket.stock_reconciliation.view"],
   },
   { prefix: "/supermarket/stock/receive-purchase", any: ["supermarket.purchases.receive"] },
   { prefix: "/supermarket/stock/adjust", any: ["supermarket.stock.edit"] },
@@ -40,7 +40,9 @@ const ROUTE_PERMISSION_RULES: RoutePermissionRule[] = [
   { prefix: "/supermarket/stock/opening", any: ["supermarket.stock.edit"] },
   { prefix: "/supermarket/stock/add", any: ["supermarket.stock.edit"] },
   { prefix: "/supermarket/stock", any: ["supermarket.stock.view"] },
-  { prefix: "/supermarket/promotions", any: ["supermarket.products.view", "supermarket.sales.view"] },
+  { prefix: "/supermarket/promotions/types", any: ["supermarket.promotions.edit"] },
+  { prefix: "/supermarket/promotions/create", any: ["supermarket.promotions.create"] },
+  { prefix: "/supermarket/promotions", any: ["supermarket.promotions.view"] },
   { prefix: "/supermarket/purchasing/new", any: ["supermarket.purchases.create"] },
   { prefix: "/supermarket/purchasing", any: ["supermarket.purchases.view"] },
   { prefix: "/supermarket/finance/petty-cash", any: ["supermarket.petty_cash.view"] },
@@ -78,6 +80,9 @@ export function routePermissionRule(pathname: string) {
 }
 
 export function canAccessRoutePermissions(identity: AccessIdentity, pathname: string) {
+  if (/^\/supermarket\/promotions\/[^/]+\/edit$/.test(pathname)) {
+    return hasPermission(identity, "supermarket.promotions.edit");
+  }
   const rule = routePermissionRule(pathname);
   if (!rule) return true;
   if (rule.all?.length) return hasAllPermissions(identity, [...rule.all]);

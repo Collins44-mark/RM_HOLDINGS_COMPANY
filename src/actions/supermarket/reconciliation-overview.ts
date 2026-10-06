@@ -1,5 +1,8 @@
 "use server";
 
+import { requireAuth } from "@/lib/auth/session";
+import { hasPermission } from "@/lib/auth/rbac";
+import { identityFromUser } from "@/lib/auth/types";
 import {
   actionErrorMessage,
   mapDbError,
@@ -29,6 +32,8 @@ export async function getReconciliationOverviewAction(input: { from: string; to:
     const { supabase, businessUnitId } = await requireSupermarketPermission(
       "supermarket.reconciliation.view",
     );
+    const identity = identityFromUser(await requireAuth());
+    const canStockRecon = hasPermission(identity, "supermarket.stock_reconciliation.view");
     const [salesRes, cashRes, stockRes, bankRes, unmatchedRes] = await Promise.all([
       supabase
         .from("sm_sales_reconciliations")
@@ -46,16 +51,18 @@ export async function getReconciliationOverviewAction(input: { from: string; to:
         .eq("period_end", input.to)
         .neq("status", "VOID")
         .maybeSingle(),
-      supabase
-        .from("sm_stock_reconciliations")
-        .select("status, variance_count, variance_value")
-        .eq("business_unit_id", businessUnitId)
-        .gte("stocktake_date", input.from)
-        .lte("stocktake_date", input.to)
-        .neq("status", "VOID")
-        .order("stocktake_date", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+      canStockRecon
+        ? supabase
+            .from("sm_stock_reconciliations")
+            .select("status, variance_count, variance_value")
+            .eq("business_unit_id", businessUnitId)
+            .gte("stocktake_date", input.from)
+            .lte("stocktake_date", input.to)
+            .neq("status", "VOID")
+            .order("stocktake_date", { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
       supabase
         .from("sm_bank_reconciliations")
         .select("status, difference, unmatched_count")
@@ -114,7 +121,9 @@ export async function getReconciliationOverviewAction(input: { from: string; to:
           : "No reconciliation for this period",
         tone: cashDisplay.tone,
       },
-      {
+    ];
+    if (canStockRecon) {
+      cards.push({
         kind: "stock",
         href: "/supermarket/stock/reconciliation",
         title: "Stock Reconciliation",
@@ -127,8 +136,9 @@ export async function getReconciliationOverviewAction(input: { from: string; to:
           ? `Variance value ${centsToMoney(moneyToCents(stock.variance_value))}`
           : "Physical counts have not been recorded",
         tone: !stock ? "neutral" : stockVarianceCount === 0 ? "ok" : "variance",
-      },
-      {
+      });
+    }
+    cards.push({
         kind: "bank",
         href: "/supermarket/finance/bank-reconciliation",
         title: "Bank Reconciliation",
@@ -145,8 +155,7 @@ export async function getReconciliationOverviewAction(input: { from: string; to:
             ? "Statement lines await matching"
             : "Add a bank account and import statement lines",
         tone: unmatched > 0 || moneyToCents(bank?.difference) !== 0 ? "variance" : bank ? "ok" : "neutral",
-      },
-    ];
+    });
 
     return { ok: true as const, cards };
   } catch (error) {

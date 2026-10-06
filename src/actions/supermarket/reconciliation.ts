@@ -48,7 +48,9 @@ async function reconCtx(permission: string): Promise<Ctx> {
   return { ...ctx, isOwner: isOwnerRole(user.roleCode) };
 }
 
-async function capabilities(): Promise<ReconciliationCapabilities> {
+async function capabilitiesFor(
+  resource: "reconciliation" | "stock_reconciliation",
+): Promise<ReconciliationCapabilities> {
   const ctx = await requireSupermarketContext();
   const user = await requireAuth();
   const owner = isOwnerRole(user.roleCode);
@@ -56,14 +58,18 @@ async function capabilities(): Promise<ReconciliationCapabilities> {
     owner || user.permissions.some((matcher) => matcher !== "*" && matchPermission(code, matcher));
   const sod = await loadSodControls(ctx.supabase, ctx.businessUnitId);
   return {
-    canView: has("supermarket.reconciliation.view"),
-    canCreate: has("supermarket.reconciliation.create"),
-    canApprove: has("supermarket.reconciliation.approve"),
-    canPost: has("supermarket.reconciliation.post"),
+    canView: has(`supermarket.${resource}.view`),
+    canCreate: has(`supermarket.${resource}.create`),
+    canApprove: has(`supermarket.${resource}.approve`),
+    canPost: has(`supermarket.${resource}.post`),
     isOwner: owner,
     userId: user.id,
     sodReconciliation: sodControlEnabled(sod, "reconciliation"),
   };
+}
+
+async function capabilities(): Promise<ReconciliationCapabilities> {
+  return capabilitiesFor("reconciliation");
 }
 
 function assertEditable(status: string) {
@@ -615,7 +621,7 @@ export async function getStockReconciliationWorkspaceAction(input: {
 }) {
   try {
     const { supabase, businessUnitId } = await requireSupermarketPermission(
-      "supermarket.reconciliation.view",
+      "supermarket.stock_reconciliation.view",
     );
     const page = Math.max(1, input.page ?? 1);
     const from = (page - 1) * STOCKTAKE_PAGE_SIZE;
@@ -741,7 +747,7 @@ export async function getStockReconciliationWorkspaceAction(input: {
       pageSize: STOCKTAKE_PAGE_SIZE,
       total: productsRes.count ?? items.length,
       categories: (categoriesRes.data ?? []).map((row) => ({ id: String(row.id), name: String(row.name) })),
-      capabilities: await capabilities(),
+      capabilities: await capabilitiesFor("stock_reconciliation"),
     };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
@@ -844,7 +850,7 @@ export async function saveStockReconciliationAction(input: {
   submit?: boolean;
 }) {
   try {
-    const ctx = await reconCtx("supermarket.reconciliation.create");
+    const ctx = await reconCtx("supermarket.stock_reconciliation.create");
     let id = input.id ?? null;
     if (id) {
       const { data: existing, error } = await ctx.supabase
@@ -912,7 +918,7 @@ export async function saveStockReconciliationAction(input: {
 
 export async function approveStockReconciliationAction(id: string) {
   try {
-    const ctx = await reconCtx("supermarket.reconciliation.approve");
+    const ctx = await reconCtx("supermarket.stock_reconciliation.approve");
     const { data, error } = await ctx.supabase
       .from("sm_stock_reconciliations")
       .select("id, status, prepared_by")
@@ -950,7 +956,7 @@ export async function approveStockReconciliationAction(id: string) {
 
 export async function postStockReconciliationAction(id: string) {
   try {
-    const ctx = await reconCtx("supermarket.reconciliation.post");
+    const ctx = await reconCtx("supermarket.stock_reconciliation.post");
     const { data: header, error } = await ctx.supabase
       .from("sm_stock_reconciliations")
       .select("id, status, posted_at")

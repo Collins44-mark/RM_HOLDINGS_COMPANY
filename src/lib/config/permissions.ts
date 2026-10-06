@@ -115,6 +115,8 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "supplier_payments", actions: ["view", "create", "approve"] },
       { resource: "sales", actions: ["view", "create"] },
       { resource: "stock", actions: ["view", "edit", "approve"] },
+      { resource: "stock_reconciliation", actions: ["view", "create", "approve", "post"] },
+      { resource: "promotions", actions: ["view", "create", "edit", "delete"] },
       { resource: "reconciliation", actions: ["view", "create", "approve", "post"] },
       { resource: "banking", actions: ["view", "create", "approve"] },
       { resource: "petty_cash", actions: ["view", "create", "approve"] },
@@ -200,6 +202,8 @@ const MODULE_LABELS: Record<string, string> = {
 
 const RESOURCE_LABELS: Record<string, string> = {
   stock: "Inventory",
+  stock_reconciliation: "Stock Reconciliation",
+  promotions: "Promotions",
   reconciliation: "Reconciliation",
   banking: "Banking",
   petty_cash: "Petty Cash",
@@ -353,6 +357,8 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
     modules: ["supermarket", "rice"],
     permissionMatchers: [
       "supermarket.stock.*",
+      "supermarket.stock_reconciliation.view",
+      "supermarket.stock_reconciliation.create",
       "supermarket.products.*",
       "rice.warehouse.*",
       "rice.stock.*",

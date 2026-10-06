@@ -74,8 +74,9 @@ function AppliesToCell({ item }: { item: Promotion }) {
 export function PromotionsManager() {
   const router = useRouter();
   const { hasPermission } = useAuth();
-  const canCreate = hasPermission("supermarket.products.create");
-  const canManageTypes = hasPermission("supermarket.products.edit");
+  const canCreate = hasPermission("supermarket.promotions.create");
+  const canEdit = hasPermission("supermarket.promotions.edit");
+  const canDelete = hasPermission("supermarket.promotions.delete");
   const live = useSupermarketPromotions();
   const inventory = useSupermarketInventory();
   const items = useMemo(
@@ -177,7 +178,7 @@ export function PromotionsManager() {
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          {canManageTypes ? (
+          {canEdit ? (
           <Link href="/supermarket/promotions/types" prefetch className={cn(secondaryButton, "w-full gap-1.5 sm:w-auto")}>
             <Settings2 className="h-4 w-4" strokeWidth={1.9} />
             Promotion Types
@@ -419,14 +420,16 @@ export function PromotionsManager() {
                   router.push(`/supermarket/promotions/${menuItem.id}`);
                 }}
               />
-              <MenuButton
-                label="Edit"
-                onClick={() => {
-                  setMenu(null);
-                  router.push(`/supermarket/promotions/${menuItem.id}/edit`);
-                }}
-              />
-              {menuStatus === "ACTIVE" ? (
+              {canEdit ? (
+                <MenuButton
+                  label="Edit"
+                  onClick={() => {
+                    setMenu(null);
+                    router.push(`/supermarket/promotions/${menuItem.id}/edit`);
+                  }}
+                />
+              ) : null}
+              {canEdit && menuStatus === "ACTIVE" ? (
                 <MenuButton
                   label="Deactivate"
                   onClick={() => {
@@ -435,7 +438,7 @@ export function PromotionsManager() {
                   }}
                 />
               ) : null}
-              {menuStatus === "SCHEDULED" ? (
+              {canEdit && menuStatus === "SCHEDULED" ? (
                 <MenuButton
                   label="Cancel"
                   onClick={() => {
@@ -444,7 +447,7 @@ export function PromotionsManager() {
                   }}
                 />
               ) : null}
-              {menuStatus === "INACTIVE" ? (
+              {canEdit && menuStatus === "INACTIVE" ? (
                 <MenuButton
                   label="Activate"
                   onClick={() => {
@@ -453,20 +456,24 @@ export function PromotionsManager() {
                   }}
                 />
               ) : null}
-              <MenuButton
-                label="Duplicate"
-                onClick={() => {
-                  setMenu(null);
-                  router.push(`/supermarket/promotions/create?duplicate=${menuItem.id}`);
-                }}
-              />
-              <MenuButton
-                label="Delete"
-                onClick={() => {
-                  setMenu(null);
-                  setConfirm({ type: "delete", id: menuItem.id });
-                }}
-              />
+              {canCreate ? (
+                <MenuButton
+                  label="Duplicate"
+                  onClick={() => {
+                    setMenu(null);
+                    router.push(`/supermarket/promotions/create?duplicate=${menuItem.id}`);
+                  }}
+                />
+              ) : null}
+              {canDelete ? (
+                <MenuButton
+                  label="Delete"
+                  onClick={() => {
+                    setMenu(null);
+                    setConfirm({ type: "delete", id: menuItem.id });
+                  }}
+                />
+              ) : null}
             </div>,
             document.body,
           )

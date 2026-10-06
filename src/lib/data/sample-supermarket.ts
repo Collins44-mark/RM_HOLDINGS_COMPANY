@@ -34,7 +34,15 @@ export type SupermarketPurchaseRow = {
   status: SupermarketPurchaseStatus;
 };
 
+export type SupermarketDashboardWidgets = {
+  sales: boolean;
+  profit: boolean;
+  inventory: boolean;
+  purchases: boolean;
+};
+
 export type SupermarketSampleDashboard = {
+  widgets: SupermarketDashboardWidgets;
   kpis: {
     todaySales: number;
     todaySalesDelta: number;
@@ -43,6 +51,9 @@ export type SupermarketSampleDashboard = {
     grossProfit: number;
     grossProfitDelta: number;
     inventoryValue: number;
+    stockUnits: number;
+    expiringSoon: number;
+    expired: number;
   };
   salesOverview: {
     today: number;
@@ -57,6 +68,7 @@ export type SupermarketSampleDashboard = {
 };
 
 export const SUPERMARKET_SAMPLE: SupermarketSampleDashboard = {
+  widgets: { sales: true, profit: true, inventory: true, purchases: true },
   kpis: {
     todaySales: 4_850_000,
     todaySalesDelta: 12.5,
@@ -65,6 +77,9 @@ export const SUPERMARKET_SAMPLE: SupermarketSampleDashboard = {
     grossProfit: 1_420_000,
     grossProfitDelta: 9.7,
     inventoryValue: 38_750_000,
+    stockUnits: 12_480,
+    expiringSoon: 18,
+    expired: 4,
   },
   salesOverview: {
     today: 4_850_000,

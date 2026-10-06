@@ -1,6 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireAuth } from "@/lib/auth/session";
+import { hasPermission } from "@/lib/auth/rbac";
+import { identityFromUser } from "@/lib/auth/types";
 import {
   actionErrorMessage,
   mapDbError,
@@ -361,7 +364,9 @@ export async function listPromotionsAction(): Promise<
   { ok: true; promotions: Promotion[] } | { ok: false; error: string }
 > {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireSupermarketPermission(
+      "supermarket.promotions.view",
+    );
 
     // Flat select first — empty catalogue is a valid success state.
     // Nested embeds are loaded only when promotion rows exist, avoiding
@@ -452,7 +457,9 @@ export async function listPromotionsAction(): Promise<
 
 export async function listPromotionTypesAction() {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireSupermarketPermission(
+      "supermarket.promotions.view",
+    );
     const { data, error } = await supabase
       .from("sm_promotion_types")
       .select("*")
@@ -507,7 +514,7 @@ export async function upsertPromotionAction(input: {
 }) {
   try {
     const { supabase, businessUnitId, userId } = await requireSupermarketPermission(
-      "supermarket.products.edit",
+      input.id ? "supermarket.promotions.edit" : "supermarket.promotions.create",
     );
     const { data: typeRow, error: typeError } = await supabase
       .from("sm_promotion_types")
@@ -603,7 +610,7 @@ export async function upsertPromotionAction(input: {
 export async function setPromotionPausedAction(id: string, isPaused: boolean) {
   try {
     const { supabase, businessUnitId } = await requireSupermarketPermission(
-      "supermarket.products.edit",
+      "supermarket.promotions.edit",
     );
     const { error } = await supabase
       .from("sm_promotions")
@@ -628,7 +635,7 @@ export async function setPromotionPausedAction(id: string, isPaused: boolean) {
 export async function deletePromotionAction(id: string) {
   try {
     const { supabase, businessUnitId } = await requireSupermarketPermission(
-      "supermarket.products.edit",
+      "supermarket.promotions.delete",
     );
     const { error } = await supabase
       .from("sm_promotions")
@@ -797,7 +804,7 @@ export async function updatePromotionTypeAction(input: {
 }) {
   try {
     const { supabase, businessUnitId } = await requireSupermarketPermission(
-      "supermarket.products.edit",
+      "supermarket.promotions.edit",
     );
     const { error } = await supabase
       .from("sm_promotion_types")
@@ -971,38 +978,89 @@ export async function listPaymentsAction(): Promise<
 
 export async function getDashboardMetricsAction() {
   try {
+    const user = await requireAuth();
+    const identity = identityFromUser(user);
     const { supabase, businessUnitId } = await requireSupermarketContext();
+    const canSales = hasPermission(identity, "supermarket.sales.view");
+    const canProfit =
+      canSales && hasPermission(identity, "supermarket.purchases.view");
+    const canInventory = hasPermission(identity, "supermarket.stock.view");
+    const canPurchases = hasPermission(identity, "supermarket.purchases.view");
+
     const today = new Date();
     const start = new Date(today);
     start.setHours(0, 0, 0, 0);
+    const todayIso = today.toISOString().slice(0, 10);
+    const soon = new Date(today);
+    soon.setDate(soon.getDate() + 30);
+    const soonIso = soon.toISOString().slice(0, 10);
+
+    const emptySales = { data: [] as Array<{ total?: number; cogs?: number }>, error: null };
+    const emptyProducts = {
+      data: [] as Array<{ id: string; name: string; reorder_level: number | null }>,
+      error: null,
+    };
+    const emptyRecentSales = {
+      data: [] as Array<{
+        id: string;
+        invoice_number: string;
+        total: number;
+        sale_date: string;
+        customer_name: string | null;
+      }>,
+      error: null,
+    };
+    const emptyReceipts = {
+      data: [] as Array<{ id: string; receipt_number: string; total_cost: number; received_at: string }>,
+      error: null,
+    };
+    const emptyBatches = {
+      data: [] as Array<{
+        product_id: string;
+        quantity: number;
+        buying_price: number;
+        expiry_date: string | null;
+      }>,
+      error: null,
+    };
 
     const [salesToday, lowStock, recentSales, recentReceipts, batchesRes] = await Promise.all([
-      supabase
-        .from("sm_sales")
-        .select("total, cogs")
-        .eq("business_unit_id", businessUnitId)
-        .gte("sale_date", start.toISOString()),
-      supabase
-        .from("sm_products")
-        .select("id, name, reorder_level")
-        .eq("business_unit_id", businessUnitId)
-        .eq("is_active", true),
-      supabase
-        .from("sm_sales")
-        .select("id, invoice_number, total, sale_date, customer_name")
-        .eq("business_unit_id", businessUnitId)
-        .order("sale_date", { ascending: false })
-        .limit(8),
-      supabase
-        .from("sm_goods_receipts")
-        .select("id, receipt_number, total_cost, received_at")
-        .eq("business_unit_id", businessUnitId)
-        .order("received_at", { ascending: false })
-        .limit(8),
-      supabase
-        .from("sm_stock_batches")
-        .select("product_id, quantity, buying_price")
-        .eq("business_unit_id", businessUnitId),
+      canSales
+        ? supabase
+            .from("sm_sales")
+            .select("total, cogs")
+            .eq("business_unit_id", businessUnitId)
+            .gte("sale_date", start.toISOString())
+        : Promise.resolve(emptySales),
+      canInventory
+        ? supabase
+            .from("sm_products")
+            .select("id, name, reorder_level")
+            .eq("business_unit_id", businessUnitId)
+            .eq("is_active", true)
+        : Promise.resolve(emptyProducts),
+      canSales
+        ? supabase
+            .from("sm_sales")
+            .select("id, invoice_number, total, sale_date, customer_name")
+            .eq("business_unit_id", businessUnitId)
+            .order("sale_date", { ascending: false })
+            .limit(8)
+        : Promise.resolve(emptyRecentSales),
+      canPurchases
+        ? supabase
+            .from("sm_goods_receipts")
+            .select("id, receipt_number, total_cost, received_at")
+            .eq("business_unit_id", businessUnitId)
+            .order("received_at", { ascending: false })
+            .limit(8)
+        : Promise.resolve(emptyReceipts),
+      canInventory
+        ? supabase
+            .from("sm_stock_batches")
+            .select("product_id, quantity, buying_price, expiry_date")
+            .eq("business_unit_id", businessUnitId)
+        : Promise.resolve(emptyBatches),
     ]);
 
     const firstError =
@@ -1013,19 +1071,27 @@ export async function getDashboardMetricsAction() {
       batchesRes.error;
     if (firstError) mapDbError(firstError);
 
-    // Zero rows are valid — empty supermarket starts with all metrics at 0.
-    const revenue = (salesToday.data ?? []).reduce((sum, s) => sum + Number(s.total || 0), 0);
-    const cogs = (salesToday.data ?? []).reduce((sum, s) => sum + Number(s.cogs || 0), 0);
+    const revenue = canSales
+      ? (salesToday.data ?? []).reduce((sum, s) => sum + Number(s.total || 0), 0)
+      : 0;
+    const cogs = canProfit
+      ? (salesToday.data ?? []).reduce((sum, s) => sum + Number(s.cogs || 0), 0)
+      : 0;
 
     const stockByProduct = new Map<string, number>();
     let inventoryValue = 0;
+    let stockUnits = 0;
+    let expiredCount = 0;
+    let expiringSoonCount = 0;
     for (const batch of batchesRes.data ?? []) {
       const qty = Number(batch.quantity || 0);
-      stockByProduct.set(
-        batch.product_id,
-        (stockByProduct.get(batch.product_id) ?? 0) + qty,
-      );
+      stockByProduct.set(batch.product_id, (stockByProduct.get(batch.product_id) ?? 0) + qty);
+      stockUnits += qty;
       inventoryValue += qty * Number(batch.buying_price || 0);
+      const expiry = batch.expiry_date ? String(batch.expiry_date).slice(0, 10) : "";
+      if (!expiry || qty <= 0) continue;
+      if (expiry < todayIso) expiredCount += 1;
+      else if (expiry <= soonIso) expiringSoonCount += 1;
     }
 
     const low = (lowStock.data ?? []).filter((p) => {
@@ -1036,21 +1102,32 @@ export async function getDashboardMetricsAction() {
 
     return {
       ok: true as const,
+      widgets: {
+        sales: canSales,
+        profit: canProfit,
+        inventory: canInventory,
+        purchases: canPurchases,
+      },
       metrics: {
-        todayRevenue: revenue,
-        todaySalesCount: salesToday.data?.length ?? 0,
-        todayProfit: revenue - cogs,
-        inventoryValue,
-        lowStockCount: low.length,
-        outOfStockCount: out.length,
-        recentSales: recentSales.data ?? [],
-        recentPurchases: recentReceipts.data ?? [],
-        topLowStock: low.slice(0, 5).map((p) => ({
-          id: p.id,
-          name: p.name,
-          stock: stockByProduct.get(p.id) ?? 0,
-          reorderLevel: p.reorder_level,
-        })),
+        todayRevenue: canSales ? revenue : 0,
+        todaySalesCount: canSales ? (salesToday.data?.length ?? 0) : 0,
+        todayProfit: canProfit ? revenue - cogs : 0,
+        inventoryValue: canInventory ? inventoryValue : 0,
+        stockUnits: canInventory ? stockUnits : 0,
+        lowStockCount: canInventory ? low.length : 0,
+        outOfStockCount: canInventory ? out.length : 0,
+        expiringSoonCount: canInventory ? expiringSoonCount : 0,
+        expiredCount: canInventory ? expiredCount : 0,
+        recentSales: canSales ? (recentSales.data ?? []) : [],
+        recentPurchases: canPurchases ? (recentReceipts.data ?? []) : [],
+        topLowStock: canInventory
+          ? low.slice(0, 5).map((p) => ({
+              id: p.id,
+              name: p.name,
+              stock: stockByProduct.get(p.id) ?? 0,
+              reorderLevel: p.reorder_level,
+            }))
+          : [],
       },
     };
   } catch (error) {

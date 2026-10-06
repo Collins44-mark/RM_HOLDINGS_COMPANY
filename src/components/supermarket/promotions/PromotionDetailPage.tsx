@@ -19,6 +19,7 @@ import {
 import { useSupermarketInventory } from "@/lib/data/supermarket-inventory";
 import { pausePromotion, savePromotion, useSupermarketPromotions } from "@/lib/supermarket/client-stores";
 import { toUiPromotion } from "@/lib/supermarket/promotion-ui";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 function statusBadgeClass(status: PromotionStatus) {
   if (status === "ACTIVE") return "bg-[#e7f4ea] text-[#3f8a5a]";
@@ -33,6 +34,9 @@ const detailCard =
 export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
   const router = useRouter();
   const live = useSupermarketPromotions();
+  const { hasPermission } = useAuth();
+  const canCreate = hasPermission("supermarket.promotions.create");
+  const canEdit = hasPermission("supermarket.promotions.edit");
   const inventory = useSupermarketInventory();
   const promotion = useMemo(
     () => live.promotions.map(toUiPromotion).find((item) => item.id === promotionId) ?? null,
@@ -88,6 +92,7 @@ export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
+          {canEdit ? (
           <Link
             href={`/supermarket/promotions/${promotion.id}/edit`}
             prefetch
@@ -95,7 +100,8 @@ export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
           >
             Edit
           </Link>
-          {status === "EXPIRED" ? (
+          ) : null}
+          {canCreate && status === "EXPIRED" ? (
             <button
               type="button"
               onClick={() => {
@@ -140,17 +146,17 @@ export function PromotionDetailPage({ promotionId }: { promotionId: string }) {
               Duplicate
             </button>
           ) : null}
-          {status === "ACTIVE" ? (
+          {canEdit && status === "ACTIVE" ? (
             <button type="button" onClick={() => setConfirm("deactivate")} className={cn(primaryButton, "w-full sm:w-auto")}>
               Deactivate
             </button>
           ) : null}
-          {status === "SCHEDULED" ? (
+          {canEdit && status === "SCHEDULED" ? (
             <button type="button" onClick={() => setConfirm("cancel")} className={cn(primaryButton, "w-full sm:w-auto")}>
               Cancel
             </button>
           ) : null}
-          {status === "INACTIVE" ? (
+          {canEdit && status === "INACTIVE" ? (
             <button type="button" onClick={() => setConfirm("activate")} className={cn(primaryButton, "w-full sm:w-auto")}>
               Activate
             </button>

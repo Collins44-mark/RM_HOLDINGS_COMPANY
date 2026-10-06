@@ -51,6 +51,7 @@ export function RolePermissionEditor({
       ["supermarket.supplier_invoices.create", "supermarket.supplier_invoices.verify"],
       ["supermarket.supplier_payments.create", "supermarket.supplier_payments.approve"],
       ["supermarket.reconciliation.create", "supermarket.reconciliation.approve"],
+      ["supermarket.stock_reconciliation.create", "supermarket.stock_reconciliation.approve"],
       ["supermarket.stock.edit", "supermarket.stock.approve"],
       ["supermarket.petty_cash.create", "supermarket.petty_cash.approve"],
       ["supermarket.banking.create", "supermarket.banking.approve"],

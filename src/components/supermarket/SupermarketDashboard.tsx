@@ -81,7 +81,15 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
   const { hasPermission } = useAuth();
   const canCreateSale = hasPermission("supermarket.sales.create");
   const quickActions = QUICK_ACTIONS.filter((action) => hasPermission(action.permission));
+  const widgets = data.widgets ?? { sales: true, profit: true, inventory: true, purchases: true };
   const peakSold = Math.max(...data.topProducts.map((item) => item.sold), 1);
+  const subtitle = widgets.sales
+    ? "Monitor sales, inventory, purchasing and daily performance."
+    : widgets.inventory
+      ? "Monitor stock levels, expiry and inventory health."
+      : widgets.purchases
+        ? "Monitor purchasing activity for this supermarket."
+        : "Your supermarket workspace.";
 
   return (
     <div className="min-w-0 space-y-3.5 sm:space-y-4">
@@ -91,7 +99,7 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
             Supermarket
           </h1>
           <p className="mt-1.5 max-w-xl text-[13px] leading-5 text-slate-500">
-            Monitor sales, inventory, purchasing and daily performance.
+            {subtitle}
           </p>
         </div>
         {canCreateSale ? (
@@ -105,46 +113,69 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
         ) : null}
       </div>
 
+      {(widgets.sales || widgets.profit || widgets.inventory) ? (
       <section className="rm-kpi-grid">
-        <KpiCard
-          label="Today's Sales"
-          value={formatTzs(data.kpis.todaySales)}
-          delta={data.kpis.todaySalesDelta}
-          comparisonLabel="vs yesterday"
-          icon={ShoppingBag}
-          tone="blue"
-        />
-        <KpiCard
-          label="Today's Orders"
-          value={String(data.kpis.todayOrders)}
-          delta={data.kpis.todayOrdersDelta}
-          comparisonLabel="vs yesterday"
-          icon={ShoppingCart}
-          tone="violet"
-        />
-        <KpiCard
-          label="Gross Profit"
-          value={formatTzs(data.kpis.grossProfit)}
-          delta={data.kpis.grossProfitDelta}
-          comparisonLabel="vs yesterday"
-          icon={Wallet}
-          tone="green"
-        />
-        <KpiCard
-          label="Inventory Value"
-          value={formatTzs(data.kpis.inventoryValue)}
-          hint="Current stock value"
-          icon={Package}
-          tone="amber"
-        />
+        {widgets.sales ? (
+          <>
+            <KpiCard
+              label="Today's Sales"
+              value={formatTzs(data.kpis.todaySales)}
+              delta={data.kpis.todaySalesDelta}
+              comparisonLabel="vs yesterday"
+              icon={ShoppingBag}
+              tone="blue"
+            />
+            <KpiCard
+              label="Today's Orders"
+              value={String(data.kpis.todayOrders)}
+              delta={data.kpis.todayOrdersDelta}
+              comparisonLabel="vs yesterday"
+              icon={ShoppingCart}
+              tone="violet"
+            />
+          </>
+        ) : null}
+        {widgets.profit ? (
+          <KpiCard
+            label="Gross Profit"
+            value={formatTzs(data.kpis.grossProfit)}
+            delta={data.kpis.grossProfitDelta}
+            comparisonLabel="vs yesterday"
+            icon={Wallet}
+            tone="green"
+          />
+        ) : null}
+        {widgets.inventory ? (
+          <>
+            <KpiCard
+              label="Inventory Value"
+              value={formatTzs(data.kpis.inventoryValue)}
+              hint="Current stock value"
+              icon={Package}
+              tone="amber"
+            />
+            <KpiCard
+              label="Stock Units"
+              value={data.kpis.stockUnits.toLocaleString("en-US")}
+              hint="Units on hand"
+              icon={Package}
+              tone="blue"
+            />
+          </>
+        ) : null}
       </section>
+      ) : null}
 
+      {widgets.sales ? (
       <section className="grid min-w-0 grid-cols-1 items-stretch gap-2.5 sm:gap-3 xl:grid-cols-2">
         <SalesOverviewCard data={data} />
         <RecentSalesCard sales={data.recentSales} />
       </section>
+      ) : null}
 
+      {(widgets.sales && data.topProducts.length > 0) || widgets.purchases || quickActions.length > 0 ? (
       <section className="grid min-w-0 grid-cols-1 items-stretch gap-2.5 sm:gap-3 lg:grid-cols-2 2xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1.35fr)_minmax(0,0.7fr)]">
+        {widgets.sales && data.topProducts.length > 0 ? (
         <article className={cn(glass, "flex h-full min-w-0 flex-col px-4 py-3.5 sm:px-5 sm:py-4")}>
           <CardTitle title="Top Selling Products" href="/supermarket/products" />
           <ol className="mt-3 space-y-2">
@@ -171,7 +202,9 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
             ))}
           </ol>
         </article>
+        ) : null}
 
+        {widgets.purchases ? (
         <article className={cn(glass, "flex h-full min-w-0 flex-col px-4 py-3.5 sm:px-5 sm:py-4")}>
           <CardTitle title="Recent Purchases" href="/supermarket/purchases" />
           <div className={cn(tableWrap, "hidden md:block")}>
@@ -206,6 +239,7 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
             ))}
           </ul>
         </article>
+        ) : null}
 
         {quickActions.length > 0 ? (
         <article className={cn(glass, "flex h-full min-w-0 flex-col px-4 py-3.5 sm:px-5 sm:py-4 lg:col-span-2 2xl:col-span-1")}>
@@ -231,8 +265,9 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
         </article>
         ) : null}
       </section>
+      ) : null}
 
-      <StockAlertsCard alerts={data.stockAlerts} />
+      {data.stockAlerts.length > 0 ? <StockAlertsCard alerts={data.stockAlerts} /> : null}
     </div>
   );
 }
