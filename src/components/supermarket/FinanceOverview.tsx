@@ -3,12 +3,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
-  Banknote,
-  Building2,
   Check,
   CircleDollarSign,
   Clock3,
-  FileBarChart2,
   Info,
   ShoppingCart,
   TrendingUp,
@@ -26,13 +23,8 @@ import {
   type SalesPeriodPreset,
 } from "@/lib/data/sample-supermarket-sales";
 import { getFinanceSummaryAction } from "@/actions/supermarket/finance";
-import {
-  primaryButton,
-  secondaryButton,
-} from "@/components/supermarket/purchasing-ui";
+import { primaryButton } from "@/components/supermarket/purchasing-ui";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
-import { PaymentModeChooser, RecordExpenseModal, RecordPaymentModal } from "@/components/supermarket/FinanceRecordModals";
-import { SupplierPaymentWorkspace } from "@/components/supermarket/SupplierPaymentWorkspace";
 import { useAuth } from "@/components/auth/AuthProvider";
 
 const PRODUCT_PROFIT_HINT =
@@ -112,11 +104,7 @@ const KPI_TONES: Record<KpiTone, { card: string; iconWrap: string; deltaUp: stri
 };
 
 export function FinanceOverview() {
-  const { hasPermission, canAccessPath } = useAuth();
-  const canRecordExpense = hasPermission("supermarket.purchases.create");
-  const canSupplierPayment = hasPermission("supermarket.supplier_payments.create");
-  const canOtherPayment = hasPermission("supermarket.purchases.create");
-  const canRecordPayment = canSupplierPayment || canOtherPayment;
+  const { hasPermission } = useAuth();
   const showSupplierOutstanding =
     hasPermission("supermarket.purchases.view") || hasPermission("supermarket.supplier_payments.view");
   const [preset, setPreset] = useState<SalesPeriodPreset>("today");
@@ -124,10 +112,7 @@ export function FinanceOverview() {
     const today = new Date().toISOString().slice(0, 10);
     return { from: today, to: today };
   });
-  const [expenseOpen, setExpenseOpen] = useState(false);
-  const [paymentOpen, setPaymentOpen] = useState<"choose" | "supplier" | "other" | null>(null);
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
-  const [paymentCount, setPaymentCount] = useState(0);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
@@ -142,7 +127,6 @@ export function FinanceOverview() {
 
   useEffect(() => {
     let active = true;
-    setSummaryError(null);
     void getFinanceSummaryAction({ from: period.start, to: period.end })
       .then((result) => {
         if (!active) return;
@@ -153,7 +137,6 @@ export function FinanceOverview() {
         }
         setSummaryError(null);
         setSummary(normalizeFinanceSummary(result.summary, period.start, period.end));
-        setPaymentCount(Number(result.summary.paymentCount) || 0);
       })
       .catch((error: unknown) => {
         if (!active) return;
@@ -247,116 +230,6 @@ export function FinanceOverview() {
         <CashBalanceCard summary={displaySummary} />
         {showSupplierOutstanding ? <SupplierOutstandingCard summary={displaySummary} /> : null}
       </section>
-
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {canAccessPath("/supermarket/finance/expenses") ? (
-        <ActionCard
-          title="Expenses"
-          description="Operating expenses"
-          meta={formatTzs(displaySummary.expenses)}
-          icon={<Wallet className="h-4 w-4" strokeWidth={1.9} />}
-          tone="border-rose-200/30 bg-rose-50/30"
-          iconTone="border-rose-200/45 bg-white/70 text-rose-500"
-          primaryAction={
-            canRecordExpense ? { label: "+ Record Expense", onClick: () => setExpenseOpen(true) } : undefined
-          }
-          secondaryHref="/supermarket/finance/expenses"
-          secondaryLabel="View Expenses →"
-        />
-        ) : null}
-        {canAccessPath("/supermarket/finance/payments") ? (
-        <ActionCard
-          title="Payments"
-          description="Money received and money paid"
-          meta={`${paymentCount} recorded`}
-          icon={<Banknote className="h-4 w-4" strokeWidth={1.9} />}
-          tone="border-sky-200/30 bg-sky-50/30"
-          iconTone="border-sky-200/45 bg-white/70 text-sky-600"
-          primaryAction={
-            canRecordPayment ? { label: "+ Record Payment", onClick: () => setPaymentOpen("choose") } : undefined
-          }
-          secondaryHref="/supermarket/finance/payments"
-          secondaryLabel="View Payments →"
-        />
-        ) : null}
-        {canAccessPath("/supermarket/reports") ? (
-        <ActionCard
-          title="Reports"
-          description="View detailed financial reports"
-          icon={<FileBarChart2 className="h-4 w-4" strokeWidth={1.9} />}
-          tone="border-violet-200/30 bg-violet-50/30"
-          iconTone="border-violet-200/45 bg-white/70 text-violet-600"
-          secondaryHref="/supermarket/reports"
-          secondaryLabel="Open Reports →"
-        />
-        ) : null}
-        {canAccessPath("/supermarket/finance/petty-cash") ? (
-        <ActionCard
-          title="Petty Cash"
-          description="Petty cash expenses, replenishments and fund balance"
-          icon={<Wallet className="h-4 w-4" strokeWidth={1.9} />}
-          tone="border-white/40 bg-white/40"
-          iconTone="border-white/70 bg-white/80 text-navy"
-          secondaryHref="/supermarket/finance/petty-cash"
-          secondaryLabel="Open Petty Cash →"
-        />
-        ) : null}
-        {canAccessPath("/supermarket/finance/cash-reconciliation") ? (
-        <ActionCard
-          title="Cash Reconciliation"
-          description="Expected main cash versus physical count"
-          icon={<Banknote className="h-4 w-4" strokeWidth={1.9} />}
-          tone="border-white/40 bg-white/40"
-          iconTone="border-white/70 bg-white/80 text-navy"
-          secondaryHref="/supermarket/finance/cash-reconciliation"
-          secondaryLabel="Open Cash Reconciliation →"
-        />
-        ) : null}
-        {canAccessPath("/supermarket/finance/bank-reconciliation") ? (
-        <ActionCard
-          title="Bank Reconciliation"
-          description="Bank statement versus system bank transactions"
-          icon={<Building2 className="h-4 w-4" strokeWidth={1.9} />}
-          tone="border-white/40 bg-white/40"
-          iconTone="border-white/70 bg-white/80 text-navy"
-          secondaryHref="/supermarket/finance/bank-reconciliation"
-          secondaryLabel="Open Bank Reconciliation →"
-        />
-        ) : null}
-        {canAccessPath("/supermarket/finance/banking") ? (
-        <ActionCard
-          title="Deposits & Withdrawals"
-          description="Bank deposits and withdrawals"
-          icon={<Building2 className="h-4 w-4" strokeWidth={1.9} />}
-          tone="border-white/40 bg-white/40"
-          iconTone="border-white/70 bg-white/80 text-navy"
-          secondaryHref="/supermarket/finance/banking"
-          secondaryLabel="Open Banking →"
-        />
-        ) : null}
-        {canAccessPath("/supermarket/finance/tax-vat") ? (
-        <ActionCard
-          title="Tax & VAT"
-          description="Tax rules and VAT reporting"
-          icon={<FileBarChart2 className="h-4 w-4" strokeWidth={1.9} />}
-          tone="border-white/40 bg-white/40"
-          iconTone="border-white/70 bg-white/80 text-navy"
-          secondaryHref="/supermarket/finance/tax-vat"
-          secondaryLabel="Open Tax & VAT →"
-        />
-        ) : null}
-      </section>
-
-      {expenseOpen ? <RecordExpenseModal onClose={() => setExpenseOpen(false)} /> : null}
-      {paymentOpen === "choose" ? (
-        <PaymentModeChooser
-          onClose={() => setPaymentOpen(null)}
-          onSupplier={canSupplierPayment ? () => setPaymentOpen("supplier") : undefined}
-          onOther={canOtherPayment ? () => setPaymentOpen("other") : undefined}
-        />
-      ) : null}
-      {paymentOpen === "supplier" ? <SupplierPaymentWorkspace onClose={() => setPaymentOpen(null)} /> : null}
-      {paymentOpen === "other" ? <RecordPaymentModal onClose={() => setPaymentOpen(null)} /> : null}
     </div>
   );
 }
@@ -564,57 +437,5 @@ function SupplierOutstandingCard({ summary }: { summary: FinanceSummary }) {
         ))}
       </div>
     </section>
-  );
-}
-
-function ActionCard({
-  title,
-  description,
-  meta,
-  icon,
-  tone,
-  iconTone,
-  primaryAction,
-  secondaryHref,
-  secondaryLabel,
-}: {
-  title: string;
-  description: string;
-  meta?: string;
-  icon: ReactNode;
-  tone: string;
-  iconTone: string;
-  primaryAction?: { label: string; onClick: () => void };
-  secondaryHref: string;
-  secondaryLabel: string;
-}) {
-  return (
-    <article className={cn(glass, "flex flex-col px-4 py-4 sm:px-5 sm:py-5", tone)}>
-      <div className="flex items-start gap-3">
-        <span
-          className={cn(
-            "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border shadow-[0_6px_14px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md",
-            iconTone,
-          )}
-        >
-          {icon}
-        </span>
-        <div className="min-w-0">
-          <h3 className="text-[14.5px] font-semibold tracking-[-0.02em] text-navy">{title}</h3>
-          <p className="mt-1 text-[12.5px] leading-5 text-slate-500">{description}</p>
-          {meta ? <p className="mt-2 text-[16px] font-semibold tracking-[-0.03em] tabular-nums text-navy">{meta}</p> : null}
-        </div>
-      </div>
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        {primaryAction ? (
-          <button type="button" onClick={primaryAction.onClick} className={primaryButton}>
-            {primaryAction.label}
-          </button>
-        ) : null}
-        <Link href={secondaryHref} className={primaryAction ? secondaryButton : primaryButton}>
-          {secondaryLabel}
-        </Link>
-      </div>
-    </article>
   );
 }
