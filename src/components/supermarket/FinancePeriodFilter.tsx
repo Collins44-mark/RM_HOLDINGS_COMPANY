@@ -12,6 +12,7 @@ const PERIOD_OPTIONS: { id: Exclude<SalesPeriodPreset, "range">; label: string }
   { id: "yesterday", label: "Yesterday" },
   { id: "week", label: "This Week" },
   { id: "month", label: "This Month" },
+  { id: "year", label: "This Year" },
 ];
 
 export function FinancePeriodFilter({

@@ -155,6 +155,11 @@ const PERIOD_SEEDS: Record<Exclude<SalesPeriodPreset, "range">, FinancePeriodSee
     expenses: 6_800_000,
     deltas: { revenue: 11, productProfit: 15, expenses: 8, netProfit: 17 },
   },
+  year: {
+    lines: scaleLines(TODAY_LINES, 240),
+    expenses: 78_000_000,
+    deltas: { revenue: 10, productProfit: 13, expenses: 7, netProfit: 15 },
+  },
 };
 
 function rangeSeed(range: SalesDateRange | null | undefined): FinancePeriodSeed {

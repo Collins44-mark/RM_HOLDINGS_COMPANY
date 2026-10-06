@@ -44,6 +44,8 @@ import {
 } from "@/lib/data/sample-supermarket-pos";
 import { attachStock, rememberNewProductBarcode, useSupermarketInventory } from "@/lib/data/supermarket-inventory";
 import { completePosSale } from "@/lib/supermarket/client-stores";
+import { getApplicableTaxesAction } from "@/actions/supermarket/tax";
+import { APP_TIMEZONE } from "@/lib/config/app";
 import { normalizeBarcode } from "@/lib/supermarket/barcode";
 import { BarcodeScanButton } from "@/components/supermarket/barcode/BarcodeScannerModal";
 import { useHardwareBarcodeScan } from "@/components/supermarket/barcode/useHardwareBarcodeScan";
@@ -127,9 +129,13 @@ export function PosManager() {
   const [printBusy, setPrintBusy] = useState(false);
   const [printerNotice, setPrinterNotice] = useState<"none" | "no-printer" | "need-permission">("none");
   const [escPosReady, setEscPosReady] = useState(false);
+  const [taxRates, setTaxRates] = useState<Array<{ name: string; rate: number }>>([]);
 
   const catalog = useMemo(() => filterPosProducts(products, query, category), [products, query, category]);
-  const totals = useMemo(() => posTotals(items, discountPercent), [items, discountPercent]);
+  const totals = useMemo(
+    () => posTotals(items, discountPercent, taxRates.map((rule) => rule.rate)),
+    [items, discountPercent, taxRates],
+  );
   const cashValue = parseMoneyInput(cashReceived);
   const mobilePaid = mobileAmount === "" ? totals.totalDue : parseMoneyInput(mobileAmount);
   const cardPaid = cardAmount === "" ? totals.totalDue : parseMoneyInput(cardAmount);
@@ -137,6 +143,15 @@ export function PosManager() {
   const cashChange = cashValue - totals.totalDue;
   const invoiceLabel = completed?.invoice ?? formatInvoiceNumber(invoiceNumber);
   const stamp = completed?.soldAt ?? invoiceStamp;
+
+  useEffect(() => {
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE }).format(new Date());
+    void getApplicableTaxesAction({ scope: "SALES", onDate: today, taxBase: 0 }).then((result) => {
+      if (result.ok) {
+        setTaxRates(result.lines.map((line) => ({ name: line.taxName, rate: line.taxRate })));
+      }
+    });
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- stamp is client-only
@@ -528,6 +543,7 @@ export function PosManager() {
             onClose={() => setMoreOpen(false)}
             heldSales={heldSales}
             onRestore={restoreHeld}
+            taxRates={taxRates}
           />
           <div className={cn(glass, "w-full min-w-0 max-w-full rounded-[20px] px-3.5 py-2.5 sm:min-w-[14rem] sm:max-w-[18rem] sm:px-4")}>
             <div className="flex items-start justify-between gap-3 sm:gap-5">
@@ -795,7 +811,13 @@ export function PosManager() {
                   <dd className="pb-1 font-medium text-navy">{formatTzs(totals.discount)}</dd>
                 </div>
                 <div className="flex items-center justify-between">
-                  <dt className="text-slate-500">Tax (VAT 0%)</dt>
+                  <dt className="text-slate-500">
+                    {taxRates.length === 1
+                      ? `${taxRates[0].name} (${taxRates[0].rate}%)`
+                      : taxRates.length > 1
+                        ? "Tax"
+                        : "Tax"}
+                  </dt>
                   <dd className="font-medium text-navy">{formatTzs(totals.tax)}</dd>
                 </div>
                 <div className="flex items-center justify-between rounded-[16px] border border-white/80 bg-[#eef3f8]/80 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
@@ -1168,12 +1190,14 @@ function MoreMenu({
   onClose,
   heldSales,
   onRestore,
+  taxRates,
 }: {
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
   heldSales: PosHeldSale[];
   onRestore: (id: string) => void;
+  taxRates: Array<{ name: string; rate: number }>;
 }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [mounted, setMounted] = useState(false);
@@ -1234,7 +1258,7 @@ function MoreMenu({
                       <span className="text-[13px] font-medium text-navy">#{formatInvoiceNumber(sale.invoiceNumber)}</span>
                       <span className="text-[12px] text-slate-400">
                         {sale.customer} · {sale.items.length} {sale.items.length === 1 ? "item" : "items"} ·{" "}
-                        {formatTzs(posTotals(sale.items, sale.discountPercent).totalDue)}
+                        {formatTzs(posTotals(sale.items, sale.discountPercent, taxRates.map((rule) => rule.rate)).totalDue)}
                       </span>
                     </button>
                   ))

@@ -20,6 +20,7 @@ import {
   type PurchasingCaps,
 } from "@/lib/supermarket/inventory-store";
 import type { Purchase, PurchaseOrder, SupplierInvoice, SupplierPaymentRequest } from "@/lib/supermarket/types";
+import { getApplicableTaxesAction } from "@/actions/supermarket/tax";
 
 const emptyCaps: PurchasingCaps = {
   canView: false,
@@ -140,7 +141,8 @@ function InvoicePanel({
   const [invoiceNumber, setInvoiceNumber] = useState(invoice?.number ?? "");
   const [invoiceDate, setInvoiceDate] = useState(invoice?.invoiceDate ?? "");
   const [dueDate, setDueDate] = useState(invoice?.dueDate ?? "");
-  const [tax, setTax] = useState(String(invoice?.tax ?? order.tax ?? 0));
+  const [previewTax, setPreviewTax] = useState(invoice?.tax ?? 0);
+  const [taxLabel, setTaxLabel] = useState("Tax");
   const [notes, setNotes] = useState(invoice?.notes ?? "");
   const [qty, setQty] = useState<Record<string, string>>(() =>
     Object.fromEntries(receivedLines.map((line) => [line.productId, String(invoice?.lines.find((item) => item.productId === line.productId)?.quantity ?? line.quantity)])),
@@ -162,7 +164,29 @@ function InvoicePanel({
     const unitCost = Number(price[line.productId] || 0);
     return sum + quantity * unitCost;
   }, 0);
-  const total = Math.max(0, subtotal + (Number(tax) || 0));
+  const tax = draftable ? previewTax : invoice?.tax ?? 0;
+  const total = Math.max(0, subtotal + tax);
+
+  useEffect(() => {
+    if (!draftable) return;
+    const date = invoiceDate || new Date().toISOString().slice(0, 10);
+    let active = true;
+    void getApplicableTaxesAction({ scope: "SUPPLIER_INVOICES", onDate: date, taxBase: subtotal }).then((result) => {
+      if (!active) return;
+      if (!result.ok) {
+        setPreviewTax(0);
+        setTaxLabel("Tax");
+        return;
+      }
+      setPreviewTax(result.lines.reduce((sum, line) => sum + (Number(line.taxAmount) || 0), 0));
+      setTaxLabel(
+        result.lines.length === 1 ? `${result.lines[0].taxName} (${result.lines[0].taxRate}%)` : "Tax",
+      );
+    });
+    return () => {
+      active = false;
+    };
+  }, [draftable, invoiceDate, subtotal]);
 
   async function run(label: string, fn: () => Promise<{ error?: string | null }>) {
     setBusy(label);
@@ -201,8 +225,8 @@ function InvoicePanel({
           <input type="date" value={dueDate} disabled={!draftable} onChange={(event) => setDueDate(event.target.value)} className={inputClass} />
         </label>
         <label>
-          <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Tax</span>
-          <input inputMode="decimal" value={tax} disabled={!draftable} onChange={(event) => setTax(event.target.value)} className={inputClass} />
+          <span className="mb-1.5 block text-[13px] font-medium text-slate-500">{taxLabel}</span>
+          <input value={formatTzs(tax)} disabled className={inputClass} readOnly />
         </label>
       </div>
 
@@ -288,7 +312,6 @@ function InvoicePanel({
                   invoiceNumber,
                   invoiceDate,
                   dueDate,
-                  tax: Number(tax) || 0,
                   notes,
                   lines: receivedLines
                     .map((line) => ({

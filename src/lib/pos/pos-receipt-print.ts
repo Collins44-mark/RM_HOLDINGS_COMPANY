@@ -279,7 +279,7 @@ export function buildPosReceiptHtml(sale: PosCompletedSale) {
       <div class="totals">
         <div class="row"><span>Subtotal</span><span>${escapeHtml(formatTzs(asAmount(sale.subtotal)))}</span></div>
         <div class="row"><span>Discount</span><span>${escapeHtml(formatTzs(asAmount(sale.discount)))}</span></div>
-        <div class="row"><span>VAT</span><span>${escapeHtml(formatTzs(asAmount(sale.tax)))}</span></div>
+        <div class="row"><span>Tax</span><span>${escapeHtml(formatTzs(asAmount(sale.tax)))}</span></div>
       </div>
       <hr class="rule" />
       <div class="row total"><span>TOTAL DUE</span><span>${escapeHtml(formatTzs(asAmount(sale.totalDue)))}</span></div>
@@ -421,7 +421,7 @@ export function buildEscPosBytes(sale: PosCompletedSale) {
   write(rule());
   write(padRow("Subtotal", formatTzs(asAmount(sale.subtotal))));
   write(padRow("Discount", formatTzs(asAmount(sale.discount))));
-  write(padRow("VAT", formatTzs(asAmount(sale.tax))));
+  write(padRow("Tax", formatTzs(asAmount(sale.tax))));
   write(rule());
   write(padRow("TOTAL DUE", formatTzs(asAmount(sale.totalDue))));
   write();

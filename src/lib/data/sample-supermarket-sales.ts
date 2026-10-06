@@ -16,7 +16,7 @@ export const SALES_PERIODS = [
 ] as const;
 
 export type SalesPeriodId = (typeof SALES_PERIODS)[number]["id"];
-export type SalesPeriodPreset = "today" | "yesterday" | "week" | "month" | "range";
+export type SalesPeriodPreset = "today" | "yesterday" | "week" | "month" | "year" | "range";
 export type SalesDateRange = { from: string; to: string };
 export type SalesPayment = "Cash" | "Mobile Money" | "Card";
 export type SalesStatus = "Completed" | "Refunded";
@@ -392,6 +392,10 @@ export function resolveSalesPeriod(
   }
   if (preset === "month") {
     return { start: startOfMonth(asOf), end: endOfMonth(asOf), label: "This Month" };
+  }
+  if (preset === "year") {
+    const year = asOf.slice(0, 4);
+    return { start: `${year}-01-01`, end: `${year}-12-31`, label: "This Year" };
   }
 
   const from = range?.from || asOf;

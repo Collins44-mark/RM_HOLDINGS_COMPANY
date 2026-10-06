@@ -140,7 +140,22 @@ export async function saveSupplierInvoiceAction(input: {
     if (!input.lines.length) throw new SupermarketError("Add at least one invoice line.", "VALIDATION");
 
     const subtotal = input.lines.reduce((sum, line) => sum + line.quantity * line.unitCost, 0);
-    const tax = input.tax ?? 0;
+    const { data: taxRows, error: taxError } = await supabase.rpc("sm_tax_lines_for_scope", {
+      p_bu: businessUnitId,
+      p_scope: "SUPPLIER_INVOICES",
+      p_on_date: input.invoiceDate,
+      p_tax_base: subtotal,
+    });
+    if (taxError) mapDbError(taxError);
+    const taxLines = (taxRows ?? []) as Array<{
+      tax_rule_id: string;
+      tax_name: string;
+      tax_code: string;
+      tax_rate: number;
+      tax_base: number;
+      tax_amount: number;
+    }>;
+    const tax = taxLines.reduce((sum, line) => sum + (Number(line.tax_amount) || 0), 0);
     const total = Math.max(0, subtotal + tax);
 
     let invoiceId = input.invoiceId ?? "";
@@ -206,6 +221,26 @@ export async function saveSupplierInvoiceAction(input: {
       })),
     );
     if (itemsError) mapDbError(itemsError);
+
+    await supabase.from("sm_tax_applications").delete().eq("source_type", "SUPPLIER_INVOICE").eq("source_id", invoiceId);
+    if (taxLines.length) {
+      const { error: applyError } = await supabase.from("sm_tax_applications").insert(
+        taxLines.map((line) => ({
+          business_unit_id: businessUnitId,
+          tax_rule_id: line.tax_rule_id,
+          source_type: "SUPPLIER_INVOICE",
+          source_id: invoiceId,
+          source_number: input.invoiceNumber.trim(),
+          source_date: input.invoiceDate,
+          tax_name: line.tax_name,
+          tax_code: line.tax_code,
+          tax_rate: line.tax_rate,
+          tax_base: line.tax_base,
+          tax_amount: line.tax_amount,
+        })),
+      );
+      if (applyError) mapDbError(applyError);
+    }
 
     await writeSupermarketAudit(businessUnitId, {
       action: "supplier_invoice.created",

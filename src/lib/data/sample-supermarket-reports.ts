@@ -59,7 +59,7 @@ export function parseReportPeriodParams(params: {
     from: params.from || "2026-09-01",
     to: params.to || REPORT_AS_OF,
   };
-  if (period === "today" || period === "yesterday" || period === "week" || period === "month") {
+  if (period === "today" || period === "yesterday" || period === "week" || period === "month" || period === "year") {
     return { preset: period, range };
   }
   if (period === "range") {

@@ -12,6 +12,7 @@ import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilte
 import { getReconciliationReportStripAction } from "@/actions/supermarket/reconciliation-overview";
 import { getBankMovementReportStripAction } from "@/actions/supermarket/banking";
 import { getPettyCashReportStripAction } from "@/actions/supermarket/petty-cash";
+import { fetchTaxReportAction } from "@/actions/supermarket/tax";
 import { formatTzs } from "@/lib/format/currency";
 import { moneyToCents } from "@/lib/supermarket/money";
 
@@ -93,6 +94,7 @@ export function ReportsCenter() {
       <ReconciliationReportStrip from={period.start} to={period.end} />
       <BankMovementReportStrip from={period.start} to={period.end} />
       <PettyCashReportStrip from={period.start} to={period.end} />
+      <TaxReportStrip from={period.start} to={period.end} />
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {CARDS.map((card) => {
@@ -254,6 +256,49 @@ function PettyCashReportStrip({ from, to }: { from: string; to: string }) {
     <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {items.map((item) => (
         <Link key={item.title} href="/supermarket/finance/petty-cash" className={cn(reportGlass, "block px-4 py-4")}>
+          <p className="text-[13px] font-semibold text-navy">{item.title}</p>
+          <p className="mt-1 text-[12.5px] text-slate-500">{item.detail}</p>
+        </Link>
+      ))}
+    </section>
+  );
+}
+
+function TaxReportStrip({ from, to }: { from: string; to: string }) {
+  const [summary, setSummary] = useState<{ collected: number; purchases: number; net: number; count: number } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    let active = true;
+    void fetchTaxReportAction({ from, to }).then((result) => {
+      if (!active || !result.ok) return;
+      if (!result.details.length && result.collected === 0 && result.purchases === 0) return;
+      setSummary({
+        collected: result.collected,
+        purchases: result.purchases,
+        net: result.net,
+        count: result.details.length,
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [from, to]);
+
+  if (!summary) return null;
+
+  const items = [
+    { title: "Tax collected", detail: formatTzs(summary.collected) },
+    { title: "Tax on purchases", detail: formatTzs(summary.purchases) },
+    { title: "Net tax position", detail: formatTzs(summary.net) },
+    { title: "Tax transactions", detail: `${summary.count} posted` },
+  ];
+
+  return (
+    <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {items.map((item) => (
+        <Link key={item.title} href="/supermarket/finance/tax-vat" className={cn(reportGlass, "block px-4 py-4")}>
           <p className="text-[13px] font-semibold text-navy">{item.title}</p>
           <p className="mt-1 text-[12.5px] text-slate-500">{item.detail}</p>
         </Link>

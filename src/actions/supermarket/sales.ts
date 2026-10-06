@@ -81,7 +81,7 @@ export async function completeSaleAction(input: {
       })),
       p_customer_name: input.customerName ?? "Walk-in Customer",
       p_discount: input.discount ?? 0,
-      p_tax: input.tax ?? 0,
+      p_tax: 0,
       p_notes: input.notes ?? "",
     });
     if (error) mapDbError(error);
