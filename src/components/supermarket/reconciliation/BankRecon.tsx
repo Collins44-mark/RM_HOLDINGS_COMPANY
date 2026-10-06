@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   addBankStatementLineAction,
   approveBankReconciliationAction,
@@ -20,9 +20,25 @@ import { formatTzs } from "@/lib/format/currency";
 import { moneyToCents } from "@/lib/supermarket/money";
 import type { BankAccountRecord, BankReconciliationRecord, BankTransactionRecord } from "@/lib/supermarket/reconciliation";
 import { displayStatus } from "@/lib/supermarket/reconciliation";
-import { MoneyField, reconGlass, ReconActions, ReconPulse, ReconTableSkeletonRows, secondaryButton, StatusBadge, useReconPeriod } from "./shared";
+import { MoneyField, reconGlass, ReconActions, secondaryButton, StatusBadge, useReconPeriod } from "./shared";
 import { BankMovementsPage, BankingTabs } from "./BankMovements";
 import { formatImportedCount, StatementImportButton } from "./StatementImportModal";
+
+export function BankReconPanel({
+  omitChrome = false,
+  periodStart,
+  periodEnd,
+  onTabChange,
+  initial,
+}: {
+  omitChrome?: boolean;
+  periodStart?: string;
+  periodEnd?: string;
+  onTabChange?: (next: "movements" | "reconcile") => void;
+  initial?: Awaited<ReturnType<typeof getBankWorkspaceAction>>;
+}) {
+  return <BankWorkspace mode="reconcile" omitChrome={omitChrome} periodStart={periodStart} periodEnd={periodEnd} onTabChange={onTabChange} initial={initial} />;
+}
 
 export function BankingPage() {
   return <BankMovementsPage />;
@@ -32,23 +48,52 @@ export function BankReconciliationPage() {
   return <BankWorkspace mode="reconcile" />;
 }
 
-function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
-  const { preset, setPreset, range, setRange, period, asOf } = useReconPeriod();
-  const [accounts, setAccounts] = useState<BankAccountRecord[] | null>(null);
-  const [accountId, setAccountId] = useState<string | null>(null);
-  const [transactions, setTransactions] = useState<BankTransactionRecord[]>([]);
-  const [record, setRecord] = useState<BankReconciliationRecord | null>(null);
-  const [opening, setOpening] = useState("0.00");
-  const [closing, setClosing] = useState("0.00");
-  const [notes, setNotes] = useState("");
+function BankWorkspace({
+  mode,
+  omitChrome = false,
+  periodStart,
+  periodEnd,
+  onTabChange,
+  initial,
+}: {
+  mode: "accounts" | "reconcile";
+  omitChrome?: boolean;
+  periodStart?: string;
+  periodEnd?: string;
+  onTabChange?: (next: "movements" | "reconcile") => void;
+  initial?: Awaited<ReturnType<typeof getBankWorkspaceAction>>;
+}) {
+  const localPeriod = useReconPeriod();
+  const { preset, setPreset, range, setRange, asOf } = localPeriod;
+  const period = {
+    start: periodStart ?? localPeriod.period.start,
+    end: periodEnd ?? localPeriod.period.end,
+    label: localPeriod.period.label,
+  };
+  const seeded = initial && initial.ok ? initial : null;
+  const skipFirstFetch = useRef(Boolean(seeded));
+  const [accounts, setAccounts] = useState<BankAccountRecord[] | null>(seeded?.accounts ?? null);
+  const [accountId, setAccountId] = useState<string | null>(seeded?.accountId ?? null);
+  const [transactions, setTransactions] = useState<BankTransactionRecord[]>(seeded?.transactions ?? []);
+  const [record, setRecord] = useState<BankReconciliationRecord | null>(seeded?.record ?? null);
+  const [opening, setOpening] = useState(
+    seeded?.record?.statementOpeningBalance ??
+      seeded?.accounts.find((a) => a.id === seeded.accountId)?.openingBalance ??
+      "0.00",
+  );
+  const [closing, setClosing] = useState(seeded?.record?.statementClosingBalance ?? "0.00");
+  const [notes, setNotes] = useState(seeded?.record?.notes ?? "");
   const [selected, setSelected] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initial && !initial.ok ? initial.error : null);
   const [importNote, setImportNote] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [caps, setCaps] = useState({ canCreate: false, canApprove: false });
-  const [loadedKey, setLoadedKey] = useState<string | null>(null);
-  const requestKey = `${accountId ?? ""}:${period.start}:${period.end}`;
-  const pending = loadedKey !== requestKey;
+  const [caps, setCaps] = useState({
+    canCreate: seeded?.capabilities.canCreate ?? false,
+    canApprove: seeded?.capabilities.canApprove ?? false,
+  });
+  const [loadedKey, setLoadedKey] = useState<string | null>(
+    seeded ? `${seeded.accountId ?? ""}:${period.start}:${period.end}` : null,
+  );
   const ready = loadedKey !== null;
   const accountsReady = accounts !== null;
   const noAccounts = accountsReady && accounts.length === 0;
@@ -74,6 +119,10 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
   }
 
   useEffect(() => {
+    if (skipFirstFetch.current) {
+      skipFirstFetch.current = false;
+      return;
+    }
     let active = true;
     void getBankWorkspaceAction({ accountId, from: period.start, to: period.end }).then((result) => {
       if (!active) return;
@@ -115,35 +164,43 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
 
   return (
     <div className="min-w-0 max-w-full space-y-5 pb-10">
-      <PageBackButton href="/supermarket/reconciliation" label="Reconciliation" />
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">
-            Banking
-          </h1>
-          <p className="mt-1.5 text-[13.5px] text-slate-500">
-            Manage bank deposits and withdrawals and reconcile bank movements.
-          </p>
-        </div>
-        <div className="flex flex-col items-stretch gap-2 sm:items-end">
-          <FinancePeriodFilter
-            preset={preset}
-            label={period.label}
-            range={range}
-            onPreset={setPreset}
-            onRange={setRange}
-          />
+      {omitChrome ? null : (
+        <>
+          <PageBackButton href="/supermarket/reconciliation" label="Reconciliation" />
+          <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">
+                Banking
+              </h1>
+              <p className="mt-1.5 text-[13.5px] text-slate-500">
+                Manage bank deposits and withdrawals and reconcile bank movements.
+              </p>
+            </div>
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+              <FinancePeriodFilter
+                preset={preset}
+                label={period.label}
+                range={range}
+                onPreset={setPreset}
+                onRange={setRange}
+              />
+              <StatusBadge label={status.label} tone={unmatched > 0 ? "variance" : status.tone} />
+            </div>
+          </header>
+          <BankingTabs active="reconcile" onChange={onTabChange} />
+        </>
+      )}
+      {omitChrome ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <PageBackButton href="/supermarket/reconciliation" label="Reconciliation" />
           <StatusBadge label={status.label} tone={unmatched > 0 ? "variance" : status.tone} />
         </div>
-      </header>
-      <BankingTabs active="reconcile" />
+      ) : null}
       {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
       {importNote ? <p className="text-[12.5px] font-medium text-[#3f8a5a]">Imported ✓ {importNote}</p> : null}
 
       <section className={`${reconGlass} px-4 py-4 sm:px-5`}>
-        {!accountsReady ? (
-          <div className="h-10 max-w-md animate-pulse rounded-full bg-slate-200/70" />
-        ) : noAccounts ? (
+        {!accountsReady ? null : noAccounts ? (
           <EmptyState
             title="No bank accounts configured"
             description="Add a real supermarket bank account before reconciling statement lines. No sample accounts are created."
@@ -183,16 +240,7 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
         ) : null}
       </section>
 
-      {!accountsReady ? (
-        <section className={`${reconGlass} space-y-3 px-4 py-4 sm:px-5`} aria-hidden>
-          <div className="h-5 w-36 animate-pulse rounded-md bg-slate-200/80" />
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
-            {Array.from({ length: 5 }).map((_, index) => (
-              <div key={index} className="h-10 animate-pulse rounded-[14px] bg-slate-200/70" />
-            ))}
-          </div>
-        </section>
-      ) : accountId && caps.canCreate ? (
+      {!accountsReady ? null : accountId && caps.canCreate ? (
         <section className={`${reconGlass} space-y-3 px-4 py-4 sm:px-5`}>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <h2 className="text-[15px] font-semibold tracking-[-0.02em] text-navy">Statement line</h2>
@@ -238,17 +286,8 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
         </section>
       ) : null}
 
-      {mode === "reconcile" && !noAccounts ? (
+      {mode === "reconcile" && accountsReady && !noAccounts ? (
         <section className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          {!accountsReady || pending ? (
-            Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className={`${reconGlass} flex min-h-[92px] flex-col justify-center px-4 py-3.5`}>
-                <ReconPulse className="h-3 w-24" />
-                <ReconPulse className="mt-3 h-6 w-32" />
-              </div>
-            ))
-          ) : (
-            <>
           <div className={`${reconGlass} flex min-h-[92px] flex-col justify-center px-4 py-3.5`}>
             <MoneyField label="Statement Opening" value={opening} onChange={setOpening} compact />
           </div>
@@ -268,8 +307,6 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
             </p>
             <p className="mt-1 text-[12px] text-slate-500">{unmatched} unmatched</p>
           </div>
-            </>
-          )}
         </section>
       ) : null}
 
@@ -289,7 +326,6 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
               </tr>
             </thead>
             <tbody>
-              {pending && !ready ? <ReconTableSkeletonRows rows={5} cols={8} /> : null}
               {ready
                 ? transactions.map((txn) => (
                 <tr key={txn.id} className="border-t border-black/[0.04]">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import {
@@ -22,7 +22,6 @@ import { cn } from "@/lib/cn";
 import {
   MoneyField,
   primaryButton,
-  ReconPulse,
   reconGlass,
   secondaryButton,
   StatusBadge,
@@ -31,45 +30,85 @@ import {
 
 const DEPOSIT_SOURCES = ["Cash Deposit", "Sales Collection Deposit", "Other Cash Deposit"] as const;
 
-export function BankingTabs({ active }: { active: "movements" | "reconcile" }) {
+export function BankingTabs({
+  active,
+  onChange,
+}: {
+  active: "movements" | "reconcile";
+  onChange?: (next: "movements" | "reconcile") => void;
+}) {
+  const itemClass = (isActive: boolean) =>
+    cn(
+      "rounded-full px-4 py-1.5 text-[13px] font-semibold",
+      isActive ? "bg-[#0b2244] text-white" : "text-slate-500",
+    );
   return (
     <div className="inline-flex rounded-full border border-white/70 bg-white/70 p-1 shadow-[0_4px_12px_rgba(15,35,64,0.05)]">
-      <Link
-        href="/supermarket/finance/banking"
-        className={cn(
-          "rounded-full px-4 py-1.5 text-[13px] font-semibold",
-          active === "movements" ? "bg-[#0b2244] text-white" : "text-slate-500",
-        )}
-      >
-        Deposits & Withdrawals
-      </Link>
-      <Link
-        href="/supermarket/finance/bank-reconciliation"
-        className={cn(
-          "rounded-full px-4 py-1.5 text-[13px] font-semibold",
-          active === "reconcile" ? "bg-[#0b2244] text-white" : "text-slate-500",
-        )}
-      >
-        Reconciliation
-      </Link>
+      {onChange ? (
+        <>
+          <button type="button" className={itemClass(active === "movements")} onClick={() => onChange("movements")}>
+            Deposits & Withdrawals
+          </button>
+          <button type="button" className={itemClass(active === "reconcile")} onClick={() => onChange("reconcile")}>
+            Reconciliation
+          </button>
+        </>
+      ) : (
+        <>
+          <Link href="/supermarket/finance/banking" className={itemClass(active === "movements")}>
+            Deposits & Withdrawals
+          </Link>
+          <Link href="/supermarket/finance/bank-reconciliation" className={itemClass(active === "reconcile")}>
+            Reconciliation
+          </Link>
+        </>
+      )}
     </div>
   );
 }
 
-export function BankMovementsPage() {
-  const { preset, setPreset, range, setRange, period } = useReconPeriod();
-  const [accounts, setAccounts] = useState<BankAccountRecord[] | null>(null);
-  const [movements, setMovements] = useState<BankMovementRecord[]>([]);
-  const [summary, setSummary] = useState({ deposits: "0.00", withdrawals: "0.00", net: "0.00", unmatched: 0 });
+export function BankMovementsPage({
+  omitChrome = false,
+  periodStart,
+  periodEnd,
+  periodChrome,
+  onTabChange,
+  initial,
+}: {
+  omitChrome?: boolean;
+  periodStart?: string;
+  periodEnd?: string;
+  periodChrome?: ReactNode;
+  onTabChange?: (next: "movements" | "reconcile") => void;
+  initial?: Awaited<ReturnType<typeof getBankMovementsWorkspaceAction>>;
+}) {
+  const localPeriod = useReconPeriod();
+  const preset = localPeriod.preset;
+  const setPreset = localPeriod.setPreset;
+  const range = localPeriod.range;
+  const setRange = localPeriod.setRange;
+  const period = {
+    start: periodStart ?? localPeriod.period.start,
+    end: periodEnd ?? localPeriod.period.end,
+    label: localPeriod.period.label,
+  };
+  const seeded = initial && initial.ok ? initial : null;
+  const skipFirstFetch = useRef(Boolean(seeded));
+  const [accounts, setAccounts] = useState<BankAccountRecord[] | null>(seeded?.accounts ?? null);
+  const [movements, setMovements] = useState<BankMovementRecord[]>(seeded?.movements ?? []);
+  const [summary, setSummary] = useState(seeded?.summary ?? { deposits: "0.00", withdrawals: "0.00", net: "0.00", unmatched: 0 });
   const [accountId, setAccountId] = useState("");
   const [movementType, setMovementType] = useState<BankMovementType | "ALL">("ALL");
   const [postingStatus, setPostingStatus] = useState<BankPostingStatus | "ALL">("ALL");
   const [matchStatus, setMatchStatus] = useState<BankMatchStatus | "ALL">("ALL");
   const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [pageSize, setPageSize] = useState(50);
+  const [total, setTotal] = useState(seeded?.total ?? 0);
+  const [pageSize, setPageSize] = useState(seeded?.pageSize ?? 50);
   const [error, setError] = useState<string | null>(null);
-  const [caps, setCaps] = useState({ canCreate: false, canApprove: false });
+  const [caps, setCaps] = useState({
+    canCreate: seeded?.capabilities.canCreate ?? false,
+    canApprove: seeded?.capabilities.canApprove ?? false,
+  });
   const [modalOpen, setModalOpen] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
   const [accountForm, setAccountForm] = useState({ bankName: "", accountName: "", accountReference: "", openingBalance: "0.00" });
@@ -79,6 +118,10 @@ export function BankMovementsPage() {
   const [reverseError, setReverseError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (skipFirstFetch.current) {
+      skipFirstFetch.current = false;
+      return;
+    }
     let active = true;
     void getBankMovementsWorkspaceAction({
       from: period.start,
@@ -113,33 +156,47 @@ export function BankMovementsPage() {
   const noAccounts = accountsReady && activeAccounts.length === 0;
 
   return (
-    <div className="min-w-0 max-w-full space-y-5 pb-10">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">Banking</h1>
-          <p className="mt-1.5 text-[13.5px] text-slate-500">
-            Manage bank deposits and withdrawals and reconcile bank movements.
-          </p>
+    <div className={omitChrome ? "min-w-0 max-w-full space-y-5" : "min-w-0 max-w-full space-y-5 pb-10"}>
+      {omitChrome ? null : (
+        <>
+          <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">Banking</h1>
+              <p className="mt-1.5 text-[13.5px] text-slate-500">
+                Manage bank deposits and withdrawals and reconcile bank movements.
+              </p>
+            </div>
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+              {periodChrome ?? (
+                <FinancePeriodFilter
+                  preset={preset}
+                  label={period.label}
+                  range={range}
+                  onPreset={setPreset}
+                  onRange={setRange}
+                />
+              )}
+              {accountsReady && caps.canCreate ? (
+                <button type="button" className={primaryButton} onClick={() => setModalOpen(true)}>
+                  + New Transaction
+                </button>
+              ) : null}
+            </div>
+          </header>
+          <BankingTabs active="movements" onChange={onTabChange} />
+        </>
+      )}
+      {omitChrome && accountsReady && caps.canCreate ? (
+        <div className="flex justify-end">
+          <button type="button" className={primaryButton} onClick={() => setModalOpen(true)}>
+            + New Transaction
+          </button>
         </div>
-        <div className="flex flex-col items-stretch gap-2 sm:items-end">
-          <FinancePeriodFilter
-            preset={preset}
-            label={period.label}
-            range={range}
-            onPreset={setPreset}
-            onRange={setRange}
-          />
-          {accountsReady && caps.canCreate ? (
-            <button type="button" className={primaryButton} onClick={() => setModalOpen(true)}>
-              + New Transaction
-            </button>
-          ) : null}
-        </div>
-      </header>
-      <BankingTabs active="movements" />
+      ) : null}
       {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
       {reverseOk ? <p className="text-[12.5px] font-medium text-[#3f8a5a]">Reversed ✓</p> : null}
 
+      {accountsReady ? (
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
           ["Deposits", summary.deposits],
@@ -149,33 +206,15 @@ export function BankMovementsPage() {
         ].map(([label, value]) => (
           <div key={label} className={`${reconGlass} px-5 py-5`}>
             <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</p>
-            {!accountsReady ? (
-              <p className="mt-2">
-                <ReconPulse className="h-6 w-28" />
-              </p>
-            ) : (
-              <p className="mt-2 text-[20px] font-semibold tracking-[-0.04em] text-navy">
-                {label === "Unreconciled" ? value : formatTzs(moneyToCents(value) / 100)}
-              </p>
-            )}
+            <p className="mt-2 text-[20px] font-semibold tracking-[-0.04em] text-navy">
+              {label === "Unreconciled" ? value : formatTzs(moneyToCents(value) / 100)}
+            </p>
           </div>
         ))}
       </section>
+      ) : null}
 
-      {!accountsReady ? (
-        <div className={`${reconGlass} overflow-hidden`}>
-          <div className="grid grid-cols-1 gap-2 p-4 min-[520px]:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="h-10 animate-pulse rounded-full bg-slate-200/70" />
-            ))}
-          </div>
-          <div className="space-y-2 px-4 pb-5">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className="h-10 animate-pulse rounded-md bg-slate-100/80" />
-            ))}
-          </div>
-        </div>
-      ) : noAccounts ? (
+      {!accountsReady ? null : noAccounts ? (
         <div className={`${reconGlass} space-y-4 px-5 py-6`}>
           <EmptyState
             title="No bank accounts configured"
