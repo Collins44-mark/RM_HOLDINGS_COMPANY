@@ -14,7 +14,10 @@ function isDashboardPath(pathname: string) {
   return pathname === "/dashboard" || pathname === "/owner";
 }
 
-function isActive(pathname: string, href: string, exact?: boolean) {
+function isActive(pathname: string, href: string, exact?: boolean, alsoActive?: string[]) {
+  if (alsoActive?.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+    return true;
+  }
   if (href === "/dashboard" || href === "/owner") return isDashboardPath(pathname);
   if (exact) return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -33,9 +36,9 @@ function NavLink({
   collapsed?: boolean;
   onNavigate?: () => void;
 }) {
-  const active = isActive(pathname, item.href, item.exact);
+  const active = isActive(pathname, item.href, item.exact, item.alsoActive);
   const childActive = item.children?.some((child) =>
-    isActive(pathname, child.href, child.exact),
+    isActive(pathname, child.href, child.exact, child.alsoActive),
   );
   const [open, setOpen] = useState(Boolean(childActive));
 
