@@ -132,7 +132,7 @@ export function SupplierDetailPage() {
 
       <section className={glassCard}>
         <div className="px-4 pt-4">
-          <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Invoices</h2>
+          <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Supplier invoices</h2>
         </div>
         <div className="mt-2 overflow-x-auto">
           <table className="min-w-full text-left text-[13px]">

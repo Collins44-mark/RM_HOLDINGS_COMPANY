@@ -28,6 +28,7 @@ import {
   fetchPurchasingWorkspaceAction,
   fetchStockMovementsAction,
   getPurchaseOrderByIdAction,
+  getPurchaseOrderWorkspaceAction,
   receivePurchaseOrderAction,
   sendPurchaseOrderAction,
   setCategoryActiveAction,
@@ -41,6 +42,8 @@ import {
   type StockMovement,
   type SupermarketCategory,
   type SupermarketProduct,
+  type SupplierInvoice,
+  type SupplierPaymentRequest,
 } from "@/lib/supermarket/types";
 import type {
   CreatePurchaseOrderInput,
@@ -118,6 +121,48 @@ function upsertPurchaseOrder(order: PurchaseOrder) {
 
 export function cachePurchaseOrder(order: PurchaseOrder) {
   upsertPurchaseOrder(order);
+}
+
+export function applyPurchaseOrderWorkspace(input: {
+  order: PurchaseOrder;
+  purchase: Purchase | null;
+  invoices: SupplierInvoice[];
+  paymentRequests: SupplierPaymentRequest[];
+}) {
+  upsertPurchaseOrder(input.order);
+  const nextInvoiceIds = new Set(input.invoices.map((item) => item.id));
+  const previousInvoiceIds = new Set(
+    snapshot.supplierInvoices
+      .filter((item) => item.purchaseOrderId === input.order.id)
+      .map((item) => item.id),
+  );
+  const nextPurchases = input.purchase
+    ? snapshot.purchases.some((item) => item.purchaseOrderId === input.order.id)
+      ? snapshot.purchases.map((item) =>
+          item.purchaseOrderId === input.order.id ? input.purchase! : item,
+        )
+      : [input.purchase, ...snapshot.purchases]
+    : snapshot.purchases.filter((item) => item.purchaseOrderId !== input.order.id);
+  patchSnapshot({
+    purchases: nextPurchases,
+    supplierInvoices: [
+      ...input.invoices,
+      ...snapshot.supplierInvoices.filter((item) => item.purchaseOrderId !== input.order.id),
+    ],
+    paymentRequests: [
+      ...input.paymentRequests,
+      ...snapshot.paymentRequests.filter(
+        (item) => !nextInvoiceIds.has(item.invoiceId) && !previousInvoiceIds.has(item.invoiceId),
+      ),
+    ],
+  });
+}
+
+export async function refreshPurchaseOrderWorkspace(poId: string) {
+  const result = await getPurchaseOrderWorkspaceAction(poId);
+  if (result.status !== "found") return result.status === "error" ? { error: result.error } : { error: "Purchase order not found." };
+  applyPurchaseOrderWorkspace(result.workspace);
+  return { error: null as string | null };
 }
 
 function patchPurchaseOrder(orderId: string, patch: Partial<PurchaseOrder>) {
@@ -660,56 +705,57 @@ export async function receivePurchaseOrder(input: ReceivePurchaseOrderInput) {
 export async function saveSupplierInvoice(input: Parameters<typeof saveSupplierInvoiceAction>[0]) {
   const result = await saveSupplierInvoiceAction(input);
   if (!result.ok) return { error: result.error, id: null as string | null };
-  await refreshPurchasingWorkspace();
+  await refreshPurchaseOrderWorkspace(input.purchaseOrderId);
   return { error: null, id: result.id };
 }
 
-export async function submitSupplierInvoice(invoiceId: string) {
+export async function submitSupplierInvoice(invoiceId: string, purchaseOrderId: string) {
   const result = await submitSupplierInvoiceAction(invoiceId);
   if (!result.ok) return { error: result.error };
-  await refreshPurchasingWorkspace();
+  await refreshPurchaseOrderWorkspace(purchaseOrderId);
   return { error: null };
 }
 
-export async function verifySupplierInvoice(invoiceId: string) {
+export async function verifySupplierInvoice(invoiceId: string, purchaseOrderId: string) {
   const result = await verifySupplierInvoiceAction(invoiceId);
   if (!result.ok) return { error: result.error };
-  await refreshPurchasingWorkspace();
+  await refreshPurchaseOrderWorkspace(purchaseOrderId);
   return { error: null };
 }
 
-export async function rejectSupplierInvoice(invoiceId: string, reason: string) {
+export async function rejectSupplierInvoice(invoiceId: string, reason: string, purchaseOrderId: string) {
   const result = await rejectSupplierInvoiceAction(invoiceId, reason);
   if (!result.ok) return { error: result.error };
-  await refreshPurchasingWorkspace();
+  await refreshPurchaseOrderWorkspace(purchaseOrderId);
   return { error: null };
 }
 
-export async function savePaymentRequest(input: Parameters<typeof savePaymentRequestAction>[0]) {
-  const result = await savePaymentRequestAction(input);
+export async function savePaymentRequest(input: Parameters<typeof savePaymentRequestAction>[0] & { purchaseOrderId: string }) {
+  const { purchaseOrderId, ...payload } = input;
+  const result = await savePaymentRequestAction(payload);
   if (!result.ok) return { error: result.error, id: null as string | null };
-  await refreshPurchasingWorkspace();
+  await refreshPurchaseOrderWorkspace(purchaseOrderId);
   return { error: null, id: result.id };
 }
 
-export async function submitPaymentRequest(requestId: string) {
+export async function submitPaymentRequest(requestId: string, purchaseOrderId: string) {
   const result = await submitPaymentRequestAction(requestId);
   if (!result.ok) return { error: result.error };
-  await refreshPurchasingWorkspace();
+  await refreshPurchaseOrderWorkspace(purchaseOrderId);
   return { error: null };
 }
 
-export async function approvePaymentRequest(requestId: string) {
+export async function approvePaymentRequest(requestId: string, purchaseOrderId: string) {
   const result = await approvePaymentRequestAction(requestId);
   if (!result.ok) return { error: result.error };
-  await refreshPurchasingWorkspace();
+  await refreshPurchaseOrderWorkspace(purchaseOrderId);
   return { error: null };
 }
 
-export async function postPaymentRequest(requestId: string) {
+export async function postPaymentRequest(requestId: string, purchaseOrderId: string) {
   const result = await postPaymentRequestAction(requestId);
   if (!result.ok) return { error: result.error };
-  await refreshPurchasingWorkspace();
+  await refreshPurchaseOrderWorkspace(purchaseOrderId);
   return { error: null };
 }
 

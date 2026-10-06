@@ -680,8 +680,11 @@ export async function getPurchaseDocumentPdfPayloadAction(purchaseOrderId: strin
 
     const receivedAt = receipts?.length ? String(receipts[receipts.length - 1]?.received_at ?? "") : "";
     const verified = (invoices ?? []).find((row) => String(row.verification_status) === "VERIFIED");
-    const paymentSource = verified ?? invoices?.[0];
+    const paymentSource = verified ?? null;
     const paymentStatus = String(paymentSource?.payment_status ?? "UNPAID");
+    const amountPaid = Number(paymentSource?.amount_paid) || 0;
+    const invoiceTotal = Number(paymentSource?.total) || 0;
+    const outstanding = Math.max(0, invoiceTotal - amountPaid);
 
     const lines = (items ?? [])
       .filter((row) => (Number(row.quantity_received) || 0) > 0)
@@ -711,6 +714,8 @@ export async function getPurchaseDocumentPdfPayloadAction(purchaseOrderId: strin
         subtotal,
         grandTotal: Math.max(0, subtotal - (Number(po.discount) || 0) + (Number(po.tax) || 0)),
         paymentStatus,
+        amountPaid,
+        outstanding,
         receipts: (receipts ?? []).map((row) => String(row.receipt_number ?? "")).filter(Boolean),
         lines,
       },

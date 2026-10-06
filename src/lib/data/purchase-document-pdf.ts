@@ -14,6 +14,8 @@ export type PurchaseDocumentPdfPayload = {
   subtotal: number;
   grandTotal: number;
   paymentStatus: string;
+  amountPaid: number;
+  outstanding: number;
   receipts: string[];
   lines: { name: string; quantity: number; buyingPrice: number; lineTotal: number }[];
 };
@@ -39,8 +41,8 @@ function poStatusLabel(status: string) {
 export function downloadPurchaseDocument(document: PurchaseDocumentPdfPayload) {
   const doc = new CorporateReportDocument({
     businessUnit: "Supermarket",
-    title: "Purchase Invoice / Receipt",
-    subtitle: `${APP_NAME} · system purchase document`,
+    title: "Purchase Document",
+    subtitle: `${APP_NAME} · RM Holdings system purchase document`,
     periodLabel: document.number,
     periodDates: document.receivedDate || document.orderDate,
     generatedAt: new Date().toISOString(),
@@ -101,6 +103,8 @@ export function downloadPurchaseDocument(document: PurchaseDocumentPdfPayload) {
       { label: "Discount", value: money(document.discount) },
       { label: "Tax", value: money(document.tax) },
       { label: "Grand total", value: money(document.grandTotal) },
+      { label: "Paid", value: money(document.amountPaid) },
+      { label: "Outstanding", value: money(document.outstanding) },
       { label: "Payment status", value: paymentLabel(document.paymentStatus) },
     ],
   );

@@ -51,6 +51,8 @@ export function PurchasingManager() {
 
   // Keep in sync when arriving via Link (?tab=suppliers) without remounting on every click.
   useEffect(() => {
+    // history.replaceState does not always refresh searchParams; local tab still needs this sync.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- URL tab is an external input
     setTabState(tabFromSearchParam(searchParams.get("tab")));
   }, [searchParams]);
 
@@ -156,7 +158,7 @@ export function PurchasingManager() {
           />
         ) : null}
         {tab === "purchases" ? (
-          <PurchasesView query={query} onQuery={setQuery} purchases={purchases} />
+          <PurchasesView query={query} onQuery={setQuery} purchases={purchases} invoices={inventory.supplierInvoices} />
         ) : null}
         {tab === "suppliers" ? (
           <SuppliersView
@@ -282,11 +284,23 @@ function PurchasesView({
   query,
   onQuery,
   purchases,
+  invoices,
 }: {
   query: string;
   onQuery: (value: string) => void;
   purchases: ReturnType<typeof useSupermarketInventory>["purchases"];
+  invoices: ReturnType<typeof useSupermarketInventory>["supplierInvoices"];
 }) {
+  function payablesFor(purchaseOrderId: string) {
+    const verified = invoices.filter(
+      (item) => item.purchaseOrderId === purchaseOrderId && item.verificationStatus === "Verified",
+    );
+    const paid = verified.reduce((sum, item) => sum + item.amountPaid, 0);
+    const outstanding = verified.reduce((sum, item) => sum + item.outstanding, 0);
+    const status = verified[0]?.paymentStatus ?? "Unpaid";
+    return { paid, outstanding, status, awaitingInvoice: verified.length === 0 };
+  }
+
   return (
     <div className="space-y-5">
       <SearchField value={query} onChange={onQuery} placeholder="Search purchases..." />
@@ -295,36 +309,38 @@ function PurchasesView({
           <table className="min-w-full text-left text-[13px]">
             <thead className={tableHead}>
               <tr className="border-b border-[#d5dee8]/80">
-                <th className="px-4 py-3 font-medium">Purchase Number</th>
+                <th className="px-4 py-3 font-medium">Purchase Document</th>
                 <th className="px-4 py-3 font-medium">PO Number</th>
                 <th className="px-4 py-3 font-medium">Supplier</th>
-                <th className="px-4 py-3 font-medium">Received Date</th>
-                <th className="px-4 py-3 font-medium">Items</th>
-                <th className="px-4 py-3 font-medium">Total Cost</th>
-                <th className="px-4 py-3 font-medium">Payment Status</th>
-                <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Received</th>
+                <th className="px-4 py-3 font-medium">Total</th>
+                <th className="px-4 py-3 font-medium">Paid</th>
+                <th className="px-4 py-3 font-medium">Outstanding</th>
+                <th className="px-4 py-3 font-medium">Payment</th>
                 <th className="px-4 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {purchases.map((item) => (
+              {purchases.map((item) => {
+                const payables = payablesFor(item.purchaseOrderId);
+                return (
                 <tr key={item.id} className="border-t border-[#d5dee8]/80">
                   <td className="px-4 py-3 font-semibold text-navy">{item.number}</td>
                   <td className="px-4 py-3 text-slate-500">{item.purchaseOrderNumber}</td>
                   <td className="px-4 py-3 text-slate-500">{item.supplierName}</td>
                   <td className="px-4 py-3 text-slate-500">{formatDisplayDate(item.receivedAt)}</td>
-                  <td className="px-4 py-3 text-slate-500">{item.itemCount} items</td>
                   <td className="px-4 py-3 font-semibold text-navy">{formatTzs(item.totalCost)}</td>
-                  <td className="px-4 py-3">
-                    <StatusPill value={item.paymentStatus} />
+                  <td className="px-4 py-3 text-slate-500">{formatTzs(payables.paid)}</td>
+                  <td className="px-4 py-3 text-navy">
+                    {payables.awaitingInvoice ? "Awaiting invoice" : formatTzs(payables.outstanding)}
                   </td>
                   <td className="px-4 py-3">
-                    <StatusPill value={item.status} />
+                    <StatusPill value={payables.awaitingInvoice ? "Unpaid" : payables.status} />
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col items-start gap-1">
                       <Link href={`/supermarket/purchasing/${item.purchaseOrderId}`} className="text-[13px] font-semibold text-navy hover:underline">
-                        View
+                        View purchase
                       </Link>
                       <button
                         type="button"
@@ -336,23 +352,32 @@ function PurchasesView({
                     </div>
                   </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         </div>
         <div className="divide-y divide-[#d5dee8]/70 md:hidden">
-          {purchases.map((item) => (
+          {purchases.map((item) => {
+            const payables = payablesFor(item.purchaseOrderId);
+            return (
             <Link key={item.id} href={`/supermarket/purchasing/${item.purchaseOrderId}`} className="block px-4 py-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-[14px] font-semibold text-navy">{item.number}</p>
                   <p className="mt-0.5 text-[12.5px] text-slate-500">{item.supplierName} · {item.purchaseOrderNumber}</p>
                 </div>
-                <StatusPill value={item.paymentStatus} />
+                <StatusPill value={payables.awaitingInvoice ? "Unpaid" : payables.status} />
               </div>
               <p className="mt-2 text-[13px] font-semibold text-navy">{formatTzs(item.totalCost)}</p>
+              <p className="mt-1 text-[12px] text-slate-400">
+                {payables.awaitingInvoice
+                  ? "Awaiting supplier invoice"
+                  : `Paid ${formatTzs(payables.paid)} · Outstanding ${formatTzs(payables.outstanding)}`}
+              </p>
             </Link>
-          ))}
+          );
+          })}
         </div>
         {purchases.length === 0 ? (
           <p className="px-4 py-8 text-center text-[13px] text-slate-500">

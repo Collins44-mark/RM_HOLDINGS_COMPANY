@@ -381,7 +381,9 @@ export async function loadPurchasingWorkspace(input?: {
     const invoiceNumberById = new Map(supplierInvoices.map((item) => [item.id, item.number]));
     const paymentByPo = new Map<string, Purchase["paymentStatus"]>();
     for (const invoice of supplierInvoices) {
-      if (invoice.purchaseOrderId) paymentByPo.set(invoice.purchaseOrderId, invoice.paymentStatus);
+      if (invoice.purchaseOrderId && invoice.verificationStatus === "Verified") {
+        paymentByPo.set(invoice.purchaseOrderId, invoice.paymentStatus);
+      }
     }
 
     const purchasesByPo = new Map<string, Purchase>();
@@ -759,6 +761,197 @@ export async function loadPurchaseOrderById(poId: string): Promise<LoadPurchaseO
       status: "found",
       order: mapPurchaseOrder(row, lines, String(supplierRes.data?.name ?? "Supplier")),
     };
+  } catch (error) {
+    return { status: "error", error: queryErrorMessage(error) };
+  }
+}
+
+export type PurchaseOrderWorkspace = {
+  order: PurchaseOrder;
+  purchase: Purchase | null;
+  invoices: SupplierInvoice[];
+  paymentRequests: SupplierPaymentRequest[];
+};
+
+export type LoadPurchaseOrderWorkspaceResult =
+  | { status: "found"; workspace: PurchaseOrderWorkspace }
+  | { status: "not_found" }
+  | { status: "error"; error: string };
+
+/** One PO plus its receipts, supplier invoices, and payment requests. */
+export async function loadPurchaseOrderWorkspace(poId: string): Promise<LoadPurchaseOrderWorkspaceResult> {
+  const loaded = await loadPurchaseOrderById(poId);
+  if (loaded.status !== "found") return loaded;
+  const order = loaded.order;
+
+  try {
+    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const [receiptsRes, invoiceRes] = await Promise.all([
+      supabase
+        .from("sm_goods_receipts")
+        .select(RECEIPT_COLUMNS)
+        .eq("business_unit_id", businessUnitId)
+        .eq("purchase_order_id", order.id)
+        .order("received_at", { ascending: true }),
+      supabase
+        .from("sm_supplier_invoices")
+        .select(INVOICE_COLUMNS)
+        .eq("business_unit_id", businessUnitId)
+        .eq("purchase_order_id", order.id)
+        .order("created_at", { ascending: false }),
+    ]);
+    const invoiceMissing =
+      Boolean(invoiceRes.error) && /sm_supplier_invoices|does not exist|PGRST/i.test(invoiceRes.error?.message ?? "");
+    if (receiptsRes.error) return { status: "error", error: failMessage(receiptsRes.error) };
+    if (invoiceRes.error && !invoiceMissing) return { status: "error", error: failMessage(invoiceRes.error) };
+
+    const receiptRows = (receiptsRes.data ?? []) as Record<string, unknown>[];
+    const invoiceRows = invoiceMissing ? [] : ((invoiceRes.data ?? []) as Record<string, unknown>[]);
+    const receiptIds = receiptRows.map((row) => String(row.id));
+    const invoiceIds = invoiceRows.map((row) => String(row.id));
+
+    const [receiptItemsRes, invoiceItemsRes, requestRes] = await Promise.all([
+      receiptIds.length
+        ? supabase.from("sm_goods_receipt_items").select(RECEIPT_ITEM_COLUMNS).in("goods_receipt_id", receiptIds)
+        : Promise.resolve({ data: [] as Record<string, unknown>[], error: null }),
+      invoiceIds.length
+        ? supabase.from("sm_supplier_invoice_items").select(INVOICE_ITEM_COLUMNS).in("invoice_id", invoiceIds)
+        : Promise.resolve({ data: [] as Record<string, unknown>[], error: null }),
+      invoiceIds.length
+        ? supabase
+            .from("sm_supplier_payment_requests")
+            .select(PAYMENT_REQUEST_COLUMNS)
+            .eq("business_unit_id", businessUnitId)
+            .in("invoice_id", invoiceIds)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [] as Record<string, unknown>[], error: null }),
+    ]);
+    const requestMissing =
+      Boolean(requestRes.error) &&
+      /sm_supplier_payment_requests|does not exist|PGRST/i.test(requestRes.error?.message ?? "");
+    if (receiptItemsRes.error) return { status: "error", error: failMessage(receiptItemsRes.error) };
+    if (invoiceItemsRes.error) return { status: "error", error: failMessage(invoiceItemsRes.error) };
+    if (requestRes.error && !requestMissing) return { status: "error", error: failMessage(requestRes.error) };
+
+    const receiptItemsByReceipt = new Map<string, Purchase["lines"]>();
+    for (const raw of receiptItemsRes.data ?? []) {
+      const row = raw as Record<string, unknown>;
+      const receiptId = String(row.goods_receipt_id);
+      const list = receiptItemsByReceipt.get(receiptId) ?? [];
+      const productId = String(row.product_id);
+      const poLine = order.lines.find((item) => item.productId === productId);
+      list.push({
+        id: String(row.id),
+        productId,
+        productName: poLine?.productName ?? "Product",
+        sku: poLine?.sku ?? "",
+        quantity: Number(row.quantity) || 0,
+        buyingPrice: Number(row.unit_cost) || 0,
+        mainStore: Number(row.main_store_qty) || 0,
+        salesFloor: Number(row.sales_floor_qty) || 0,
+      });
+      receiptItemsByReceipt.set(receiptId, list);
+    }
+
+    const receipts = receiptRows.map((row) => {
+      const receiptId = String(row.id);
+      const lines = receiptItemsByReceipt.get(receiptId) ?? [];
+      return {
+        id: receiptId,
+        number: String(row.receipt_number ?? ""),
+        receivedAt: String(row.received_at ?? ""),
+        itemCount: lines.reduce((sum, line) => sum + line.quantity, 0),
+        totalCost: Number(row.total_cost) || 0,
+        lines,
+      };
+    });
+
+    let purchase: Purchase | null = null;
+    if (receipts.length) {
+      const lines: Purchase["lines"] = [];
+      for (const receipt of receipts) {
+        for (const line of receipt.lines) {
+          const prior = lines.find((item) => item.productId === line.productId);
+          if (prior) {
+            prior.quantity += line.quantity;
+            prior.mainStore += line.mainStore;
+            prior.salesFloor += line.salesFloor;
+          } else {
+            lines.push({ ...line });
+          }
+        }
+      }
+      const verifiedInvoice = invoiceRows.find(
+        (row) => String(row.verification_status).toUpperCase() === "VERIFIED",
+      );
+      purchase = {
+        id: order.id,
+        number: order.purchaseDocumentNumber || receipts[0]?.number || order.number,
+        purchaseOrderId: order.id,
+        purchaseOrderNumber: order.number,
+        supplierId: order.supplierId,
+        supplierName: order.supplierName,
+        receivedAt: receipts[receipts.length - 1]?.receivedAt ?? "",
+        paymentStatus: verifiedInvoice
+          ? mapPaymentStatus(String(verifiedInvoice.payment_status))
+          : "Unpaid",
+        totalCost: receipts.reduce((sum, item) => sum + item.totalCost, 0),
+        itemCount: receipts.reduce((sum, item) => sum + item.itemCount, 0),
+        status: order.status === "Received" ? "Received" : "Partially Received",
+        lines,
+        notes: "",
+        receivedBy: "",
+        receipts: receipts.map((item) => ({
+          id: item.id,
+          number: item.number,
+          receivedAt: item.receivedAt,
+          itemCount: item.itemCount,
+          totalCost: item.totalCost,
+        })),
+      };
+    }
+
+    const invoiceItemsById = new Map<string, SupplierInvoice["lines"]>();
+    for (const raw of invoiceItemsRes.data ?? []) {
+      const row = raw as Record<string, unknown>;
+      const invoiceId = String(row.invoice_id);
+      const list = invoiceItemsById.get(invoiceId) ?? [];
+      const productId = String(row.product_id);
+      const poLine = order.lines.find((item) => item.productId === productId);
+      list.push({
+        id: String(row.id),
+        productId,
+        productName: poLine?.productName ?? "Product",
+        sku: poLine?.sku ?? "",
+        quantity: Number(row.quantity) || 0,
+        unitCost: Number(row.unit_cost) || 0,
+        tax: Number(row.tax) || 0,
+        lineTotal: Number(row.line_total) || 0,
+      });
+      invoiceItemsById.set(invoiceId, list);
+    }
+
+    const receiptNumberById = new Map(receipts.map((item) => [item.id, item.number]));
+    const invoices = invoiceRows.map((row) =>
+      mapSupplierInvoice(
+        row,
+        invoiceItemsById.get(String(row.id)) ?? [],
+        order.supplierName,
+        order.number,
+        row.goods_receipt_id ? receiptNumberById.get(String(row.goods_receipt_id)) ?? "" : "",
+      ),
+    );
+    const invoiceNumberById = new Map(invoices.map((item) => [item.id, item.number]));
+    const paymentRequests = ((requestMissing ? [] : requestRes.data) ?? []).map((raw) => {
+      const row = raw as Record<string, unknown>;
+      return mapPaymentRequest(
+        row,
+        order.supplierName,
+        invoiceNumberById.get(String(row.invoice_id)) ?? "",
+      );
+    });
+
+    return { status: "found", workspace: { order, purchase, invoices, paymentRequests } };
   } catch (error) {
     return { status: "error", error: queryErrorMessage(error) };
   }

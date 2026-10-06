@@ -19,6 +19,7 @@ import {
   loadProductMovements,
   loadProductsWorkspace,
   loadPurchaseOrderById,
+  loadPurchaseOrderWorkspace,
   loadPurchasingWorkspace,
   loadStockMovements,
 } from "@/lib/supermarket/queries";
@@ -78,6 +79,35 @@ export async function getPurchaseOrderByIdAction(poId: string) {
     }
     const result = await loadPurchaseOrderById(poId);
     if (result.status === "found") return { status: "found" as const, order: result.order };
+    if (result.status === "not_found") return { status: "not_found" as const };
+    return { status: "error" as const, error: result.error };
+  } catch (error) {
+    if (error instanceof SupermarketError && error.code === "UNAUTHORIZED") {
+      return { status: "unauthorized" as const, error: actionErrorMessage(error) };
+    }
+    return { status: "error" as const, error: actionErrorMessage(error) };
+  }
+}
+
+export async function getPurchaseOrderWorkspaceAction(poId: string) {
+  try {
+    await requireSupermarketContext();
+    const user = await requireAuth();
+    const owner = isOwnerRole(user.roleCode);
+    const allowed =
+      owner ||
+      user.permissions.some(
+        (matcher) =>
+          matcher !== "*" &&
+          (matchPermission("supermarket.purchases.view", matcher) ||
+            matchPermission("supermarket.purchases.create", matcher) ||
+            matchPermission("supermarket.purchases.receive", matcher)),
+      );
+    if (!allowed) {
+      throw new SupermarketError("You don't have access to this purchase order.", "UNAUTHORIZED");
+    }
+    const result = await loadPurchaseOrderWorkspace(poId);
+    if (result.status === "found") return { status: "found" as const, workspace: result.workspace };
     if (result.status === "not_found") return { status: "not_found" as const };
     return { status: "error" as const, error: result.error };
   } catch (error) {

@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { getPurchaseOrderByIdAction } from "@/actions/supermarket/catalog";
+import { getPurchaseOrderWorkspaceAction } from "@/actions/supermarket/catalog";
 
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import { cachePurchaseOrder, formatDisplayDate, useSupermarketInventory } from "@/lib/data/supermarket-inventory";
+import { applyPurchaseOrderWorkspace } from "@/lib/supermarket/inventory-store";
 import {
   purchaseLineRemaining,
   purchaseOrderGrandTotal,
@@ -35,11 +36,12 @@ export function PurchaseOrderDetailPage() {
   useEffect(() => {
     if (!poId) return;
     let cancelled = false;
-    void getPurchaseOrderByIdAction(poId).then((result) => {
+    void getPurchaseOrderWorkspaceAction(poId).then((result) => {
       if (cancelled) return;
       if (result.status === "found") {
-        cachePurchaseOrder(result.order);
-        setTargeted(result.order);
+        applyPurchaseOrderWorkspace(result.workspace);
+        cachePurchaseOrder(result.workspace.order);
+        setTargeted(result.workspace.order);
         setPhase("found");
         return;
       }
@@ -113,13 +115,17 @@ export function PurchaseOrderDetailPage() {
   }
 
   const purchases = inventory.purchases.filter((item) => item.purchaseOrderId === order.id);
-  const purchase = purchases[0] ?? null;
-  const receipts = purchase?.receipts ?? [];
+  const receipts = (purchases[0]?.receipts ?? []);
   const invoices = inventory.supplierInvoices.filter((item) => item.purchaseOrderId === order.id);
   const requests = inventory.paymentRequests.filter((item) =>
     invoices.some((invoice) => invoice.id === item.invoiceId),
   );
   const canReceive = order.status === "Sent" || order.status === "Partially Received";
+  const orderedQty = order.lines.reduce((sum, line) => sum + line.quantityOrdered, 0);
+  const receivedQty = order.lines.reduce((sum, line) => sum + line.quantityReceived, 0);
+  const remainingQty = order.lines.reduce((sum, line) => sum + purchaseLineRemaining(line), 0);
+  const receivedValue = order.lines.reduce((sum, line) => sum + line.quantityReceived * line.buyingPrice, 0);
+  const verifiedInvoice = invoices.find((item) => item.verificationStatus === "Verified") ?? null;
 
   return (
     <div className="min-w-0 space-y-5 pb-10">
@@ -128,11 +134,9 @@ export function PurchaseOrderDetailPage() {
           <PageBackButton href="/supermarket/purchasing" prefetch />
           <h1 className="mt-4 text-[26px] font-semibold tracking-[-0.045em] text-navy sm:text-[30px]">{order.number}</h1>
           <p className="mt-1.5 text-[13px] text-slate-500">{order.supplierName} · Ordered {formatDisplayDate(order.orderDate)}</p>
-          {order.purchaseDocumentNumber ? (
-            <p className="mt-1 text-[13px] font-medium text-navy">Purchase document {order.purchaseDocumentNumber}</p>
-          ) : null}
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="flex flex-col items-start gap-2 sm:items-end">
+          <StatusPill value={order.status} />
           {canReceive ? (
             <Link href={`/supermarket/purchasing/${order.id}/receive`} className={primaryButton}>
               Receive Goods
@@ -140,6 +144,13 @@ export function PurchaseOrderDetailPage() {
           ) : null}
         </div>
       </div>
+
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <SummaryCard label="Ordered" value={String(orderedQty)} />
+        <SummaryCard label="Received" value={String(receivedQty)} />
+        <SummaryCard label="Remaining" value={String(remainingQty)} />
+        <SummaryCard label="Received value" value={formatTzs(receivedValue)} />
+      </section>
 
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
         <article className={glassPanel}>
@@ -198,15 +209,15 @@ export function PurchaseOrderDetailPage() {
             <Row label="Discount" value={formatTzs(order.discount)} />
             <Row label="Tax" value={formatTzs(order.tax)} />
             <Row label="Grand total" value={formatTzs(purchaseOrderGrandTotal(order))} strong />
+            <Row label="Owed" value={verifiedInvoice ? formatTzs(verifiedInvoice.outstanding) : "Awaiting supplier invoice"} strong />
+            <Row label="Paid" value={verifiedInvoice ? formatTzs(verifiedInvoice.amountPaid) : formatTzs(0)} />
           </dl>
           {order.notes ? <p className="mt-4 text-[13px] leading-5 text-slate-500">{order.notes}</p> : null}
         </aside>
       </section>
 
-      <PurchaseOrderWorkflow order={order} purchases={purchases} invoices={invoices} requests={requests} />
-
       <section className={glassPanel}>
-        <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Receipts</h2>
+        <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Goods receipts</h2>
         {receipts.length === 0 ? (
           <p className="mt-3 text-[13px] text-slate-500">No goods have been received against this order yet.</p>
         ) : (
@@ -223,7 +234,18 @@ export function PurchaseOrderDetailPage() {
           </div>
         )}
       </section>
+
+      <PurchaseOrderWorkflow order={order} purchases={purchases} invoices={invoices} requests={requests} />
     </div>
+  );
+}
+
+function SummaryCard({ label, value }: { label: string; value: string }) {
+  return (
+    <article className={glassPanel}>
+      <p className="text-[12px] font-medium text-slate-500">{label}</p>
+      <p className="mt-1.5 text-[20px] font-semibold tracking-[-0.04em] text-navy">{value}</p>
+    </article>
   );
 }
 
