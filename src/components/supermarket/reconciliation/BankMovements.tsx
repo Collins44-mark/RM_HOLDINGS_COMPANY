@@ -22,6 +22,7 @@ import { cn } from "@/lib/cn";
 import {
   MoneyField,
   primaryButton,
+  ReconPulse,
   reconGlass,
   secondaryButton,
   StatusBadge,
@@ -57,7 +58,7 @@ export function BankingTabs({ active }: { active: "movements" | "reconcile" }) {
 
 export function BankMovementsPage() {
   const { preset, setPreset, range, setRange, period } = useReconPeriod();
-  const [accounts, setAccounts] = useState<BankAccountRecord[]>([]);
+  const [accounts, setAccounts] = useState<BankAccountRecord[] | null>(null);
   const [movements, setMovements] = useState<BankMovementRecord[]>([]);
   const [summary, setSummary] = useState({ deposits: "0.00", withdrawals: "0.00", net: "0.00", unmatched: 0 });
   const [accountId, setAccountId] = useState("");
@@ -91,7 +92,6 @@ export function BankMovementsPage() {
       if (!active) return;
       if (!result.ok) {
         setError(result.error);
-        setMovements([]);
         return;
       }
       setError(null);
@@ -108,7 +108,9 @@ export function BankMovementsPage() {
   }, [period.start, period.end, accountId, movementType, postingStatus, matchStatus, page, reloadTick]);
 
   const pages = Math.max(1, Math.ceil(total / pageSize));
-  const activeAccounts = accounts.filter((account) => account.isActive);
+  const accountsReady = accounts !== null;
+  const activeAccounts = (accounts ?? []).filter((account) => account.isActive);
+  const noAccounts = accountsReady && activeAccounts.length === 0;
 
   return (
     <div className="min-w-0 max-w-full space-y-5 pb-10">
@@ -127,7 +129,7 @@ export function BankMovementsPage() {
             onPreset={setPreset}
             onRange={setRange}
           />
-          {caps.canCreate ? (
+          {accountsReady && caps.canCreate ? (
             <button type="button" className={primaryButton} onClick={() => setModalOpen(true)}>
               + New Transaction
             </button>
@@ -147,14 +149,33 @@ export function BankMovementsPage() {
         ].map(([label, value]) => (
           <div key={label} className={`${reconGlass} px-5 py-5`}>
             <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</p>
-            <p className="mt-2 text-[20px] font-semibold tracking-[-0.04em] text-navy">
-              {label === "Unreconciled" ? value : formatTzs(moneyToCents(value) / 100)}
-            </p>
+            {!accountsReady ? (
+              <p className="mt-2">
+                <ReconPulse className="h-6 w-28" />
+              </p>
+            ) : (
+              <p className="mt-2 text-[20px] font-semibold tracking-[-0.04em] text-navy">
+                {label === "Unreconciled" ? value : formatTzs(moneyToCents(value) / 100)}
+              </p>
+            )}
           </div>
         ))}
       </section>
 
-      {activeAccounts.length === 0 ? (
+      {!accountsReady ? (
+        <div className={`${reconGlass} overflow-hidden`}>
+          <div className="grid grid-cols-1 gap-2 p-4 min-[520px]:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="h-10 animate-pulse rounded-full bg-slate-200/70" />
+            ))}
+          </div>
+          <div className="space-y-2 px-4 pb-5">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="h-10 animate-pulse rounded-md bg-slate-100/80" />
+            ))}
+          </div>
+        </div>
+      ) : noAccounts ? (
         <div className={`${reconGlass} space-y-4 px-5 py-6`}>
           <EmptyState
             title="No bank accounts configured"
@@ -185,7 +206,7 @@ export function BankMovementsPage() {
           <div className="grid grid-cols-1 gap-2 min-[520px]:grid-cols-2 xl:grid-cols-4">
             <select className={filterClass} value={accountId} onChange={(e) => { setAccountId(e.target.value); setPage(1); }}>
               <option value="">All accounts</option>
-              {accounts.map((account) => (
+              {accounts?.map((account) => (
                 <option key={account.id} value={account.id}>
                   {account.bankName} · {account.accountName}
                 </option>

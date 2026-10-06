@@ -14,6 +14,12 @@ function localDevOrigins() {
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: localDevOrigins(),
+  serverExternalPackages: ["unpdf", "xlsx"],
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "8mb",
+    },
+  },
   async rewrites() {
     return [{ source: "/dashboard", destination: "/owner" }];
   },

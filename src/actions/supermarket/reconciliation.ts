@@ -1051,6 +1051,7 @@ export async function getBankWorkspaceAction(input: {
   to: string;
 }) {
   try {
+    const capsPromise = capabilities();
     const { supabase, businessUnitId } = await requireSupermarketPermission(
       "supermarket.reconciliation.view",
     );
@@ -1069,10 +1070,10 @@ export async function getBankWorkspaceAction(input: {
         accountId: null,
         transactions: [] as BankTransactionRecord[],
         record: null as BankReconciliationRecord | null,
-        capabilities: await capabilities(),
+        capabilities: await capsPromise,
       };
     }
-    const [txnRes, reconRes] = await Promise.all([
+    const [txnRes, reconRes, caps] = await Promise.all([
       supabase
         .from("sm_bank_transactions")
         .select(
@@ -1096,6 +1097,7 @@ export async function getBankWorkspaceAction(input: {
         .eq("statement_end", input.to)
         .neq("status", "VOID")
         .maybeSingle(),
+      capsPromise,
     ]);
     if (txnRes.error) mapDbError(txnRes.error);
     if (reconRes.error) mapDbError(reconRes.error);
@@ -1121,7 +1123,7 @@ export async function getBankWorkspaceAction(input: {
             approvedBy: reconRes.data.approved_by ? String(reconRes.data.approved_by) : null,
           }
         : null,
-      capabilities: await capabilities(),
+      capabilities: caps,
     };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };

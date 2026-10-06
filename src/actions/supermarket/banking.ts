@@ -98,19 +98,12 @@ export async function getBankMovementsWorkspaceAction(input: {
   page?: number;
 }) {
   try {
+    const capsPromise = bankingCaps();
     const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.banking.view");
     const page = Math.max(1, input.page ?? 1);
     const pageSize = 50;
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
-
-    const accountsRes = await supabase
-      .from("sm_bank_accounts")
-      .select("id, bank_name, account_name, account_reference, opening_balance, is_active")
-      .eq("business_unit_id", businessUnitId)
-      .order("bank_name");
-    if (accountsRes.error) mapDbError(accountsRes.error);
-    const accounts = (accountsRes.data ?? []).map((row) => mapAccount(row as Record<string, unknown>));
 
     let query = supabase
       .from("sm_bank_transactions")
@@ -131,7 +124,12 @@ export async function getBankMovementsWorkspaceAction(input: {
     if (input.postingStatus && input.postingStatus !== "ALL") query = query.eq("posting_status", input.postingStatus);
     if (input.matchStatus && input.matchStatus !== "ALL") query = query.eq("status", input.matchStatus);
 
-    const [listRes, totalsRes, unmatchedRes] = await Promise.all([
+    const [accountsRes, listRes, totalsRes, unmatchedRes, capabilities] = await Promise.all([
+      supabase
+        .from("sm_bank_accounts")
+        .select("id, bank_name, account_name, account_reference, opening_balance, is_active")
+        .eq("business_unit_id", businessUnitId)
+        .order("bank_name"),
       query,
       supabase
         .from("sm_bank_transactions")
@@ -152,10 +150,13 @@ export async function getBankMovementsWorkspaceAction(input: {
         .eq("status", "UNMATCHED")
         .gte("transaction_date", input.from)
         .lte("transaction_date", input.to),
+      capsPromise,
     ]);
+    if (accountsRes.error) mapDbError(accountsRes.error);
     if (listRes.error) mapDbError(listRes.error);
     if (totalsRes.error) mapDbError(totalsRes.error);
     if (unmatchedRes.error) mapDbError(unmatchedRes.error);
+    const accounts = (accountsRes.data ?? []).map((row) => mapAccount(row as Record<string, unknown>));
 
     let deposits = 0;
     let withdrawals = 0;
@@ -178,7 +179,7 @@ export async function getBankMovementsWorkspaceAction(input: {
         net: centsToMoney(deposits - withdrawals),
         unmatched: unmatchedRes.count ?? 0,
       },
-      capabilities: await bankingCaps(),
+      capabilities,
     };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };

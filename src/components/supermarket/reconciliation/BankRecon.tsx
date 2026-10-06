@@ -5,7 +5,6 @@ import {
   addBankStatementLineAction,
   approveBankReconciliationAction,
   getBankWorkspaceAction,
-  importBankStatementCsvAction,
   loadSystemBankPaymentsAction,
   matchBankTransactionsAction,
   saveBankAccountAction,
@@ -21,8 +20,9 @@ import { formatTzs } from "@/lib/format/currency";
 import { moneyToCents } from "@/lib/supermarket/money";
 import type { BankAccountRecord, BankReconciliationRecord, BankTransactionRecord } from "@/lib/supermarket/reconciliation";
 import { displayStatus } from "@/lib/supermarket/reconciliation";
-import { MoneyField, primaryButton, reconGlass, ReconActions, ReconTableSkeletonRows, secondaryButton, StatusBadge, useReconPeriod } from "./shared";
+import { MoneyField, reconGlass, ReconActions, ReconPulse, ReconTableSkeletonRows, secondaryButton, StatusBadge, useReconPeriod } from "./shared";
 import { BankMovementsPage, BankingTabs } from "./BankMovements";
+import { formatImportedCount, StatementImportButton } from "./StatementImportModal";
 
 export function BankingPage() {
   return <BankMovementsPage />;
@@ -34,7 +34,7 @@ export function BankReconciliationPage() {
 
 function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
   const { preset, setPreset, range, setRange, period, asOf } = useReconPeriod();
-  const [accounts, setAccounts] = useState<BankAccountRecord[]>([]);
+  const [accounts, setAccounts] = useState<BankAccountRecord[] | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<BankTransactionRecord[]>([]);
   const [record, setRecord] = useState<BankReconciliationRecord | null>(null);
@@ -43,12 +43,15 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
   const [notes, setNotes] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [importNote, setImportNote] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [caps, setCaps] = useState({ canCreate: false, canApprove: false });
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const requestKey = `${accountId ?? ""}:${period.start}:${period.end}`;
   const pending = loadedKey !== requestKey;
   const ready = loadedKey !== null;
+  const accountsReady = accounts !== null;
+  const noAccounts = accountsReady && accounts.length === 0;
   const [accountForm, setAccountForm] = useState({ bankName: "", accountName: "", accountReference: "", openingBalance: "0.00" });
   const [line, setLine] = useState({ transactionDate: asOf, reference: "", description: "", debit: "0.00", credit: "0.00" });
 
@@ -135,21 +138,31 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
       </header>
       <BankingTabs active="reconcile" />
       {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
+      {importNote ? <p className="text-[12.5px] font-medium text-[#3f8a5a]">Imported ✓ {importNote}</p> : null}
 
       <section className={`${reconGlass} px-4 py-4 sm:px-5`}>
-        <select
-          className={cn(filterClass, "max-w-full sm:max-w-md")}
-          value={accountId ?? ""}
-          onChange={(e) => void reload(e.target.value || null)}
-        >
-          <option value="">Select account</option>
-          {accounts.map((account) => (
-            <option key={account.id} value={account.id}>
-              {account.bankName} · {account.accountName}
-            </option>
-          ))}
-        </select>
-        {caps.canCreate ? (
+        {!accountsReady ? (
+          <div className="h-10 max-w-md animate-pulse rounded-full bg-slate-200/70" />
+        ) : noAccounts ? (
+          <EmptyState
+            title="No bank accounts configured"
+            description="Add a real supermarket bank account before reconciling statement lines. No sample accounts are created."
+          />
+        ) : (
+          <select
+            className={cn(filterClass, "max-w-full sm:max-w-md")}
+            value={accountId ?? ""}
+            onChange={(e) => void reload(e.target.value || null)}
+          >
+            <option value="">Select account</option>
+            {(accounts ?? []).map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.bankName} · {account.accountName}
+              </option>
+            ))}
+          </select>
+        )}
+        {accountsReady && caps.canCreate ? (
           <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
             <input className={cn(inputClass, "h-10")} placeholder="Bank name" value={accountForm.bankName} onChange={(e) => setAccountForm((f) => ({ ...f, bankName: e.target.value }))} />
             <input className={cn(inputClass, "h-10")} placeholder="Account name" value={accountForm.accountName} onChange={(e) => setAccountForm((f) => ({ ...f, accountName: e.target.value }))} />
@@ -170,7 +183,16 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
         ) : null}
       </section>
 
-      {accountId && caps.canCreate ? (
+      {!accountsReady ? (
+        <section className={`${reconGlass} space-y-3 px-4 py-4 sm:px-5`} aria-hidden>
+          <div className="h-5 w-36 animate-pulse rounded-md bg-slate-200/80" />
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div key={index} className="h-10 animate-pulse rounded-[14px] bg-slate-200/70" />
+            ))}
+          </div>
+        </section>
+      ) : accountId && caps.canCreate ? (
         <section className={`${reconGlass} space-y-3 px-4 py-4 sm:px-5`}>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <h2 className="text-[15px] font-semibold tracking-[-0.02em] text-navy">Statement line</h2>
@@ -186,26 +208,16 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
               >
                 Add line
               </button>
-              <label className={secondaryButton}>
-                Import CSV
-                <input
-                  type="file"
-                  accept=".csv,text/csv"
-                  className="hidden"
-                  onChange={async (event) => {
-                    const file = event.target.files?.[0];
-                    if (!file) return;
-                    const csv = await file.text();
-                    const result = await importBankStatementCsvAction({ accountId, csv });
-                    if (!result.ok) setError(result.error);
-                    else void reload(accountId);
-                    event.target.value = "";
-                  }}
-                />
-              </label>
+              <StatementImportButton
+                accountId={accountId}
+                onImported={(count) => {
+                  setImportNote(formatImportedCount(count));
+                  void reload(accountId);
+                }}
+              />
               <button
                 type="button"
-                className={primaryButton}
+                className={secondaryButton}
                 onClick={async () => {
                   const result = await loadSystemBankPaymentsAction({ accountId, from: period.start, to: period.end });
                   if (!result.ok) setError(result.error);
@@ -226,8 +238,17 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
         </section>
       ) : null}
 
-      {mode === "reconcile" ? (
+      {mode === "reconcile" && !noAccounts ? (
         <section className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {!accountsReady || pending ? (
+            Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className={`${reconGlass} flex min-h-[92px] flex-col justify-center px-4 py-3.5`}>
+                <ReconPulse className="h-3 w-24" />
+                <ReconPulse className="mt-3 h-6 w-32" />
+              </div>
+            ))
+          ) : (
+            <>
           <div className={`${reconGlass} flex min-h-[92px] flex-col justify-center px-4 py-3.5`}>
             <MoneyField label="Statement Opening" value={opening} onChange={setOpening} compact />
           </div>
@@ -247,6 +268,8 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
             </p>
             <p className="mt-1 text-[12px] text-slate-500">{unmatched} unmatched</p>
           </div>
+            </>
+          )}
         </section>
       ) : null}
 
@@ -315,17 +338,17 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
             </tbody>
           </table>
         </div>
-        {ready && transactions.length === 0 ? (
+        {ready && accountsReady && !noAccounts && transactions.length === 0 ? (
           <div className="p-6">
             <EmptyState
               title="No bank transactions imported"
-              description="Enter statement lines or import a CSV. System bank payments load from recorded BANK method payments — nothing is invented."
+              description="Enter statement lines, import a PDF/CSV/Excel statement, or load system bank payments. Nothing is invented."
             />
           </div>
         ) : null}
       </section>
 
-      {mode === "reconcile" ? (
+      {mode === "reconcile" && accountsReady && !noAccounts ? (
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
