@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Bell, ChevronDown, LogOut, Search, UserRound } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
-import { SEARCH_INDEX } from "@/lib/config/navigation";
+import { searchIndexForUser } from "@/lib/auth/nav";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import type { AuthUser } from "@/lib/auth/types";
 import { useLocale } from "@/components/i18n/LocaleProvider";
@@ -99,15 +99,16 @@ export function Header({
   const avatar = profileImage(user);
   const caption = profileCaption(user, t("chrome.ownerCaption"));
 
+  const searchIndex = useMemo(() => searchIndexForUser(user), [user]);
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return SEARCH_INDEX.slice(0, 6);
-    return SEARCH_INDEX.filter((item) => {
+    if (!q) return searchIndex.slice(0, 6);
+    return searchIndex.filter((item) => {
       const key = navKeyForHref(item.href);
       const label = key ? t(key, item.label) : item.label;
       return `${label} ${item.label} ${item.group}`.toLowerCase().includes(q);
     }).slice(0, 8);
-  }, [query, t]);
+  }, [query, t, searchIndex]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {

@@ -43,6 +43,7 @@ import {
   tableHead,
 } from "@/components/supermarket/purchasing-ui";
 import { PromotionConfirmDialog } from "@/components/supermarket/promotions/PromotionConfirmDialog";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 type StatusTab = "ALL" | "ACTIVE" | "SCHEDULED" | "EXPIRED";
 type MenuState = { id: string; top: number; right: number } | null;
@@ -72,6 +73,9 @@ function AppliesToCell({ item }: { item: Promotion }) {
 
 export function PromotionsManager() {
   const router = useRouter();
+  const { hasPermission } = useAuth();
+  const canCreate = hasPermission("supermarket.products.create");
+  const canManageTypes = hasPermission("supermarket.products.edit");
   const live = useSupermarketPromotions();
   const inventory = useSupermarketInventory();
   const items = useMemo(
@@ -173,14 +177,18 @@ export function PromotionsManager() {
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          {canManageTypes ? (
           <Link href="/supermarket/promotions/types" prefetch className={cn(secondaryButton, "w-full gap-1.5 sm:w-auto")}>
             <Settings2 className="h-4 w-4" strokeWidth={1.9} />
             Promotion Types
           </Link>
+          ) : null}
+          {canCreate ? (
           <Link href="/supermarket/promotions/create" prefetch className={cn(primaryButton, "w-full sm:w-auto")}>
             <Plus className="h-4 w-4" strokeWidth={2.2} />
             Create Promotion
           </Link>
+          ) : null}
         </div>
       </header>
 

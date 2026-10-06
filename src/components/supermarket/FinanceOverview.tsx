@@ -35,6 +35,7 @@ import {
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
 import { PaymentModeChooser, RecordExpenseModal, RecordPaymentModal } from "@/components/supermarket/FinanceRecordModals";
 import { SupplierPaymentWorkspace } from "@/components/supermarket/SupplierPaymentWorkspace";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 const PRODUCT_PROFIT_HINT =
   "Product Profit is calculated from the difference between each product's selling price and buying price multiplied by the quantity sold.";
@@ -113,6 +114,13 @@ const KPI_TONES: Record<KpiTone, { card: string; iconWrap: string; deltaUp: stri
 };
 
 export function FinanceOverview() {
+  const { hasPermission, canAccessPath } = useAuth();
+  const canRecordExpense = hasPermission("supermarket.purchases.create");
+  const canSupplierPayment = hasPermission("supermarket.supplier_payments.create");
+  const canOtherPayment = hasPermission("supermarket.purchases.create");
+  const canRecordPayment = canSupplierPayment || canOtherPayment;
+  const showSupplierOutstanding =
+    hasPermission("supermarket.purchases.view") || hasPermission("supermarket.supplier_payments.view");
   const [preset, setPreset] = useState<SalesPeriodPreset>("today");
   const [customRange, setCustomRange] = useState<SalesDateRange>(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -239,10 +247,11 @@ export function FinanceOverview() {
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <CashBalanceCard summary={displaySummary} />
-        <SupplierOutstandingCard summary={displaySummary} />
+        {showSupplierOutstanding ? <SupplierOutstandingCard summary={displaySummary} /> : null}
       </section>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {canAccessPath("/supermarket/finance/expenses") ? (
         <ActionCard
           title="Expenses"
           description="Operating expenses"
@@ -250,10 +259,14 @@ export function FinanceOverview() {
           icon={<Wallet className="h-4 w-4" strokeWidth={1.9} />}
           tone="border-rose-200/30 bg-rose-50/30"
           iconTone="border-rose-200/45 bg-white/70 text-rose-500"
-          primaryAction={{ label: "+ Record Expense", onClick: () => setExpenseOpen(true) }}
+          primaryAction={
+            canRecordExpense ? { label: "+ Record Expense", onClick: () => setExpenseOpen(true) } : undefined
+          }
           secondaryHref="/supermarket/finance/expenses"
           secondaryLabel="View Expenses →"
         />
+        ) : null}
+        {canAccessPath("/supermarket/finance/payments") ? (
         <ActionCard
           title="Payments"
           description="Money received and money paid"
@@ -261,10 +274,14 @@ export function FinanceOverview() {
           icon={<Banknote className="h-4 w-4" strokeWidth={1.9} />}
           tone="border-sky-200/30 bg-sky-50/30"
           iconTone="border-sky-200/45 bg-white/70 text-sky-600"
-          primaryAction={{ label: "+ Record Payment", onClick: () => setPaymentOpen("choose") }}
+          primaryAction={
+            canRecordPayment ? { label: "+ Record Payment", onClick: () => setPaymentOpen("choose") } : undefined
+          }
           secondaryHref="/supermarket/finance/payments"
           secondaryLabel="View Payments →"
         />
+        ) : null}
+        {canAccessPath("/supermarket/reports") ? (
         <ActionCard
           title="Reports"
           description="View detailed financial reports"
@@ -274,6 +291,8 @@ export function FinanceOverview() {
           secondaryHref="/supermarket/reports"
           secondaryLabel="Open Reports →"
         />
+        ) : null}
+        {canAccessPath("/supermarket/finance/petty-cash") ? (
         <ActionCard
           title="Petty Cash"
           description="Petty cash expenses, replenishments and fund balance"
@@ -283,6 +302,8 @@ export function FinanceOverview() {
           secondaryHref="/supermarket/finance/petty-cash"
           secondaryLabel="Open Petty Cash →"
         />
+        ) : null}
+        {canAccessPath("/supermarket/finance/cash-reconciliation") ? (
         <ActionCard
           title="Cash Reconciliation"
           description="Expected main cash versus physical count"
@@ -292,6 +313,8 @@ export function FinanceOverview() {
           secondaryHref="/supermarket/finance/cash-reconciliation"
           secondaryLabel="Open Cash Reconciliation →"
         />
+        ) : null}
+        {canAccessPath("/supermarket/finance/bank-reconciliation") ? (
         <ActionCard
           title="Bank Reconciliation"
           description="Match statement lines to recorded bank payments"
@@ -301,14 +324,37 @@ export function FinanceOverview() {
           secondaryHref="/supermarket/finance/bank-reconciliation"
           secondaryLabel="Open Bank Reconciliation →"
         />
+        ) : null}
+        {canAccessPath("/supermarket/finance/banking") ? (
+        <ActionCard
+          title="Deposits & Withdrawals"
+          description="Bank deposits and withdrawals"
+          icon={<Building2 className="h-4 w-4" strokeWidth={1.9} />}
+          tone="border-white/40 bg-white/40"
+          iconTone="border-white/70 bg-white/80 text-navy"
+          secondaryHref="/supermarket/finance/banking"
+          secondaryLabel="Open Banking →"
+        />
+        ) : null}
+        {canAccessPath("/supermarket/finance/tax-vat") ? (
+        <ActionCard
+          title="Tax & VAT"
+          description="Tax rules and VAT reporting"
+          icon={<FileBarChart2 className="h-4 w-4" strokeWidth={1.9} />}
+          tone="border-white/40 bg-white/40"
+          iconTone="border-white/70 bg-white/80 text-navy"
+          secondaryHref="/supermarket/finance/tax-vat"
+          secondaryLabel="Open Tax & VAT →"
+        />
+        ) : null}
       </section>
 
       {expenseOpen ? <RecordExpenseModal onClose={() => setExpenseOpen(false)} /> : null}
       {paymentOpen === "choose" ? (
         <PaymentModeChooser
           onClose={() => setPaymentOpen(null)}
-          onSupplier={() => setPaymentOpen("supplier")}
-          onOther={() => setPaymentOpen("other")}
+          onSupplier={canSupplierPayment ? () => setPaymentOpen("supplier") : undefined}
+          onOther={canOtherPayment ? () => setPaymentOpen("other") : undefined}
         />
       ) : null}
       {paymentOpen === "supplier" ? <SupplierPaymentWorkspace onClose={() => setPaymentOpen(null)} /> : null}

@@ -210,6 +210,7 @@ export const MODULE_NAV: Record<string, NavItem[]> = {
   beekeeping: BEEKEEPING_NAV,
 };
 
+/** Unfiltered catalog. Use `searchIndexForUser` in the UI. */
 export const SEARCH_INDEX = [
   ...buildOwnerNav().flatMap((item) => [
     { label: item.label, href: item.href, group: "Platform" },
@@ -219,14 +220,18 @@ export const SEARCH_INDEX = [
       group: "Business Units",
     })),
   ]),
-  ...SCHOOL_NAV.flatMap((item) => [
-    { label: item.label, href: item.href, group: "School" },
-    ...(item.children ?? []).map((child) => ({
-      label: child.label,
-      href: child.href,
-      group: "School Transport",
-    })),
-  ]),
+  ...Object.entries(MODULE_NAV)
+    .filter(([code]) => code !== "owner")
+    .flatMap(([code, items]) =>
+      items.flatMap((item) => [
+        { label: item.label, href: item.href, group: code },
+        ...(item.children ?? []).map((child) => ({
+          label: child.label,
+          href: child.href,
+          group: code,
+        })),
+      ]),
+    ),
 ];
 
 export function findNavLabel(pathname: string, items: NavItem[]): string | null {

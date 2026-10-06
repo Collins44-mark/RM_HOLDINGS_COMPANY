@@ -4,7 +4,6 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth/session";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { matchPermission } from "@/lib/config/permissions";
-import { permissionDeniedMessage } from "@/lib/supermarket/sod";
 
 export type SupermarketContext = {
   supabase: NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>;
@@ -232,8 +231,35 @@ export async function requireSupermarketPermission(permission: string): Promise<
 
   const allowed = user.permissions.some((matcher) => matcher !== "*" && matchPermission(permission, matcher));
   if (!allowed) {
-    throw new SupermarketError(permissionDeniedMessage(permission), "UNAUTHORIZED");
+    throw new SupermarketError("This action isn’t available.", "UNAUTHORIZED");
   }
 
+  return ctx;
+}
+
+function identityAllows(user: Awaited<ReturnType<typeof requireAuth>>, permission: string) {
+  if (isOwnerRole(user.roleCode)) return true;
+  return user.permissions.some((matcher) => matcher !== "*" && matchPermission(permission, matcher));
+}
+
+export async function requireAnySupermarketPermission(
+  permissions: readonly string[],
+): Promise<SupermarketContext> {
+  const ctx = await requireSupermarketContext();
+  const user = await requireAuth();
+  if (!permissions.some((permission) => identityAllows(user, permission))) {
+    throw new SupermarketError("This action isn’t available.", "UNAUTHORIZED");
+  }
+  return ctx;
+}
+
+export async function requireAllSupermarketPermissions(
+  permissions: readonly string[],
+): Promise<SupermarketContext> {
+  const ctx = await requireSupermarketContext();
+  const user = await requireAuth();
+  if (!permissions.every((permission) => identityAllows(user, permission))) {
+    throw new SupermarketError("This action isn’t available.", "UNAUTHORIZED");
+  }
   return ctx;
 }

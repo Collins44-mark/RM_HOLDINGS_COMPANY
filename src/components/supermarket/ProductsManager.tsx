@@ -102,7 +102,7 @@ function canManageProducts(user: AuthUser | null, permission: string) {
   if (isOwnerRole(user.roleCode)) {
     return true;
   }
-  return user.permissions.some((matcher) => matchPermission(permission, matcher));
+  return user.permissions.some((matcher) => matcher !== "*" && matchPermission(permission, matcher));
 }
 
 function formatProductsStamp(date: Date) {

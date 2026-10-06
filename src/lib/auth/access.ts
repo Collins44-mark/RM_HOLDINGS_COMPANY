@@ -10,6 +10,7 @@ import {
   isOwnerRole,
   type AccessIdentity,
 } from "@/lib/auth/rbac";
+import { canAccessRoutePermissions } from "@/lib/auth/route-permissions";
 
 export type { AccessIdentity };
 
@@ -36,7 +37,8 @@ export function canAccessPath(identity: AccessIdentity, pathname: string) {
   if (moduleCode === "owner") {
     return canAccessOwnerPath(identity, pathname);
   }
-  return hasModuleAccess(identity, moduleCode);
+  if (!hasModuleAccess(identity, moduleCode)) return false;
+  return canAccessRoutePermissions(identity, pathname);
 }
 
 export function landingPathFor(identity: AccessIdentity) {

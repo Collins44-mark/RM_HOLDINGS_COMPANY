@@ -7,6 +7,31 @@ import { isOwnerRole } from "@/lib/auth/rbac";
 import { getBusinessUnit, getModuleFromPath, type ModuleCode } from "@/lib/config/app";
 import { navIconForCode } from "@/lib/data/business-units";
 
+export type SearchIndexItem = { label: string; href: string; group: string };
+
+function flattenSearchItems(items: NavItem[], group: string): SearchIndexItem[] {
+  return items.flatMap((item) => [
+    { label: item.label, href: item.href, group },
+    ...(item.children?.length ? flattenSearchItems(item.children, group) : []),
+  ]);
+}
+
+export function searchIndexForUser(user: AuthUser): SearchIndexItem[] {
+  const identity = identityFromUser(user);
+  const seen = new Set<string>();
+  const entries: SearchIndexItem[] = [
+    ...flattenSearchItems(buildOwnerNav(), "Platform"),
+    ...Object.entries(MODULE_NAV)
+      .filter(([code]) => code !== "owner")
+      .flatMap(([code, items]) => flattenSearchItems(items, code)),
+  ];
+  return entries.filter((item) => {
+    if (seen.has(item.href) || !canAccessPath(identity, item.href)) return false;
+    seen.add(item.href);
+    return true;
+  });
+}
+
 export type NavBusinessUnit = {
   code: string;
   name: string;
@@ -17,9 +42,17 @@ export function filterNavForUser(items: NavItem[], user: AuthUser): NavItem[] {
   const identity = identityFromUser(user);
 
   return items.flatMap((item) => {
-    if (!canAccessPath(identity, item.href)) return [];
-    const children = item.children?.filter((child) => canAccessPath(identity, child.href));
-    return [{ ...item, ...(item.children ? { children } : {}) }];
+    const children = item.children?.length
+      ? filterNavForUser(item.children, user)
+      : undefined;
+    const selfVisible = canAccessPath(identity, item.href);
+    if (children && children.length > 0) {
+      return [{ ...item, children }];
+    }
+    if (selfVisible) {
+      return [{ ...item, ...(item.children ? { children: [] } : {}) }];
+    }
+    return [];
   });
 }
 
@@ -54,13 +87,16 @@ export function navigationForPath(
   businessUnits?: NavBusinessUnit[],
 ) {
   if (pathname === "/workspace" || pathname.startsWith("/workspace/")) {
+    const identity = identityFromUser(user);
     const nav: NavItem[] = [
       { href: "/workspace", label: "Workspaces", icon: "dashboard", exact: true },
-      ...user.businessUnits.map((unit) => ({
-        href: `/${unit.code}`,
-        label: unit.name,
-        icon: navIconForCode(unit.code),
-      })),
+      ...user.businessUnits
+        .filter((unit) => canAccessPath(identity, `/${unit.code}`))
+        .map((unit) => ({
+          href: `/${unit.code}`,
+          label: unit.name,
+          icon: navIconForCode(unit.code),
+        })),
     ];
     return { nav, workspace: undefined, moduleCode: undefined as ModuleCode | undefined };
   }

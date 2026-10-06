@@ -3,8 +3,9 @@
 import {
   actionErrorMessage,
   mapDbError,
-  requireSupermarketContext,
+  requireAnySupermarketPermission,
 } from "@/lib/supermarket/access";
+import { SUPERMARKET_FINANCE_VIEW_PERMISSIONS } from "@/lib/auth/route-permissions";
 
 export type FinanceSummaryPayload = {
   revenue: number;
@@ -42,7 +43,9 @@ export async function getFinanceSummaryAction(input: { from: string; to: string 
   { ok: true; summary: FinanceSummaryPayload } | { ok: false; error: string }
 > {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireAnySupermarketPermission(
+      SUPERMARKET_FINANCE_VIEW_PERMISSIONS,
+    );
     const fromIso = `${input.from}T00:00:00`;
     const toIso = `${input.to}T23:59:59`;
     const [salesRes, expensesRes, paymentsRes, invoicesRes] = await Promise.all([

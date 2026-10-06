@@ -36,7 +36,7 @@ function canReceiveStock(user: AuthUser | null, isSuperAdmin: boolean) {
   if (isOwnerRole(user.roleCode)) {
     return true;
   }
-  return user.permissions.some((matcher) => matchPermission("supermarket.stock.edit", matcher));
+  return user.permissions.some((matcher) => matcher !== "*" && matchPermission("supermarket.stock.edit", matcher));
 }
 
 function canEditSellingPrice(user: AuthUser | null, isSuperAdmin: boolean) {

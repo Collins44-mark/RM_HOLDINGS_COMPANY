@@ -178,8 +178,8 @@ export function PaymentModeChooser({
   onOther,
 }: {
   onClose: () => void;
-  onSupplier: () => void;
-  onOther: () => void;
+  onSupplier?: () => void;
+  onOther?: () => void;
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -201,6 +201,7 @@ export function PaymentModeChooser({
         <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">Record Payment</h2>
         <p className="mt-1 text-[12.5px] text-slate-500">Choose how this money movement should be recorded.</p>
         <div className="mt-4 space-y-2">
+          {onSupplier ? (
           <button
             type="button"
             onClick={onSupplier}
@@ -209,6 +210,8 @@ export function PaymentModeChooser({
             <p className="text-[14px] font-semibold text-navy">Supplier Payment</p>
             <p className="mt-0.5 text-[12.5px] text-slate-500">Pay an unpaid or partially paid purchase. Supplier, PO and invoice fill in automatically.</p>
           </button>
+          ) : null}
+          {onOther ? (
           <button
             type="button"
             onClick={onOther}
@@ -217,6 +220,7 @@ export function PaymentModeChooser({
             <p className="text-[14px] font-semibold text-navy">Other Payment</p>
             <p className="mt-0.5 text-[12.5px] text-slate-500">A general money movement that is not linked to a supplier purchase.</p>
           </button>
+          ) : null}
         </div>
         <div className="mt-4 flex justify-end">
           <button type="button" onClick={onClose} className={secondaryButton}>

@@ -23,6 +23,7 @@ import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilte
 import { RecordExpenseModal } from "@/components/supermarket/FinanceRecordModals";
 import { filterClass, primaryButton, tableHead } from "@/components/supermarket/purchasing-ui";
 import { useSupermarketFinance } from "@/lib/supermarket/client-stores";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 const glass =
   "rounded-[28px] border border-white/55 bg-white/58 shadow-[0_18px_50px_rgba(15,35,64,0.07),inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-2xl";
@@ -32,6 +33,8 @@ function todayIso() {
 }
 
 export function FinanceExpensesPage() {
+  const { hasPermission } = useAuth();
+  const canRecordExpense = hasPermission("supermarket.purchases.create");
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<"all" | ExpenseCategory>("all");
@@ -107,9 +110,11 @@ export function FinanceExpensesPage() {
             onRange={setCustomRange}
             ariaLabel="Expenses period"
           />
+          {canRecordExpense ? (
           <button type="button" onClick={() => setExpenseOpen(true)} className={cn(primaryButton, "w-full sm:w-auto")}>
             + Record Expense
           </button>
+          ) : null}
         </div>
       </header>
 

@@ -31,6 +31,14 @@ export function hasPermission(identity: AccessIdentity, permission: string) {
   );
 }
 
+export function hasAnyPermission(identity: AccessIdentity, permissions: readonly string[]) {
+  return permissions.some((permission) => hasPermission(identity, permission));
+}
+
+export function hasAllPermissions(identity: AccessIdentity, permissions: readonly string[]) {
+  return permissions.every((permission) => hasPermission(identity, permission));
+}
+
 export function hasRole(identity: Pick<AccessIdentity, "role">, role: string) {
   return identity.role === role;
 }

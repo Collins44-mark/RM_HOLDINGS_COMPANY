@@ -103,13 +103,14 @@ function canManageStock(user: AuthUser | null, permission: string) {
   if (isOwnerRole(user.roleCode)) {
     return true;
   }
-  return user.permissions.some((matcher) => matchPermission(permission, matcher));
+  return user.permissions.some((matcher) => matcher !== "*" && matchPermission(permission, matcher));
 }
 
 export function StockManager() {
   const router = useRouter();
   const { user, isSuperAdmin } = useAuth();
   const canReceive = isSuperAdmin() || canManageStock(user, "supermarket.stock.edit");
+  const canReceivePurchase = isSuperAdmin() || canManageStock(user, "supermarket.purchases.receive");
   const canAddCategory = canCreateSupermarketCategory(user, isSuperAdmin());
   const canManageCategories = canManageSupermarketCategories(user, isSuperAdmin());
   const inventory = useSupermarketInventory({ movements: true });
@@ -345,9 +346,11 @@ export function StockManager() {
               <>
                 <button type="button" className="fixed inset-0 z-[79] cursor-default" aria-label="Close stock actions" onClick={() => setActionsOpen(false)} />
                 <div className="absolute right-0 z-[80] mt-2 w-64 overflow-hidden rounded-[16px] border border-white/80 bg-white/95 py-1 shadow-[0_18px_50px_rgba(16,24,40,0.14)] backdrop-blur-xl">
+                  {canReceivePurchase ? (
                   <Link href="/supermarket/stock/receive-purchase" className="block px-3.5 py-2.5 text-[13px] font-medium text-navy hover:bg-[#f5f8fc]" onClick={() => setActionsOpen(false)}>
                     Receive Purchase
                   </Link>
+                  ) : null}
                   <Link href="/supermarket/stock/transfer" className="block px-3.5 py-2.5 text-[13px] font-medium text-navy hover:bg-[#f5f8fc]" onClick={() => setActionsOpen(false)}>
                     Transfer Stock
                   </Link>

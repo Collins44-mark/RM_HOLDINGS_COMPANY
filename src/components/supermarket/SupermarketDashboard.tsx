@@ -18,6 +18,7 @@ import type { ComponentType } from "react";
 import { ComparisonIndicator } from "@/components/finance/ComparisonIndicator";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
+import { useAuth } from "@/components/auth/AuthProvider";
 import type {
   SupermarketPurchaseRow,
   SupermarketSaleRow,
@@ -26,10 +27,10 @@ import type {
 } from "@/lib/data/sample-supermarket";
 
 const QUICK_ACTIONS = [
-  { href: "/supermarket/pos", label: "New Sale", icon: ShoppingBag },
-  { href: "/supermarket/products", label: "Add Product", icon: PackagePlus },
-  { href: "/supermarket/purchases", label: "Record Purchase", icon: Wallet },
-  { href: "/supermarket/stock", label: "Stock Adjustment", icon: SlidersHorizontal },
+  { href: "/supermarket/pos", label: "New Sale", icon: ShoppingBag, permission: "supermarket.sales.create" },
+  { href: "/supermarket/products/new", label: "Add Product", icon: PackagePlus, permission: "supermarket.products.create" },
+  { href: "/supermarket/purchasing/new", label: "Record Purchase", icon: Wallet, permission: "supermarket.purchases.create" },
+  { href: "/supermarket/stock", label: "Stock Adjustment", icon: SlidersHorizontal, permission: "supermarket.stock.edit" },
 ] as const;
 
 const glass =
@@ -77,6 +78,9 @@ const KPI_TONES: Record<KpiTone, { card: string; orb: string; tint: string; icon
 };
 
 export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboard }) {
+  const { hasPermission } = useAuth();
+  const canCreateSale = hasPermission("supermarket.sales.create");
+  const quickActions = QUICK_ACTIONS.filter((action) => hasPermission(action.permission));
   const peakSold = Math.max(...data.topProducts.map((item) => item.sold), 1);
 
   return (
@@ -90,6 +94,7 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
             Monitor sales, inventory, purchasing and daily performance.
           </p>
         </div>
+        {canCreateSale ? (
         <Link
           href="/supermarket/pos"
           className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_8px_18px_rgba(11,34,68,0.18)] transition hover:bg-[#102a52] sm:w-auto"
@@ -97,6 +102,7 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
           <Plus className="h-4 w-4" strokeWidth={2.2} />
           New Sale
         </Link>
+        ) : null}
       </div>
 
       <section className="rm-kpi-grid">
@@ -201,12 +207,13 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
           </ul>
         </article>
 
+        {quickActions.length > 0 ? (
         <article className={cn(glass, "flex h-full min-w-0 flex-col px-4 py-3.5 sm:px-5 sm:py-4 lg:col-span-2 2xl:col-span-1")}>
           <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy sm:text-[17px]">
             Quick Actions
           </h2>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 2xl:grid-cols-1 2xl:gap-2">
-            {QUICK_ACTIONS.map((action) => (
+            {quickActions.map((action) => (
               <Link
                 key={action.href + action.label}
                 href={action.href}
@@ -222,6 +229,7 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
             ))}
           </div>
         </article>
+        ) : null}
       </section>
 
       <StockAlertsCard alerts={data.stockAlerts} />

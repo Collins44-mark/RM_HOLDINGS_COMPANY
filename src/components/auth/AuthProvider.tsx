@@ -2,8 +2,10 @@
 
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import type { AuthUser } from "@/lib/auth/types";
+import { canAccessPath } from "@/lib/auth/access";
 import {
   canAccessModule,
+  hasAnyPermission,
   hasBusinessUnit,
   hasPermission,
   hasRole,
@@ -21,9 +23,11 @@ type AuthContextValue = {
   isLoading: boolean;
   isAuthenticated: boolean;
   hasPermission: (permission: string) => boolean;
+  hasAnyPermission: (permissions: readonly string[]) => boolean;
   hasRole: (role: string) => boolean;
   hasBusinessUnit: (unit: string) => boolean;
   canAccessModule: (moduleCode: string) => boolean;
+  canAccessPath: (pathname: string) => boolean;
   isSuperAdmin: () => boolean;
 };
 
@@ -68,11 +72,14 @@ export function AuthProvider({
       isAuthenticated: Boolean(user),
       hasPermission: (permission) =>
         identity ? hasPermission(identity, permission) : false,
+      hasAnyPermission: (permissions) =>
+        identity ? hasAnyPermission(identity, permissions) : false,
       hasRole: (role) => (user ? hasRole({ role: user.roleCode }, role) : false),
       hasBusinessUnit: (unit) =>
         user ? hasBusinessUnit(user.modules, unit) : false,
       canAccessModule: (moduleCode) =>
         identity ? canAccessModule(identity, moduleCode) : false,
+      canAccessPath: (pathname) => (identity ? canAccessPath(identity, pathname) : false),
       isSuperAdmin: () => (user ? isOwnerRole(user.roleCode) : false),
     };
   }, [user]);

@@ -28,6 +28,7 @@ import {
 } from "@/components/supermarket/purchasing-ui";
 import { downloadPurchaseDocumentPdf } from "@/lib/supermarket/inventory-store";
 import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 type PurchasingTab = "orders" | "purchases" | "suppliers";
 
@@ -44,8 +45,14 @@ function tabFromSearchParam(value: string | null): PurchasingTab {
 export function PurchasingManager() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { hasPermission } = useAuth();
+  const canCreateOrder = hasPermission("supermarket.purchases.create");
+  const canCreateSupplier = hasPermission("supermarket.suppliers.create");
+  const canViewSuppliers = hasPermission("supermarket.suppliers.view");
   const inventory = useSupermarketInventory({ purchasing: true });
-  const [tab, setTabState] = useState<PurchasingTab>(() => tabFromSearchParam(searchParams.get("tab")));
+  const [requestedTab, setTabState] = useState<PurchasingTab>(() =>
+    tabFromSearchParam(searchParams.get("tab")),
+  );
   const [query, setQuery] = useState("");
   const [focus, setFocus] = useState<PurchaseOrderKpiFocus>("all");
   const [supplierOpen, setSupplierOpen] = useState(false);
@@ -57,8 +64,11 @@ export function PurchasingManager() {
     setTabState(tabFromSearchParam(searchParams.get("tab")));
   }, [searchParams]);
 
+  const tab = requestedTab === "suppliers" && !canViewSuppliers ? "orders" : requestedTab;
+
   function setTab(next: PurchasingTab) {
-    if (next === tab) return;
+    if (next === "suppliers" && !canViewSuppliers) return;
+    if (next === requestedTab) return;
     setTabState(next);
     // Update the URL without triggering App Router RSC / Suspense navigation.
     const params = new URLSearchParams(searchParams.toString());
@@ -109,16 +119,18 @@ export function PurchasingManager() {
             </p>
           </div>
           {tab === "suppliers" ? (
+            canCreateSupplier ? (
             <button type="button" onClick={() => setSupplierOpen(true)} className={cn(primaryButton, "w-full sm:w-auto")}>
               <Plus className="h-4 w-4" strokeWidth={2.2} />
               Add Supplier
             </button>
-          ) : (
+            ) : null
+          ) : canCreateOrder ? (
             <Link href="/supermarket/purchasing/new" prefetch className={cn(primaryButton, "w-full sm:w-auto")}>
               <Plus className="h-4 w-4" strokeWidth={2.2} />
               New Purchase Order
             </Link>
-          )}
+          ) : null}
         </div>
 
         <div
@@ -126,7 +138,7 @@ export function PurchasingManager() {
           aria-label="Purchasing views"
           className="inline-flex w-full rounded-full border border-white/70 bg-white/55 p-1 shadow-[0_6px_18px_rgba(15,35,64,0.05)] backdrop-blur-xl sm:w-auto"
         >
-          {TABS.map((item) => {
+          {TABS.filter((item) => item.id !== "suppliers" || canViewSuppliers).map((item) => {
             const active = tab === item.id;
             return (
               <button

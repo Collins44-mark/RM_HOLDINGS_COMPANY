@@ -21,10 +21,12 @@ import { PageBackButton } from "@/components/ui/PageBackButton";
 import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
 import { GoodsReceiptDocumentModal } from "@/components/supermarket/GoodsReceiptDocumentModal";
 import { downloadGoodsReceiptPdf } from "@/lib/supermarket/inventory-store";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 type LoadPhase = "loading" | "found" | "not_found" | "error" | "unauthorized";
 
 export function PurchaseOrderDetailPage() {
+  const { hasPermission } = useAuth();
   const params = useParams<{ poId: string }>();
   const poId = Array.isArray(params.poId) ? params.poId[0] : params.poId;
   const inventory = useSupermarketInventory({ purchasing: true });
@@ -124,7 +126,9 @@ export function PurchaseOrderDetailPage() {
   const requests = inventory.paymentRequests.filter((item) =>
     invoices.some((invoice) => invoice.id === item.invoiceId),
   );
-  const canReceive = order.status === "Sent" || order.status === "Partially Received";
+  const canReceive =
+    hasPermission("supermarket.purchases.receive") &&
+    (order.status === "Sent" || order.status === "Partially Received");
   const orderedQty = order.lines.reduce((sum, line) => sum + line.quantityOrdered, 0);
   const receivedQty = order.lines.reduce((sum, line) => sum + line.quantityReceived, 0);
   const remainingQty = order.lines.reduce((sum, line) => sum + purchaseLineRemaining(line), 0);

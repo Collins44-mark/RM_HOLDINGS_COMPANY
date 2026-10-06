@@ -3,7 +3,8 @@
 import {
   actionErrorMessage,
   mapDbError,
-  requireSupermarketContext,
+  requireAllSupermarketPermissions,
+  requireSupermarketPermission,
 } from "@/lib/supermarket/access";
 import { mapBatch, mapCategory, mapExpense, mapProduct } from "@/lib/supermarket/mappers";
 import {
@@ -59,7 +60,7 @@ export async function fetchSalesReportAction(
   filters: SalesReportFilters = {},
 ): Promise<{ ok: true; data: SalesReportData } | { ok: false; error: string }> {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.sales.view");
     const { period, periodLabel, periodDates } = periodMeta(preset, range);
     const fromIso = `${period.start}T00:00:00`;
     const toIso = `${period.end}T23:59:59`;
@@ -235,7 +236,7 @@ export async function fetchInventoryReportAction(
   _filters: InventoryReportFilters = {},
 ): Promise<{ ok: true; data: InventoryReportData } | { ok: false; error: string }> {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.stock.view");
     const { period, periodLabel, periodDates } = periodMeta(preset, range);
     const fromIso = `${period.start}T00:00:00`;
     const toIso = `${period.end}T23:59:59`;
@@ -463,7 +464,7 @@ export async function fetchPurchaseReportAction(
   _filters: PurchaseReportFilters = {},
 ): Promise<{ ok: true; data: PurchaseReportData } | { ok: false; error: string }> {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.purchases.view");
     const { period, periodLabel, periodDates } = periodMeta(preset, range);
     const fromIso = `${period.start}T00:00:00`;
     const toIso = `${period.end}T23:59:59`;
@@ -575,7 +576,10 @@ export async function fetchProfitLossReportAction(
   _filters: ProfitLossReportFilters = {},
 ): Promise<{ ok: true; data: ProfitLossReportData } | { ok: false; error: string }> {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireAllSupermarketPermissions([
+      "supermarket.sales.view",
+      "supermarket.purchases.view",
+    ]);
     const { period, periodLabel, periodDates } = periodMeta(preset, range);
     const fromIso = `${period.start}T00:00:00`;
     const toIso = `${period.end}T23:59:59`;
@@ -697,7 +701,7 @@ export async function fetchProfitLossReportAction(
 
 export async function listReturnsAction() {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.sales.view");
     const { data, error } = await supabase
       .from("sm_sales_returns")
       .select("*, sm_sales_return_items(*), sm_sales(invoice_number, customer_name)")
@@ -735,7 +739,7 @@ export async function listReturnsAction() {
 
 export async function getProductProfitRowsAction(input?: { from?: string; to?: string }) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketContext();
+    const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.sales.view");
     const from = input?.from ?? "1970-01-01";
     const to = input?.to ?? new Date().toISOString().slice(0, 10);
     const fromIso = `${from}T00:00:00`;

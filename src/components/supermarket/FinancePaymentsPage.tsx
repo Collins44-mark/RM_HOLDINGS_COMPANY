@@ -31,6 +31,7 @@ import { SupplierPaymentWorkspace } from "@/components/supermarket/SupplierPayme
 import { filterClass, primaryButton, secondaryButton, tableHead } from "@/components/supermarket/purchasing-ui";
 import { removePayment, useSupermarketFinance } from "@/lib/supermarket/client-stores";
 import type { PaymentRecord } from "@/lib/supermarket/types";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 const glass =
   "rounded-[28px] border border-white/55 bg-white/58 shadow-[0_18px_50px_rgba(15,35,64,0.07),inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-2xl";
@@ -76,6 +77,9 @@ function mapPayment(payment: PaymentRecord): MockPayment {
 }
 
 export function FinancePaymentsPage() {
+  const { hasPermission } = useAuth();
+  const canSupplierPayment = hasPermission("supermarket.supplier_payments.create");
+  const canOtherPayment = hasPermission("supermarket.purchases.create");
   const [paymentOpen, setPaymentOpen] = useState<"choose" | "supplier" | "other" | null>(null);
   const [query, setQuery] = useState("");
   const [paymentType, setPaymentType] = useState<"all" | PaymentType>("all");
@@ -138,12 +142,16 @@ export function FinancePaymentsPage() {
             onRange={setCustomRange}
             ariaLabel="Payments period"
           />
+          {canSupplierPayment ? (
           <button type="button" onClick={() => setPaymentOpen("supplier")} className={cn(primaryButton, "w-full sm:w-auto")}>
             + Supplier Payment
           </button>
+          ) : null}
+          {canOtherPayment ? (
           <button type="button" onClick={() => setPaymentOpen("other")} className={cn(secondaryButton, "w-full sm:w-auto")}>
             + Other Payment
           </button>
+          ) : null}
         </div>
       </header>
 
@@ -369,8 +377,8 @@ export function FinancePaymentsPage() {
       {paymentOpen === "choose" ? (
         <PaymentModeChooser
           onClose={() => setPaymentOpen(null)}
-          onSupplier={() => setPaymentOpen("supplier")}
-          onOther={() => setPaymentOpen("other")}
+          onSupplier={canSupplierPayment ? () => setPaymentOpen("supplier") : undefined}
+          onOther={canOtherPayment ? () => setPaymentOpen("other") : undefined}
         />
       ) : null}
       {paymentOpen === "supplier" ? <SupplierPaymentWorkspace onClose={() => setPaymentOpen(null)} /> : null}

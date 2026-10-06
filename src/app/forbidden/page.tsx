@@ -8,10 +8,9 @@ export default function ForbiddenPage() {
         <div className="flex justify-center">
           <Logo light={false} compact />
         </div>
-        <h1 className="mt-6 text-2xl font-semibold text-navy">Access denied</h1>
+        <h1 className="mt-6 text-2xl font-semibold text-navy">Page not available</h1>
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          You are signed in, but this module is outside your assigned permissions.
-          Return to the portal that belongs to your role.
+          This page is not available in your workspace. Return to an area you can use.
         </p>
         <Link
           href="/"

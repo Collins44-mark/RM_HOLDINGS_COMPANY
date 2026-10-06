@@ -9,20 +9,23 @@ import { downloadReportPdf } from "@/lib/data/supermarket-reports-pdf";
 import { primaryButton } from "@/components/supermarket/purchasing-ui";
 import { reportGlass, useReportPeriod } from "@/components/supermarket/report-shell";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
+import { useAuth } from "@/components/auth/AuthProvider";
 
-const CARDS: { kind: ReportKind; icon: typeof TrendingUp }[] = [
-  { kind: "sales", icon: TrendingUp },
-  { kind: "inventory", icon: Boxes },
-  { kind: "purchases", icon: ShoppingBag },
-  { kind: "profit-loss", icon: BarChart3 },
+const CARDS: { kind: ReportKind; icon: typeof TrendingUp; href: string }[] = [
+  { kind: "sales", icon: TrendingUp, href: "/supermarket/reports/sales" },
+  { kind: "inventory", icon: Boxes, href: "/supermarket/reports/inventory" },
+  { kind: "purchases", icon: ShoppingBag, href: "/supermarket/reports/purchases" },
+  { kind: "profit-loss", icon: BarChart3, href: "/supermarket/reports/profit-loss" },
 ];
 
 export function ReportsCenter() {
+  const { canAccessPath } = useAuth();
   const { preset, range, period, query, onPreset, onRange } = useReportPeriod("/supermarket/reports");
   const [selected, setSelected] = useState<ReportKind | null>(null);
   const [exportHint, setExportHint] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const visibleCards = CARDS.filter((card) => canAccessPath(card.href));
 
   async function handleExport() {
     if (!selected) {
@@ -56,6 +59,7 @@ export function ReportsCenter() {
             onRange={onRange}
             ariaLabel="Reports period"
           />
+          {visibleCards.length > 0 ? (
           <button
             type="button"
             onClick={() => void handleExport()}
@@ -71,6 +75,7 @@ export function ReportsCenter() {
             <Download className="h-3.5 w-3.5" strokeWidth={2} />
             {exporting ? "Exporting…" : "Export"}
           </button>
+          ) : null}
         </div>
       </header>
 
@@ -86,7 +91,7 @@ export function ReportsCenter() {
       ) : null}
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {CARDS.map((card) => {
+        {visibleCards.map((card) => {
           const meta = REPORT_KIND_META[card.kind];
           const Icon = card.icon;
           const isSelected = selected === card.kind;
@@ -131,6 +136,9 @@ export function ReportsCenter() {
             </article>
           );
         })}
+        {visibleCards.length === 0 ? (
+          <p className="text-[13.5px] text-slate-500">No reports are available in your workspace.</p>
+        ) : null}
       </section>
     </div>
   );

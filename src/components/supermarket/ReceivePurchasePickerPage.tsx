@@ -7,10 +7,13 @@ import { formatDisplayDate, useSupermarketInventory } from "@/lib/data/supermark
 import { purchaseOrderGrandTotal, purchaseOrderItemCount, receivablePurchaseOrders } from "@/lib/data/supermarket-purchasing";
 import { StatusPill, glassCard, primaryButton, tableHead } from "@/components/supermarket/purchasing-ui";
 import { PageBackButton } from "@/components/ui/PageBackButton";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 export function ReceivePurchasePickerPage() {
   const inventory = useSupermarketInventory({ purchasing: true });
   const orders = receivablePurchaseOrders(inventory.purchaseOrders);
+  const { hasPermission } = useAuth();
+  const canCreateOrder = hasPermission("supermarket.purchases.create");
 
   return (
     <div className="min-w-0 space-y-5 pb-10">
@@ -24,9 +27,11 @@ export function ReceivePurchasePickerPage() {
           <div className="px-5 py-10 text-center">
             <p className="text-[14px] font-medium text-navy">No open purchase orders</p>
             <p className="mt-1 text-[13px] text-slate-500">Create or send a purchase order before receiving stock.</p>
+            {canCreateOrder ? (
             <Link href="/supermarket/purchasing/new" className={`${primaryButton} mt-4`}>
               New Purchase Order
             </Link>
+            ) : null}
           </div>
         ) : (
           <div className="overflow-x-auto">
