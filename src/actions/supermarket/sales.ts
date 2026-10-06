@@ -17,6 +17,7 @@ import {
   notePrefixId,
   paymentDisplayType,
 } from "@/lib/supermarket/payment-display";
+import { formatMobileMoneyLabel } from "@/lib/supermarket/pos-payments";
 import { mapExpense, mapPayment, mapPromotion, mapSale } from "@/lib/supermarket/mappers";
 import type {
   ExpenseRecord,
@@ -67,7 +68,7 @@ export async function completeSaleAction(input: {
     discount?: number;
     promotionId?: string | null;
   }[];
-  payments: { method: string; amount: number; provider?: string; reference?: string }[];
+  payments: { method: string; amount: number; providerId?: string; provider?: string; reference?: string }[];
 }) {
   try {
     const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.sales.create");
@@ -77,21 +78,48 @@ export async function completeSaleAction(input: {
     const payments = input.payments.map((payment) => {
       const method = paymentMethodToDb(payment.method);
       if (!method) throw new SupermarketError("Invalid payment method.", "VALIDATION");
+      if (method === "BANK") {
+        throw new SupermarketError("Bank is not a POS customer payment method.", "VALIDATION");
+      }
       const amount = Number(payment.amount);
       if (!Number.isFinite(amount) || amount <= 0) {
         throw new SupermarketError("Each payment must have a positive amount.", "VALIDATION");
       }
-      const provider = payment.provider?.trim() ?? "";
-      if (method === "MOBILE_MONEY" && !provider) {
-        throw new SupermarketError("Select a Mobile Money provider.", "VALIDATION");
-      }
       return {
         method,
         amount,
-        provider,
+        providerId: payment.providerId?.trim() ?? "",
+        provider: payment.provider?.trim() ?? "",
         reference: payment.reference?.trim() ?? "",
       };
     });
+
+    if (payments.some((payment) => payment.method === "MOBILE_MONEY")) {
+      const ids = [...new Set(payments.filter((p) => p.method === "MOBILE_MONEY").map((p) => p.providerId).filter(Boolean))];
+      if (ids.length === 0) {
+        throw new SupermarketError("Select a Mobile Money provider.", "VALIDATION");
+      }
+      const { data: providerRows, error: providerError } = await supabase
+        .from("sm_payment_providers")
+        .select("id, name, payment_number")
+        .eq("business_unit_id", businessUnitId)
+        .eq("method", "MOBILE_MONEY")
+        .eq("is_active", true)
+        .in("id", ids);
+      if (providerError) mapDbError(providerError);
+      const byId = new Map(
+        (providerRows ?? []).map((row) => [
+          String(row.id),
+          formatMobileMoneyLabel(String(row.name ?? ""), String(row.payment_number ?? "")),
+        ]),
+      );
+      for (const payment of payments) {
+        if (payment.method !== "MOBILE_MONEY") continue;
+        const label = byId.get(payment.providerId);
+        if (!label) throw new SupermarketError("Select a configured Mobile Money provider.", "VALIDATION");
+        payment.provider = label;
+      }
+    }
 
     const { data, error } = await supabase.rpc("sm_complete_sale", {
       p_items: input.items.map((item) => ({
@@ -101,7 +129,13 @@ export async function completeSaleAction(input: {
         discount: item.discount ?? 0,
         promotion_id: item.promotionId ?? null,
       })),
-      p_payments: payments,
+      p_payments: payments.map((payment) => ({
+        method: payment.method,
+        amount: payment.amount,
+        provider_id: payment.providerId,
+        provider: payment.provider,
+        reference: payment.reference,
+      })),
       p_customer_name: input.customerName ?? "Walk-in Customer",
       p_discount: input.discount ?? 0,
       p_tax: 0,
@@ -139,7 +173,7 @@ const WALK_IN_CUSTOMER = "Walk-in Customer";
 export async function getPosCheckoutOptionsAction() {
   try {
     const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.sales.create");
-    const [customersRes, historyRes, providersRes, usedProvidersRes, banksRes] = await Promise.all([
+    const [customersRes, historyRes, providersRes] = await Promise.all([
       supabase
         .from("sm_pos_customers")
         .select("id, name")
@@ -154,29 +188,15 @@ export async function getPosCheckoutOptionsAction() {
         .limit(400),
       supabase
         .from("sm_payment_providers")
-        .select("name")
+        .select("id, name, payment_number")
         .eq("business_unit_id", businessUnitId)
         .eq("method", "MOBILE_MONEY")
         .eq("is_active", true)
         .order("name"),
-      supabase
-        .from("sm_sale_payments")
-        .select("provider")
-        .eq("method", "MOBILE_MONEY")
-        .neq("provider", "")
-        .limit(400),
-      supabase
-        .from("sm_bank_accounts")
-        .select("id, bank_name, account_name")
-        .eq("business_unit_id", businessUnitId)
-        .eq("is_active", true)
-        .order("bank_name"),
     ]);
     if (customersRes.error) mapDbError(customersRes.error);
     if (historyRes.error) mapDbError(historyRes.error);
     if (providersRes.error) mapDbError(providersRes.error);
-    if (usedProvidersRes.error) mapDbError(usedProvidersRes.error);
-    if (banksRes.error) mapDbError(banksRes.error);
 
     const names = new Set<string>();
     for (const row of customersRes.data ?? []) {
@@ -188,23 +208,14 @@ export async function getPosCheckoutOptionsAction() {
       if (name && name !== WALK_IN_CUSTOMER) names.add(name);
     }
 
-    const providers = new Set<string>();
-    for (const row of providersRes.data ?? []) {
-      const name = String(row.name ?? "").trim();
-      if (name) providers.add(name);
-    }
-    for (const row of usedProvidersRes.data ?? []) {
-      const name = String(row.provider ?? "").trim();
-      if (name) providers.add(name);
-    }
-
     return {
       ok: true as const,
       customers: [...names].sort((a, b) => a.localeCompare(b)),
-      mobileProviders: [...providers].sort((a, b) => a.localeCompare(b)),
-      bankAccounts: (banksRes.data ?? []).map((row) => ({
+      mobileProviders: (providersRes.data ?? []).map((row) => ({
         id: String(row.id),
-        label: `${String(row.bank_name)} — ${String(row.account_name)}`,
+        name: String(row.name ?? "").trim(),
+        paymentNumber: String(row.payment_number ?? "").trim(),
+        label: formatMobileMoneyLabel(String(row.name ?? ""), String(row.payment_number ?? "")),
       })),
     };
   } catch (error) {
@@ -237,6 +248,95 @@ export async function createPosCustomerAction(input: { name: string; phone?: str
       mapDbError(error);
     }
     return { ok: true as const, name: String(data?.name ?? name) };
+  } catch (error) {
+    return { ok: false as const, error: actionErrorMessage(error) };
+  }
+}
+
+export type PaymentProviderRecord = {
+  id: string;
+  name: string;
+  paymentNumber: string;
+  isActive: boolean;
+  label: string;
+};
+
+export async function listMobileMoneyProvidersAction() {
+  try {
+    const { supabase, businessUnitId } = await requireSupermarketPermission("platform.settings.manage");
+    const { data, error } = await supabase
+      .from("sm_payment_providers")
+      .select("id, name, payment_number, is_active")
+      .eq("business_unit_id", businessUnitId)
+      .eq("method", "MOBILE_MONEY")
+      .order("name");
+    if (error) mapDbError(error);
+    return {
+      ok: true as const,
+      providers: (data ?? []).map((row) => ({
+        id: String(row.id),
+        name: String(row.name ?? "").trim(),
+        paymentNumber: String(row.payment_number ?? "").trim(),
+        isActive: Boolean(row.is_active),
+        label: formatMobileMoneyLabel(String(row.name ?? ""), String(row.payment_number ?? "")),
+      })) satisfies PaymentProviderRecord[],
+    };
+  } catch (error) {
+    return { ok: false as const, error: actionErrorMessage(error) };
+  }
+}
+
+export async function upsertMobileMoneyProviderAction(input: {
+  id?: string;
+  name: string;
+  paymentNumber: string;
+  isActive?: boolean;
+}) {
+  try {
+    const { supabase, businessUnitId } = await requireSupermarketPermission("platform.settings.manage");
+    const name = input.name.trim();
+    const paymentNumber = input.paymentNumber.trim();
+    if (!name) throw new SupermarketError("Enter a display name.", "VALIDATION");
+    if (!paymentNumber) throw new SupermarketError("Enter the Lipa, till or merchant number.", "VALIDATION");
+    const payload = {
+      business_unit_id: businessUnitId,
+      method: "MOBILE_MONEY",
+      name,
+      payment_number: paymentNumber,
+      is_active: input.isActive ?? true,
+    };
+    if (input.id) {
+      const { error } = await supabase
+        .from("sm_payment_providers")
+        .update({ name, payment_number: paymentNumber, is_active: input.isActive ?? true })
+        .eq("id", input.id)
+        .eq("business_unit_id", businessUnitId);
+      if (error) mapDbError(error);
+      return { ok: true as const, id: input.id };
+    }
+    const { data, error } = await supabase.from("sm_payment_providers").insert(payload).select("id").maybeSingle();
+    if (error) {
+      if (error.code === "23505") {
+        throw new SupermarketError("A provider with this name already exists.", "CONFLICT");
+      }
+      mapDbError(error);
+    }
+    return { ok: true as const, id: String(data?.id ?? "") };
+  } catch (error) {
+    return { ok: false as const, error: actionErrorMessage(error) };
+  }
+}
+
+export async function setMobileMoneyProviderActiveAction(input: { id: string; isActive: boolean }) {
+  try {
+    const { supabase, businessUnitId } = await requireSupermarketPermission("platform.settings.manage");
+    const { error } = await supabase
+      .from("sm_payment_providers")
+      .update({ is_active: input.isActive })
+      .eq("id", input.id)
+      .eq("business_unit_id", businessUnitId);
+    if (error) mapDbError(error);
+    return { ok: true as const };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
   }

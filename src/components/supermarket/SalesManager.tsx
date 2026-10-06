@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   CalendarRange,
@@ -75,9 +75,40 @@ const glass =
   "rounded-[24px] border border-white/65 bg-white/76 shadow-[0_10px_28px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-xl";
 const filterClass =
   "h-10 w-full min-w-0 rounded-full border border-white/75 bg-white/88 px-3.5 text-[13px] text-navy shadow-[0_6px_18px_rgba(15,35,64,0.06),inset_0_1px_0_rgba(255,255,255,0.95)] outline-none backdrop-blur-xl transition duration-200 focus:border-white focus:bg-white";
-const selectFilterClass = cn(filterClass, "appearance-none pr-9");
+const selectFilterClass = cn(filterClass, "w-full appearance-none pr-10");
 const tableHead =
   "bg-[#eef3f8]/80 text-[10.5px] font-medium uppercase tracking-[0.14em] text-slate-400";
+
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  className,
+  children,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className={cn("relative block min-w-0 overflow-hidden rounded-full", className)}>
+      <span className="sr-only">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={selectFilterClass}
+      >
+        {children}
+      </select>
+      <ChevronDown
+        className="pointer-events-none absolute inset-y-0 right-3.5 my-auto h-4 w-4 text-slate-400"
+        strokeWidth={2}
+      />
+    </label>
+  );
+}
 
 type KpiTone = "blue" | "violet" | "green" | "amber";
 
@@ -479,50 +510,41 @@ export function SalesManager() {
           onPreset={setPeriodPreset}
           onRange={setCustomRange}
         />
-        <label className="relative min-w-0 lg:w-auto lg:basis-[10.5rem]">
-          <span className="sr-only">Cashier</span>
-          <select
-            value={cashier}
-            onChange={(event) => setCashier(event.target.value)}
-            className={cn(selectFilterClass, "lg:w-auto")}
-          >
+        <FilterSelect
+          label="Cashier"
+          value={cashier}
+          onChange={setCashier}
+          className="lg:w-auto lg:basis-[10.5rem]"
+        >
             {cashiers.map((item) => (
               <option key={item} value={item}>
                 {item === "all" ? "All Cashiers" : item}
               </option>
             ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={2} />
-        </label>
-        <label className="relative min-w-0 lg:w-auto lg:basis-[13.5rem]">
-          <span className="sr-only">Payment method</span>
-          <select
-            value={payment}
-            onChange={(event) => setPayment(event.target.value as "all" | SalesPayment)}
-            className={cn(selectFilterClass, "lg:w-auto")}
-          >
+        </FilterSelect>
+        <FilterSelect
+          label="Payment method"
+          value={payment}
+          onChange={(value) => setPayment(value as "all" | SalesPayment)}
+          className="lg:w-auto lg:basis-[13.5rem]"
+        >
             <option value="all">All Payment Methods</option>
             <option value="Cash">Cash</option>
             <option value="Mobile Money">Mobile Money</option>
             <option value="Card">Card</option>
             <option value="Bank">Bank</option>
             <option value="Mixed">Mixed</option>
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={2} />
-        </label>
-        <label className="relative min-w-0 lg:w-auto lg:basis-[10rem]">
-          <span className="sr-only">Status</span>
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value as "all" | SalesStatus)}
-            className={cn(selectFilterClass, "lg:w-auto")}
-          >
+        </FilterSelect>
+        <FilterSelect
+          label="Status"
+          value={status}
+          onChange={(value) => setStatus(value as "all" | SalesStatus)}
+          className="lg:w-auto lg:basis-[10rem]"
+        >
             <option value="all">All Status</option>
             <option value="Completed">Completed</option>
             <option value="Refunded">Refunded</option>
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={2} />
-        </label>
+        </FilterSelect>
         <label className="relative block min-w-0 flex-1 lg:basis-[min(100%,16rem)]">
           <span className="sr-only">Search sales</span>
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />

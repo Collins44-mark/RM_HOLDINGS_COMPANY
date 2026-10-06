@@ -7,7 +7,6 @@ import {
   ArrowLeftRight,
   ArrowRight,
   Banknote,
-  Building2,
   Check,
   ChevronDown,
   CreditCard,
@@ -45,9 +44,10 @@ import {
   allocatedTotal,
   dbMethodFromPos,
   newPosPaymentSplit,
+  POS_TENDER_METHODS,
   splitAmount,
   WALK_IN_CUSTOMER,
-  type PosCheckoutBankAccount,
+  type PosMobileProviderOption,
   type PosPaymentSplit,
   type PosTenderMethod,
 } from "@/lib/supermarket/pos-payments";
@@ -86,7 +86,6 @@ const PAYMENT_META: Record<
   Cash: { icon: Banknote, label: "Cash" },
   "Mobile Money": { icon: Smartphone, label: "Mobile Money" },
   Card: { icon: CreditCard, label: "Card" },
-  Bank: { icon: Building2, label: "Bank" },
   Mixed: { icon: ArrowLeftRight, label: "Mixed" },
 };
 
@@ -124,17 +123,15 @@ export function PosManager() {
   const [discountPercent, setDiscountPercent] = useState(0);
   const [payment, setPayment] = useState<PosPaymentMethod>("Cash");
   const [cashReceived, setCashReceived] = useState("");
-  const [mobileProvider, setMobileProvider] = useState("");
+  const [mobileProviderId, setMobileProviderId] = useState("");
   const [mobileAmount, setMobileAmount] = useState("");
   const [cardAmount, setCardAmount] = useState("");
   const [cardConfirmed, setCardConfirmed] = useState(false);
-  const [bankAccountId, setBankAccountId] = useState("");
   const [allocations, setAllocations] = useState<PosPaymentSplit[]>(() => [
     newPosPaymentSplit("Cash"),
     newPosPaymentSplit("Mobile Money"),
   ]);
-  const [mobileProviders, setMobileProviders] = useState<string[]>([]);
-  const [bankAccounts, setBankAccounts] = useState<PosCheckoutBankAccount[]>([]);
+  const [mobileProviders, setMobileProviders] = useState<PosMobileProviderOption[]>([]);
   const [heldSales, setHeldSales] = useState<PosHeldSale[]>([]);
   const [completed, setCompleted] = useState<PosCompletedSale | null>(null);
   const [saleError, setSaleError] = useState("");
@@ -159,7 +156,7 @@ export function PosManager() {
   const mixedTotal = allocatedTotal(allocations);
   const remainingMix = Math.max(0, totals.totalDue - mixedTotal);
   const cashChange = cashValue - totals.totalDue;
-  const selectedBank = bankAccounts.find((account) => account.id === bankAccountId) ?? null;
+  const selectedMobile = mobileProviders.find((item) => item.id === mobileProviderId) ?? null;
   const invoiceLabel = completed?.invoice ?? formatInvoiceNumber(invoiceNumber);
   const stamp = completed?.soldAt ?? invoiceStamp;
   const customerOptions = [WALK_IN_CUSTOMER, ...customers.filter((name) => name !== WALK_IN_CUSTOMER)];
@@ -175,9 +172,14 @@ export function PosManager() {
       if (!result.ok) return;
       setCustomers(result.customers);
       setMobileProviders(result.mobileProviders);
-      setBankAccounts(result.bankAccounts);
-      setMobileProvider((current) => current || result.mobileProviders[0] || "");
-      setBankAccountId((current) => current || result.bankAccounts[0]?.id || "");
+      setMobileProviderId((current) => current || result.mobileProviders[0]?.id || "");
+      setAllocations((current) =>
+        current.map((row) =>
+          row.method === "Mobile Money" && !row.providerId
+            ? { ...row, providerId: result.mobileProviders[0]?.id || "" }
+            : row,
+        ),
+      );
     });
   }, []);
 
@@ -202,23 +204,25 @@ export function PosManager() {
     if (payment === "Mobile Money" && mobilePaid !== totals.totalDue) {
       return "Mobile Money amount must equal Total Due.";
     }
-    if (payment === "Mobile Money" && !mobileProvider.trim()) return "Select a Mobile Money provider.";
-    if (payment === "Bank" && !bankAccountId) return "Select a bank account.";
+    if (payment === "Mobile Money" && !mobileProviderId) {
+      return mobileProviders.length === 0
+        ? "No Mobile Money provider configured. Ask an authorized administrator to configure a Mobile Money payment channel."
+        : "Select a Mobile Money provider.";
+    }
     if (payment === "Card" && cardPaid !== totals.totalDue) return "Card amount must equal Total Due.";
     if (payment === "Card" && !cardConfirmed) return "Confirm card payment to complete this sale.";
     if (payment === "Mixed") {
       const live = allocations.filter((row) => splitAmount(row) > 0);
       if (live.length === 0) return "Add at least one payment amount.";
-      if (live.some((row) => row.method === "Mobile Money" && !row.provider.trim())) {
-        return "Select a Mobile Money provider for each mobile payment.";
-      }
-      if (live.some((row) => row.method === "Bank" && !row.bankAccountId)) {
-        return "Select a bank account for each bank payment.";
+      if (live.some((row) => row.method === "Mobile Money" && !row.providerId)) {
+        return mobileProviders.length === 0
+          ? "No Mobile Money provider configured. Ask an authorized administrator to configure a Mobile Money payment channel."
+          : "Select a Mobile Money provider for each mobile payment.";
       }
       if (mixedTotal !== totals.totalDue) return "Allocated payments must equal Total Due.";
     }
     return "";
-  }, [items.length, payment, cashValue, totals.totalDue, mobilePaid, mobileProvider, cardPaid, cardConfirmed, mixedTotal, allocations, bankAccountId]);
+  }, [items.length, payment, cashValue, totals.totalDue, mobilePaid, mobileProviderId, mobileProviders.length, cardPaid, cardConfirmed, mixedTotal, allocations]);
 
   const canComplete = !completed && validation === "" && !completing;
 
@@ -254,7 +258,7 @@ export function PosManager() {
       discountPercent,
       payment,
       cashReceived,
-      mobileProvider,
+      mobileProvider: mobileProviderId,
       mobileAmount,
       cardAmount,
       cardConfirmed,
@@ -272,7 +276,7 @@ export function PosManager() {
     setDiscountPercent(sale.discountPercent);
     setPayment(sale.payment);
     setCashReceived(sale.cashReceived);
-    setMobileProvider(sale.mobileProvider);
+    setMobileProviderId(sale.mobileProvider);
     setMobileAmount(sale.mobileAmount);
     setCardAmount(sale.cardAmount);
     setCardConfirmed(sale.cardConfirmed);
@@ -288,12 +292,11 @@ export function PosManager() {
     setDiscountPercent(0);
     setPayment("Cash");
     setCashReceived("");
-    setMobileProvider(mobileProviders[0] ?? "");
+    setMobileProviderId(mobileProviders[0]?.id ?? "");
     setMobileAmount("");
     setCardAmount("");
     setCardConfirmed(false);
-    setBankAccountId(bankAccounts[0]?.id ?? "");
-    setAllocations([newPosPaymentSplit("Cash"), newPosPaymentSplit("Mobile Money")]);
+    setAllocations([newPosPaymentSplit("Cash"), newPosPaymentSplit("Mobile Money", mobileProviders[0]?.id ?? "")]);
     setCompleted(null);
     setQuery("");
     setCategory("all");
@@ -432,28 +435,27 @@ export function PosManager() {
     setSaleError("");
     const snapshotItems = items.map((item) => ({ ...item }));
     const mixedRows = allocations.filter((row) => splitAmount(row) > 0);
+    const providerLabel = (id: string) => mobileProviders.find((item) => item.id === id)?.label ?? "";
     const payments =
       payment === "Mixed"
         ? mixedRows.map((row) => ({
             method: dbMethodFromPos(row.method),
             amount: splitAmount(row),
-            provider: row.method === "Bank" ? bankAccounts.find((account) => account.id === row.bankAccountId)?.label ?? row.provider : row.provider,
-            reference: row.method === "Bank" ? row.bankAccountId : "",
+            providerId: row.method === "Mobile Money" ? row.providerId : undefined,
+            provider: row.method === "Mobile Money" ? providerLabel(row.providerId) : undefined,
           }))
         : payment === "Mobile Money"
-          ? [{ method: "MOBILE_MONEY", amount: mobilePaid, provider: mobileProvider }]
+          ? [
+              {
+                method: "MOBILE_MONEY",
+                amount: mobilePaid,
+                providerId: mobileProviderId,
+                provider: selectedMobile?.label,
+              },
+            ]
           : payment === "Card"
             ? [{ method: "CARD", amount: cardPaid }]
-            : payment === "Bank"
-              ? [
-                  {
-                    method: "BANK",
-                    amount: totals.totalDue,
-                    provider: selectedBank?.label ?? "",
-                    reference: bankAccountId,
-                  },
-                ]
-              : [{ method: "CASH", amount: totals.totalDue }];
+            : [{ method: "CASH", amount: totals.totalDue }];
 
     const result = await completePosSale({
       customerName: customer,
@@ -484,7 +486,7 @@ export function PosManager() {
       tax: totals.tax,
       totalDue: totals.totalDue,
       payment,
-      mobileProvider,
+      mobileProvider: selectedMobile?.label ?? "",
       cashReceived: cashValue,
       change: cashChange,
       mobileAmount: mobilePaid,
@@ -494,7 +496,7 @@ export function PosManager() {
       allocations: mixedRows.map((row) => ({
         method: row.method,
         amount: splitAmount(row),
-        provider: row.method === "Bank" ? bankAccounts.find((account) => account.id === row.bankAccountId)?.label ?? row.provider : row.provider,
+        provider: row.method === "Mobile Money" ? providerLabel(row.providerId) : undefined,
       })),
     });
     setCompleted(sale);
@@ -890,7 +892,7 @@ export function PosManager() {
 
               <div className="mt-5">
                 <p className="text-[13px] font-semibold text-navy">Payment Method</p>
-                <div className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+                <div className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {POS_PAYMENT_METHODS.map((method) => {
                     const Icon = PAYMENT_META[method].icon;
                     const active = payment === method;
@@ -902,7 +904,10 @@ export function PosManager() {
                           setPayment(method);
                           setCardConfirmed(false);
                           if (method === "Mixed" && allocations.every((row) => splitAmount(row) === 0)) {
-                            setAllocations([newPosPaymentSplit("Cash"), newPosPaymentSplit("Mobile Money")]);
+                            setAllocations([
+                              newPosPaymentSplit("Cash"),
+                              newPosPaymentSplit("Mobile Money", mobileProviders[0]?.id ?? ""),
+                            ]);
                           }
                         }}
                         className={cn(
@@ -943,16 +948,18 @@ export function PosManager() {
               {payment === "Mobile Money" ? (
                 <div className="mt-4 space-y-3 rounded-[16px] border border-white/80 bg-[#eef3f8]/70 p-3.5">
                   <ProviderField
-                    value={mobileProvider}
+                    value={mobileProviderId}
                     providers={mobileProviders}
-                    onChange={setMobileProvider}
+                    onChange={setMobileProviderId}
                   />
+                  {mobileProviders.length > 0 ? (
                   <MoneyField
                     id="mobile-amount"
                     label="Amount"
                     value={mobileAmount === "" ? String(totals.totalDue) : mobileAmount}
                     onChange={setMobileAmount}
                   />
+                  ) : null}
                 </div>
               ) : null}
 
@@ -981,13 +988,6 @@ export function PosManager() {
                 </div>
               ) : null}
 
-              {payment === "Bank" ? (
-                <div className="mt-4 space-y-3 rounded-[16px] border border-white/80 bg-[#eef3f8]/70 p-3.5">
-                  <BankAccountField accounts={bankAccounts} value={bankAccountId} onChange={setBankAccountId} />
-                  <p className="text-[12.5px] text-slate-500">Amount due {formatTzs(totals.totalDue)}</p>
-                </div>
-              ) : null}
-
               {payment === "Mixed" ? (
                 <div className="mt-4 space-y-3 rounded-[16px] border border-white/80 bg-[#eef3f8]/70 p-3.5">
                   <p className="text-[12px] font-medium text-slate-500">Payment Split</p>
@@ -995,7 +995,7 @@ export function PosManager() {
                     {allocations.map((row) => (
                       <div key={row.key} className="rounded-[14px] border border-white/80 bg-white/80 p-2.5">
                         <div className="flex items-start gap-2">
-                          <label className="relative min-w-0 flex-1">
+                          <label className="relative min-w-0 flex-1 overflow-hidden rounded-full">
                             <span className="sr-only">Method</span>
                             <select
                               value={row.method}
@@ -1007,8 +1007,10 @@ export function PosManager() {
                                       ? {
                                           ...item,
                                           method,
-                                          provider: method === "Mobile Money" ? item.provider || mobileProviders[0] || "" : "",
-                                          bankAccountId: method === "Bank" ? item.bankAccountId || bankAccounts[0]?.id || "" : "",
+                                          providerId:
+                                            method === "Mobile Money"
+                                              ? item.providerId || mobileProviders[0]?.id || ""
+                                              : "",
                                         }
                                       : item,
                                   ),
@@ -1016,7 +1018,7 @@ export function PosManager() {
                               }}
                               className={cn(control, "h-9 appearance-none pr-8 text-[12.5px]")}
                             >
-                              {(["Cash", "Mobile Money", "Card", "Bank"] as const).map((method) => (
+                              {POS_TENDER_METHODS.map((method) => (
                                 <option key={method} value={method}>
                                   {method}
                                 </option>
@@ -1037,24 +1039,11 @@ export function PosManager() {
                         {row.method === "Mobile Money" ? (
                           <div className="mt-2">
                             <ProviderField
-                              value={row.provider}
+                              value={row.providerId}
                               providers={mobileProviders}
-                              onChange={(provider) =>
+                              onChange={(providerId) =>
                                 setAllocations((current) =>
-                                  current.map((item) => (item.key === row.key ? { ...item, provider } : item)),
-                                )
-                              }
-                            />
-                          </div>
-                        ) : null}
-                        {row.method === "Bank" ? (
-                          <div className="mt-2">
-                            <BankAccountField
-                              accounts={bankAccounts}
-                              value={row.bankAccountId}
-                              onChange={(bankAccountId) =>
-                                setAllocations((current) =>
-                                  current.map((item) => (item.key === row.key ? { ...item, bankAccountId } : item)),
+                                  current.map((item) => (item.key === row.key ? { ...item, providerId } : item)),
                                 )
                               }
                             />
@@ -1159,7 +1148,7 @@ function ProviderField({
   onChange,
 }: {
   value: string;
-  providers: string[];
+  providers: PosMobileProviderOption[];
   onChange: (value: string) => void;
 }) {
   return (
@@ -1170,57 +1159,22 @@ function ProviderField({
           <select
             value={value}
             onChange={(event) => onChange(event.target.value)}
-            className={cn(control, "appearance-none pr-9")}
+            className={cn(control, "appearance-none pr-10")}
           >
             <option value="">Select provider</option>
             {providers.map((provider) => (
-              <option key={provider} value={provider}>
-                {provider}
+              <option key={provider.id} value={provider.id}>
+                {provider.label}
               </option>
             ))}
           </select>
-          <ChevronDown className="pointer-events-none absolute right-3.5 bottom-3.5 h-4 w-4 text-slate-400" strokeWidth={2} />
+          <ChevronDown className="pointer-events-none absolute right-3.5 bottom-3 h-4 w-4 text-slate-400" strokeWidth={2} />
         </>
       ) : (
-        <input
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder="Provider name"
-          className={control}
-        />
+        <p className="rounded-[14px] border border-white/80 bg-white/80 px-3.5 py-3 text-[12.5px] leading-5 text-slate-500">
+          No Mobile Money provider configured. Ask an authorized administrator to configure a Mobile Money payment channel.
+        </p>
       )}
-    </label>
-  );
-}
-
-function BankAccountField({
-  accounts,
-  value,
-  onChange,
-}: {
-  accounts: PosCheckoutBankAccount[];
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  if (accounts.length === 0) {
-    return <p className="text-[12.5px] text-slate-500">No bank accounts are configured.</p>;
-  }
-  return (
-    <label className="relative block">
-      <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Bank account</span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={cn(control, "appearance-none pr-9")}
-      >
-        <option value="">Select account</option>
-        {accounts.map((account) => (
-          <option key={account.id} value={account.id}>
-            {account.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-3.5 bottom-3.5 h-4 w-4 text-slate-400" strokeWidth={2} />
     </label>
   );
 }

@@ -1,5 +1,6 @@
 import { GeneralSettingsForm } from "@/components/settings/GeneralSettingsForm";
 import { BusinessUnitLocationsForm } from "@/components/settings/BusinessUnitLocationsForm";
+import { MobileMoneyProvidersForm } from "@/components/settings/MobileMoneyProvidersForm";
 import { requireAuth } from "@/lib/auth/session";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { listBusinessUnitLocationRows } from "@/lib/data/business-units";
@@ -28,6 +29,7 @@ export default async function SettingsPage() {
       </div>
       <GeneralSettingsForm settings={settings} canEdit={canEdit} />
       <BusinessUnitLocationsForm units={units} canEdit={canEdit} />
+      <MobileMoneyProvidersForm canEdit={canEdit} />
     </div>
   );
 }

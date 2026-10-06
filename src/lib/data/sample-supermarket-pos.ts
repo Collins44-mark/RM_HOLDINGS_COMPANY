@@ -22,10 +22,10 @@ export const POS_CATEGORIES = [
 ] as const;
 
 export type PosCategory = (typeof POS_CATEGORIES)[number];
-export type PosPaymentMethod = "Cash" | "Mobile Money" | "Card" | "Bank" | "Mixed";
+export type PosPaymentMethod = "Cash" | "Mobile Money" | "Card" | "Mixed";
 export type PosMobileProvider = string;
 
-export const POS_PAYMENT_METHODS: PosPaymentMethod[] = ["Cash", "Mobile Money", "Card", "Bank", "Mixed"];
+export const POS_PAYMENT_METHODS: PosPaymentMethod[] = ["Cash", "Mobile Money", "Card", "Mixed"];
 
 export type PosProduct = {
   id: string;
@@ -89,10 +89,9 @@ export type PosHeldSale = {
   mixedMobile: string;
   allocations: {
     key: string;
-    method: "Cash" | "Mobile Money" | "Card" | "Bank";
+    method: "Cash" | "Mobile Money" | "Card";
     amount: string;
-    provider: string;
-    bankAccountId: string;
+    providerId: string;
   }[];
 };
 
