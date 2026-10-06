@@ -12,7 +12,7 @@ import {
   listTaxRulesAction,
   saveTaxRuleAction,
 } from "@/actions/supermarket/tax";
-import { taxScopeLabel, type TaxRule, type TaxStatus } from "@/lib/supermarket/tax";
+import { taxPricingLabel, taxScopeLabel, type TaxPricingMode, type TaxRule, type TaxStatus } from "@/lib/supermarket/tax";
 import {
   reconGlass,
   useReconPeriod,
@@ -32,7 +32,7 @@ export function TaxVatPage() {
     collected: number;
     purchases: number;
     net: number;
-    breakdown: Array<{ taxType: string; taxCode: string; rate: number; salesTax: number; purchaseTax: number; net: number }>;
+    breakdown: Array<{ taxType: string; taxCode: string; rate: number; pricingMode: TaxPricingMode; salesTax: number; purchaseTax: number; net: number }>;
     details: Array<{
       id: string;
       date: string;
@@ -40,6 +40,7 @@ export function TaxVatPage() {
       transactionType: string;
       taxType: string;
       rate: number;
+      pricingMode: TaxPricingMode;
       taxBase: number;
       taxAmount: number;
     }>;
@@ -119,11 +120,13 @@ export function TaxVatPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-[13px]">
+            <table className="w-full min-w-[860px] text-left text-[13px]">
               <thead className="bg-[#f3f6fa]/90 text-[10.5px] font-medium uppercase tracking-[0.1em] text-slate-400">
                 <tr>
                   <th className="px-4 py-2.5 sm:px-5">Tax Name</th>
+                  <th className="px-3 py-2.5">Tax Code</th>
                   <th className="px-3 py-2.5">Rate</th>
+                  <th className="px-3 py-2.5">Pricing</th>
                   <th className="px-3 py-2.5">Applicable To</th>
                   <th className="px-3 py-2.5">Status</th>
                   <th className="px-3 py-2.5">Effective From</th>
@@ -134,7 +137,9 @@ export function TaxVatPage() {
                 {rules.map((rule) => (
                   <tr key={rule.id} className="border-t border-[#e8eef5]">
                     <td className="px-4 py-3 font-medium text-navy sm:px-5">{rule.name}</td>
+                    <td className="px-3 py-3 text-slate-500">{rule.code}</td>
                     <td className="px-3 py-3 text-slate-500">{rule.rate}%</td>
+                    <td className="px-3 py-3 text-slate-500">{taxPricingLabel(rule.pricingMode)}</td>
                     <td className="px-3 py-3 text-slate-500">{taxScopeLabel(rule)}</td>
                     <td className="px-3 py-3">
                       <span
@@ -189,6 +194,7 @@ export function TaxVatPage() {
               <tr>
                 <th className="px-4 py-2.5 sm:px-5">Tax Type</th>
                 <th className="px-3 py-2.5">Rate</th>
+                <th className="px-3 py-2.5">Pricing</th>
                 <th className="px-3 py-2.5">Sales Tax</th>
                 <th className="px-3 py-2.5">Purchase Tax</th>
                 <th className="px-4 py-2.5 sm:px-5">Net</th>
@@ -197,15 +203,16 @@ export function TaxVatPage() {
             <tbody>
               {(report?.breakdown ?? []).length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-slate-500">
+                  <td colSpan={6} className="px-5 py-8 text-center text-slate-500">
                     No tax activity for this period.
                   </td>
                 </tr>
               ) : (
                 report?.breakdown.map((row) => (
-                  <tr key={`${row.taxCode}-${row.rate}`} className="border-t border-[#e8eef5]">
+                  <tr key={`${row.taxCode}-${row.rate}-${row.pricingMode}`} className="border-t border-[#e8eef5]">
                     <td className="px-4 py-3 font-medium text-navy sm:px-5">{row.taxType}</td>
                     <td className="px-3 py-3 text-slate-500">{row.rate}%</td>
+                    <td className="px-3 py-3 text-slate-500">{taxPricingLabel(row.pricingMode)}</td>
                     <td className="px-3 py-3 text-slate-500">{formatTzs(row.salesTax)}</td>
                     <td className="px-3 py-3 text-slate-500">{formatTzs(row.purchaseTax)}</td>
                     <td className="px-4 py-3 font-semibold text-navy sm:px-5">{formatTzs(row.net)}</td>
@@ -230,6 +237,7 @@ export function TaxVatPage() {
                 <th className="px-3 py-2.5">Transaction Type</th>
                 <th className="px-3 py-2.5">Tax Type</th>
                 <th className="px-3 py-2.5">Rate</th>
+                <th className="px-3 py-2.5">Pricing</th>
                 <th className="px-3 py-2.5">Tax Base</th>
                 <th className="px-4 py-2.5 sm:px-5">Tax Amount</th>
               </tr>
@@ -237,7 +245,7 @@ export function TaxVatPage() {
             <tbody>
               {(report?.details ?? []).length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-8 text-center text-slate-500">
+                  <td colSpan={8} className="px-5 py-8 text-center text-slate-500">
                     No tax activity for this period.
                   </td>
                 </tr>
@@ -249,6 +257,7 @@ export function TaxVatPage() {
                     <td className="px-3 py-3 text-slate-500">{row.transactionType}</td>
                     <td className="px-3 py-3 text-slate-500">{row.taxType}</td>
                     <td className="px-3 py-3 text-slate-500">{row.rate}%</td>
+                    <td className="px-3 py-3 text-slate-500">{taxPricingLabel(row.pricingMode)}</td>
                     <td className="px-3 py-3 text-slate-500">{formatTzs(row.taxBase)}</td>
                     <td className="px-4 py-3 font-semibold text-navy sm:px-5">{formatTzs(row.taxAmount)}</td>
                   </tr>
@@ -282,6 +291,7 @@ function TaxModal({
   const [name, setName] = useState(initial?.name ?? "");
   const [code, setCode] = useState(initial?.code ?? "");
   const [rate, setRate] = useState(initial ? String(initial.rate) : "");
+  const [pricingMode, setPricingMode] = useState<TaxPricingMode>(initial?.pricingMode ?? "EXCLUSIVE");
   const [sales, setSales] = useState(initial?.appliesToSales ?? true);
   const [invoices, setInvoices] = useState(initial?.appliesToSupplierInvoices ?? false);
   const [status, setStatus] = useState<TaxStatus>(initial?.status ?? "ACTIVE");
@@ -327,6 +337,33 @@ function TaxModal({
             <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Rate (%)</span>
             <input inputMode="decimal" value={rate} onChange={(event) => setRate(event.target.value)} className={inputClass} />
           </label>
+          <fieldset>
+            <legend className="mb-1.5 text-[13px] font-medium text-slate-500">Tax Pricing</legend>
+            <div
+              role="radiogroup"
+              aria-label="Tax pricing"
+              className="inline-flex w-full rounded-full border border-white/70 bg-white/55 p-1 shadow-[0_6px_18px_rgba(15,35,64,0.05)]"
+            >
+              {(["EXCLUSIVE", "INCLUSIVE"] as const).map((mode) => {
+                const active = pricingMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setPricingMode(mode)}
+                    className={cn(
+                      "h-9 flex-1 rounded-full px-3 text-[13px] font-semibold transition duration-150",
+                      active ? "bg-[#0b2244] text-white shadow-[0_8px_16px_rgba(11,34,68,0.18)]" : "text-slate-500 hover:text-navy",
+                    )}
+                  >
+                    {mode === "EXCLUSIVE" ? "Exclusive" : "Inclusive"}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
           <fieldset>
             <legend className="mb-1.5 text-[13px] font-medium text-slate-500">Applicable To</legend>
             <label className="flex items-center gap-2 text-[13.5px] text-navy">
@@ -377,6 +414,7 @@ function TaxModal({
                 name,
                 code,
                 rate: Number(rate),
+                pricingMode,
                 appliesToSales: sales,
                 appliesToSupplierInvoices: invoices,
                 status,

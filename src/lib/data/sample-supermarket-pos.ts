@@ -1,5 +1,11 @@
 import { APP_TIMEZONE } from "@/lib/config/app";
-import { previewTaxAmount } from "@/lib/supermarket/tax";
+import {
+  parseTaxPricingMode,
+  payableTotal,
+  previewTaxLineAmount,
+  sumTaxAmount,
+  type TaxPricingMode,
+} from "@/lib/supermarket/tax";
 
 export const POS_STARTING_INVOICE = 1049;
 export const POS_STORE = "Main Store";
@@ -157,14 +163,26 @@ export function remainingStock(product: Pick<PosProduct, "id" | "stock">, items:
   return Math.max(0, product.stock - inCart);
 }
 
-export function posTotals(items: PosCartItem[], discountPercent: number, taxRates: number[] = []) {
+export type PosTaxRuleInput = number | { rate: number; pricingMode?: TaxPricingMode };
+
+export function posTotals(items: PosCartItem[], discountPercent: number, taxRates: PosTaxRuleInput[] = []) {
   const subtotal = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
   const bounded = Math.min(100, Math.max(0, discountPercent));
   const discount = Math.min(subtotal, Math.round((subtotal * bounded) / 100));
   const taxable = Math.max(0, subtotal - discount);
-  const tax = taxRates.reduce((sum, rate) => sum + previewTaxAmount(taxable, rate), 0);
-  const totalDue = Math.max(0, subtotal - discount + tax);
-  return { subtotal, discount, tax, discountPercent: bounded, totalDue };
+  const lines = taxRates.map((rule) => {
+    const rate = typeof rule === "number" ? rule : rule.rate;
+    const pricingMode = typeof rule === "number" ? "EXCLUSIVE" : parseTaxPricingMode(rule.pricingMode);
+    return { taxAmount: previewTaxLineAmount(taxable, rate, pricingMode), pricingMode };
+  });
+  const tax = sumTaxAmount(lines);
+  return {
+    subtotal,
+    discount,
+    tax,
+    discountPercent: bounded,
+    totalDue: payableTotal(taxable, lines),
+  };
 }
 
 export function filterPosProducts(

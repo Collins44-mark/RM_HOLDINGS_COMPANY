@@ -9,7 +9,14 @@ import {
   requireSupermarketPermission,
   SupermarketError,
 } from "@/lib/supermarket/access";
-import type { ApplicableTaxLine, TaxRule, TaxScope, TaxStatus } from "@/lib/supermarket/tax";
+import {
+  parseTaxPricingMode,
+  type ApplicableTaxLine,
+  type TaxPricingMode,
+  type TaxRule,
+  type TaxScope,
+  type TaxStatus,
+} from "@/lib/supermarket/tax";
 
 function mapRule(row: Record<string, unknown>): TaxRule {
   return {
@@ -18,6 +25,7 @@ function mapRule(row: Record<string, unknown>): TaxRule {
     code: String(row.tax_code),
     name: String(row.name),
     rate: Number(row.rate) || 0,
+    pricingMode: parseTaxPricingMode(row.pricing_mode),
     appliesToSales: Boolean(row.applies_to_sales),
     appliesToSupplierInvoices: Boolean(row.applies_to_supplier_invoices),
     status: (String(row.status) as TaxStatus) || "INACTIVE",
@@ -59,6 +67,7 @@ export async function getApplicableTaxesAction(input: { scope: TaxScope; onDate:
       taxRate: Number(row.tax_rate) || 0,
       taxBase: Number(row.tax_base) || 0,
       taxAmount: Number(row.tax_amount) || 0,
+      pricingMode: parseTaxPricingMode(row.pricing_mode),
     }));
     return { ok: true as const, lines };
   } catch (error) {
@@ -72,7 +81,7 @@ export async function listTaxRulesAction() {
     const { data, error } = await supabase
       .from("sm_tax_rules")
       .select(
-        "id, family_id, tax_code, name, rate, applies_to_sales, applies_to_supplier_invoices, status, effective_from, effective_to, notes, created_at",
+        "id, family_id, tax_code, name, rate, pricing_mode, applies_to_sales, applies_to_supplier_invoices, status, effective_from, effective_to, notes, created_at",
       )
       .eq("business_unit_id", businessUnitId)
       .order("effective_from", { ascending: false })
@@ -99,6 +108,7 @@ export async function saveTaxRuleAction(input: {
   name: string;
   code: string;
   rate: number;
+  pricingMode?: TaxPricingMode;
   appliesToSales: boolean;
   appliesToSupplierInvoices: boolean;
   status: TaxStatus;
@@ -110,6 +120,7 @@ export async function saveTaxRuleAction(input: {
     const { supabase, businessUnitId, userId } = await requireOwnerTaxManage();
     const name = input.name.trim();
     const code = normalizeCode(input.code);
+    const pricingMode = parseTaxPricingMode(input.pricingMode);
     if (!name) throw new SupermarketError("Enter a tax name.", "VALIDATION");
     if (!code) throw new SupermarketError("Enter a tax code.", "VALIDATION");
     if (!Number.isFinite(input.rate) || input.rate < 0 || input.rate > 100) {
@@ -127,6 +138,7 @@ export async function saveTaxRuleAction(input: {
       tax_code: code,
       name,
       rate: input.rate,
+      pricing_mode: pricingMode,
       applies_to_sales: input.appliesToSales,
       applies_to_supplier_invoices: input.appliesToSupplierInvoices,
       status: input.status,
@@ -148,7 +160,7 @@ export async function saveTaxRuleAction(input: {
       if (error) mapDbError(error);
       void writeSupermarketAudit(businessUnitId, {
         action: "tax.configuration.created",
-        description: `Tax configuration created (${code})`,
+        description: `Tax configuration created (${code}, ${pricingMode})`,
         severity: "high",
         entityType: "tax_rule",
         entityId: id,
@@ -158,7 +170,7 @@ export async function saveTaxRuleAction(input: {
 
     const { data: existing, error: loadError } = await supabase
       .from("sm_tax_rules")
-      .select("id, family_id, tax_code, name, rate, applies_to_sales, applies_to_supplier_invoices, status, effective_from, effective_to")
+      .select("id, family_id, tax_code, name, rate, pricing_mode, applies_to_sales, applies_to_supplier_invoices, status, effective_from, effective_to")
       .eq("id", input.id)
       .eq("business_unit_id", businessUnitId)
       .maybeSingle();
@@ -172,6 +184,7 @@ export async function saveTaxRuleAction(input: {
     const used = (count ?? 0) > 0;
     const rateChanged =
       Number(existing.rate) !== input.rate ||
+      parseTaxPricingMode(existing.pricing_mode) !== pricingMode ||
       String(existing.effective_from) !== input.effectiveFrom ||
       (existing.effective_to ? String(existing.effective_to) : "") !== (input.effectiveTo || "") ||
       Boolean(existing.applies_to_sales) !== input.appliesToSales ||
@@ -204,7 +217,7 @@ export async function saveTaxRuleAction(input: {
       if (error) mapDbError(error);
       void writeSupermarketAudit(businessUnitId, {
         action: "tax.configuration.versioned",
-        description: `Tax configuration versioned (${code})`,
+        description: `Tax configuration versioned (${code}, ${pricingMode})`,
         severity: "high",
         entityType: "tax_rule",
         entityId: nextId,
@@ -223,7 +236,7 @@ export async function saveTaxRuleAction(input: {
         : "tax.configuration.updated",
       description: statusChanged
         ? `Tax configuration ${input.status === "ACTIVE" ? "activated" : "deactivated"} (${code})`
-        : `Tax configuration updated (${code})`,
+        : `Tax configuration updated (${code}, ${pricingMode})`,
       severity: "high",
       entityType: "tax_rule",
       entityId: input.id,
@@ -239,7 +252,7 @@ export async function fetchTaxReportAction(input: { from: string; to: string }) 
     const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.tax.view");
     const { data: saleRows, error: saleError } = await supabase
       .from("sm_tax_applications")
-      .select("id, source_type, source_id, source_number, source_date, tax_name, tax_code, tax_rate, tax_base, tax_amount")
+      .select("id, source_type, source_id, source_number, source_date, tax_name, tax_code, tax_rate, pricing_mode, tax_base, tax_amount")
       .eq("business_unit_id", businessUnitId)
       .eq("source_type", "SALE")
       .gte("source_date", input.from)
@@ -250,7 +263,7 @@ export async function fetchTaxReportAction(input: { from: string; to: string }) 
 
     const { data: purchaseRows, error: purchaseError } = await supabase
       .from("sm_tax_applications")
-      .select("id, source_type, source_id, source_number, source_date, tax_name, tax_code, tax_rate, tax_base, tax_amount")
+      .select("id, source_type, source_id, source_number, source_date, tax_name, tax_code, tax_rate, pricing_mode, tax_base, tax_amount")
       .eq("business_unit_id", businessUnitId)
       .eq("source_type", "SUPPLIER_INVOICE")
       .gte("source_date", input.from)
@@ -282,6 +295,7 @@ export async function fetchTaxReportAction(input: { from: string; to: string }) 
         taxType: String(row.tax_name),
         taxCode: String(row.tax_code),
         rate: Number(row.tax_rate) || 0,
+        pricingMode: parseTaxPricingMode(row.pricing_mode),
         taxBase: Number(row.tax_base) || 0,
         taxAmount: Number(row.tax_amount) || 0,
       })),
@@ -295,6 +309,7 @@ export async function fetchTaxReportAction(input: { from: string; to: string }) 
           taxType: String(row.tax_name),
           taxCode: String(row.tax_code),
           rate: Number(row.tax_rate) || 0,
+          pricingMode: parseTaxPricingMode(row.pricing_mode),
           taxBase: Number(row.tax_base) || 0,
           taxAmount: Number(row.tax_amount) || 0,
         })),
@@ -307,14 +322,22 @@ export async function fetchTaxReportAction(input: { from: string; to: string }) 
 
     const byType = new Map<
       string,
-      { taxType: string; taxCode: string; rate: number; salesTax: number; purchaseTax: number }
+      {
+        taxType: string;
+        taxCode: string;
+        rate: number;
+        pricingMode: ReturnType<typeof parseTaxPricingMode>;
+        salesTax: number;
+        purchaseTax: number;
+      }
     >();
     for (const row of details) {
-      const key = `${row.taxCode}|${row.rate}`;
+      const key = `${row.taxCode}|${row.rate}|${row.pricingMode}`;
       const entry = byType.get(key) ?? {
         taxType: row.taxType,
         taxCode: row.taxCode,
         rate: row.rate,
+        pricingMode: row.pricingMode,
         salesTax: 0,
         purchaseTax: 0,
       };

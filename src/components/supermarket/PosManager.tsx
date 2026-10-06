@@ -45,6 +45,7 @@ import {
 import { attachStock, rememberNewProductBarcode, useSupermarketInventory } from "@/lib/data/supermarket-inventory";
 import { completePosSale } from "@/lib/supermarket/client-stores";
 import { getApplicableTaxesAction } from "@/actions/supermarket/tax";
+import { taxLineLabel, type TaxPricingMode } from "@/lib/supermarket/tax";
 import { APP_TIMEZONE } from "@/lib/config/app";
 import { normalizeBarcode } from "@/lib/supermarket/barcode";
 import { BarcodeScanButton } from "@/components/supermarket/barcode/BarcodeScannerModal";
@@ -129,11 +130,11 @@ export function PosManager() {
   const [printBusy, setPrintBusy] = useState(false);
   const [printerNotice, setPrinterNotice] = useState<"none" | "no-printer" | "need-permission">("none");
   const [escPosReady, setEscPosReady] = useState(false);
-  const [taxRates, setTaxRates] = useState<Array<{ name: string; rate: number }>>([]);
+  const [taxRates, setTaxRates] = useState<Array<{ name: string; rate: number; pricingMode: TaxPricingMode }>>([]);
 
   const catalog = useMemo(() => filterPosProducts(products, query, category), [products, query, category]);
   const totals = useMemo(
-    () => posTotals(items, discountPercent, taxRates.map((rule) => rule.rate)),
+    () => posTotals(items, discountPercent, taxRates),
     [items, discountPercent, taxRates],
   );
   const cashValue = parseMoneyInput(cashReceived);
@@ -148,7 +149,7 @@ export function PosManager() {
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE }).format(new Date());
     void getApplicableTaxesAction({ scope: "SALES", onDate: today, taxBase: 0 }).then((result) => {
       if (result.ok) {
-        setTaxRates(result.lines.map((line) => ({ name: line.taxName, rate: line.taxRate })));
+        setTaxRates(result.lines.map((line) => ({ name: line.taxName, rate: line.taxRate, pricingMode: line.pricingMode })));
       }
     });
   }, []);
@@ -813,7 +814,7 @@ export function PosManager() {
                 <div className="flex items-center justify-between">
                   <dt className="text-slate-500">
                     {taxRates.length === 1
-                      ? `${taxRates[0].name} (${taxRates[0].rate}%)`
+                      ? taxLineLabel(taxRates[0].name, taxRates[0].rate, taxRates[0].pricingMode)
                       : taxRates.length > 1
                         ? "Tax"
                         : "Tax"}
@@ -1197,7 +1198,7 @@ function MoreMenu({
   onClose: () => void;
   heldSales: PosHeldSale[];
   onRestore: (id: string) => void;
-  taxRates: Array<{ name: string; rate: number }>;
+  taxRates: Array<{ name: string; rate: number; pricingMode: TaxPricingMode }>;
 }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [mounted, setMounted] = useState(false);
@@ -1258,7 +1259,7 @@ function MoreMenu({
                       <span className="text-[13px] font-medium text-navy">#{formatInvoiceNumber(sale.invoiceNumber)}</span>
                       <span className="text-[12px] text-slate-400">
                         {sale.customer} · {sale.items.length} {sale.items.length === 1 ? "item" : "items"} ·{" "}
-                        {formatTzs(posTotals(sale.items, sale.discountPercent, taxRates.map((rule) => rule.rate)).totalDue)}
+                        {formatTzs(posTotals(sale.items, sale.discountPercent, taxRates).totalDue)}
                       </span>
                     </button>
                   ))

@@ -24,6 +24,7 @@ import {
 } from "@/lib/supermarket/inventory-store";
 import type { Purchase, PurchaseOrder, SupplierInvoice, SupplierPaymentRequest } from "@/lib/supermarket/types";
 import { getApplicableTaxesAction } from "@/actions/supermarket/tax";
+import { payableTotal, taxLineLabel } from "@/lib/supermarket/tax";
 
 const emptyCaps: PurchasingCaps = {
   canView: false,
@@ -182,6 +183,7 @@ function InvoicePanel({
   const [invoiceDate, setInvoiceDate] = useState(invoice?.invoiceDate ?? "");
   const [dueDate, setDueDate] = useState(invoice?.dueDate ?? "");
   const [previewTax, setPreviewTax] = useState(invoice?.tax ?? 0);
+  const [previewPayable, setPreviewPayable] = useState(invoice?.total ?? 0);
   const [taxLabel, setTaxLabel] = useState("Tax");
   const [notes, setNotes] = useState(invoice?.notes ?? "");
   const [qty, setQty] = useState<Record<string, string>>(() =>
@@ -205,7 +207,7 @@ function InvoicePanel({
     return sum + quantity * unitCost;
   }, 0);
   const tax = draftable ? previewTax : invoice?.tax ?? 0;
-  const total = Math.max(0, subtotal + tax);
+  const total = draftable ? previewPayable : invoice?.total ?? Math.max(0, subtotal + tax);
 
   useEffect(() => {
     if (!draftable) return;
@@ -215,12 +217,16 @@ function InvoicePanel({
       if (!active) return;
       if (!result.ok) {
         setPreviewTax(0);
+        setPreviewPayable(subtotal);
         setTaxLabel("Tax");
         return;
       }
       setPreviewTax(result.lines.reduce((sum, line) => sum + (Number(line.taxAmount) || 0), 0));
+      setPreviewPayable(payableTotal(subtotal, result.lines));
       setTaxLabel(
-        result.lines.length === 1 ? `${result.lines[0].taxName} (${result.lines[0].taxRate}%)` : "Tax",
+        result.lines.length === 1
+          ? taxLineLabel(result.lines[0].taxName, result.lines[0].taxRate, result.lines[0].pricingMode)
+          : "Tax",
       );
     });
     return () => {

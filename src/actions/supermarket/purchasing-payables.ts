@@ -139,9 +139,13 @@ export async function saveSupplierInvoiceAction(input: {
       tax_rate: number;
       tax_base: number;
       tax_amount: number;
+      pricing_mode?: string;
     }>;
     const tax = taxLines.reduce((sum, line) => sum + (Number(line.tax_amount) || 0), 0);
-    const total = Math.max(0, subtotal + tax);
+    const taxAdd = taxLines.reduce((sum, line) => {
+      return String(line.pricing_mode).toUpperCase() === "INCLUSIVE" ? sum : sum + (Number(line.tax_amount) || 0);
+    }, 0);
+    const total = Math.max(0, subtotal + taxAdd);
 
     let invoiceId = input.invoiceId ?? "";
     if (invoiceId) {
@@ -222,6 +226,7 @@ export async function saveSupplierInvoiceAction(input: {
           tax_rate: line.tax_rate,
           tax_base: line.tax_base,
           tax_amount: line.tax_amount,
+          pricing_mode: String(line.pricing_mode).toUpperCase() === "INCLUSIVE" ? "INCLUSIVE" : "EXCLUSIVE",
         })),
       );
       if (applyError) mapDbError(applyError);
