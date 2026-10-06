@@ -331,6 +331,7 @@ function PurchasesView({
                 <th className="px-4 py-3 font-medium">Total</th>
                 <th className="px-4 py-3 font-medium">Paid</th>
                 <th className="px-4 py-3 font-medium">Outstanding</th>
+                <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Payment</th>
                 <th className="px-4 py-3 font-medium">Actions</th>
               </tr>
@@ -348,6 +349,13 @@ function PurchasesView({
                   <td className="px-4 py-3 text-slate-500">{formatTzs(payables.paid)}</td>
                   <td className="px-4 py-3 text-navy">
                     {payables.awaitingInvoice ? "Awaiting invoice" : formatTzs(payables.outstanding)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusPill
+                      value={
+                        item.status === "Received" && payables.status === "Paid" ? "Completed" : item.status
+                      }
+                    />
                   </td>
                   <td className="px-4 py-3">
                     <StatusPill value={payables.awaitingInvoice ? "Unpaid" : payables.status} />
@@ -384,7 +392,12 @@ function PurchasesView({
                     <p className="text-[14px] font-semibold text-navy">{item.number}</p>
                     <p className="mt-0.5 text-[12.5px] text-slate-500">{item.supplierName} · {item.purchaseOrderNumber}</p>
                   </div>
-                  <StatusPill value={payables.awaitingInvoice ? "Unpaid" : payables.status} />
+                  <div className="flex flex-col items-end gap-1">
+                    <StatusPill
+                      value={item.status === "Received" && payables.status === "Paid" ? "Completed" : item.status}
+                    />
+                    <StatusPill value={payables.awaitingInvoice ? "Unpaid" : payables.status} />
+                  </div>
                 </div>
                 <p className="mt-2 text-[13px] font-semibold text-navy">{formatTzs(item.totalCost)}</p>
                 <p className="mt-1 text-[12px] text-slate-400">

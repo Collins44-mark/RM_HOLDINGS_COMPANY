@@ -612,7 +612,7 @@ export async function receivePurchaseOrderAction(input: {
   }[];
 }) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.purchases.create");
+    const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.purchases.receive");
     const payload = input.lines.map((line) => ({
       purchase_order_item_id: line.purchaseOrderItemId,
       quantity: line.quantity,

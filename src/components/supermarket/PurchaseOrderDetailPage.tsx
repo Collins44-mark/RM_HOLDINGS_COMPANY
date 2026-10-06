@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { getPurchaseOrderWorkspaceAction } from "@/actions/supermarket/catalog";
 
@@ -15,22 +14,19 @@ import {
   purchaseOrderSubtotal,
   type PurchaseOrder,
 } from "@/lib/data/supermarket-purchasing";
-import { StatusPill, glassPanel, primaryButton, PulseBar, tableHead } from "@/components/supermarket/purchasing-ui";
+import { StatusPill, glassPanel, PulseBar, tableHead } from "@/components/supermarket/purchasing-ui";
 import { PurchaseOrderWorkflow } from "@/components/supermarket/PurchaseOrderPayables";
 import { PageBackButton } from "@/components/ui/PageBackButton";
-import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
 import { GoodsReceiptDocumentModal } from "@/components/supermarket/GoodsReceiptDocumentModal";
-import { downloadGoodsReceiptPdf } from "@/lib/supermarket/inventory-store";
-import { useAuth } from "@/components/auth/AuthProvider";
 
 type LoadPhase = "loading" | "found" | "not_found" | "error" | "unauthorized";
 
 export function PurchaseOrderDetailPage() {
-  const { hasPermission } = useAuth();
   const params = useParams<{ poId: string }>();
   const poId = Array.isArray(params.poId) ? params.poId[0] : params.poId;
   const inventory = useSupermarketInventory({ purchasing: true });
   const snapshotOrder = inventory.purchaseOrders.find((item) => item.id === poId);
+  const [headerHost, setHeaderHost] = useState<HTMLElement | null>(null);
   const [phase, setPhase] = useState<LoadPhase>(() => {
     if (!poId) return "not_found";
     return snapshotOrder ? "found" : "loading";
@@ -66,7 +62,7 @@ export function PurchaseOrderDetailPage() {
     };
   }, [poId]);
 
-  const order = targeted ?? snapshotOrder ?? null;
+  const order = snapshotOrder ?? targeted ?? null;
 
   if (phase === "loading" && !order) {
     return (
@@ -126,14 +122,13 @@ export function PurchaseOrderDetailPage() {
   const requests = inventory.paymentRequests.filter((item) =>
     invoices.some((invoice) => invoice.id === item.invoiceId),
   );
-  const canReceive =
-    hasPermission("supermarket.purchases.receive") &&
-    (order.status === "Sent" || order.status === "Partially Received");
   const orderedQty = order.lines.reduce((sum, line) => sum + line.quantityOrdered, 0);
   const receivedQty = order.lines.reduce((sum, line) => sum + line.quantityReceived, 0);
   const remainingQty = order.lines.reduce((sum, line) => sum + purchaseLineRemaining(line), 0);
   const receivedValue = order.lines.reduce((sum, line) => sum + line.quantityReceived * line.buyingPrice, 0);
   const verifiedInvoice = invoices.find((item) => item.verificationStatus === "Verified") ?? null;
+  const displayStatus =
+    order.status === "Received" && verifiedInvoice?.paymentStatus === "Paid" ? "Completed" : order.status;
 
   return (
     <div className="min-w-0 space-y-5 pb-10">
@@ -144,12 +139,8 @@ export function PurchaseOrderDetailPage() {
           <p className="mt-1.5 text-[13px] text-slate-500">{order.supplierName} · Ordered {formatDisplayDate(order.orderDate)}</p>
         </div>
         <div className="flex flex-col items-start gap-2 sm:items-end">
-          <StatusPill value={order.status} />
-          {canReceive ? (
-            <Link href={`/supermarket/purchasing/${order.id}/receive`} className={primaryButton}>
-              Receive Goods
-            </Link>
-          ) : null}
+          <StatusPill value={displayStatus} />
+          <div ref={setHeaderHost} className="flex flex-col items-stretch sm:items-end" />
         </div>
       </div>
 
@@ -162,10 +153,7 @@ export function PurchaseOrderDetailPage() {
 
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
         <article className={glassPanel}>
-          <div className="flex items-start justify-between gap-3">
-            <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Order lines</h2>
-            <StatusPill value={order.status} />
-          </div>
+          <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Order lines</h2>
           <div className="mt-4 hidden overflow-x-auto md:block">
             <table className="min-w-full text-left text-[13px]">
               <thead className={tableHead}>
@@ -209,53 +197,26 @@ export function PurchaseOrderDetailPage() {
         <aside className={cn(glassPanel, "h-fit")}>
           <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Summary</h2>
           <dl className="mt-4 space-y-2.5 text-[13.5px]">
-            <Row label="Supplier" value={order.supplierName} />
-            <Row label="Status" value={order.status} />
-            <Row label="Order date" value={formatDisplayDate(order.orderDate)} />
             <Row label="Expected" value={formatDisplayDate(order.expectedDate)} />
             <Row label="Subtotal" value={formatTzs(purchaseOrderSubtotal(order))} />
             <Row label="Discount" value={formatTzs(order.discount)} />
             <Row label="Tax" value={formatTzs(order.tax)} />
             <Row label="Grand total" value={formatTzs(purchaseOrderGrandTotal(order))} strong />
-            <Row label="Owed" value={verifiedInvoice ? formatTzs(verifiedInvoice.outstanding) : "Awaiting supplier invoice"} strong />
-            <Row label="Paid" value={verifiedInvoice ? formatTzs(verifiedInvoice.amountPaid) : formatTzs(0)} />
           </dl>
           {order.notes ? <p className="mt-4 text-[13px] leading-5 text-slate-500">{order.notes}</p> : null}
         </aside>
       </section>
 
-      <section className={glassPanel}>
-        <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Goods receipts</h2>
-        <p className="mt-1 text-[13px] text-slate-500">Warehouse receipts for this purchase order. Separate from the RM Holdings purchase document.</p>
-        {receipts.length === 0 ? (
-          <p className="mt-3 text-[13px] text-slate-500">No goods receipts yet.</p>
-        ) : (
-          <div className="mt-3 divide-y divide-[#d5dee8]/70">
-            {receipts.map((item) => (
-              <div key={item.id} className="flex items-center justify-between gap-3 py-3">
-                <div className="min-w-0">
-                  <p className="text-[13.5px] font-semibold text-navy">{item.number}</p>
-                  <p className="text-[12.5px] text-slate-500">
-                    {formatDisplayDate(item.receivedAt)} · {order.supplierName} · {order.number}
-                  </p>
-                  <p className="mt-0.5 text-[12.5px] text-slate-500">
-                    {item.itemCount} items · {formatTzs(item.totalCost)}
-                  </p>
-                </div>
-                <CompactActionsMenu
-                  ariaLabel={`Actions for ${item.number}`}
-                  items={[
-                    { label: "View Receipt", onSelect: () => setReceiptViewId(item.id) },
-                    { label: "Download PDF", onSelect: () => void downloadGoodsReceiptPdf(item.id) },
-                  ]}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <PurchaseOrderWorkflow order={order} purchases={purchases} invoices={invoices} requests={requests} />
+      <PurchaseOrderWorkflow
+        order={order}
+        purchases={purchases}
+        invoices={invoices}
+        requests={requests}
+        receipts={receipts}
+        remainingQty={remainingQty}
+        headerHost={headerHost}
+        onViewReceipt={setReceiptViewId}
+      />
       {receiptViewId ? <GoodsReceiptDocumentModal receiptId={receiptViewId} onClose={() => setReceiptViewId(null)} /> : null}
     </div>
   );

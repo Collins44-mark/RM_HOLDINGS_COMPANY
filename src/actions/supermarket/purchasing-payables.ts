@@ -45,7 +45,7 @@ export async function getPurchasingCapsAction(): Promise<PurchasingCaps> {
     canView: has("supermarket.purchases.view"),
     canCreate: has("supermarket.purchases.create"),
     canApprove: has("supermarket.purchases.approve"),
-    canReceive: has("supermarket.purchases.receive") || has("supermarket.purchases.create"),
+    canReceive: has("supermarket.purchases.receive"),
     canInvoiceCreate: has("supermarket.supplier_invoices.create"),
     canInvoiceVerify: has("supermarket.supplier_invoices.verify"),
     canPaymentCreate: has("supermarket.supplier_payments.create"),

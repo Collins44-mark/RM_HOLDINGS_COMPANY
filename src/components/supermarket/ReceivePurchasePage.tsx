@@ -279,7 +279,7 @@ export function ReceivePurchasePage() {
           <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#e7f4ea] text-[#3f8a5a]">
             <Check className="h-5 w-5" strokeWidth={2.2} />
           </span>
-          <h1 className="mt-4 text-[24px] font-semibold tracking-[-0.04em] text-navy">Received ✓</h1>
+          <h1 className="mt-4 text-[24px] font-semibold tracking-[-0.04em] text-navy">Posted ✓</h1>
           <p className="mt-2 text-[13.5px] text-slate-500">
             {success.number} updated {order.number} to {success.status}. Stock and stock movements were updated automatically.
           </p>

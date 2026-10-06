@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { formatTzs } from "@/lib/format/currency";
 import { cn } from "@/lib/cn";
@@ -14,6 +16,7 @@ import {
 import {
   approvePaymentRequest,
   approvePurchaseOrder,
+  downloadGoodsReceiptPdf,
   downloadPurchaseDocumentPdf,
   downloadSupplierInvoicePdf,
   getPurchasingCapsAction,
@@ -28,12 +31,13 @@ import {
 } from "@/lib/supermarket/inventory-store";
 import type { PurchaseDocumentPdfPayload } from "@/lib/data/purchase-document-pdf";
 import { getPurchaseDocumentPdfPayloadAction } from "@/actions/supermarket/purchasing-payables";
-import type { Purchase, PurchaseOrder, SupplierInvoice, SupplierPaymentRequest } from "@/lib/supermarket/types";
+import type { Purchase, PurchaseOrder, PurchaseReceiptSummary, SupplierInvoice, SupplierPaymentRequest } from "@/lib/supermarket/types";
 import { getApplicableTaxesAction } from "@/actions/supermarket/tax";
 import { payableTotal, taxLineLabel } from "@/lib/supermarket/tax";
 import { canApprovePreparedWork } from "@/lib/supermarket/sod";
 import { formatDisplayDate } from "@/lib/data/supermarket-inventory";
 import { stripTechnicalIds } from "@/lib/supermarket/payment-display";
+import { CompactActionsMenu, type CompactMenuItem } from "@/components/supermarket/CompactActionsMenu";
 import { SupplierPaymentWorkspace, payableFromInvoice } from "@/components/supermarket/SupplierPaymentWorkspace";
 
 const emptyCaps: PurchasingCaps = {
@@ -57,11 +61,19 @@ export function PurchaseOrderWorkflow({
   purchases,
   invoices,
   requests,
+  receipts,
+  remainingQty,
+  headerHost,
+  onViewReceipt,
 }: {
   order: PurchaseOrder;
   purchases: Purchase[];
   invoices: SupplierInvoice[];
   requests: SupplierPaymentRequest[];
+  receipts: PurchaseReceiptSummary[];
+  remainingQty: number;
+  headerHost: HTMLElement | null;
+  onViewReceipt: (id: string) => void;
 }) {
   const [caps, setCaps] = useState<PurchasingCaps>(emptyCaps);
   const [busy, setBusy] = useState("");
@@ -69,7 +81,6 @@ export function PurchaseOrderWorkflow({
   const [message, setMessage] = useState("");
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
-  const [paymentsOpen, setPaymentsOpen] = useState(false);
   const [purchaseDocOpen, setPurchaseDocOpen] = useState(false);
 
   useEffect(() => {
@@ -99,13 +110,57 @@ export function PurchaseOrderWorkflow({
     userId: caps.userId,
   });
   const canSend = caps.canCreate && order.status === "Approved";
+  const canReceive =
+    caps.canReceive &&
+    remainingQty > 0 &&
+    (order.status === "Sent" || order.status === "Partially Received");
   const invoice = invoices[0] ?? null;
   const verified = invoice?.verificationStatus === "Verified" ? invoice : null;
-  const received = purchases.length > 0;
+  const received = purchases.length > 0 || receipts.length > 0;
+  const paidInFull = Boolean(verified && verified.outstanding <= 0);
+  const completed = order.status === "Received" && paidInFull;
+  const invoiceEditable =
+    !invoice || invoice.verificationStatus === "Draft" || invoice.verificationStatus === "Rejected";
+  const canVerifyInvoice =
+    Boolean(invoice) &&
+    invoice?.verificationStatus === "Submitted" &&
+    caps.canInvoiceVerify &&
+    canApprovePreparedWork({
+      canApprove: true,
+      isOwner: caps.isOwner,
+      sodEnabled: caps.sodSupplierInvoice,
+      preparerId: invoice?.createdBy ?? null,
+      userId: caps.userId,
+    });
 
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+  function supplierInvoiceMenuItems(): CompactMenuItem[] {
+    const items: CompactMenuItem[] = [];
+    if (caps.canInvoiceCreate && (!invoice || invoiceEditable)) {
+      items.push({ label: invoice ? "Edit Invoice" : "Record Invoice", onSelect: () => setInvoiceOpen(true) });
+    } else if (invoice) {
+      items.push({ label: "View Invoice", onSelect: () => setInvoiceOpen(true) });
+    }
+    if (invoice?.verificationStatus === "Draft" && caps.canInvoiceCreate) {
+      items.push({
+        label: "Submit",
+        onSelect: () => void run("submitInv", "Invoice submitted", () => submitSupplierInvoice(invoice.id, order.id)),
+      });
+    }
+    if (canVerifyInvoice && invoice) {
+      items.push({
+        label: "Verify",
+        onSelect: () => void run("verify", "Verified", () => verifySupplierInvoice(invoice.id, order.id)),
+      });
+    }
+    if (invoice) {
+      items.push({ label: "Download PDF", onSelect: () => void downloadSupplierInvoicePdf(invoice.id) });
+    }
+    return items;
+  }
+
+  const headerActions = (
+    <div className="flex flex-col items-stretch gap-2 sm:items-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {canSubmit ? (
           <WorkflowButton
             className={secondaryButton}
@@ -130,7 +185,7 @@ export function PurchaseOrderWorkflow({
         ) : null}
         {canSend ? (
           <WorkflowButton
-            className={secondaryButton}
+            className={primaryButton}
             busy={busy === "send"}
             disabled={Boolean(busy)}
             confirmed={confirmed === "Sent"}
@@ -139,114 +194,95 @@ export function PurchaseOrderWorkflow({
             onClick={() => run("send", "Sent", () => sendPurchaseOrder(order.id))}
           />
         ) : null}
+        {canReceive ? (
+          <Link href={`/supermarket/purchasing/${order.id}/receive`} className={primaryButton}>
+            {order.status === "Partially Received" ? "Receive Remaining" : "Receive Purchase"}
+          </Link>
+        ) : null}
       </div>
-      {confirmed ? <p className="text-[13px] font-medium text-[#3f8a5a]">{confirmed} ✓</p> : null}
-      {message ? <p className="text-[13px] text-[#c45b66]">{message}</p> : null}
+      {message ? <p className="max-w-xs text-right text-[12.5px] text-[#c45b66]">{message}</p> : null}
+    </div>
+  );
+
+  return (
+    <div className="space-y-5">
+      {headerHost ? createPortal(headerActions, headerHost) : null}
+
+      <section className={glassPanel}>
+        <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Documents</h2>
+        <div className="mt-3">
+          <div className="hidden grid-cols-[minmax(7.5rem,1.1fr)_minmax(6rem,0.9fr)_auto_auto] gap-x-3 px-1 text-[10.5px] font-medium uppercase tracking-[0.14em] text-slate-400 md:grid">
+            <span>Document</span>
+            <span>Number</span>
+            <span>Status</span>
+            <span className="text-right">Action</span>
+          </div>
+          <div className="mt-1 divide-y divide-[#d5dee8]/70">
+            {receipts.map((item) => (
+              <DocumentRow
+                key={item.id}
+                type="Goods Receipt"
+                number={item.number}
+                status="Posted"
+                items={[
+                  { label: "View Receipt", onSelect: () => onViewReceipt(item.id) },
+                  { label: "Download PDF", onSelect: () => void downloadGoodsReceiptPdf(item.id) },
+                ]}
+              />
+            ))}
+            {received ? (
+              <DocumentRow
+                type="Supplier Invoice"
+                number={invoice?.number ?? "—"}
+                status={invoice?.verificationStatus ?? "Awaiting"}
+                items={supplierInvoiceMenuItems()}
+              />
+            ) : null}
+            {order.purchaseDocumentNumber ? (
+              <DocumentRow
+                type="Purchase Document"
+                number={order.purchaseDocumentNumber}
+                status="Available"
+                items={[
+                  { label: "View", onSelect: () => setPurchaseDocOpen(true) },
+                  { label: "Download PDF", onSelect: () => void downloadPurchaseDocumentPdf(order.id) },
+                ]}
+              />
+            ) : null}
+            {!receipts.length && !received && !order.purchaseDocumentNumber ? (
+              <p className="px-1 py-3 text-[13px] text-slate-500">No documents yet.</p>
+            ) : null}
+          </div>
+        </div>
+        {invoice?.discrepancies.length ? (
+          <div className="mt-3 rounded-[16px] border border-[#f3d7b0] bg-[#fff8eb] px-4 py-3">
+            <p className="text-[13px] font-semibold text-[#b5812a]">Three-way check flags</p>
+            <ul className="mt-2 space-y-1 text-[13px] text-[#8a641f]">
+              {invoice.discrepancies.map((flag) => (
+                <li key={`${flag.type}-${flag.productId}`}>{flag.message}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {invoice?.verificationStatus === "Rejected" && invoice.rejectionReason ? (
+          <p className="mt-3 text-[13px] text-[#c45b66]">Rejected: {invoice.rejectionReason}</p>
+        ) : null}
+      </section>
 
       <section className={glassPanel}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Supplier invoice</h2>
-            <p className="mt-1 text-[13px] text-slate-500">The supplier’s own invoice or reference. This is not the RM Holdings purchase document.</p>
+            <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Payments</h2>
+            <p className="mt-1 text-[12.5px] text-slate-400">
+              Purchase status {completed ? "Completed" : order.status}
+            </p>
           </div>
-          {invoice ? (
-            <div className="flex gap-2">
-              <StatusPill value={invoice.verificationStatus} />
-              <StatusPill value={invoice.paymentStatus} />
-            </div>
-          ) : null}
+          {verified && paidInFull ? <StatusPill value="Paid" /> : null}
         </div>
-        {!received ? (
-          <p className="mt-4 text-[13px] text-slate-500">Receive goods before recording a supplier invoice.</p>
-        ) : !invoice ? (
-          <div className="mt-4">
-            <p className="text-[13px] text-slate-500">No supplier invoice recorded yet. Awaiting supplier invoice.</p>
-            {caps.canInvoiceCreate ? (
-              <button type="button" className={cn(primaryButton, "mt-3")} onClick={() => setInvoiceOpen(true)}>
-                Add Supplier Invoice
-              </button>
-            ) : null}
-          </div>
-        ) : (
-          <div className="mt-4">
-            <dl className="space-y-2 text-[13.5px]">
-              <Row label="Supplier invoice #" value={invoice.number} />
-              <Row label="Invoice date" value={invoice.invoiceDate ? formatDisplayDate(invoice.invoiceDate) : "—"} />
-              <Row label="Due date" value={invoice.dueDate ? formatDisplayDate(invoice.dueDate) : "—"} />
-              <Row label="Invoice total" value={formatTzs(invoice.total)} />
-              <Row label="Verification" value={invoice.verificationStatus} />
-            </dl>
-            {invoice.discrepancies.length ? (
-              <div className="mt-4 rounded-[16px] border border-[#f3d7b0] bg-[#fff8eb] px-4 py-3">
-                <p className="text-[13px] font-semibold text-[#b5812a]">Three-way check flags</p>
-                <ul className="mt-2 space-y-1 text-[13px] text-[#8a641f]">
-                  {invoice.discrepancies.map((flag) => (
-                    <li key={`${flag.type}-${flag.productId}`}>{flag.message}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            {invoice.verificationStatus === "Rejected" && invoice.rejectionReason ? (
-              <p className="mt-3 text-[13px] text-[#c45b66]">Rejected: {invoice.rejectionReason}</p>
-            ) : null}
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-              <WorkflowButton
-                className={secondaryButton}
-                busy={false}
-                idleLabel="View Invoice"
-                successLabel="View Invoice"
-                onClick={() => setInvoiceOpen(true)}
-              />
-              {invoice.verificationStatus === "Draft" && caps.canInvoiceCreate ? (
-                <WorkflowButton
-                  className={secondaryButton}
-                  busy={busy === "submitInv"}
-                  disabled={Boolean(busy)}
-                  confirmed={confirmed === "Invoice submitted"}
-                  idleLabel="Submit"
-                  successLabel="Submitted ✓"
-                  onClick={() => run("submitInv", "Invoice submitted", () => submitSupplierInvoice(invoice.id, order.id))}
-                />
-              ) : null}
-              {invoice.verificationStatus === "Submitted" &&
-              caps.canInvoiceVerify &&
-              canApprovePreparedWork({
-                canApprove: true,
-                isOwner: caps.isOwner,
-                sodEnabled: caps.sodSupplierInvoice,
-                preparerId: invoice.createdBy,
-                userId: caps.userId,
-              }) ? (
-                <WorkflowButton
-                  className={primaryButton}
-                  busy={busy === "verify"}
-                  disabled={Boolean(busy)}
-                  confirmed={confirmed === "Verified"}
-                  idleLabel="Verify"
-                  successLabel="Verified ✓"
-                  onClick={() => run("verify", "Verified", () => verifySupplierInvoice(invoice.id, order.id))}
-                />
-              ) : null}
-              <WorkflowButton
-                className={secondaryButton}
-                busy={busy === "invPdf"}
-                disabled={Boolean(busy)}
-                idleLabel="Download supplier invoice PDF"
-                successLabel="Downloaded ✓"
-                onClick={() => run("invPdf", "Downloaded", () => downloadSupplierInvoicePdf(invoice.id))}
-              />
-            </div>
-          </div>
-        )}
-      </section>
-
-      <section className={glassPanel}>
-        <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Payments</h2>
-        <p className="mt-1 text-[13px] text-slate-500">Settles this purchase’s outstanding. Not an operating expense.</p>
         {verified ? (
           <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-[13.5px] sm:grid-cols-4">
             <div>
-              <dt className="text-[12px] text-slate-400">Total payable</dt>
+              <dt className="text-[12px] text-slate-400">Payable</dt>
               <dd className="mt-0.5 text-navy">{formatTzs(verified.total)}</dd>
             </div>
             <div>
@@ -258,21 +294,16 @@ export function PurchaseOrderWorkflow({
               <dd className="mt-0.5 font-semibold text-navy">{formatTzs(verified.outstanding)}</dd>
             </div>
             <div>
-              <dt className="text-[12px] text-slate-400">Status</dt>
+              <dt className="text-[12px] text-slate-400">Payment status</dt>
               <dd className="mt-0.5"><StatusPill value={verified.paymentStatus} /></dd>
             </div>
           </dl>
         ) : (
           <p className="mt-4 text-[13px] text-slate-500">
-            {received
-              ? "Awaiting verified supplier invoice. Payment can be recorded after a supplier invoice has been verified."
-              : "No payments recorded."}
+            {received ? "Awaiting verified supplier invoice." : "No payable yet."}
           </p>
         )}
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-          <button type="button" className={secondaryButton} onClick={() => setPaymentsOpen(true)}>
-            View Payments
-          </button>
+        <div className="mt-4 flex flex-wrap gap-2">
           {verified && verified.outstanding > 0 && caps.canPaymentCreate ? (
             <WorkflowButton
               className={primaryButton}
@@ -281,17 +312,12 @@ export function PurchaseOrderWorkflow({
               successLabel="Record Payment"
               onClick={() => setPaymentOpen(true)}
             />
-          ) : received ? (
-            <button type="button" disabled className={cn(secondaryButton, "opacity-50")}>
-              Record Payment
-            </button>
           ) : null}
+          {paidInFull ? <StatusPill value="Paid ✓" /> : null}
         </div>
-        <div className="mt-4 space-y-2">
-          {requests.length === 0 ? (
-            <p className="text-[13px] text-slate-500">No payments recorded.</p>
-          ) : (
-            requests.map((request) => (
+        {requests.length > 0 ? (
+          <div className="mt-4 space-y-2">
+            {requests.map((request) => (
               <div key={request.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-white/80 bg-white/60 px-4 py-3">
                 <div>
                   <p className="text-[13.5px] font-semibold text-navy">
@@ -340,36 +366,9 @@ export function PurchaseOrderWorkflow({
                   ) : null}
                 </div>
               </div>
-            ))
-          )}
-        </div>
-      </section>
-
-      <section className={glassPanel}>
-        <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">RM Holdings purchase document</h2>
-        <p className="mt-1 text-[13px] text-slate-500">System purchase document. Separate from goods receipts and the supplier invoice.</p>
-        {order.purchaseDocumentNumber ? (
-          <div className="mt-4">
-            <p className="text-[18px] font-semibold tracking-[-0.03em] text-navy">{order.purchaseDocumentNumber}</p>
-            <p className="mt-1 text-[13px] text-slate-500">Linked to {order.number}</p>
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-              <button type="button" className={secondaryButton} onClick={() => setPurchaseDocOpen(true)}>
-                View Purchase
-              </button>
-              <WorkflowButton
-                className={secondaryButton}
-                busy={busy === "pdf"}
-                disabled={Boolean(busy)}
-                confirmed={confirmed === "Downloaded"}
-                idleLabel="Download PDF"
-                successLabel="Downloaded ✓"
-                onClick={() => run("pdf", "Downloaded", () => downloadPurchaseDocumentPdf(order.id))}
-              />
-            </div>
+            ))}
           </div>
-        ) : (
-          <p className="mt-4 text-[13px] text-slate-500">The purchase document is created when goods are first received.</p>
-        )}
+        ) : null}
       </section>
 
       {invoiceOpen ? (
@@ -401,17 +400,34 @@ export function PurchaseOrderWorkflow({
           onClose={() => setPaymentOpen(false)}
         />
       ) : null}
-      {paymentsOpen ? (
-        <PaymentHistoryModal
-          order={order}
-          verified={verified}
-          requests={requests}
-          onClose={() => setPaymentsOpen(false)}
-        />
-      ) : null}
       {purchaseDocOpen ? (
         <PurchaseDocumentPreviewModal purchaseOrderId={order.id} onClose={() => setPurchaseDocOpen(false)} />
       ) : null}
+    </div>
+  );
+}
+
+function DocumentRow({
+  type,
+  number,
+  status,
+  items,
+}: {
+  type: string;
+  number: string;
+  status: string;
+  items: CompactMenuItem[];
+}) {
+  return (
+    <div className="grid grid-cols-1 items-center gap-1 py-2.5 md:grid-cols-[minmax(7.5rem,1.1fr)_minmax(6rem,0.9fr)_auto_auto] md:gap-x-3">
+      <p className="text-[13.5px] font-semibold text-navy">{type}</p>
+      <p className="text-[13px] text-slate-500">{number}</p>
+      <div className="flex items-center justify-between gap-2 md:contents">
+        <StatusPill value={status} />
+        <div className="justify-self-end">
+          <CompactActionsMenu ariaLabel={`Actions for ${type} ${number}`} items={items} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -685,76 +701,6 @@ function SupplierInvoiceModal({
   );
 }
 
-function PaymentHistoryModal({
-  order,
-  verified,
-  requests,
-  onClose,
-}: {
-  order: PurchaseOrder;
-  verified: SupplierInvoice | null;
-  requests: SupplierPaymentRequest[];
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  const paid = verified?.amountPaid ?? 0;
-  const outstanding = verified?.outstanding ?? 0;
-
-  return (
-    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-[#0b2244]/20 p-3 backdrop-blur-sm sm:items-center">
-      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close payments" onClick={onClose} />
-      <div className="relative z-[81] max-h-[min(92dvh,92vh)] w-full max-w-lg overflow-y-auto rounded-[24px] border border-white/80 bg-white/95 p-5 shadow-[0_24px_60px_rgba(15,35,64,0.16)]">
-        <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">Payments</h2>
-        <p className="mt-1 text-[13px] text-slate-500">{order.number} · {order.supplierName}</p>
-        {verified ? (
-          <dl className="mt-4 grid grid-cols-3 gap-3 text-[13px]">
-            <div>
-              <dt className="text-slate-400">Paid</dt>
-              <dd className="mt-0.5 font-semibold text-navy">{formatTzs(paid)}</dd>
-            </div>
-            <div>
-              <dt className="text-slate-400">Outstanding</dt>
-              <dd className="mt-0.5 font-semibold text-navy">{formatTzs(outstanding)}</dd>
-            </div>
-            <div>
-              <dt className="text-slate-400">Status</dt>
-              <dd className="mt-0.5"><StatusPill value={verified.paymentStatus} /></dd>
-            </div>
-          </dl>
-        ) : null}
-        <div className="mt-4 space-y-2">
-          {requests.length === 0 ? (
-            <p className="text-[13.5px] text-slate-500">No payments recorded.</p>
-          ) : (
-            requests.map((request) => (
-              <div key={request.id} className="rounded-[16px] border border-white/80 bg-white/70 px-4 py-3">
-                <p className="text-[13.5px] font-semibold text-navy">{paymentRequestTitle(request)}</p>
-                <p className="mt-0.5 text-[12.5px] text-slate-500">
-                  {request.dueDate ? formatDisplayDate(request.dueDate) : request.number} · {formatTzs(request.amount)} · {paymentMethodLabel(request.method)}
-                </p>
-                <p className="mt-0.5 text-[12.5px] text-slate-400">
-                  {request.reference ? `Reference ${request.reference}` : "No bank reference"} · {request.status}
-                </p>
-              </div>
-            ))
-          )}
-        </div>
-        <div className="mt-5 flex justify-end">
-          <button type="button" className={primaryButton} onClick={onClose}>
-            Done
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function PurchaseDocumentPreviewModal({
   purchaseOrderId,
