@@ -72,6 +72,10 @@ export function BankMovementsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
   const [accountForm, setAccountForm] = useState({ bankName: "", accountName: "", accountReference: "", openingBalance: "0.00" });
+  const [reverseRow, setReverseRow] = useState<BankMovementRecord | null>(null);
+  const [reversing, setReversing] = useState(false);
+  const [reverseOk, setReverseOk] = useState(false);
+  const [reverseError, setReverseError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -132,6 +136,7 @@ export function BankMovementsPage() {
       </header>
       <BankingTabs active="movements" />
       {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
+      {reverseOk ? <p className="text-[12.5px] font-medium text-[#3f8a5a]">Reversed ✓</p> : null}
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
@@ -177,7 +182,7 @@ export function BankMovementsPage() {
         </div>
       ) : (
         <>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-1 gap-2 min-[520px]:grid-cols-2 xl:grid-cols-4">
             <select className={filterClass} value={accountId} onChange={(e) => { setAccountId(e.target.value); setPage(1); }}>
               <option value="">All accounts</option>
               {accounts.map((account) => (
@@ -209,40 +214,40 @@ export function BankMovementsPage() {
               <table className="min-w-full text-left text-[13px]">
                 <thead className={tableHead}>
                   <tr>
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Type</th>
-                    <th className="px-4 py-3">Bank account</th>
-                    <th className="px-4 py-3">Amount</th>
-                    <th className="px-4 py-3">Reference</th>
-                    <th className="px-4 py-3">Description</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Reconciliation</th>
-                    <th className="px-4 py-3">Actions</th>
+                    <th className="px-4 py-2.5">Date</th>
+                    <th className="px-4 py-2.5">Type</th>
+                    <th className="px-4 py-2.5">Bank account</th>
+                    <th className="px-4 py-2.5 text-right">Amount</th>
+                    <th className="px-4 py-2.5">Reference</th>
+                    <th className="px-4 py-2.5">Description</th>
+                    <th className="px-4 py-2.5">Status</th>
+                    <th className="px-4 py-2.5">Reconciliation</th>
+                    <th className="px-4 py-2.5 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {movements.map((row) => (
                     <tr key={row.id} className="border-t border-black/[0.04]">
-                      <td className="px-4 py-2.5">{row.transactionDate}</td>
-                      <td className="px-4 py-2.5">{row.movementType === "DEPOSIT" ? "Deposit" : "Withdrawal"}</td>
-                      <td className="px-4 py-2.5">{row.bankName} · {row.accountName}</td>
-                      <td className="px-4 py-2.5 tabular-nums">{formatTzs(moneyToCents(row.amount) / 100)}</td>
-                      <td className="px-4 py-2.5">{row.reference || "—"}</td>
-                      <td className="px-4 py-2.5">{row.description || "—"}</td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-3 text-[13px] text-navy">{row.transactionDate}</td>
+                      <td className="px-4 py-3 text-[13px] text-navy">{row.movementType === "DEPOSIT" ? "Deposit" : "Withdrawal"}</td>
+                      <td className="px-4 py-3 text-[13px] text-navy">{row.bankName} · {row.accountName}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-[13px] text-navy">{formatTzs(moneyToCents(row.amount) / 100)}</td>
+                      <td className="px-4 py-3 text-[13px] text-slate-600">{row.reference || "—"}</td>
+                      <td className="max-w-[16rem] px-4 py-3 text-[13px] text-slate-600">{row.description || "—"}</td>
+                      <td className="px-4 py-3">
                         <StatusBadge
                           label={row.postingStatus === "DRAFT" ? "Draft" : row.postingStatus === "REVERSED" ? "Reversed" : "Posted"}
                           tone={row.postingStatus === "POSTED" ? "ok" : row.postingStatus === "REVERSED" ? "variance" : "neutral"}
                         />
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-3 text-[13px] text-slate-500">
                         {row.postingStatus === "DRAFT"
                           ? "Not applicable"
                           : row.matchStatus === "UNMATCHED"
                             ? "Unmatched"
                             : "Matched"}
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="whitespace-nowrap px-4 py-3 text-right">
                         {row.postingStatus === "DRAFT" && caps.canApprove ? (
                           <button
                             type="button"
@@ -269,12 +274,11 @@ export function BankMovementsPage() {
                         {row.postingStatus === "POSTED" && !row.reversedFromId && caps.canApprove ? (
                           <button
                             type="button"
-                            className="text-[12.5px] font-semibold text-slate-500"
-                            onClick={async () => {
-                              if (!window.confirm("Reverse this posted transaction? The original remains on file.")) return;
-                              const result = await reverseBankMovementAction(row.id);
-                              if (!result.ok) setError(result.error);
-                              else setReloadTick((tick) => tick + 1);
+                            className="text-[12.5px] font-semibold text-navy"
+                            onClick={() => {
+                              setReverseOk(false);
+                              setReverseError(null);
+                              setReverseRow(row);
                             }}
                           >
                             Reverse
@@ -312,6 +316,32 @@ export function BankMovementsPage() {
           onClose={() => setModalOpen(false)}
           onSaved={() => {
             setModalOpen(false);
+            setReloadTick((tick) => tick + 1);
+          }}
+        />
+      ) : null}
+      {reverseRow ? (
+        <ReverseConfirmModal
+          row={reverseRow}
+          reversing={reversing}
+          error={reverseError}
+          onCancel={() => {
+            if (reversing) return;
+            setReverseRow(null);
+            setReverseError(null);
+          }}
+          onConfirm={async () => {
+            if (reversing) return;
+            setReversing(true);
+            setReverseError(null);
+            const result = await reverseBankMovementAction(reverseRow.id);
+            setReversing(false);
+            if (!result.ok) {
+              setReverseError(result.error);
+              return;
+            }
+            setReverseRow(null);
+            setReverseOk(true);
             setReloadTick((tick) => tick + 1);
           }}
         />
@@ -478,6 +508,86 @@ function MovementModal({
               ) : null}
             </>
           )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function ReverseConfirmModal({
+  row,
+  reversing,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  row: BankMovementRecord;
+  reversing: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    // Portal target is only available after mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape" && !reversing) onCancel();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel, reversing]);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#0b2244]/25 px-4 backdrop-blur-[3px]">
+      <button type="button" className="absolute inset-0 cursor-default" aria-label="Cancel" disabled={reversing} onClick={onCancel} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reverse-txn-title"
+        className="relative z-[91] w-full max-w-[420px] rounded-[24px] border border-white/80 bg-white/92 p-5 shadow-[0_24px_60px_rgba(15,35,64,0.16),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-2xl sm:p-6"
+      >
+        <h2 id="reverse-txn-title" className="text-[18px] font-semibold tracking-[-0.03em] text-navy">
+          Reverse transaction?
+        </h2>
+        <p className="mt-2 text-[13.5px] leading-relaxed text-slate-500">
+          This will reverse the posted transaction by creating the appropriate opposite movement. The original
+          transaction will remain on record for audit history.
+        </p>
+        <dl className="mt-4 space-y-2 rounded-[16px] border border-white/80 bg-white/70 px-4 py-3.5 text-[13.5px]">
+          <div className="flex justify-between gap-3">
+            <dt className="text-slate-500">Type</dt>
+            <dd className="font-medium text-navy">{row.movementType === "DEPOSIT" ? "Deposit" : "Withdrawal"}</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-slate-500">Amount</dt>
+            <dd className="font-medium tabular-nums text-navy">{formatTzs(moneyToCents(row.amount) / 100)}</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-slate-500">Bank Account</dt>
+            <dd className="text-right font-medium text-navy">{row.bankName} · {row.accountName}</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-slate-500">Reference</dt>
+            <dd className="font-medium text-navy">{row.reference || "—"}</dd>
+          </div>
+        </dl>
+        {error ? <p className="mt-3 text-[12.5px] text-[#c45b66]">{error}</p> : null}
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" className={cn(secondaryButton, "w-full sm:w-auto")} disabled={reversing} onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" className={cn(primaryButton, "w-full sm:w-auto")} disabled={reversing} onClick={onConfirm}>
+            {reversing ? "Reversing…" : "Reverse Transaction"}
+          </button>
         </div>
       </div>
     </div>,

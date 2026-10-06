@@ -16,6 +16,7 @@ import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilte
 import { filterClass, inputClass, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 import { EmptyState } from "@/components/ui/PageHeader";
+import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import { moneyToCents } from "@/lib/supermarket/money";
 import type { BankAccountRecord, BankReconciliationRecord, BankTransactionRecord } from "@/lib/supermarket/reconciliation";
@@ -135,26 +136,28 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
       <BankingTabs active="reconcile" />
       {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
 
-      <section className={`${reconGlass} space-y-3 px-5 py-5`}>
-        <div className="flex flex-wrap gap-2">
-          <select className={filterClass} value={accountId ?? ""} onChange={(e) => void reload(e.target.value || null)}>
-            <option value="">Select account</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.bankName} · {account.accountName}
-              </option>
-            ))}
-          </select>
-        </div>
+      <section className={`${reconGlass} px-4 py-4 sm:px-5`}>
+        <select
+          className={cn(filterClass, "max-w-full sm:max-w-md")}
+          value={accountId ?? ""}
+          onChange={(e) => void reload(e.target.value || null)}
+        >
+          <option value="">Select account</option>
+          {accounts.map((account) => (
+            <option key={account.id} value={account.id}>
+              {account.bankName} · {account.accountName}
+            </option>
+          ))}
+        </select>
         {caps.canCreate ? (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-            <input className={inputClass} placeholder="Bank name" value={accountForm.bankName} onChange={(e) => setAccountForm((f) => ({ ...f, bankName: e.target.value }))} />
-            <input className={inputClass} placeholder="Account name" value={accountForm.accountName} onChange={(e) => setAccountForm((f) => ({ ...f, accountName: e.target.value }))} />
-            <input className={inputClass} placeholder="Reference" value={accountForm.accountReference} onChange={(e) => setAccountForm((f) => ({ ...f, accountReference: e.target.value }))} />
-            <input className={inputClass} placeholder="Opening balance" value={accountForm.openingBalance} onChange={(e) => setAccountForm((f) => ({ ...f, openingBalance: e.target.value }))} />
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <input className={cn(inputClass, "h-10")} placeholder="Bank name" value={accountForm.bankName} onChange={(e) => setAccountForm((f) => ({ ...f, bankName: e.target.value }))} />
+            <input className={cn(inputClass, "h-10")} placeholder="Account name" value={accountForm.accountName} onChange={(e) => setAccountForm((f) => ({ ...f, accountName: e.target.value }))} />
+            <input className={cn(inputClass, "h-10")} placeholder="Reference" value={accountForm.accountReference} onChange={(e) => setAccountForm((f) => ({ ...f, accountReference: e.target.value }))} />
+            <input className={cn(inputClass, "h-10")} placeholder="Opening balance" value={accountForm.openingBalance} onChange={(e) => setAccountForm((f) => ({ ...f, openingBalance: e.target.value }))} />
             <button
               type="button"
-              className={secondaryButton}
+              className={cn(secondaryButton, "h-10")}
               onClick={async () => {
                 const result = await saveBankAccountAction(accountForm);
                 if (!result.ok) setError(result.error);
@@ -168,72 +171,78 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
       </section>
 
       {accountId && caps.canCreate ? (
-        <section className={`${reconGlass} space-y-3 px-5 py-5`}>
-          <h2 className="text-[15px] font-semibold text-navy">Statement line</h2>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-            <input type="date" className={inputClass} value={line.transactionDate} onChange={(e) => setLine((f) => ({ ...f, transactionDate: e.target.value }))} />
-            <input className={inputClass} placeholder="Reference" value={line.reference} onChange={(e) => setLine((f) => ({ ...f, reference: e.target.value }))} />
-            <input className={inputClass} placeholder="Description" value={line.description} onChange={(e) => setLine((f) => ({ ...f, description: e.target.value }))} />
-            <input className={inputClass} placeholder="Debit" value={line.debit} onChange={(e) => setLine((f) => ({ ...f, debit: e.target.value }))} />
-            <input className={inputClass} placeholder="Credit" value={line.credit} onChange={(e) => setLine((f) => ({ ...f, credit: e.target.value }))} />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={secondaryButton}
-              onClick={async () => {
-                const result = await addBankStatementLineAction({ accountId, ...line });
-                if (!result.ok) setError(result.error);
-                else void reload(accountId);
-              }}
-            >
-              Add line
-            </button>
-            <label className={secondaryButton}>
-              Import CSV
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                className="hidden"
-                onChange={async (event) => {
-                  const file = event.target.files?.[0];
-                  if (!file) return;
-                  const csv = await file.text();
-                  const result = await importBankStatementCsvAction({ accountId, csv });
+        <section className={`${reconGlass} space-y-3 px-4 py-4 sm:px-5`}>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <h2 className="text-[15px] font-semibold tracking-[-0.02em] text-navy">Statement line</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className={secondaryButton}
+                onClick={async () => {
+                  const result = await addBankStatementLineAction({ accountId, ...line });
                   if (!result.ok) setError(result.error);
                   else void reload(accountId);
-                  event.target.value = "";
                 }}
-              />
-            </label>
-            <button
-              type="button"
-              className={primaryButton}
-              onClick={async () => {
-                const result = await loadSystemBankPaymentsAction({ accountId, from: period.start, to: period.end });
-                if (!result.ok) setError(result.error);
-                else void reload(accountId);
-              }}
-            >
-              Load system bank payments
-            </button>
+              >
+                Add line
+              </button>
+              <label className={secondaryButton}>
+                Import CSV
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    const csv = await file.text();
+                    const result = await importBankStatementCsvAction({ accountId, csv });
+                    if (!result.ok) setError(result.error);
+                    else void reload(accountId);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                className={primaryButton}
+                onClick={async () => {
+                  const result = await loadSystemBankPaymentsAction({ accountId, from: period.start, to: period.end });
+                  if (!result.ok) setError(result.error);
+                  else void reload(accountId);
+                }}
+              >
+                Load system bank payments
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            <input type="date" className={cn(inputClass, "h-10")} value={line.transactionDate} onChange={(e) => setLine((f) => ({ ...f, transactionDate: e.target.value }))} />
+            <input className={cn(inputClass, "h-10")} placeholder="Reference" value={line.reference} onChange={(e) => setLine((f) => ({ ...f, reference: e.target.value }))} />
+            <input className={cn(inputClass, "h-10")} placeholder="Description" value={line.description} onChange={(e) => setLine((f) => ({ ...f, description: e.target.value }))} />
+            <input className={cn(inputClass, "h-10")} placeholder="Debit" value={line.debit} onChange={(e) => setLine((f) => ({ ...f, debit: e.target.value }))} />
+            <input className={cn(inputClass, "h-10")} placeholder="Credit" value={line.credit} onChange={(e) => setLine((f) => ({ ...f, credit: e.target.value }))} />
           </div>
         </section>
       ) : null}
 
       {mode === "reconcile" ? (
-        <section className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <MoneyField label="Statement opening" value={opening} onChange={setOpening} />
-          <div className={`${reconGlass} px-5 py-5`}>
-            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">System closing</p>
-            <p className="mt-2 text-[20px] font-semibold text-navy">
+        <section className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <div className={`${reconGlass} flex min-h-[92px] flex-col justify-center px-4 py-3.5`}>
+            <MoneyField label="Statement Opening" value={opening} onChange={setOpening} compact />
+          </div>
+          <div className={`${reconGlass} flex min-h-[92px] flex-col justify-center px-4 py-3.5`}>
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">System Closing</p>
+            <p className="mt-1.5 text-[18px] font-semibold tracking-[-0.03em] text-navy">
               {formatTzs(moneyToCents(record?.systemClosingBalance ?? "0") / 100)}
             </p>
           </div>
-          <MoneyField label="Statement closing" value={closing} onChange={setClosing} />
-          <div className={`${reconGlass} px-5 py-5`}>
+          <div className={`${reconGlass} flex min-h-[92px] flex-col justify-center px-4 py-3.5`}>
+            <MoneyField label="Statement Closing" value={closing} onChange={setClosing} compact />
+          </div>
+          <div className={`${reconGlass} flex min-h-[92px] flex-col justify-center px-4 py-3.5`}>
             <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">Difference</p>
-            <p className="mt-2 text-[20px] font-semibold text-navy">
+            <p className="mt-1.5 text-[18px] font-semibold tracking-[-0.03em] text-navy">
               {formatTzs(moneyToCents(record?.difference ?? "0") / 100)}
             </p>
             <p className="mt-1 text-[12px] text-slate-500">{unmatched} unmatched</p>
@@ -246,14 +255,14 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
           <table className="min-w-full text-left text-[13px]">
             <thead className={tableHead}>
               <tr>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Reference</th>
-                <th className="px-4 py-3">Description</th>
-                <th className="px-4 py-3">Debit</th>
-                <th className="px-4 py-3">Credit</th>
-                <th className="px-4 py-3">Source</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Action</th>
+                <th className="px-4 py-2.5">Date</th>
+                <th className="px-4 py-2.5">Reference</th>
+                <th className="px-4 py-2.5">Description</th>
+                <th className="px-4 py-2.5 text-right">Debit</th>
+                <th className="px-4 py-2.5 text-right">Credit</th>
+                <th className="px-4 py-2.5">Source</th>
+                <th className="px-4 py-2.5">Status</th>
+                <th className="px-4 py-2.5 text-right">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -261,14 +270,27 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
               {ready
                 ? transactions.map((txn) => (
                 <tr key={txn.id} className="border-t border-black/[0.04]">
-                  <td className="px-4 py-2.5">{txn.transactionDate}</td>
-                  <td className="px-4 py-2.5">{txn.reference || "—"}</td>
-                  <td className="px-4 py-2.5">{txn.description || "—"}</td>
-                  <td className="px-4 py-2.5 tabular-nums">{formatTzs(moneyToCents(txn.debit) / 100)}</td>
-                  <td className="px-4 py-2.5 tabular-nums">{formatTzs(moneyToCents(txn.credit) / 100)}</td>
-                  <td className="px-4 py-2.5">{txn.source}</td>
-                  <td className="px-4 py-2.5">{txn.status}</td>
-                  <td className="px-4 py-2.5">
+                  <td className="whitespace-nowrap px-4 py-3 text-[13px] text-navy">{txn.transactionDate}</td>
+                  <td className="px-4 py-3 text-[13px] text-navy">{txn.reference || "—"}</td>
+                  <td className="max-w-[18rem] px-4 py-3 text-[13px] text-slate-600">{txn.description || "—"}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-[13px] text-navy">{formatTzs(moneyToCents(txn.debit) / 100)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-[13px] text-navy">{formatTzs(moneyToCents(txn.credit) / 100)}</td>
+                  <td className="px-4 py-3 text-[12.5px] text-slate-500">{txn.source}</td>
+                  <td className="px-4 py-3">
+                    <StatusBadge
+                      label={
+                        txn.status === "UNMATCHED"
+                          ? "Unmatched"
+                          : txn.status === "MANUALLY_MATCHED"
+                            ? "Manually matched"
+                            : txn.status === "EXCLUDED"
+                              ? "Excluded"
+                              : "Matched"
+                      }
+                      tone={txn.status === "UNMATCHED" ? "variance" : txn.status === "EXCLUDED" ? "neutral" : "ok"}
+                    />
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right">
                     {txn.status === "UNMATCHED" ? (
                       <button type="button" className="text-[12.5px] font-semibold text-navy" onClick={() => toggle(txn.id)}>
                         {selected.includes(txn.id) ? "Selected" : "Select"}
@@ -276,7 +298,7 @@ function BankWorkspace({ mode }: { mode: "accounts" | "reconcile" }) {
                     ) : (
                       <button
                         type="button"
-                        className="text-[12.5px] font-semibold text-slate-500"
+                        className="text-[12.5px] font-semibold text-navy"
                         onClick={async () => {
                           const result = await unmatchBankTransactionAction(txn.id);
                           if (!result.ok) setError(result.error);

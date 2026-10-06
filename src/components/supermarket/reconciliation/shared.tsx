@@ -145,12 +145,14 @@ export function MoneyField({
   onChange,
   readOnly,
   large,
+  compact,
 }: {
   label: string;
   value: string;
   onChange?: (value: string) => void;
   readOnly?: boolean;
   large?: boolean;
+  compact?: boolean;
 }) {
   return (
     <label className="block min-w-0">
@@ -158,7 +160,11 @@ export function MoneyField({
         {label}
       </span>
       <input
-        className={cn(inputClass, large && "h-14 text-[22px] font-semibold tracking-[-0.04em]")}
+        className={cn(
+          inputClass,
+          large && "h-14 text-[22px] font-semibold tracking-[-0.04em]",
+          compact && "h-9 border-0 bg-transparent px-0 text-[18px] font-semibold tracking-[-0.03em] shadow-none focus:ring-0",
+        )}
         value={value}
         readOnly={readOnly}
         inputMode="decimal"
