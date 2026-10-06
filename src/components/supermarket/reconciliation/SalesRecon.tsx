@@ -11,7 +11,31 @@ import { PageBackButton } from "@/components/ui/PageBackButton";
 import { addCents, centsToMoney, moneyToCents, variancePercent } from "@/lib/supermarket/money";
 import { displayStatus, type SalesReconciliationRecord } from "@/lib/supermarket/reconciliation";
 import { formatTzs } from "@/lib/format/currency";
-import { MoneyField, reconGlass, ReconActions, ReconPulse, StatusBadge, useReconPeriod } from "./shared";
+import {
+  MoneyField,
+  reconGlass,
+  ReconActions,
+  ReconPulse,
+  StatusBadge,
+  useReconPeriod,
+  type ReconBusy,
+  type ReconFeedback,
+} from "./shared";
+
+const COLLECTION_KEYS = [
+  { key: "cash" as const, label: "Cash" },
+  { key: "card" as const, label: "Card" },
+  { key: "mobile" as const, label: "Mobile" },
+  { key: "other" as const, label: "Other" },
+];
+
+function workflowStatus(record: SalesReconciliationRecord | null, varianceCents: number) {
+  const display = displayStatus(record?.status ?? null, moneyToCents(record?.variance ?? varianceCents));
+  if (record?.status === "DRAFT") return { label: "Draft", tone: "neutral" as const };
+  if (record?.status === "SUBMITTED") return { label: "Submitted", tone: display.tone };
+  if (record?.status === "APPROVED") return { label: "Approved", tone: display.tone };
+  return display;
+}
 
 export function SalesReconciliationPage() {
   const { preset, setPreset, range, setRange, period } = useReconPeriod();
@@ -24,8 +48,15 @@ export function SalesReconciliationPage() {
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [caps, setCaps] = useState({ canCreate: false, canApprove: false, canPost: false });
+  const [busy, setBusy] = useState<ReconBusy>(null);
+  const [feedback, setFeedback] = useState<ReconFeedback>(null);
+  const [caps, setCaps] = useState({
+    canCreate: false,
+    canApprove: false,
+    canPost: false,
+    isOwner: false,
+    userId: "",
+  });
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const periodKey = `${period.start}:${period.end}`;
   const pending = loadedKey !== periodKey;
@@ -53,6 +84,8 @@ export function SalesReconciliationPage() {
         canCreate: result.capabilities.canCreate,
         canApprove: result.capabilities.canApprove,
         canPost: false,
+        isOwner: result.capabilities.isOwner,
+        userId: result.capabilities.userId,
       });
       setLoadedKey(`${period.start}:${period.end}`);
     });
@@ -60,6 +93,12 @@ export function SalesReconciliationPage() {
       active = false;
     };
   }, [period.start, period.end]);
+
+  useEffect(() => {
+    if (!feedback) return;
+    const timer = window.setTimeout(() => setFeedback(null), 1800);
+    return () => window.clearTimeout(timer);
+  }, [feedback]);
 
   const expected = liveExpected;
   const actualTotal = useMemo(
@@ -74,10 +113,26 @@ export function SalesReconciliationPage() {
   );
   const expectedTotal = moneyToCents(expected?.total);
   const variance = actualTotal - expectedTotal;
-  const status = displayStatus(record?.status ?? null, moneyToCents(record?.variance ?? variance));
+  const status = workflowStatus(record, variance);
+  const canApproveThis =
+    caps.canApprove && (caps.isOwner || !record?.preparedBy || record.preparedBy !== caps.userId);
+  const actualByKey = {
+    cash: actualCash,
+    card: actualCard,
+    mobile: actualMobile,
+    other: actualOther,
+  };
+  const setActualByKey = {
+    cash: setActualCash,
+    card: setActualCard,
+    mobile: setActualMobile,
+    other: setActualOther,
+  };
 
   async function persist(submit: boolean) {
-    setSaving(true);
+    setError(null);
+    setFeedback(null);
+    setBusy(submit ? "submit" : "save");
     const result = await saveSalesReconciliationAction({
       id: record?.id,
       from: period.start,
@@ -90,29 +145,29 @@ export function SalesReconciliationPage() {
       notes,
       submit,
     });
-    setSaving(false);
+    setBusy(null);
     if (!result.ok) {
       setError(result.error);
       return;
     }
-    const refreshed = await getSalesReconciliationWorkspaceAction({ from: period.start, to: period.end });
-    if (refreshed.ok) {
-      setRecord(refreshed.record);
-      setLiveExpected(refreshed.live.expected);
-    }
+    if (result.record) setRecord(result.record);
+    if (result.live) setLiveExpected(result.live.expected);
+    setFeedback(submit ? "submitted" : "saved");
   }
 
   async function approve() {
     if (!record) return;
-    setSaving(true);
+    setError(null);
+    setFeedback(null);
+    setBusy("approve");
     const result = await approveSalesReconciliationAction(record.id);
-    setSaving(false);
+    setBusy(null);
     if (!result.ok) {
       setError(result.error);
       return;
     }
-    const refreshed = await getSalesReconciliationWorkspaceAction({ from: period.start, to: period.end });
-    if (refreshed.ok) setRecord(refreshed.record);
+    if (result.record) setRecord(result.record);
+    setFeedback("approved");
   }
 
   return (
@@ -137,8 +192,6 @@ export function SalesReconciliationPage() {
         </div>
       </header>
 
-      {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
-
       <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
         {[
           { label: "Expected", value: expected?.total ?? "0.00" },
@@ -160,22 +213,37 @@ export function SalesReconciliationPage() {
         ))}
       </section>
 
-      <section className={`grid grid-cols-1 gap-5 lg:grid-cols-2 ${reconGlass} px-5 py-6`}>
-        <div className="space-y-3">
-          <h2 className="text-[15px] font-semibold text-navy">Expected collections</h2>
-          <p className="text-[12.5px] text-slate-500">
-            From completed sales and sale payments. Expected sales {formatTzs(moneyToCents(record?.expectedSales ?? expected?.total ?? "0") / 100)}.
-          </p>
-          {(["cash", "card", "mobile", "other"] as const).map((key) => (
-            <MoneyField key={key} label={key} value={expected?.[key] ?? "0.00"} readOnly />
-          ))}
-        </div>
-        <div className="space-y-3">
-          <h2 className="text-[15px] font-semibold text-navy">Actual collections</h2>
-          <MoneyField label="Cash" value={actualCash} onChange={setActualCash} />
-          <MoneyField label="Card" value={actualCard} onChange={setActualCard} />
-          <MoneyField label="Mobile" value={actualMobile} onChange={setActualMobile} />
-          <MoneyField label="Other" value={actualOther} onChange={setActualOther} />
+      <section className={`${reconGlass} px-5 py-6`}>
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-x-8">
+          <div className="grid grid-rows-[auto_2.5rem_repeat(4,auto)] gap-3">
+            <h2 className="text-[15px] font-semibold leading-6 text-navy">Expected collections</h2>
+            <p className="text-[12.5px] leading-5 text-slate-500">
+              From completed sales and sale payments. Expected sales{" "}
+              {formatTzs(moneyToCents(record?.expectedSales ?? expected?.total ?? "0") / 100)}.
+            </p>
+            {COLLECTION_KEYS.map((item) => (
+              <MoneyField
+                key={`expected-${item.key}`}
+                label={item.label}
+                value={expected?.[item.key] ?? "0.00"}
+                readOnly
+              />
+            ))}
+          </div>
+          <div className="grid grid-rows-[auto_2.5rem_repeat(4,auto)] gap-3">
+            <h2 className="text-[15px] font-semibold leading-6 text-navy">Actual collections</h2>
+            <p className="text-[12.5px] leading-5 text-slate-500">
+              Confirm cash, card, mobile and other collections counted for this period.
+            </p>
+            {COLLECTION_KEYS.map((item) => (
+              <MoneyField
+                key={`actual-${item.key}`}
+                label={item.label}
+                value={actualByKey[item.key]}
+                onChange={setActualByKey[item.key]}
+              />
+            ))}
+          </div>
         </div>
       </section>
 
@@ -197,13 +265,15 @@ export function SalesReconciliationPage() {
         </label>
         <ReconActions
           canCreate={caps.canCreate}
-          canApprove={caps.canApprove}
+          canApprove={canApproveThis}
           status={record?.status ?? null}
-          saving={saving}
+          busy={busy}
+          feedback={feedback}
           onSave={() => void persist(false)}
           onSubmit={() => void persist(true)}
           onApprove={() => void approve()}
         />
+        {error ? <p className="text-[12.5px] text-[#c45b66]">{error}</p> : null}
       </section>
     </div>
   );

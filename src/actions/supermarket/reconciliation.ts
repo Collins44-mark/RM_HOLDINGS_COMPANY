@@ -29,6 +29,8 @@ import {
 } from "@/lib/supermarket/reconciliation";
 
 const STOCKTAKE_PAGE_SIZE = 50;
+const SALES_RECON_COLUMNS =
+  "id, reconciliation_date, period_start, period_end, expected_cash, expected_card, expected_mobile, expected_other, expected_total, expected_sales, unpaid_credit, actual_cash, actual_card, actual_mobile, actual_other, actual_total, variance, variance_reason, notes, status, prepared_by, approved_by, prepared_at, approved_at";
 
 type Ctx = Awaited<ReturnType<typeof requireSupermarketPermission>> & {
   isOwner: boolean;
@@ -51,6 +53,7 @@ async function capabilities(): Promise<ReconciliationCapabilities> {
     canApprove: has("supermarket.reconciliation.approve"),
     canPost: has("supermarket.reconciliation.post"),
     isOwner: owner,
+    userId: user.id,
   };
 }
 
@@ -247,9 +250,7 @@ export async function getSalesReconciliationWorkspaceAction(input: { from: strin
     );
     const reconQuery = supabase
       .from("sm_sales_reconciliations")
-      .select(
-        "id, reconciliation_date, period_start, period_end, expected_cash, expected_card, expected_mobile, expected_other, expected_total, expected_sales, unpaid_credit, actual_cash, actual_card, actual_mobile, actual_other, actual_total, variance, variance_reason, notes, status, prepared_by, approved_by, prepared_at, approved_at",
-      )
+      .select(SALES_RECON_COLUMNS)
       .eq("business_unit_id", businessUnitId)
       .eq("period_start", input.from)
       .eq("period_end", input.to)
@@ -330,6 +331,7 @@ export async function saveSalesReconciliationAction(input: {
       updated_at: new Date().toISOString(),
     };
 
+    let saved: Record<string, unknown> | null = null;
     let id = input.id ?? null;
     if (id) {
       const { data: existing, error: existingError } = await ctx.supabase
@@ -340,15 +342,23 @@ export async function saveSalesReconciliationAction(input: {
         .single();
       if (existingError) mapDbError(existingError);
       assertEditable(String(existing?.status));
-      const { error } = await ctx.supabase.from("sm_sales_reconciliations").update(payload).eq("id", id);
+      const { data, error } = await ctx.supabase
+        .from("sm_sales_reconciliations")
+        .update(payload)
+        .eq("id", id)
+        .eq("business_unit_id", ctx.businessUnitId)
+        .select(SALES_RECON_COLUMNS)
+        .single();
       if (error) mapDbError(error);
+      saved = data as Record<string, unknown>;
     } else {
       const { data, error } = await ctx.supabase
         .from("sm_sales_reconciliations")
         .insert(payload)
-        .select("id")
+        .select(SALES_RECON_COLUMNS)
         .single();
       if (error) mapDbError(error);
+      saved = data as Record<string, unknown>;
       id = String(data?.id);
     }
 
@@ -362,7 +372,18 @@ export async function saveSalesReconciliationAction(input: {
       entityId: id,
       metadata: { variance: centsToMoney(variance), status: nextStatus },
     });
-    return { ok: true as const, id };
+    const liveExpected = breakdownFromCents(expected.cents);
+    liveExpected.total = centsToMoney(expected.expectedTotal);
+    return {
+      ok: true as const,
+      id: String(id),
+      record: saved ? mapSalesRow(saved) : null,
+      live: {
+        expected: liveExpected,
+        expectedSales: centsToMoney(expected.expectedSales),
+        unpaidCredit: centsToMoney(expected.unpaidCredit),
+      },
+    };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
   }
@@ -373,7 +394,7 @@ export async function approveSalesReconciliationAction(id: string) {
     const ctx = await reconCtx("supermarket.reconciliation.approve");
     const { data, error } = await ctx.supabase
       .from("sm_sales_reconciliations")
-      .select("id, status, prepared_by, variance, variance_reason")
+      .select(SALES_RECON_COLUMNS)
       .eq("id", id)
       .eq("business_unit_id", ctx.businessUnitId)
       .single();
@@ -383,7 +404,7 @@ export async function approveSalesReconciliationAction(id: string) {
     }
     assertCanApprove(ctx, data?.prepared_by ? String(data.prepared_by) : null);
     requireVarianceReason(moneyToCents(data?.variance), String(data?.variance_reason ?? ""));
-    const { error: updateError } = await ctx.supabase
+    const { data: updated, error: updateError } = await ctx.supabase
       .from("sm_sales_reconciliations")
       .update({
         status: "APPROVED",
@@ -392,7 +413,10 @@ export async function approveSalesReconciliationAction(id: string) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
-      .eq("status", "SUBMITTED");
+      .eq("status", "SUBMITTED")
+      .eq("business_unit_id", ctx.businessUnitId)
+      .select(SALES_RECON_COLUMNS)
+      .single();
     if (updateError) mapDbError(updateError);
     await writeSupermarketAudit(ctx.businessUnitId, {
       action: "sales.reconciliation.approved",
@@ -401,7 +425,7 @@ export async function approveSalesReconciliationAction(id: string) {
       entityType: "sm_sales_reconciliations",
       entityId: id,
     });
-    return { ok: true as const };
+    return { ok: true as const, record: updated ? mapSalesRow(updated as Record<string, unknown>) : null };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
   }

@@ -67,12 +67,17 @@ export function StatusBadge({ label, tone }: { label: string; tone: "neutral" | 
   );
 }
 
+export type ReconBusy = "save" | "submit" | "approve" | "post" | null;
+export type ReconFeedback = "saved" | "submitted" | "approved" | "posted" | null;
+
 export function ReconActions({
   canCreate,
   canApprove,
   canPost,
   status,
   saving,
+  busy,
+  feedback,
   onSave,
   onSubmit,
   onApprove,
@@ -82,34 +87,53 @@ export function ReconActions({
   canApprove: boolean;
   canPost?: boolean;
   status: string | null;
-  saving: boolean;
+  saving?: boolean;
+  busy?: ReconBusy;
+  feedback?: ReconFeedback;
   onSave: () => void;
   onSubmit: () => void;
   onApprove: () => void;
   onPost?: () => void;
 }) {
+  const current = busy ?? (saving ? "save" : null);
+  const mutating = Boolean(current);
   const locked = status === "APPROVED" || status === "POSTED" || status === "VOID";
+  const note =
+    feedback === "saved"
+      ? "Saved ✓"
+      : feedback === "submitted"
+        ? "Submitted ✓"
+        : feedback === "approved"
+          ? "Approved ✓"
+          : feedback === "posted"
+            ? "Posted ✓"
+            : null;
   return (
     <div className="flex flex-wrap items-center gap-2">
       {canCreate && !locked ? (
-        <button type="button" className={secondaryButton} disabled={saving} onClick={onSave}>
-          {saving ? "Saving…" : "Save Draft"}
+        <button type="button" className={secondaryButton} disabled={mutating} onClick={onSave}>
+          {current === "save" ? "Saving" : "Save Draft"}
         </button>
       ) : null}
       {canCreate && !locked && status !== "SUBMITTED" ? (
-        <button type="button" className={primaryButton} disabled={saving} onClick={onSubmit}>
-          Submit
+        <button type="button" className={primaryButton} disabled={mutating} onClick={onSubmit}>
+          {current === "submit" ? "Submitting" : "Submit"}
         </button>
       ) : null}
       {canApprove && status === "SUBMITTED" ? (
-        <button type="button" className={primaryButton} disabled={saving} onClick={onApprove}>
-          Approve
+        <button type="button" className={primaryButton} disabled={mutating} onClick={onApprove}>
+          {current === "approve" ? "Approving" : "Approve"}
         </button>
       ) : null}
       {canPost && status === "APPROVED" && onPost ? (
-        <button type="button" className={primaryButton} disabled={saving} onClick={onPost}>
-          Post to stock
+        <button type="button" className={primaryButton} disabled={mutating} onClick={onPost}>
+          {current === "post" ? "Posting" : "Post to stock"}
         </button>
+      ) : null}
+      {note ? (
+        <span className="text-[12.5px] font-medium text-[#3f8a5a] transition-opacity duration-200">
+          {note}
+        </span>
       ) : null}
     </div>
   );
