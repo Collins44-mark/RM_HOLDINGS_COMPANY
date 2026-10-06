@@ -24,7 +24,6 @@ import {
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import {
-  POS_PAYMENT_METHODS,
   createCompletedSaleSnapshot,
   exactBarcodeMatch,
   filterPosProducts,
@@ -44,6 +43,7 @@ import {
   allocatedTotal,
   dbMethodFromPos,
   newPosPaymentSplit,
+  POS_PAYMENT_METHODS,
   POS_TENDER_METHODS,
   splitAmount,
   WALK_IN_CUSTOMER,

@@ -35,7 +35,7 @@ import {
   type SupermarketSale,
 } from "@/lib/data/sample-supermarket-sales";
 import { refreshSales, useSupermarketSales } from "@/lib/supermarket/client-stores";
-import { paymentLineLabel } from "@/lib/supermarket/pos-payments";
+import { paymentLineLabel, parseStoredProvider } from "@/lib/supermarket/pos-payments";
 import type { SupermarketSale as DbSale } from "@/lib/supermarket/types";
 
 function mapDbSale(sale: DbSale): SupermarketSale {
@@ -922,12 +922,26 @@ function SaleDetails({
           />
           {sale.paymentLines && sale.paymentLines.length > 0 ? (
             <div className="rounded-[14px] border border-white/70 bg-white/45 px-3 py-2.5">
-              {sale.paymentLines.map((line, index) => (
-                <div key={`${line.method}-${index}`} className="flex items-center justify-between gap-3 py-0.5 text-[13px]">
-                  <span className="text-slate-500">{paymentLineLabel(line.method, line.provider)}</span>
-                  <span className="font-medium text-navy">{formatTzs(line.amount)}</span>
-                </div>
-              ))}
+              {sale.paymentLines.map((line, index) => {
+                const stored = parseStoredProvider(line.provider);
+                const isMobile = line.method === "Mobile Money";
+                return (
+                  <div key={`${line.method}-${index}`} className="flex items-start justify-between gap-3 py-1 text-[13px]">
+                    <span className="min-w-0 text-slate-500">
+                      <span className="block font-medium text-navy">
+                        {isMobile ? "Mobile Money" : paymentLineLabel(line.method)}
+                      </span>
+                      {isMobile && stored.name ? (
+                        <span className="mt-0.5 block text-[12px]">Provider: {stored.name}</span>
+                      ) : null}
+                      {isMobile && stored.paymentNumber ? (
+                        <span className="block text-[12px]">Payment Number: {stored.paymentNumber}</span>
+                      ) : null}
+                    </span>
+                    <span className="shrink-0 font-medium text-navy">{formatTzs(line.amount)}</span>
+                  </div>
+                );
+              })}
             </div>
           ) : null}
         </div>

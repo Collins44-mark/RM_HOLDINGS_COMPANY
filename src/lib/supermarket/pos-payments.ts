@@ -35,6 +35,18 @@ export function formatMobileMoneyLabel(name: string, paymentNumber?: string | nu
   return number ? `${display} — ${number}` : display;
 }
 
+export function parseStoredProvider(provider?: string | null) {
+  const raw = provider?.trim() ?? "";
+  if (!raw) return { name: "", paymentNumber: "" };
+  const sep = " — ";
+  const at = raw.indexOf(sep);
+  if (at <= 0) return { name: raw, paymentNumber: "" };
+  return {
+    name: raw.slice(0, at).trim(),
+    paymentNumber: raw.slice(at + sep.length).trim(),
+  };
+}
+
 export function newPosPaymentSplit(
   method: PosTenderMethod = "Cash",
   providerId = "",
