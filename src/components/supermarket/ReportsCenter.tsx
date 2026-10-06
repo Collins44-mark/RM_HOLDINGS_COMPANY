@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { BarChart3, Boxes, Check, Download, ShoppingBag, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { REPORT_KIND_META, type ReportKind } from "@/lib/data/sample-supermarket-reports";
@@ -9,12 +9,6 @@ import { downloadReportPdf } from "@/lib/data/supermarket-reports-pdf";
 import { primaryButton } from "@/components/supermarket/purchasing-ui";
 import { reportGlass, useReportPeriod } from "@/components/supermarket/report-shell";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
-import { getReconciliationReportStripAction } from "@/actions/supermarket/reconciliation-overview";
-import { getBankMovementReportStripAction } from "@/actions/supermarket/banking";
-import { getPettyCashReportStripAction } from "@/actions/supermarket/petty-cash";
-import { fetchTaxReportAction } from "@/actions/supermarket/tax";
-import { formatTzs } from "@/lib/format/currency";
-import { moneyToCents } from "@/lib/supermarket/money";
 
 const CARDS: { kind: ReportKind; icon: typeof TrendingUp }[] = [
   { kind: "sales", icon: TrendingUp },
@@ -91,12 +85,7 @@ export function ReportsCenter() {
         </p>
       ) : null}
 
-      <ReconciliationReportStrip from={period.start} to={period.end} />
-      <BankMovementReportStrip from={period.start} to={period.end} />
-      <PettyCashReportStrip from={period.start} to={period.end} />
-      <TaxReportStrip from={period.start} to={period.end} />
-
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {CARDS.map((card) => {
           const meta = REPORT_KIND_META[card.kind];
           const Icon = card.icon;
@@ -144,165 +133,5 @@ export function ReportsCenter() {
         })}
       </section>
     </div>
-  );
-}
-
-function ReconciliationReportStrip({ from, to }: { from: string; to: string }) {
-  const [cards, setCards] = useState<Array<{ title: string; statusLabel: string; detail: string; href: string }>>([]);
-
-  useEffect(() => {
-    let active = true;
-    void getReconciliationReportStripAction({ from, to }).then((result) => {
-      if (!active || !result.ok) return;
-      setCards(result.cards);
-    });
-    return () => {
-      active = false;
-    };
-  }, [from, to]);
-
-  if (!cards.length) return null;
-
-  return (
-    <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {cards.map((card) => (
-        <Link key={card.href} href={card.href} className={cn(reportGlass, "block px-4 py-4")}>
-          <p className="text-[13px] font-semibold text-navy">{card.title}</p>
-          <p className="mt-1 text-[12.5px] text-slate-500">
-            {card.statusLabel} · {card.detail}
-          </p>
-        </Link>
-      ))}
-    </section>
-  );
-}
-
-function BankMovementReportStrip({ from, to }: { from: string; to: string }) {
-  const [summary, setSummary] = useState<{ deposits: string; withdrawals: string; net: string; unmatched: number } | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    void getBankMovementReportStripAction({ from, to }).then((result) => {
-      if (!active || !result.ok) return;
-      setSummary({
-        deposits: result.deposits,
-        withdrawals: result.withdrawals,
-        net: result.net,
-        unmatched: result.unmatched,
-      });
-    });
-    return () => {
-      active = false;
-    };
-  }, [from, to]);
-
-  if (!summary) return null;
-
-  const items = [
-    { title: "Bank deposits", detail: summary.deposits },
-    { title: "Bank withdrawals", detail: summary.withdrawals },
-    { title: "Net bank movement", detail: summary.net },
-    { title: "Unmatched bank lines", detail: String(summary.unmatched) },
-  ];
-
-  return (
-    <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {items.map((item) => (
-        <Link key={item.title} href="/supermarket/finance/banking" className={cn(reportGlass, "block px-4 py-4")}>
-          <p className="text-[13px] font-semibold text-navy">{item.title}</p>
-          <p className="mt-1 text-[12.5px] text-slate-500">{item.detail}</p>
-        </Link>
-      ))}
-    </section>
-  );
-}
-
-function PettyCashReportStrip({ from, to }: { from: string; to: string }) {
-  const [summary, setSummary] = useState<{
-    currentBalance: string;
-    totalSpent: string;
-    totalReplenished: string;
-    variance: string;
-    count: number;
-  } | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    void getPettyCashReportStripAction({ from, to }).then((result) => {
-      if (!active || !result.ok) return;
-      setSummary({
-        currentBalance: result.currentBalance,
-        totalSpent: result.totalSpent,
-        totalReplenished: result.totalReplenished,
-        variance: result.variance,
-        count: result.count,
-      });
-    });
-    return () => {
-      active = false;
-    };
-  }, [from, to]);
-
-  if (!summary) return null;
-
-  const items = [
-    { title: "Petty cash balance", detail: formatTzs(moneyToCents(summary.currentBalance) / 100) },
-    { title: "Petty cash expenses", detail: formatTzs(moneyToCents(summary.totalSpent) / 100) },
-    { title: "Petty cash replenishments", detail: formatTzs(moneyToCents(summary.totalReplenished) / 100) },
-    { title: "Petty cash variance", detail: `${formatTzs(moneyToCents(summary.variance) / 100)} · ${summary.count} txn` },
-  ];
-
-  return (
-    <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {items.map((item) => (
-        <Link key={item.title} href="/supermarket/finance/petty-cash" className={cn(reportGlass, "block px-4 py-4")}>
-          <p className="text-[13px] font-semibold text-navy">{item.title}</p>
-          <p className="mt-1 text-[12.5px] text-slate-500">{item.detail}</p>
-        </Link>
-      ))}
-    </section>
-  );
-}
-
-function TaxReportStrip({ from, to }: { from: string; to: string }) {
-  const [summary, setSummary] = useState<{ collected: number; purchases: number; net: number; count: number } | null>(
-    null,
-  );
-
-  useEffect(() => {
-    let active = true;
-    void fetchTaxReportAction({ from, to }).then((result) => {
-      if (!active || !result.ok) return;
-      if (!result.details.length && result.collected === 0 && result.purchases === 0) return;
-      setSummary({
-        collected: result.collected,
-        purchases: result.purchases,
-        net: result.net,
-        count: result.details.length,
-      });
-    });
-    return () => {
-      active = false;
-    };
-  }, [from, to]);
-
-  if (!summary) return null;
-
-  const items = [
-    { title: "Tax collected", detail: formatTzs(summary.collected) },
-    { title: "Tax on purchases", detail: formatTzs(summary.purchases) },
-    { title: "Net tax position", detail: formatTzs(summary.net) },
-    { title: "Tax transactions", detail: `${summary.count} posted` },
-  ];
-
-  return (
-    <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {items.map((item) => (
-        <Link key={item.title} href="/supermarket/finance/tax-vat" className={cn(reportGlass, "block px-4 py-4")}>
-          <p className="text-[13px] font-semibold text-navy">{item.title}</p>
-          <p className="mt-1 text-[12.5px] text-slate-500">{item.detail}</p>
-        </Link>
-      ))}
-    </section>
   );
 }
