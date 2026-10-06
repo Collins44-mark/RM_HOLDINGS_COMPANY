@@ -65,8 +65,9 @@ export function totalProductProfit(lines: FinanceSoldLine[]) {
   return lines.reduce((sum, line) => sum + lineProductProfit(line), 0);
 }
 
+/** Main cash + petty cash only. Card, Mobile Money, and Bank are not cash on hand. */
 export function totalCashOnHand(balance: FinanceCashBalance) {
-  return balance.cash + (balance.pettyCash ?? 0) + balance.mobileMoney + balance.card + balance.bank;
+  return balance.cash + (balance.pettyCash ?? 0);
 }
 
 export function supplierOutstandingAmount(input: FinanceSupplierOutstanding) {

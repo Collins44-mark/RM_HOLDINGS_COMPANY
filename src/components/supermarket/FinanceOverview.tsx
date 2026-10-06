@@ -246,7 +246,10 @@ export function FinanceOverview() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <CashBalanceCard summary={displaySummary} />
+        <CashBalanceCard
+          summary={displaySummary}
+          showBanking={canAccessPath("/supermarket/finance/banking")}
+        />
         {showSupplierOutstanding ? <SupplierOutstandingCard summary={displaySummary} /> : null}
       </section>
 
@@ -317,7 +320,7 @@ export function FinanceOverview() {
         {canAccessPath("/supermarket/finance/bank-reconciliation") ? (
         <ActionCard
           title="Bank Reconciliation"
-          description="Match statement lines to recorded bank payments"
+          description="Bank statement versus system bank transactions"
           icon={<Building2 className="h-4 w-4" strokeWidth={1.9} />}
           tone="border-white/40 bg-white/40"
           iconTone="border-white/70 bg-white/80 text-navy"
@@ -464,72 +467,103 @@ function KpiCard({
   );
 }
 
-function CashBalanceCard({ summary }: { summary: FinanceSummary }) {
-  const rows = [
-    {
-      label: "Main cash",
-      amount: summary.cashBalance.cash,
-      icon: <Banknote className="h-4 w-4" strokeWidth={1.9} />,
-      tone: "border-white/70 bg-white/70 text-navy",
-    },
-    {
-      label: "Petty cash",
-      amount: summary.cashBalance.pettyCash ?? 0,
-      icon: <Wallet className="h-4 w-4" strokeWidth={1.9} />,
-      tone: "border-white/70 bg-white/70 text-navy",
-    },
-    {
-      label: "Mobile Money",
-      amount: summary.cashBalance.mobileMoney,
-      icon: <Phone className="h-4 w-4" strokeWidth={1.9} />,
-      tone: "border-sky-200/45 bg-white/70 text-sky-600",
-    },
-    {
-      label: "Card",
-      amount: summary.cashBalance.card,
-      icon: <CreditCard className="h-4 w-4" strokeWidth={1.9} />,
-      tone: "border-violet-200/45 bg-white/70 text-violet-600",
-    },
-    {
-      label: "Bank",
-      amount: summary.cashBalance.bank,
-      icon: <Building2 className="h-4 w-4" strokeWidth={1.9} />,
-      tone: "border-amber-200/45 bg-white/70 text-amber-600",
-    },
-  ] as const;
+function PositionRow({
+  label,
+  amount,
+  icon,
+  tone,
+}: {
+  label: string;
+  amount: number;
+  icon: ReactNode;
+  tone: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-white/50 py-3.5">
+      <div className="inline-flex items-center gap-2.5">
+        <span
+          className={cn(
+            "inline-flex h-8 w-8 items-center justify-center rounded-full border shadow-[0_6px_14px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md",
+            tone,
+          )}
+        >
+          {icon}
+        </span>
+        <span className="text-[13.5px] text-slate-600">{label}</span>
+      </div>
+      <span className="text-[13.5px] font-semibold tabular-nums text-navy">{formatTzs(amount)}</span>
+    </div>
+  );
+}
+
+function CashBalanceCard({
+  summary,
+  showBanking,
+}: {
+  summary: FinanceSummary;
+  showBanking: boolean;
+}) {
+  const cash = summary.cashBalance;
 
   return (
     <section className={cn(glass, "flex flex-col px-5 py-6 sm:px-6 sm:py-7")}>
       <div>
-        <h2 className="text-[17px] font-semibold tracking-[-0.03em] text-navy">Cash Balance</h2>
-        <p className="mt-1 text-[13px] text-slate-500">Money available in each payment method</p>
+        <h2 className="text-[17px] font-semibold tracking-[-0.03em] text-navy">Cash Position</h2>
+        <p className="mt-1 text-[13px] text-slate-500">Posted cash movements this period — not bank-account balances</p>
       </div>
       <div className="mt-5 flex flex-1 flex-col">
-        {rows.map((row) => (
-          <div
-            key={row.label}
-            className="flex items-center justify-between gap-3 border-b border-white/50 py-3.5"
-          >
-            <div className="inline-flex items-center gap-2.5">
-              <span
-                className={cn(
-                  "inline-flex h-8 w-8 items-center justify-center rounded-full border shadow-[0_6px_14px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md",
-                  row.tone,
-                )}
-              >
-                {row.icon}
-              </span>
-              <span className="text-[13.5px] text-slate-600">{row.label}</span>
+        <PositionRow
+          label="Main Cash"
+          amount={cash.cash}
+          icon={<Banknote className="h-4 w-4" strokeWidth={1.9} />}
+          tone="border-white/70 bg-white/70 text-navy"
+        />
+        <PositionRow
+          label="Petty Cash"
+          amount={cash.pettyCash ?? 0}
+          icon={<Wallet className="h-4 w-4" strokeWidth={1.9} />}
+          tone="border-white/70 bg-white/70 text-navy"
+        />
+        <div className="flex items-center justify-between gap-3 py-3.5">
+          <span className="text-[13.5px] font-semibold text-navy">Total Cash</span>
+          <span className="text-[13.5px] font-semibold tabular-nums text-navy">
+            {formatTzs(totalCashOnHand(cash))}
+          </span>
+        </div>
+
+        <div className="mt-2 border-t border-white/50 pt-4">
+          <h3 className="text-[13px] font-semibold text-navy">Payment Collections</h3>
+          <p className="mt-0.5 text-[12px] text-slate-500">Customer collections posted this period</p>
+        </div>
+        <PositionRow
+          label="Mobile Money"
+          amount={cash.mobileMoney}
+          icon={<Phone className="h-4 w-4" strokeWidth={1.9} />}
+          tone="border-sky-200/45 bg-white/70 text-sky-600"
+        />
+        <PositionRow
+          label="Card"
+          amount={cash.card}
+          icon={<CreditCard className="h-4 w-4" strokeWidth={1.9} />}
+          tone="border-violet-200/45 bg-white/70 text-violet-600"
+        />
+
+        <div className="mt-2 border-t border-white/50 pt-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-[13px] font-semibold text-navy">Bank Accounts</h3>
+              <p className="mt-0.5 text-[12px] text-slate-500">
+                Business settlement accounts. Balances live in Banking, not as a customer payment method.
+              </p>
             </div>
-            <span className="text-[13.5px] font-semibold tabular-nums text-navy">{formatTzs(row.amount)}</span>
-          </div>
-        ))}
-        <div className="mt-auto pt-4">
-          <div className="flex items-center justify-between gap-3 rounded-[18px] border border-sky-200/40 bg-sky-50/55 px-4 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-md">
-            <span className="text-[14px] font-semibold text-navy">Total Cash Available</span>
-            <span className="text-[18px] font-semibold tracking-[-0.03em] tabular-nums text-navy">
-              {formatTzs(totalCashOnHand(summary.cashBalance))}
-            </span>
+            {showBanking ? (
+              <Link
+                href="/supermarket/finance/banking"
+                className="inline-flex shrink-0 items-center gap-1 text-[13px] font-semibold text-[#3d6db5] transition hover:text-navy"
+              >
+                View Banking →
+              </Link>
+            ) : null}
           </div>
         </div>
       </div>
