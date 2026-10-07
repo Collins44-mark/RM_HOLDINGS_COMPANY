@@ -26,11 +26,11 @@ import {
 } from "@/lib/data/sample-supermarket-sales";
 import { FinanceBackLink } from "@/components/supermarket/FinanceBackLink";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
-import { PaymentModeChooser, RecordPaymentModal } from "@/components/supermarket/FinanceRecordModals";
-import { SupplierPaymentWorkspace } from "@/components/supermarket/SupplierPaymentWorkspace";
-import { filterClass, primaryButton, secondaryButton, tableHead } from "@/components/supermarket/purchasing-ui";
+import { CreatePaymentModal } from "@/components/supermarket/FinanceRecordModals";
+import { filterClass, primaryButton, tableHead } from "@/components/supermarket/purchasing-ui";
 import { removePayment, useSupermarketFinance } from "@/lib/supermarket/client-stores";
 import type { PaymentRecord } from "@/lib/supermarket/types";
+import { stripTechnicalIds } from "@/lib/supermarket/payment-display";
 import { useAuth } from "@/components/auth/AuthProvider";
 
 const glass =
@@ -65,7 +65,7 @@ function mapPayment(payment: PaymentRecord): MockPayment {
   return {
     id: payment.id,
     paymentType: paymentTypeFromRecord(payment),
-    description: payment.displayDescription || payment.notes,
+    description: stripTechnicalIds(payment.displayDescription || payment.notes) || payment.displayType,
     amount: payment.amount,
     paymentMethod: methodFromDb(payment.method),
     date: payment.paymentDate.slice(0, 10),
@@ -80,7 +80,7 @@ export function FinancePaymentsPage() {
   const { hasPermission } = useAuth();
   const canSupplierPayment = hasPermission("supermarket.supplier_payments.create");
   const canOtherPayment = hasPermission("supermarket.purchases.create");
-  const [paymentOpen, setPaymentOpen] = useState<"choose" | "supplier" | "other" | null>(null);
+  const [paymentOpen, setPaymentOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [paymentType, setPaymentType] = useState<"all" | PaymentType>("all");
   const [paymentMethod, setPaymentMethod] = useState<"all" | FinancePaymentMethod>("all");
@@ -142,14 +142,9 @@ export function FinancePaymentsPage() {
             onRange={setCustomRange}
             ariaLabel="Payments period"
           />
-          {canSupplierPayment ? (
-          <button type="button" onClick={() => setPaymentOpen("supplier")} className={cn(primaryButton, "w-full sm:w-auto")}>
-            + Supplier Payment
-          </button>
-          ) : null}
-          {canOtherPayment ? (
-          <button type="button" onClick={() => setPaymentOpen("other")} className={cn(secondaryButton, "w-full sm:w-auto")}>
-            + Other Payment
+          {canSupplierPayment || canOtherPayment ? (
+          <button type="button" onClick={() => setPaymentOpen(true)} className={cn(primaryButton, "w-full sm:w-auto")}>
+            + Create Payment
           </button>
           ) : null}
         </div>
@@ -273,7 +268,7 @@ export function FinancePaymentsPage() {
                       {direction === "in" ? "+" : "-"}
                       {formatTzs(row.amount)}
                     </td>
-                    <td className="px-5 py-3.5 text-[13.5px] text-slate-600">{row.reference || "—"}</td>
+                    <td className="px-5 py-3.5 text-[13.5px] text-slate-600">{stripTechnicalIds(row.reference) || "—"}</td>
                     <td className="px-5 py-3.5">
                       {source?.immutable ? (
                         <span className="text-[12.5px] text-slate-400">Posted</span>
@@ -349,7 +344,7 @@ export function FinancePaymentsPage() {
                   </div>
                   <div className="col-span-2">
                     <dt className="text-slate-400">Reference</dt>
-                    <dd className="mt-0.5 font-medium text-navy">{row.reference || "—"}</dd>
+                    <dd className="mt-0.5 font-medium text-navy">{stripTechnicalIds(row.reference) || "—"}</dd>
                   </div>
                 </dl>
                 {source?.immutable ? (
@@ -374,15 +369,13 @@ export function FinancePaymentsPage() {
         </div>
       </section>
 
-      {paymentOpen === "choose" ? (
-        <PaymentModeChooser
-          onClose={() => setPaymentOpen(null)}
-          onSupplier={canSupplierPayment ? () => setPaymentOpen("supplier") : undefined}
-          onOther={canOtherPayment ? () => setPaymentOpen("other") : undefined}
+      {paymentOpen ? (
+        <CreatePaymentModal
+          onClose={() => setPaymentOpen(false)}
+          canSupplier={canSupplierPayment}
+          canOther={canOtherPayment}
         />
       ) : null}
-      {paymentOpen === "supplier" ? <SupplierPaymentWorkspace onClose={() => setPaymentOpen(null)} /> : null}
-      {paymentOpen === "other" ? <RecordPaymentModal onClose={() => setPaymentOpen(null)} /> : null}
     </div>
   );
 }

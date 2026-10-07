@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   EXPENSE_CATEGORIES,
@@ -16,6 +17,8 @@ import {
 } from "@/lib/data/sample-supermarket-finance";
 import { inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
 import { recordExpense, recordPayment } from "@/lib/supermarket/client-stores";
+import { SupplierPaymentWorkspace } from "@/components/supermarket/SupplierPaymentWorkspace";
+import type { OutstandingSupplierPayable } from "@/actions/supermarket/purchasing-payables";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -233,8 +236,14 @@ export function PaymentModeChooser({
   );
 }
 
-export function RecordPaymentModal({ onClose }: { onClose: () => void }) {
-  const [mounted, setMounted] = useState(false);
+export function RecordPaymentModal({
+  onClose,
+  embedded = false,
+}: {
+  onClose: () => void;
+  embedded?: boolean;
+}) {
+  const [mounted, setMounted] = useState(embedded);
   const [direction, setDirection] = useState<"IN" | "OUT">("OUT");
   const [paymentType, setPaymentType] = useState<PaymentType>("Other Payment");
   const [description, setDescription] = useState("");
@@ -245,6 +254,7 @@ export function RecordPaymentModal({ onClose }: { onClose: () => void }) {
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- client portal mount
@@ -252,12 +262,13 @@ export function RecordPaymentModal({ onClose }: { onClose: () => void }) {
   }, []);
 
   useEffect(() => {
+    if (embedded) return;
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, embedded]);
 
   const typeOptions = direction === "IN" ? GENERIC_MONEY_IN_PAYMENT_TYPES : GENERIC_MONEY_OUT_PAYMENT_TYPES;
 
@@ -276,6 +287,7 @@ export function RecordPaymentModal({ onClose }: { onClose: () => void }) {
       setError("Use Supplier Payment to settle an outstanding purchase.");
       return;
     }
+    if (saving) return;
     setSaving(true);
     const kind =
       paymentType === "Expense Payment"
@@ -299,22 +311,26 @@ export function RecordPaymentModal({ onClose }: { onClose: () => void }) {
       setError(result.error);
       return;
     }
+    setConfirmed(true);
     onClose();
   }
 
-  if (!mounted) return null;
+  if (!embedded && !mounted) return null;
 
-  return createPortal(
-    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-[#0b2244]/20 p-3 backdrop-blur-sm sm:items-center">
-      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close record payment" onClick={onClose} />
-      <form
-        className="relative z-[81] max-h-[min(92dvh,92vh)] w-full max-w-[min(32rem,calc(100vw-1.5rem))] overflow-y-auto rounded-[24px] border border-white/80 bg-white/95 p-4 shadow-[0_24px_60px_rgba(15,35,64,0.16)] sm:p-5"
-        onSubmit={onSubmit}
-      >
-        <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">Other Payment</h2>
-        <p className="mt-1 text-[12.5px] text-slate-500">
-          For supplier purchases, use Supplier Payment instead. This records a general money movement.
-        </p>
+  const form = (
+      <form className={embedded ? "mt-3" : undefined} onSubmit={onSubmit}>
+        {embedded ? (
+          <p className="text-[12.5px] text-slate-500">
+            For supplier purchases, use Supplier Payment. This records a general money movement.
+          </p>
+        ) : (
+          <>
+            <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">Other Payment</h2>
+            <p className="mt-1 text-[12.5px] text-slate-500">
+              For supplier purchases, use Supplier Payment instead. This records a general money movement.
+            </p>
+          </>
+        )}
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Direction</span>
@@ -385,11 +401,110 @@ export function RecordPaymentModal({ onClose }: { onClose: () => void }) {
           <button type="button" onClick={onClose} className={secondaryButton}>
             Cancel
           </button>
-          <button type="submit" disabled={saving} className={cn(primaryButton)}>
-            {saving ? "Saving…" : "Save Payment"}
+          <button type="submit" disabled={saving} className={cn(primaryButton, "relative min-w-[9.5rem]")}>
+            <span className={cn("inline-flex items-center justify-center", saving && "invisible")}>
+              {confirmed ? "Saved ✓" : "Save Payment"}
+            </span>
+            {saving ? (
+              <span className="absolute inset-0 flex items-center justify-center">
+                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} />
+              </span>
+            ) : null}
           </button>
         </div>
       </form>
+  );
+
+  if (embedded) return form;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-[#0b2244]/20 p-3 backdrop-blur-sm sm:items-center">
+      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close record payment" onClick={onClose} />
+      <div className="relative z-[81] max-h-[min(92dvh,92vh)] w-full max-w-[min(32rem,calc(100vw-1.5rem))] overflow-y-auto rounded-[24px] border border-white/80 bg-white/95 p-4 shadow-[0_24px_60px_rgba(15,35,64,0.16)] sm:p-5">
+        {form}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+export function CreatePaymentModal({
+  onClose,
+  initialPayable,
+  canSupplier = false,
+  canOther = false,
+}: {
+  onClose: () => void;
+  initialPayable?: OutstandingSupplierPayable | null;
+  canSupplier?: boolean;
+  canOther?: boolean;
+}) {
+  const [mounted, setMounted] = useState(false);
+  const lockType = Boolean(initialPayable);
+  const defaultType: "supplier" | "other" =
+    lockType || canSupplier || !canOther ? "supplier" : "other";
+  const [type, setType] = useState<"supplier" | "other">(defaultType);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- client portal mount
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const showSupplier = canSupplier && type === "supplier";
+  const showOther = canOther && type === "other";
+  const showSwitcher = canSupplier && canOther && !lockType;
+
+  if (!mounted || (!canSupplier && !canOther)) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-[#0b2244]/20 p-3 backdrop-blur-sm sm:items-center">
+      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close create payment" onClick={onClose} />
+      <div className="relative z-[81] max-h-[min(92dvh,92vh)] w-full max-w-xl overflow-y-auto rounded-[24px] border border-white/80 bg-white/95 p-4 shadow-[0_24px_60px_rgba(15,35,64,0.16)] sm:p-5">
+        <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">Create Payment</h2>
+        {showSwitcher ? (
+          <div className="mt-4">
+            <p className="mb-1.5 text-[12px] font-medium text-slate-500">Payment Type</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setType("supplier")}
+                className={cn(
+                  "h-12 rounded-[14px] border text-[13px] font-semibold transition",
+                  type === "supplier"
+                    ? "border-[#0b2244] bg-[#0b2244] text-white"
+                    : "border-[#dbe4ef] bg-white text-navy hover:bg-[#f7f9fc]",
+                )}
+              >
+                Supplier Payment
+              </button>
+              <button
+                type="button"
+                onClick={() => setType("other")}
+                className={cn(
+                  "h-12 rounded-[14px] border text-[13px] font-semibold transition",
+                  type === "other"
+                    ? "border-[#0b2244] bg-[#0b2244] text-white"
+                    : "border-[#dbe4ef] bg-white text-navy hover:bg-[#f7f9fc]",
+                )}
+              >
+                Other Payment
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {showSupplier ? (
+          <SupplierPaymentWorkspace embedded onClose={onClose} initialPayable={initialPayable} />
+        ) : null}
+        {showOther ? <RecordPaymentModal embedded onClose={onClose} /> : null}
+      </div>
     </div>,
     document.body,
   );

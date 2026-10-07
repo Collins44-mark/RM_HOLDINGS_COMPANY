@@ -38,7 +38,8 @@ import { canApprovePreparedWork } from "@/lib/supermarket/sod";
 import { formatDisplayDate } from "@/lib/data/supermarket-inventory";
 import { stripTechnicalIds } from "@/lib/supermarket/payment-display";
 import { CompactActionsMenu, type CompactMenuItem } from "@/components/supermarket/CompactActionsMenu";
-import { SupplierPaymentWorkspace, payableFromInvoice } from "@/components/supermarket/SupplierPaymentWorkspace";
+import { CreatePaymentModal } from "@/components/supermarket/FinanceRecordModals";
+import { payableFromInvoice } from "@/components/supermarket/SupplierPaymentWorkspace";
 
 const emptyCaps: PurchasingCaps = {
   canView: false,
@@ -381,7 +382,8 @@ export function PurchaseOrderWorkflow({
         />
       ) : null}
       {paymentOpen && verified ? (
-        <SupplierPaymentWorkspace
+        <CreatePaymentModal
+          canSupplier
           initialPayable={payableFromInvoice({
             invoiceId: verified.id,
             invoiceNumber: verified.number,

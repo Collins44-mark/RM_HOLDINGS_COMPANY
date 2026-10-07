@@ -36,6 +36,8 @@ export function humanPaymentDescription(input: {
   notes: string;
   supplierName?: string | null;
   invoiceNumber?: string | null;
+  purchaseOrderNumber?: string | null;
+  purchaseDocumentNumber?: string | null;
   expenseDescription?: string | null;
   bankLabel?: string | null;
   pettyCashLabel?: string | null;
@@ -48,8 +50,10 @@ export function humanPaymentDescription(input: {
     return `Petty cash expense — ${input.pettyCashLabel || input.expenseDescription}`;
   }
   if (type === "Supplier Payment") {
-    const who = [input.supplierName, input.invoiceNumber].filter(Boolean).join(" • ");
-    return who ? `Supplier payment — ${who}` : "Supplier payment";
+    const who = [input.supplierName, input.purchaseDocumentNumber || input.purchaseOrderNumber]
+      .filter(Boolean)
+      .join(" · ");
+    return who ? `Supplier Payment · ${who}` : "Supplier Payment";
   }
   if (type === "Expense Payment" && input.expenseDescription) {
     return `Expense payment — ${input.expenseDescription}`;

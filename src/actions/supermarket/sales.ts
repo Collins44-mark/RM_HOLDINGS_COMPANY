@@ -1027,6 +1027,19 @@ export async function listPaymentsAction(): Promise<
         { number: String(row.invoice_number), poId: row.purchase_order_id ? String(row.purchase_order_id) : null },
       ]),
     );
+    const poIds = [...new Set([...invoices.values()].map((item) => item.poId).filter(Boolean))] as string[];
+    const { data: poRows } = poIds.length
+      ? await supabase.from("sm_purchase_orders").select("id, po_number, purchase_document_number").in("id", poIds)
+      : { data: [] as Array<{ id: string; po_number: string; purchase_document_number: string | null }> };
+    const purchaseDocs = new Map(
+      (poRows ?? []).map((row) => [
+        String(row.id),
+        {
+          poNumber: String(row.po_number),
+          documentNumber: row.purchase_document_number ? String(row.purchase_document_number) : "",
+        },
+      ]),
+    );
     const expenseName = new Map((expensesRes.data ?? []).map((row) => [String(row.id), String(row.description)]));
     const bankLabel = new Map(
       (bankRes.data ?? []).map((row) => {
@@ -1044,6 +1057,7 @@ export async function listPaymentsAction(): Promise<
       payments: rows.map((row) => {
         const mapped = mapPayment(row as Record<string, unknown>);
         const invoice = mapped.supplierInvoiceId ? invoices.get(mapped.supplierInvoiceId) : undefined;
+        const purchase = invoice?.poId ? purchaseDocs.get(invoice.poId) : undefined;
         const bankId =
           notePrefixId(mapped.notes, "BANK_DEPOSIT") ||
           notePrefixId(mapped.notes, "BANK_WITHDRAWAL") ||
@@ -1056,6 +1070,8 @@ export async function listPaymentsAction(): Promise<
             ...mapped,
             supplierName: mapped.supplierId ? supplierName.get(mapped.supplierId) : null,
             invoiceNumber: invoice?.number,
+            purchaseOrderNumber: purchase?.poNumber,
+            purchaseDocumentNumber: purchase?.documentNumber,
             expenseDescription: mapped.expenseId ? expenseName.get(mapped.expenseId) : null,
             bankLabel: bankId ? bankLabel.get(bankId) : null,
             pettyCashLabel: pettyId ? pettyLabel.get(pettyId) : null,

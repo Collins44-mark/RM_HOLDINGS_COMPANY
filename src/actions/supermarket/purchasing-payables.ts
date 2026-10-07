@@ -580,6 +580,25 @@ export async function createLinkedSupplierPaymentAction(input: {
     if (!(input.amount > 0) || input.amount > outstanding) {
       throw new SupermarketError("Requested amount cannot exceed outstanding.", "VALIDATION");
     }
+    const { data: recent } = await supabase
+      .from("sm_supplier_payment_requests")
+      .select("id")
+      .eq("business_unit_id", businessUnitId)
+      .eq("invoice_id", invoice.id)
+      .eq("prepared_by", userId)
+      .eq("amount", input.amount)
+      .eq("status", "SUBMITTED")
+      .gte("prepared_at", new Date(Date.now() - 20_000).toISOString())
+      .order("prepared_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (recent?.id) {
+      return {
+        ok: true as const,
+        id: String(recent.id),
+        purchaseOrderId: invoice.purchase_order_id ? String(invoice.purchase_order_id) : null,
+      };
+    }
     const [{ data: supplier }, { data: po }] = await Promise.all([
       supabase.from("sm_suppliers").select("name").eq("id", invoice.supplier_id).maybeSingle(),
       invoice.purchase_order_id
