@@ -152,7 +152,7 @@ export const PERMISSION_CATALOG: PermissionItem[] =
     ]).map((code) => ({ module: "beekeeping", code, name: titleize(code) })),
   ];
 
-/** Permissions that map to live application capabilities (platform + supermarket). */
+/** Permissions that map to live application capabilities. */
 export const OPERABLE_PERMISSION_MODULES = ["platform", "supermarket"] as const;
 export const IMPLEMENTED_BUSINESS_MODULES = ["supermarket"] as const;
 export const OWNER_DISPLAY_NAME = "Owner";
@@ -160,7 +160,12 @@ export const OWNER_DISPLAY_NAME = "Owner";
 export const OWNER_LEGACY_DB_NAME = "Owner Legacy";
 
 export function isOperablePermission(code: string) {
-  return code.startsWith("platform.") || code.startsWith("supermarket.");
+  return (
+    code.startsWith("platform.") ||
+    code.startsWith("supermarket.") ||
+    code === "school.settings.view" ||
+    code === "school.settings.manage"
+  );
 }
 
 export function isImplementedBusinessModule(code: string) {
@@ -198,6 +203,7 @@ export const OPERABLE_PERMISSION_CATALOG = PERMISSION_CATALOG.filter((item) =>
 const MODULE_LABELS: Record<string, string> = {
   platform: "Platform",
   supermarket: "Supermarket",
+  school: "School",
 };
 
 const RESOURCE_LABELS: Record<string, string> = {
@@ -211,6 +217,7 @@ const RESOURCE_LABELS: Record<string, string> = {
   supplier_invoices: "Supplier invoices",
   supplier_payments: "Supplier payments",
   business_units: "Business Units",
+  settings: "Settings",
 };
 
 export function permissionModuleLabel(module: string) {

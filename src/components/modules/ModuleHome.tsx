@@ -3,14 +3,19 @@ import { getBusinessUnit } from "@/lib/config/app";
 import { MODULE_NAV } from "@/lib/config/navigation";
 import type { ModuleCode } from "@/lib/config/app";
 import { getBusinessUnitByCode } from "@/lib/data/business-units";
+import { getAuthUser, identityFromUser } from "@/lib/auth/session";
+import { canAccessPath } from "@/lib/auth/access";
 
 export async function ModuleHome({ module }: { module: Exclude<ModuleCode, "owner"> }) {
   const unit = await getBusinessUnitByCode(module);
   const presentation = getBusinessUnit(module);
+  const user = await getAuthUser();
+  const identity = user ? identityFromUser(user) : null;
   const nav = MODULE_NAV[module] ?? [];
   const links = nav
     .filter((item) => !item.exact)
     .flatMap((item) => (item.children?.length ? item.children : [item]))
+    .filter((item) => (identity ? canAccessPath(identity, item.href) : true))
     .map((item) => ({ href: item.href, label: item.label, icon: item.icon }));
 
   return (

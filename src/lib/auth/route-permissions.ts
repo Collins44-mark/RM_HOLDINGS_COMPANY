@@ -22,7 +22,7 @@ type RoutePermissionRule = {
   all?: readonly string[];
 };
 
-/** Longest prefix wins. Only supermarket (operable) routes need permission beyond module assignment. */
+/** Longest prefix wins. Operable module routes need permission beyond module assignment. */
 const ROUTE_PERMISSION_RULES: RoutePermissionRule[] = [
   { prefix: "/supermarket/pos", any: ["supermarket.sales.create", "supermarket.sales.view"] },
   { prefix: "/supermarket/returns", any: ["supermarket.sales.view"] },
@@ -64,6 +64,7 @@ const ROUTE_PERMISSION_RULES: RoutePermissionRule[] = [
     all: ["supermarket.sales.view", "supermarket.purchases.view"],
   },
   { prefix: "/supermarket/reports", any: SUPERMARKET_REPORT_VIEW_PERMISSIONS },
+  { prefix: "/school/settings", any: ["school.settings.view", "school.settings.manage"] },
 ];
 
 const SORTED_RULES = [...ROUTE_PERMISSION_RULES].sort((a, b) => b.prefix.length - a.prefix.length);
