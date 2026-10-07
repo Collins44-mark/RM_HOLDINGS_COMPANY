@@ -56,8 +56,20 @@ export const requireSchoolContext = cache(async (): Promise<SchoolContext> => {
   return { supabase, businessUnitId, userId: user.id };
 });
 
-export function mapSchoolDbError(error: { message: string; code?: string } | null): never {
-  if (!error) throw new SchoolError("Couldn't save school settings.", "DATABASE");
+/** PostgREST `maybeSingle()` with no row — a valid empty read, not a failure. */
+export function isSchoolEmptyRead(error: { message?: string; code?: string; details?: string } | null | undefined) {
+  if (!error) return true;
+  if (error.code === "PGRST116") return true;
+  const blob = `${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
+  return blob.includes("json object requested") && (blob.includes("0 rows") || blob.includes("no rows"));
+}
+
+export function mapSchoolDbError(
+  error: { message: string; code?: string } | null,
+  operation: "load" | "save" = "save",
+): never {
+  const fallback = operation === "load" ? "Couldn't load school settings." : "Couldn't save school settings.";
+  if (!error) throw new SchoolError(fallback, "DATABASE");
   if (error.code === "23505") {
     throw new SchoolError("That name or code is already in use.", "CONFLICT");
   }
@@ -73,12 +85,12 @@ export function mapSchoolDbError(error: { message: string; code?: string } | nul
   console.error(
     JSON.stringify({
       scope: "school",
-      operation: "db",
+      operation,
       code: error.code ?? null,
       message: error.message.slice(0, 240),
     }),
   );
-  throw new SchoolError("Couldn't save school settings.", "DATABASE");
+  throw new SchoolError(fallback, "DATABASE");
 }
 
 export function schoolActionError(error: unknown): string {

@@ -8,6 +8,7 @@ import { matchPermission } from "@/lib/config/permissions";
 import { BUSINESS_UNITS_CACHE_TAG } from "@/lib/data/business-units";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
+  isSchoolEmptyRead,
   mapSchoolDbError,
   requireSchoolPermission,
   schoolActionError,
@@ -250,7 +251,7 @@ export async function getSchoolSettingsWorkspaceAction() {
       statusesRes,
       transportRes,
     ]) {
-      if (res.error) mapSchoolDbError(res.error);
+      if (res.error && !isSchoolEmptyRead(res.error)) mapSchoolDbError(res.error, "load");
     }
 
     const buName = str(buRes.data?.name) || "School Management";
@@ -460,7 +461,7 @@ export async function saveTermAction(input: {
       .eq("id", input.academicYearId)
       .eq("business_unit_id", businessUnitId)
       .maybeSingle();
-    if (yearRes.error) mapSchoolDbError(yearRes.error);
+    if (yearRes.error && !isSchoolEmptyRead(yearRes.error)) mapSchoolDbError(yearRes.error);
     if (!yearRes.data) throw new SchoolError("Select an academic year.", "VALIDATION");
     if (startDate < String(yearRes.data.start_date) || endDate > String(yearRes.data.end_date)) {
       throw new SchoolError("Term dates must fall within the academic year.", "VALIDATION");
@@ -533,7 +534,7 @@ async function ensureCurrentScale(supabase: Awaited<ReturnType<typeof requireSch
     .eq("business_unit_id", businessUnitId)
     .eq("is_current", true)
     .maybeSingle();
-  if (existing.error) mapSchoolDbError(existing.error);
+  if (existing.error && !isSchoolEmptyRead(existing.error)) mapSchoolDbError(existing.error);
   if (existing.data?.id) return String(existing.data.id);
   const created = await supabase
     .from("sch_grading_scales")

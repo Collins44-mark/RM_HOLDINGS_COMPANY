@@ -110,7 +110,8 @@ export function SchoolSettingsRouteShell() {
 export function SchoolSettingsPage() {
   const [tab, setTab] = useState<Tab>("general");
   const [phase, setPhase] = useState<LoadPhase>("loading");
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [canManage, setCanManage] = useState(false);
   const [profile, setProfile] = useState<SchoolProfile>({
@@ -155,11 +156,12 @@ export function SchoolSettingsPage() {
     void getSchoolSettingsWorkspaceAction().then((result) => {
       if (!active) return;
       if (!result.ok) {
-        setError(result.error);
+        setLoadError("Couldn't load school settings.");
         setPhase("error");
         return;
       }
-      setError(null);
+      setLoadError(null);
+      setSaveError(null);
       setPhase("ready");
       setCanManage(result.capabilities.canManage);
       setProfile(result.profile);
@@ -188,7 +190,8 @@ export function SchoolSettingsPage() {
         <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">School Settings</h1>
         <p className="mt-1 text-[13.5px] text-slate-500">Configure school-wide settings used across the School Management system.</p>
       </header>
-      {phase === "error" && error ? <p className="text-[13px] text-[#c45b66]">Couldn&apos;t load school settings. {error}</p> : null}
+      {phase === "error" && loadError ? <p className="text-[13px] text-[#c45b66]">{loadError}</p> : null}
+      {saveError ? <p className="text-[13px] text-[#c45b66]">{saveError}</p> : null}
 
       <div className="flex flex-wrap gap-1 rounded-full bg-[#eef3f8] p-1">
         {TABS.map((item) => (
@@ -255,8 +258,9 @@ export function SchoolSettingsPage() {
                 void saveSchoolProfileAction(profile).then((result) => {
                   profileLock.current = false;
                   setProfileBusy(false);
-                  if (!result.ok) setError(result.error);
+                  if (!result.ok) setSaveError(result.error);
                   else {
+                    setSaveError(null);
                     setProfileSaved(true);
                     setTick((n) => n + 1);
                   }
@@ -365,8 +369,9 @@ export function SchoolSettingsPage() {
                   void saveAttendanceSettingsAction(attendance).then((result) => {
                     attendanceLock.current = false;
                     setAttendanceBusy(false);
-                    if (!result.ok) setError(result.error);
+                    if (!result.ok) setSaveError(result.error);
                     else {
+                      setSaveError(null);
                       setAttendanceSaved(true);
                       setTick((n) => n + 1);
                     }
@@ -417,8 +422,9 @@ export function SchoolSettingsPage() {
                 void saveTransportSettingsAction(transport).then((result) => {
                   transportLock.current = false;
                   setTransportBusy(false);
-                  if (!result.ok) setError(result.error);
+                  if (!result.ok) setSaveError(result.error);
                   else {
+                    setSaveError(null);
                     setTransportSaved(true);
                     setTick((n) => n + 1);
                   }
@@ -444,7 +450,7 @@ export function SchoolSettingsPage() {
             setDrawer(null);
             setTick((n) => n + 1);
           }}
-          onError={setError}
+          onError={setSaveError}
         />
       ) : null}
     </div>
