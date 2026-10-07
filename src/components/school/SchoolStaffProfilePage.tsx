@@ -22,7 +22,8 @@ import {
   type StaffProfile,
   type SubjectRow,
 } from "@/actions/school/staff";
-import { rolesForSelectedModules, displayRoleName } from "@/lib/auth/role-options";
+import { displayRoleName, rolesForSelectedModules } from "@/lib/auth/role-options";
+import { ROLE_CODES } from "@/lib/config/permissions";
 import type { CredentialsPayload } from "@/actions/users";
 import type { StaffLinkUserOption } from "@/lib/school/staff-profile-link";
 import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
@@ -562,7 +563,9 @@ function StaffSystemAccessDialog({
   const [email, setEmail] = useState(staff.email);
   const [phone, setPhone] = useState(staff.phone);
   const schoolRoles = rolesForSelectedModules(["school"]);
-  const [roleCode, setRoleCode] = useState<string>(schoolRoles[0]?.code ?? "");
+  const [roleCode, setRoleCode] = useState<string>(
+    schoolRoles.find((role) => role.code === ROLE_CODES.TEACHER)?.code ?? schoolRoles[0]?.code ?? "",
+  );
 
   useEffect(() => {
     const handle = window.setTimeout(() => {

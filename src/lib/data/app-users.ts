@@ -285,7 +285,9 @@ async function loadAccessCatalog(): Promise<{
   };
 }
 
-export const getAccessCatalog = unstable_cache(loadAccessCatalog, ["access-catalog"], {
+export const ACCESS_CATALOG_CACHE_TAG = "access-catalog";
+
+export const getAccessCatalog = unstable_cache(loadAccessCatalog, [ACCESS_CATALOG_CACHE_TAG], {
   revalidate: 300,
 });
 

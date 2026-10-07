@@ -8,11 +8,14 @@ import { isOwnerRole } from "@/lib/auth/rbac";
 import {
   ALL_MODULES_VALUE,
   assignedCodesForRole,
+  canAssignCatalogRoleToModule,
+  canAssignStoredRoleToModule,
   displayRoleName,
   isRoleAllowedForModules,
   metadataModulesForRole,
   roleDefinition,
 } from "@/lib/auth/role-options";
+import { isImplementedBusinessModule } from "@/lib/config/permissions";
 import { generateTemporaryPassword } from "@/lib/auth/temp-password";
 import {
   displayLoginIdentifier,
@@ -22,6 +25,7 @@ import {
 } from "@/lib/auth/identifiers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
+  ACCESS_CATALOG_CACHE_TAG,
   getAccessCatalog,
   listManagedUsers,
   statusOf,
@@ -70,11 +74,46 @@ function adminOrError() {
 
 function revalidateUsersWorkspace() {
   updateTag(BUSINESS_UNITS_CACHE_TAG);
+  updateTag(ACCESS_CATALOG_CACHE_TAG);
   revalidatePath("/owner/users");
   revalidatePath("/school/staff");
 }
 
-async function ownerCount(_admin: NonNullable<ReturnType<typeof createSupabaseAdminClient>>) {
+function parseModuleRoles(formData: FormData, modules: string[], fallback: string) {
+  const map: Record<string, string> = {};
+  for (const code of modules) {
+    if (code === ALL_MODULES_VALUE) continue;
+    const specific = String(formData.get(`moduleRole:${code}`) ?? "").trim();
+    map[code] = specific || fallback;
+  }
+  return map;
+}
+
+async function assertRolesForModules(
+  admin: NonNullable<ReturnType<typeof createSupabaseAdminClient>>,
+  moduleRoles: Record<string, string>,
+) {
+  const codes = [...new Set(Object.values(moduleRoles).filter(Boolean))];
+  if (!codes.length) return { error: "Select a role for each module." as const };
+  const { data } = await admin.from("roles").select("id, code, name, module").in("code", codes);
+  const byCode = new Map((data ?? []).map((row) => [String(row.code), row]));
+  for (const [moduleCode, roleCode] of Object.entries(moduleRoles)) {
+    if (!isImplementedBusinessModule(moduleCode)) continue;
+    const stored = byCode.get(roleCode);
+    if (
+      !stored ||
+      !(
+        canAssignCatalogRoleToModule(roleCode, moduleCode) ||
+        canAssignStoredRoleToModule(stored, moduleCode)
+      )
+    ) {
+      return { error: "That role is not available for the selected module." as const };
+    }
+  }
+  return { roles: byCode };
+}
+
+async function ownerCount() {
   const users = await listManagedUsers();
   return users.filter((user) => isOwnerRole(user.roleCode) && user.isActive).length;
 }
@@ -89,6 +128,7 @@ async function setUserAccess(input: {
   userId: string;
   roleCode: string;
   moduleCodes: string[];
+  moduleRoles?: Record<string, string>;
   name?: string;
   email?: string | null;
   phone?: string | null;
@@ -136,11 +176,17 @@ async function setUserAccess(input: {
 
   await admin.from("user_module_roles").delete().eq("user_id", input.userId);
   if (assignedUnits.length) {
+    const roleCodes = [
+      ...new Set(assignedUnits.map((unit) => input.moduleRoles?.[unit.code] ?? input.roleCode)),
+    ];
+    const extraRoles = await admin.from("roles").select("id, code").in("code", roleCodes);
+    const roleIdByCode = new Map((extraRoles.data ?? []).map((row) => [String(row.code), String(row.id)]));
+    roleIdByCode.set(input.roleCode, String(role.id));
     await admin.from("user_module_roles").insert(
       assignedUnits.map((unit) => ({
         user_id: input.userId,
         business_unit_id: unit.id,
-        role_id: role.id,
+        role_id: roleIdByCode.get(input.moduleRoles?.[unit.code] ?? input.roleCode) ?? role.id,
       })),
     );
   }
@@ -184,8 +230,14 @@ export async function createUserAction(
   if (emailValue && !z.string().email().safeParse(emailValue).success) {
     return { error: "Enter a valid email address." };
   }
-  if (!isRoleAllowedForModules(parsed.data.roleCode, parsed.data.modules)) {
-    return { error: "That role is not available for the selected module." };
+  const moduleRoles = parseModuleRoles(formData, parsed.data.modules, parsed.data.roleCode);
+  if (parsed.data.modules.includes(ALL_MODULES_VALUE)) {
+    if (!isRoleAllowedForModules(parsed.data.roleCode, parsed.data.modules)) {
+      return { error: "That role is not available for the selected module." };
+    }
+  } else {
+    const roleCheck = await assertRolesForModules(ready.admin, moduleRoles);
+    if ("error" in roleCheck && roleCheck.error) return { error: roleCheck.error };
   }
 
   const authEmail = emailValue || syntheticEmailForPhone(phoneValue!);
@@ -256,11 +308,15 @@ export async function createUserAction(
       await admin.auth.admin.deleteUser(created.data.user.id);
       return { error: "Unable to assign modules." };
     }
+    const roleCodes = [...new Set(assignedUnits.map((unit) => moduleRoles[unit.code] ?? parsed.data.roleCode))];
+    const extraRoles = await admin.from("roles").select("id, code").in("code", roleCodes);
+    const roleIdByCode = new Map((extraRoles.data ?? []).map((row) => [String(row.code), String(row.id)]));
+    roleIdByCode.set(parsed.data.roleCode, String(role.id));
     await admin.from("user_module_roles").insert(
       assignedUnits.map((unit) => ({
         user_id: created.data.user.id,
         business_unit_id: unit.id,
-        role_id: role.id,
+        role_id: roleIdByCode.get(moduleRoles[unit.code] ?? parsed.data.roleCode) ?? role.id,
       })),
     );
   }
@@ -351,11 +407,13 @@ export async function createUserAction(
   await writeAuditEvent({
     action: "user.created",
     module: "users",
-    description: `Created user ${parsed.data.name} with role ${roleName}`,
+    description: metadataModules.includes("school")
+      ? `School role assigned · ${parsed.data.name} → ${roleName}`
+      : `Created user ${parsed.data.name} with role ${roleName}`,
     severity: "medium",
     entityType: "user",
     entityId: createdUser.id,
-    metadata: { role: parsed.data.roleCode, modules: metadataModules.map(String) },
+    metadata: { role: parsed.data.roleCode, modules: metadataModules.map(String), moduleRoles },
   });
 
   return {
@@ -453,7 +511,7 @@ export async function disableUserAction(userId: string): Promise<{ error?: strin
   const users = await listManagedUsers();
   const target = users.find((user) => user.id === userId);
   if (!target) return { error: "User was not found." };
-  if (isOwnerRole(target.roleCode) && (await ownerCount(ready.admin)) <= 1) {
+  if (isOwnerRole(target.roleCode) && (await ownerCount()) <= 1) {
     return { error: "The only Owner account cannot be disabled." };
   }
 
@@ -513,8 +571,16 @@ export async function updateUserAction(
     modules: parseModules(formData),
   });
   if (!parsed.success) return { error: "Enter valid user details." };
-  if (!isRoleAllowedForModules(parsed.data.roleCode, parsed.data.modules)) {
-    return { error: "That role is not available for the selected module." };
+  const readyForRoles = adminOrError();
+  if (!readyForRoles.ok) return { error: readyForRoles.error };
+  const moduleRoles = parseModuleRoles(formData, parsed.data.modules, parsed.data.roleCode);
+  if (parsed.data.modules.includes(ALL_MODULES_VALUE)) {
+    if (!isRoleAllowedForModules(parsed.data.roleCode, parsed.data.modules)) {
+      return { error: "That role is not available for the selected module." };
+    }
+  } else {
+    const roleCheck = await assertRolesForModules(readyForRoles.admin, moduleRoles);
+    if ("error" in roleCheck && roleCheck.error) return { error: roleCheck.error };
   }
 
   const users = await listManagedUsers();
@@ -523,7 +589,7 @@ export async function updateUserAction(
   if (isOwnerRole(target.roleCode) && !isOwnerRole(parsed.data.roleCode)) {
     const ready = adminOrError();
     if (!ready.ok) return { error: ready.error };
-    if ((await ownerCount(ready.admin)) <= 1) {
+    if ((await ownerCount()) <= 1) {
       return { error: "The only Owner account cannot be demoted." };
     }
   }
@@ -534,6 +600,7 @@ export async function updateUserAction(
     phone: parsed.data.phone ? normalizePhone(parsed.data.phone) : null,
     roleCode: parsed.data.roleCode,
     moduleCodes: parsed.data.modules,
+    moduleRoles,
   });
   if ("error" in result) return { error: result.error };
 

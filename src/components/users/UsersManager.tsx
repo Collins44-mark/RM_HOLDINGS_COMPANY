@@ -12,7 +12,14 @@ import { RoleCard } from "@/components/users/RoleCard";
 import { RolePermissionEditor } from "@/components/users/RolePermissionEditor";
 import { CustomizeAccessDrawer } from "@/components/users/CustomizeAccessDrawer";
 import { cn } from "@/lib/cn";
-import { ALL_MODULES_VALUE, displayRoleName, rolesForSelectedModules } from "@/lib/auth/role-options";
+import {
+  ALL_MODULES_VALUE,
+  assignableRoleOptions,
+  displayRoleName,
+  rolesForSelectedModules,
+} from "@/lib/auth/role-options";
+import { IMPLEMENTED_BUSINESS_MODULES, isImplementedBusinessModule, permissionModuleLabel } from "@/lib/config/permissions";
+import { createCustomRoleAction } from "@/actions/rbac";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import type { ManagedUser, ManagedUserStatus } from "@/lib/data/app-users";
 import type { RoleSummary } from "@/lib/auth/rbac-types";
@@ -114,6 +121,8 @@ export function UsersManager({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [staffTarget, setStaffTarget] = useState<{ user: ManagedUser; mode: "link" | "create" } | null>(null);
+  const [roleModuleFilter, setRoleModuleFilter] = useState("all");
+  const [createRoleOpen, setCreateRoleOpen] = useState(false);
 
   const selectedUnit = unitCode ? units.find((unit) => unit.code === unitCode) ?? null : null;
   const showingUnitUsers = tab === "business" && Boolean(selectedUnit);
@@ -206,6 +215,27 @@ export function UsersManager({
       Add User
     </button>
   );
+  const createRoleButton = (
+    <button
+      type="button"
+      onClick={() => setCreateRoleOpen(true)}
+      className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-[14px] bg-navy px-4 text-[14px] font-semibold text-white transition hover:bg-[#132844] sm:w-auto"
+    >
+      <Plus className="h-4 w-4" strokeWidth={2.2} />
+      Create Role
+    </button>
+  );
+  const headerAction = tab === "roles" ? createRoleButton : addButton;
+  const visibleRoleCards = roleCards.filter((role) => {
+    if (roleModuleFilter === "all") return true;
+    if (roleModuleFilter === "platform") return role.moduleCode === "platform" || role.locked;
+    return role.moduleCode === roleModuleFilter;
+  });
+  const roleModuleFilters = [
+    { id: "all", label: "All" },
+    { id: "platform", label: "Platform" },
+    ...IMPLEMENTED_BUSINESS_MODULES.map((code) => ({ id: code, label: permissionModuleLabel(code) })),
+  ];
 
   function handleResult(result: UsersActionState, close: () => void) {
     if (result?.error) {
@@ -311,7 +341,7 @@ export function UsersManager({
               <span className="rounded-full bg-[#e7f4ea] px-2.5 py-1 text-[12px] font-medium text-[#3f8a5a]">
                 {filtered.length === 1 ? "1 user" : `${filtered.length} users`}
               </span>
-              {addButton}
+              {headerAction}
             </div>
           </div>
         </div>
@@ -319,7 +349,7 @@ export function UsersManager({
         <PageHeader
           title={t("users.title")}
           description={t("users.description")}
-          action={addButton}
+          action={headerAction}
         />
       )}
 
@@ -347,10 +377,29 @@ export function UsersManager({
           ))}
         </div>
       ) : tab === "roles" ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {roleCards.map((role) => (
-            <RoleCard key={role.id} role={role} onOpen={() => openRole(role)} />
-          ))}
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-1 rounded-full bg-[#eef3f8] p-1 w-fit">
+            {roleModuleFilters.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setRoleModuleFilter(item.id)}
+                className={cn(
+                  "h-8 rounded-full px-3.5 text-[12.5px] font-semibold transition duration-200",
+                  roleModuleFilter === item.id
+                    ? "bg-white text-navy shadow-[0_4px_12px_rgba(15,35,64,0.08)]"
+                    : "text-slate-500 hover:text-navy",
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {visibleRoleCards.map((role) => (
+              <RoleCard key={role.id} role={role} onOpen={() => openRole(role)} />
+            ))}
+          </div>
         </div>
       ) : (
         <>
@@ -485,6 +534,7 @@ export function UsersManager({
           title="Add User"
           currentUserId={currentUserId}
           businessUnits={units}
+          catalogRoles={roleCards}
           pending={pending}
           onClose={() => setAddOpen(false)}
           onSubmit={(formData) => {
@@ -502,6 +552,7 @@ export function UsersManager({
           user={selected}
           currentUserId={currentUserId}
           businessUnits={units}
+          catalogRoles={roleCards}
           pending={pending}
           onClose={() => setSelected(null)}
           onUnlock={() =>
@@ -563,6 +614,7 @@ export function UsersManager({
           seedModules={customizeUser.modules}
           seedRoleCode={customizeUser.roleCode}
           businessUnits={units}
+          catalogRoles={roleCards}
           onClose={closeCustomize}
           onSaved={({ modules, roleName }) => {
             const unitName = (code: string) => units.find((unit) => unit.code === code)?.name ?? code;
@@ -582,6 +634,18 @@ export function UsersManager({
           }}
         />
       ) : null}
+      {createRoleOpen ? (
+        <CreateRoleDialog
+          pending={pending}
+          onClose={() => setCreateRoleOpen(false)}
+          onCreated={(role) => {
+            setRoleCards((current) => [...current, role].sort((a, b) => a.name.localeCompare(b.name)));
+            setCreateRoleOpen(false);
+            setRoleModuleFilter(role.moduleCode ?? "all");
+            openRole(role);
+          }}
+        />
+      ) : null}
       {editingRole ? (
         <RolePermissionEditor
           key={editingRole.id}
@@ -590,7 +654,9 @@ export function UsersManager({
           onSaved={(codes) => {
             setRoleCards((current) =>
               current.map((role) =>
-                role.id === editingRole.id ? { ...role, permissionCount: codes.length } : role,
+                role.id === editingRole.id
+                  ? { ...role, permissionCount: codes.length, permissionCodes: codes }
+                  : role,
               ),
             );
             closeRoleEditor();
@@ -630,6 +696,7 @@ function UserFormDialog({
   user,
   currentUserId,
   businessUnits,
+  catalogRoles,
   pending,
   onClose,
   onSubmit,
@@ -638,6 +705,7 @@ function UserFormDialog({
   user?: ManagedUser;
   currentUserId: string;
   businessUnits: UsersUnitOption[];
+  catalogRoles: RoleSummary[];
   pending: boolean;
   onClose: () => void;
   onSubmit: (formData: FormData) => void;
@@ -646,7 +714,17 @@ function UserFormDialog({
     user?.modules.includes("*") ? [ALL_MODULES_VALUE] : user?.modules ?? [],
   );
   const [roleCode, setRoleCode] = useState(user?.roleCode ?? "");
-  const availableRoles = rolesForSelectedModules(modules.length ? modules : [ALL_MODULES_VALUE]);
+  const [moduleRoles, setModuleRoles] = useState<Record<string, string>>({});
+  const implementedSelected = modules.filter((code) => isImplementedBusinessModule(code));
+  const perModule = implementedSelected.length > 1;
+  const availableRoles = perModule
+    ? []
+    : implementedSelected.length === 1
+      ? assignableRoleOptions(implementedSelected[0], catalogRoles)
+      : rolesForSelectedModules(modules.length ? modules : [ALL_MODULES_VALUE]).map((role) => ({
+          code: role.code,
+          name: displayRoleName(role.code, role.name),
+        }));
   const self = user?.id === currentUserId;
 
   function toggleModule(code: string) {
@@ -707,24 +785,63 @@ function UserFormDialog({
           </div>
         </div>
         {!user ? <CreateAsStaffFields /> : null}
-        <label className="block">
-          <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Role</span>
-          <select
-            name="roleCode"
-            required
-            disabled={self}
-            value={roleCode}
-            onChange={(event) => setRoleCode(event.target.value)}
-            className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
-          >
-            <option value="">Select a role for the module</option>
-            {availableRoles.map((role) => (
-              <option key={role.code} value={role.code}>
-                {displayRoleName(role.code, role.name)}
-              </option>
-            ))}
-          </select>
-        </label>
+        {perModule ? (
+          <div className="space-y-3">
+            {implementedSelected.map((code) => {
+              const options = assignableRoleOptions(code, catalogRoles);
+              const value = moduleRoles[code] ?? "";
+              return (
+                <label key={code} className="block">
+                  <span className="mb-1.5 block text-[13px] font-medium text-slate-500">
+                    Role · {businessUnits.find((unit) => unit.code === code)?.name ?? code}
+                  </span>
+                  <select
+                    name={`moduleRole:${code}`}
+                    required
+                    disabled={self}
+                    value={value}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setModuleRoles((current) => ({ ...current, [code]: next }));
+                      if (code === implementedSelected[0]) setRoleCode(next);
+                    }}
+                    className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
+                  >
+                    <option value="">Select a role</option>
+                    {options.map((role) => (
+                      <option key={role.code} value={role.code}>
+                        {role.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              );
+            })}
+            <input type="hidden" name="roleCode" value={roleCode || moduleRoles[implementedSelected[0]] || ""} />
+          </div>
+        ) : (
+          <label className="block">
+            <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Role</span>
+            {implementedSelected[0] ? (
+              <input type="hidden" name={`moduleRole:${implementedSelected[0]}`} value={roleCode} />
+            ) : null}
+            <select
+              name="roleCode"
+              required
+              disabled={self}
+              value={roleCode}
+              onChange={(event) => setRoleCode(event.target.value)}
+              className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
+            >
+              <option value="">Select a role for the module</option>
+              {availableRoles.map((role) => (
+                <option key={role.code} value={role.code}>
+                  {role.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 text-[14px] font-medium text-slate-600">
             Cancel
@@ -746,6 +863,7 @@ function UserDetails({
   user,
   currentUserId,
   businessUnits,
+  catalogRoles,
   pending,
   onClose,
   onUnlock,
@@ -759,6 +877,7 @@ function UserDetails({
   user: ManagedUser;
   currentUserId: string;
   businessUnits: UsersUnitOption[];
+  catalogRoles: RoleSummary[];
   pending: boolean;
   onClose: () => void;
   onUnlock: () => void;
@@ -780,6 +899,7 @@ function UserDetails({
         user={user}
         currentUserId={currentUserId}
         businessUnits={businessUnits}
+        catalogRoles={catalogRoles}
         pending={pending}
         onClose={() => setEditing(false)}
         onSubmit={onSave}
@@ -924,6 +1044,89 @@ function CredentialsDialog({
           Done
         </button>
       </div>
+    </Modal>
+  );
+}
+
+function CreateRoleDialog({
+  pending,
+  onClose,
+  onCreated,
+}: {
+  pending: boolean;
+  onClose: () => void;
+  onCreated: (role: RoleSummary) => void;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [moduleCode, setModuleCode] = useState<(typeof IMPLEMENTED_BUSINESS_MODULES)[number]>("school");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  return (
+    <Modal onClose={onClose} title="Create Role">
+      <form
+        className="space-y-3.5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (saving || pending) return;
+          setSaving(true);
+          setError(null);
+          void createCustomRoleAction({ name, description, module: moduleCode }).then((result) => {
+            setSaving(false);
+            if (result.error || !result.role) {
+              setError(result.error || "Unable to create the role.");
+              return;
+            }
+            onCreated(result.role);
+          });
+        }}
+      >
+        {error ? <p className="rounded-[14px] border border-red-200/70 bg-red-50/80 px-3 py-2.5 text-sm text-[#9b2c2c]">{error}</p> : null}
+        <label className="block">
+          <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Module</span>
+          <select
+            value={moduleCode}
+            onChange={(event) => setModuleCode(event.target.value as typeof moduleCode)}
+            className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
+          >
+            {IMPLEMENTED_BUSINESS_MODULES.map((code) => (
+              <option key={code} value={code}>
+                {permissionModuleLabel(code)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Role Name</span>
+          <input
+            required
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy outline-none focus:border-[#9bb6e0]"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Description</span>
+          <input
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy outline-none focus:border-[#9bb6e0]"
+          />
+        </label>
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 text-[14px] font-medium text-slate-600">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving || pending}
+            className="h-11 rounded-[14px] bg-navy px-4 text-[14px] font-semibold text-white disabled:opacity-60"
+          >
+            {saving ? "Saving..." : "Save"}
+          </button>
+        </div>
+      </form>
     </Modal>
   );
 }

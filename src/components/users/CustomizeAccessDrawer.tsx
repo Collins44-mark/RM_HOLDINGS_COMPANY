@@ -4,10 +4,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { saveUserCustomizationAction } from "@/actions/rbac";
 import { AccessModal, PermissionSkeleton } from "@/components/users/AccessModal";
 import { PermissionTile } from "@/components/users/PermissionTile";
-import { ALL_MODULES_VALUE, displayRoleName, roleDefaultPermissions, rolesForSelectedModules } from "@/lib/auth/role-options";
+import {
+  ALL_MODULES_VALUE,
+  assignableRoleOptions,
+  displayRoleName,
+  rolePermissionDefaults,
+  rolesForSelectedModules,
+} from "@/lib/auth/role-options";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { catalogForModule, groupPermissions, isImplementedBusinessModule } from "@/lib/config/permissions";
-import type { UserCustomization } from "@/lib/auth/rbac-types";
+import type { RoleSummary, UserCustomization } from "@/lib/auth/rbac-types";
 
 type UnitOption = { code: string; name: string };
 
@@ -17,10 +23,9 @@ function overridesFromChecks(
   unitCode: string,
   roleCode: string,
   checked: Set<string>,
+  catalog: RoleSummary[],
 ): Override[] {
-  const defaults = new Set(
-    roleDefaultPermissions(roleCode).filter((code) => code.split(".")[0] === unitCode),
-  );
+  const defaults = new Set(rolePermissionDefaults(roleCode, unitCode, catalog));
   const live = catalogForModule(unitCode);
   const next: Override[] = [];
   for (const item of live) {
@@ -32,10 +37,13 @@ function overridesFromChecks(
   return next;
 }
 
-function grantedSet(unitCode: string, roleCode: string, overrides: UserCustomization["overrides"]) {
-  const granted = new Set(
-    roleDefaultPermissions(roleCode).filter((item) => item.split(".")[0] === unitCode),
-  );
+function grantedSet(
+  unitCode: string,
+  roleCode: string,
+  overrides: UserCustomization["overrides"],
+  catalog: RoleSummary[],
+) {
+  const granted = new Set(rolePermissionDefaults(roleCode, unitCode, catalog));
   for (const override of overrides) {
     if (override.businessUnitCode !== unitCode) continue;
     if (override.effect === "allow") granted.add(override.permissionCode);
@@ -50,6 +58,7 @@ export function CustomizeAccessDrawer({
   seedModules,
   seedRoleCode,
   businessUnits,
+  catalogRoles,
   onClose,
   onSaved,
 }: {
@@ -58,6 +67,7 @@ export function CustomizeAccessDrawer({
   seedModules?: string[];
   seedRoleCode?: string;
   businessUnits: UnitOption[];
+  catalogRoles: RoleSummary[];
   onClose: () => void;
   onSaved: (input: { modules: string[]; roleName?: string }) => void;
 }) {
@@ -90,7 +100,7 @@ export function CustomizeAccessDrawer({
       const nextChecks: Record<string, Set<string>> = {};
       for (const code of data.assignedUnitCodes) {
         const roleCode = data.moduleRoles[code] ?? data.roleCode;
-        nextChecks[code] = grantedSet(code, roleCode, data.overrides);
+        nextChecks[code] = grantedSet(code, roleCode, data.overrides, catalogRoles);
       }
       setCheckedByUnit(nextChecks);
       setActiveModule((current) =>
@@ -101,20 +111,18 @@ export function CustomizeAccessDrawer({
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [catalogRoles, userId]);
 
   function toggleUnit(code: string) {
     setUnits((current) => {
       const assigning = !current.includes(code);
       const next = assigning ? [...current, code] : current.filter((item) => item !== code);
       if (assigning) {
-        const defaultRole = rolesForSelectedModules([code])[0]?.code ?? "STAFF";
+        const defaultRole = assignableRoleOptions(code, catalogRoles)[0]?.code ?? "STAFF";
         setModuleRoles((roles) => ({ ...roles, [code]: roles[code] ?? defaultRole }));
         setCheckedByUnit((checks) => ({
           ...checks,
-          [code]:
-            checks[code] ??
-            new Set(roleDefaultPermissions(defaultRole).filter((item) => item.split(".")[0] === code)),
+          [code]: checks[code] ?? new Set(rolePermissionDefaults(defaultRole, code, catalogRoles)),
         }));
         setActiveModule(code);
       } else {
@@ -128,7 +136,7 @@ export function CustomizeAccessDrawer({
     setModuleRoles((current) => ({ ...current, [unitCode]: roleCode }));
     setCheckedByUnit((current) => ({
       ...current,
-      [unitCode]: new Set(roleDefaultPermissions(roleCode).filter((item) => item.split(".")[0] === unitCode)),
+      [unitCode]: new Set(rolePermissionDefaults(roleCode, unitCode, catalogRoles)),
     }));
   }
 
@@ -148,18 +156,20 @@ export function CustomizeAccessDrawer({
     : (loaded?.roleCode ?? seedRoleCode ?? "STAFF");
   const roles = useMemo(() => {
     if (!selectedModule || !selectedIsImplemented) return [];
-    const list = rolesForSelectedModules([selectedModule]).filter((role) => !isOwnerRole(role.code));
+    const list = assignableRoleOptions(selectedModule, catalogRoles);
     if (roleCode && !list.some((role) => role.code === roleCode)) {
-      const current = rolesForSelectedModules([ALL_MODULES_VALUE]).find((role) => role.code === roleCode);
-      if (current && !isOwnerRole(current.code)) list.unshift(current);
+      const current =
+        catalogRoles.find((role) => role.code === roleCode) ??
+        rolesForSelectedModules([ALL_MODULES_VALUE]).find((role) => role.code === roleCode);
+      if (current && !isOwnerRole(current.code)) {
+        list.unshift({ code: current.code, name: displayRoleName(current.code, current.name) });
+      }
     }
     return list;
-  }, [roleCode, selectedIsImplemented, selectedModule]);
+  }, [catalogRoles, roleCode, selectedIsImplemented, selectedModule]);
 
   const group = selectedIsImplemented ? groupPermissions(catalogForModule(selectedModule))[0] : null;
-  const defaults = new Set(
-    roleDefaultPermissions(roleCode).filter((code) => code.split(".")[0] === selectedModule),
-  );
+  const defaults = new Set(rolePermissionDefaults(roleCode, selectedModule, catalogRoles));
   const granted = checkedByUnit[selectedModule] ?? new Set<string>();
   const selectedName = businessUnits.find((unit) => unit.code === selectedModule)?.name ?? selectedModule;
 
@@ -185,7 +195,12 @@ export function CustomizeAccessDrawer({
               savingLock.current = true;
               setError(null);
               const overrides = units.flatMap((code) =>
-                overridesFromChecks(code, moduleRoles[code] ?? loaded.roleCode, checkedByUnit[code] ?? new Set()),
+                overridesFromChecks(
+                  code,
+                  moduleRoles[code] ?? loaded.roleCode,
+                  checkedByUnit[code] ?? new Set(),
+                  catalogRoles,
+                ),
               );
               setSaving(true);
               void (async () => {

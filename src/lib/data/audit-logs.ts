@@ -49,6 +49,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "user.business_unit.assigned": "Business unit access assigned",
   "user.business_unit.removed": "Business unit access removed",
   "user.permission_override.updated": "User permissions customized",
+  "role.created": "Role created",
   "role.updated": "Role permissions updated",
   "role.permission.added": "Permission added to role",
   "role.permission.removed": "Permission removed from role",

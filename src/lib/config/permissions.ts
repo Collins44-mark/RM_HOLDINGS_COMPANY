@@ -6,7 +6,10 @@ export const ROLE_CODES = {
   BUSINESS_MANAGER: "BUSINESS_MANAGER",
   SCHOOL_ADMIN: "SCHOOL_ADMIN",
   SCHOOL_MANAGER: "SCHOOL_MANAGER",
+  HEADMASTER: "HEADMASTER",
+  SCHOOL_ACCOUNTANT: "SCHOOL_ACCOUNTANT",
   TEACHER: "TEACHER",
+  ADMISSIONS_OFFICER: "ADMISSIONS_OFFICER",
   CASHIER: "CASHIER",
   STOREKEEPER: "STOREKEEPER",
   FARM_MANAGER: "FARM_MANAGER",
@@ -154,8 +157,8 @@ export const PERMISSION_CATALOG: PermissionItem[] =
   ];
 
 /** Permissions that map to live application capabilities. */
-export const OPERABLE_PERMISSION_MODULES = ["platform", "supermarket"] as const;
-export const IMPLEMENTED_BUSINESS_MODULES = ["supermarket"] as const;
+export const OPERABLE_PERMISSION_MODULES = ["platform", "supermarket", "school"] as const;
+export const IMPLEMENTED_BUSINESS_MODULES = ["supermarket", "school"] as const;
 export const OWNER_DISPLAY_NAME = "Owner";
 /** Unique `roles.name` for code SUPER_ADMIN. Never shown in the UI. */
 export const OWNER_LEGACY_DB_NAME = "Owner Legacy";
@@ -188,6 +191,7 @@ export function catalogForModule(module: string) {
 }
 
 export function isVisibleRbacRole(role: RoleDefinition) {
+  if (role.code === ROLE_CODES.SCHOOL_ADMIN) return false;
   if ((OWNER_ROLES as readonly string[]).includes(role.code)) return true;
   if ((FINANCE_ROLES as readonly string[]).includes(role.code)) return true;
   if (role.code === ROLE_CODES.BUSINESS_MANAGER) return true;
@@ -229,6 +233,11 @@ const RESOURCE_LABELS: Record<string, string> = {
   supplier_payments: "Supplier payments",
   business_units: "Business Units",
   settings: "Settings",
+  classes: "Classes",
+  admissions: "Admissions",
+  students: "Students",
+  parents: "Parents / Guardians",
+  staff: "Staff",
 };
 
 export function permissionModuleLabel(module: string) {
@@ -332,42 +341,78 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     code: ROLE_CODES.SCHOOL_ADMIN,
     name: "School Admin",
-    description: "Full administration of the School Management module.",
+    description: "Legacy school administration role. Hidden from new assignments.",
     modules: ["school"],
     permissionMatchers: ["school.*"],
   },
   {
     code: ROLE_CODES.SCHOOL_MANAGER,
     name: "School Manager",
-    description: "School Management operations, academics, fees and transport.",
+    description: "Manages school operations and configuration.",
     modules: ["school"],
-    permissionMatchers: ["school.*"],
+    permissionMatchers: [
+      "school.settings.view",
+      "school.settings.manage",
+      "school.classes.view",
+      "school.classes.manage",
+      "school.admissions.view",
+      "school.admissions.manage",
+      "school.students.view",
+      "school.students.manage",
+      "school.parents.view",
+      "school.parents.manage",
+      "school.staff.view",
+      "school.staff.manage",
+    ],
+  },
+  {
+    code: ROLE_CODES.HEADMASTER,
+    name: "Headmaster",
+    description: "Provides senior academic and operational oversight.",
+    modules: ["school"],
+    permissionMatchers: [
+      "school.settings.view",
+      "school.classes.view",
+      "school.admissions.view",
+      "school.students.view",
+      "school.parents.view",
+      "school.staff.view",
+    ],
+  },
+  {
+    code: ROLE_CODES.SCHOOL_ACCOUNTANT,
+    name: "School Accountant",
+    description: "Manages authorized school financial operations.",
+    modules: ["school"],
+    permissionMatchers: ["school.classes.view", "school.students.view"],
   },
   {
     code: ROLE_CODES.TEACHER,
     name: "Teacher",
-    description: "Academic access to students, attendance and examinations.",
+    description: "Manages assigned academic responsibilities.",
+    modules: ["school"],
+    permissionMatchers: ["school.classes.view", "school.students.view"],
+  },
+  {
+    code: ROLE_CODES.ADMISSIONS_OFFICER,
+    name: "Admissions Officer",
+    description: "Manages student admissions.",
     modules: ["school"],
     permissionMatchers: [
-      "school.students.view",
+      "school.admissions.view",
+      "school.admissions.manage",
       "school.classes.view",
-      "school.staff.view",
-      "school.subjects.view",
-      "school.attendance.*",
-      "school.exams.*",
+      "school.students.view",
+      "school.parents.view",
+      "school.parents.manage",
     ],
   },
   {
     code: ROLE_CODES.CASHIER,
     name: "Cashier",
     description: "Point-of-sale and payment collection.",
-    modules: ["supermarket", "school"],
-    permissionMatchers: [
-      "supermarket.sales.*",
-      "supermarket.products.view",
-      "school.fees.view",
-      "school.fees.create",
-    ],
+    modules: ["supermarket"],
+    permissionMatchers: ["supermarket.sales.*", "supermarket.products.view"],
   },
   {
     code: ROLE_CODES.STOREKEEPER,

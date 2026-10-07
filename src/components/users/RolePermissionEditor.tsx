@@ -32,10 +32,10 @@ export function RolePermissionEditor({
   const locked = isOwnerRole(role.code) || role.locked;
   const groups = useMemo(() => {
     const definition = roleDefinition(role.code);
-    const scope = definition ? moduleScopeForRole(definition) : null;
+    const scope = role.moduleCode || (definition ? moduleScopeForRole(definition) : null);
     const catalog = scope && scope !== "*" ? catalogForModule(scope) : [];
     return groupPermissions(catalog);
-  }, [role.code]);
+  }, [role.code, role.moduleCode]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sod, setSod] = useState<SodControls>({ ...DEFAULT_SOD_CONTROLS });
   const sodBaseline = useRef<SodControls>({ ...DEFAULT_SOD_CONTROLS });

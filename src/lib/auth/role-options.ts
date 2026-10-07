@@ -35,14 +35,18 @@ export function rolesForSelectedModules(moduleCodes: string[]): RoleDefinition[]
     : ROLE_DEFINITIONS.filter((role) => {
         if ((OWNER_ROLES as readonly string[]).includes(role.code)) return false;
         if ((FINANCE_ROLES as readonly string[]).includes(role.code)) return false;
+        if (role.code === ROLE_CODES.SCHOOL_ADMIN) return false;
         if (!isVisibleRbacRole(role) && role.code !== "STAFF") return false;
         if (role.modules.includes("*")) return true;
-        if (role.modules.length === 0) return true;
         const implemented = moduleCodes.filter((code) => isImplementedBusinessModule(code));
         if (!implemented.length) return role.code === "BUSINESS_MANAGER" || role.code === "STAFF";
-        return moduleCodes.every(
-          (code) => !isImplementedBusinessModule(code) || role.modules.includes(code) || role.modules.length === 0,
-        );
+        if (implemented.length === 1) {
+          if (!role.modules.includes(implemented[0])) return false;
+          return !role.modules.some(
+            (module) => isImplementedBusinessModule(module) && module !== implemented[0],
+          );
+        }
+        return implemented.every((code) => role.modules.includes(code));
       });
 
   const hasCanonicalOwner = selected.some((role) => role.code === ROLE_CODES.OWNER);
@@ -51,6 +55,48 @@ export function rolesForSelectedModules(moduleCodes: string[]): RoleDefinition[]
 
 export function isRoleAllowedForModules(roleCode: string, moduleCodes: string[]) {
   return rolesForSelectedModules(moduleCodes).some((role) => role.code === roleCode);
+}
+
+export function canAssignCatalogRoleToModule(roleCode: string, moduleCode: string) {
+  if (isOwnerRole(roleCode)) return false;
+  if (roleCode === ROLE_CODES.SCHOOL_ADMIN) return false;
+  return isRoleAllowedForModules(roleCode, [moduleCode]);
+}
+
+export function canAssignStoredRoleToModule(
+  role: { code: string; module?: string | null },
+  moduleCode: string,
+  options?: { allowLegacy?: boolean },
+) {
+  if (canAssignCatalogRoleToModule(role.code, moduleCode)) return true;
+  if (options?.allowLegacy && role.code === ROLE_CODES.SCHOOL_ADMIN && moduleCode === "school") return true;
+  return role.module === moduleCode && !isOwnerRole(role.code) && role.code !== ROLE_CODES.SCHOOL_ADMIN;
+}
+
+export function assignableRoleOptions(
+  moduleCode: string,
+  catalog: Array<{ code: string; name: string; moduleCode?: string | null; locked?: boolean }>,
+) {
+  const fromCatalog = catalog.filter((role) => !role.locked && role.moduleCode === moduleCode);
+  if (fromCatalog.length) {
+    return fromCatalog.map((role) => ({ code: role.code, name: displayRoleName(role.code, role.name) }));
+  }
+  return rolesForSelectedModules([moduleCode]).map((role) => ({
+    code: role.code,
+    name: displayRoleName(role.code, role.name),
+  }));
+}
+
+export function rolePermissionDefaults(
+  roleCode: string,
+  moduleCode: string,
+  catalog?: Array<{ code: string; permissionCodes?: string[] }>,
+) {
+  const stored = catalog?.find((role) => role.code === roleCode)?.permissionCodes;
+  if (stored?.length) {
+    return stored.filter((code) => code.split(".")[0] === moduleCode);
+  }
+  return roleDefaultPermissions(roleCode).filter((code) => code.split(".")[0] === moduleCode);
 }
 
 export function roleDefinition(code: string): RoleDefinition | undefined {

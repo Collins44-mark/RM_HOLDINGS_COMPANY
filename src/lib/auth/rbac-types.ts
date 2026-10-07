@@ -6,6 +6,8 @@ export type RoleSummary = {
   moduleCount: number;
   permissionCount: number;
   moduleLabel: string;
+  moduleCode: string | null;
+  permissionCodes: string[];
   locked: boolean;
   slug: string;
 };

@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath, updateTag } from "next/cache";
 import { requireOwner } from "@/lib/auth/session";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -11,14 +12,23 @@ import {
   type RoleSummary,
   type UserCustomization,
 } from "@/lib/data/rbac";
+import { ACCESS_CATALOG_CACHE_TAG } from "@/lib/data/app-users";
 import {
   OPERABLE_PERMISSION_CATALOG,
   catalogForModule,
+  isImplementedBusinessModule,
   isOperablePermission,
   moduleScopeForRole,
+  permissionModuleLabel,
+  roleSlug,
 } from "@/lib/config/permissions";
 import { writeAuditEvents, type WriteAuditEventInput } from "@/lib/audit";
-import { isRoleAllowedForModules, displayRoleName, roleDefinition } from "@/lib/auth/role-options";
+import {
+  canAssignCatalogRoleToModule,
+  canAssignStoredRoleToModule,
+  displayRoleName,
+  roleDefinition,
+} from "@/lib/auth/role-options";
 
 export type RbacActionState = { error?: string } | null;
 
@@ -64,7 +74,7 @@ export async function saveRolePermissionsAction(
   }
 
   const definition = roleDefinition(state.role.code);
-  const scope = definition ? moduleScopeForRole(definition) : null;
+  const scope = state.role.moduleCode || (definition ? moduleScopeForRole(definition) : null);
   if (!scope || scope === "*") {
     return { error: "This role cannot be edited." };
   }
@@ -134,7 +144,10 @@ export async function saveRolePermissionsAction(
   events.push({
     action: "role.updated",
     module: "users",
-    description: `Updated permissions for ${state.role.name}`,
+    description:
+      scope === "school"
+        ? `School role updated · ${state.role.name}`
+        : `Updated permissions for ${state.role.name}`,
     severity: "high",
     entityType: "role",
     entityId: roleId,
@@ -142,6 +155,94 @@ export async function saveRolePermissionsAction(
   });
   await writeAuditEvents(events);
   return {};
+}
+
+function codeFromRoleName(name: string) {
+  const base = name
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
+  return base || "CUSTOM_ROLE";
+}
+
+export async function createCustomRoleAction(input: {
+  name: string;
+  description?: string;
+  module: string;
+}): Promise<{ error?: string; role?: RoleSummary }> {
+  const actor = await requireOwner();
+  const ready = adminOrError();
+  if (!ready.ok) return { error: ready.error };
+  const name = input.name.trim();
+  const moduleCode = input.module.trim();
+  if (name.length < 2 || name.length > 80) {
+    return { error: "Enter a role name." };
+  }
+  if (!isImplementedBusinessModule(moduleCode)) {
+    return { error: "Select a module for this role." };
+  }
+
+  let code = codeFromRoleName(name);
+  const existing = await ready.admin.from("roles").select("id, code, name");
+  const usedCodes = new Set((existing.data ?? []).map((row) => String(row.code)));
+  const usedNames = new Set((existing.data ?? []).map((row) => String(row.name).toLowerCase()));
+  if (usedNames.has(name.toLowerCase())) {
+    return { error: "A role with that name already exists." };
+  }
+  if (usedCodes.has(code)) {
+    let suffix = 2;
+    while (usedCodes.has(`${code}_${suffix}`)) suffix += 1;
+    code = `${code}_${suffix}`;
+  }
+
+  const inserted = await ready.admin
+    .from("roles")
+    .insert({
+      code,
+      name,
+      description: input.description?.trim() || null,
+      is_system: false,
+      module: moduleCode,
+    })
+    .select("id, code, name, description, module")
+    .maybeSingle();
+  if (inserted.error || !inserted.data) {
+    return { error: "Unable to create the role. Apply the latest database migration." };
+  }
+
+  updateTag(ACCESS_CATALOG_CACHE_TAG);
+  revalidatePath("/owner/users");
+  await writeAuditEvents([
+    {
+      action: "role.created",
+      module: "users",
+      description:
+        moduleCode === "school" ? `School role created · ${name}` : `Role created · ${name}`,
+      severity: "medium",
+      entityType: "role",
+      entityId: String(inserted.data.id),
+      metadata: { module: moduleCode, code },
+      actor: actorOf(actor),
+    },
+  ]);
+
+  return {
+    role: {
+      id: String(inserted.data.id),
+      code: String(inserted.data.code),
+      name: String(inserted.data.name),
+      description: String(inserted.data.description ?? ""),
+      moduleCount: 1,
+      permissionCount: 0,
+      moduleLabel: permissionModuleLabel(moduleCode),
+      moduleCode,
+      permissionCodes: [],
+      locked: false,
+      slug: roleSlug(String(inserted.data.code)),
+    },
+  };
 }
 
 export async function saveUserCustomizationAction(input: {
@@ -158,15 +259,6 @@ export async function saveUserCustomizationAction(input: {
   if (!ready.ok) return { error: ready.error };
 
   const uniqueUnits = [...new Set(input.unitCodes.filter(Boolean))];
-  for (const code of uniqueUnits) {
-    const roleCode = input.moduleRoles[code];
-    if (!roleCode || !isRoleAllowedForModules(roleCode, [code])) {
-      return { error: "Select a valid role for each assigned module." };
-    }
-    if (isOwnerRole(roleCode)) {
-      return { error: "Owner cannot be assigned as a module role." };
-    }
-  }
 
   const [profileResult, unitsResult, rolesResult, previousUnitsResult, previousRolesResult, previousOverridesResult] =
     await Promise.all([
@@ -176,7 +268,7 @@ export async function saveUserCustomizationAction(input: {
         .eq("id", input.userId)
         .maybeSingle(),
       ready.admin.from("business_units").select("id, code, name"),
-      ready.admin.from("roles").select("id, code, name"),
+      ready.admin.from("roles").select("id, code, name, module"),
       ready.admin.from("user_business_units").select("business_unit_id").eq("user_id", input.userId),
       ready.admin
         .from("user_module_roles")
@@ -204,8 +296,36 @@ export async function saveUserCustomizationAction(input: {
     .filter((unit): unit is { id: string; code: string; name: string } => Boolean(unit));
 
   const roleByCode = new Map(
-    ((rolesResult.data ?? []) as Array<{ id: string; code: string; name: string }>).map((role) => [role.code, role]),
+    ((rolesResult.data ?? []) as Array<{
+      id: string;
+      code: string;
+      name: string;
+      module?: string | null;
+    }>).map((role) => [role.code, role]),
   );
+  const previousRoleByUnit = new Map(
+    (previousRolesResult.data ?? []).map((row) => [String(row.business_unit_id), String(row.role_id)]),
+  );
+  const roleById = new Map([...roleByCode.values()].map((role) => [role.id, role]));
+
+  for (const code of uniqueUnits) {
+    const roleCode = input.moduleRoles[code];
+    const stored = roleCode ? roleByCode.get(roleCode) : null;
+    const unit = assigned.find((item) => item.code === code);
+    const previousRole = unit ? roleById.get(previousRoleByUnit.get(unit.id) ?? "") : null;
+    const allowLegacy = previousRole?.code === roleCode;
+    if (
+      !roleCode ||
+      !stored ||
+      isOwnerRole(roleCode) ||
+      !(
+        canAssignCatalogRoleToModule(roleCode, code) ||
+        canAssignStoredRoleToModule(stored, code, { allowLegacy })
+      )
+    ) {
+      return { error: "Select a valid role for each assigned module." };
+    }
+  }
 
   const primaryRoleCode = assigned[0] ? input.moduleRoles[assigned[0].code] : currentRoleCode;
   const primaryRole = roleByCode.get(primaryRoleCode);
@@ -220,9 +340,6 @@ export async function saveUserCustomizationAction(input: {
         return role ? ([unit.id, role.id] as const) : null;
       })
       .filter((row): row is readonly [string, string] => Boolean(row)),
-  );
-  const previousRoleByUnit = new Map(
-    (previousRolesResult.data ?? []).map((row) => [String(row.business_unit_id), String(row.role_id)]),
   );
 
   const allowed = new Set(OPERABLE_PERMISSION_CATALOG.map((item) => item.code));
@@ -378,13 +495,31 @@ export async function saveUserCustomizationAction(input: {
   events.push({
     action: "user.access.customized",
     module: "users",
-    description: `Customized access for ${name}`,
+    description: assigned.some((unit) => unit.code === "school")
+      ? `School access updated · ${name}`
+      : `Customized access for ${name}`,
     severity: "high",
     entityType: "user",
     entityId: input.userId,
     metadata: { modules: assigned.map((unit) => unit.code) },
     actor: actorOf(actor),
   });
+  if (moduleRolesChanged) {
+    const schoolUnit = assigned.find((unit) => unit.code === "school");
+    const schoolRole = schoolUnit ? roleByCode.get(input.moduleRoles.school ?? "") : null;
+    if (schoolRole) {
+      events.push({
+        action: "user.role.changed",
+        module: "users",
+        description: `School role assigned · ${name} → ${schoolRole.name}`,
+        severity: "high",
+        entityType: "user",
+        entityId: input.userId,
+        metadata: { module: "school", role: schoolRole.code },
+        actor: actorOf(actor),
+      });
+    }
+  }
   await writeAuditEvents(events);
 
   return { modules: claims.modules, roleName: displayRoleName(primaryRole.code, primaryRole.name) };

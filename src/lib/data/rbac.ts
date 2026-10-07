@@ -5,9 +5,11 @@ import { applyOverrides } from "@/lib/auth/effective-access";
 import { displayRoleName, roleDefaultPermissions, roleDefinition } from "@/lib/auth/role-options";
 import {
   OPERABLE_PERMISSION_CATALOG,
+  ROLE_CODES,
   ROLE_DEFINITIONS,
   catalogForModule,
   groupPermissions,
+  isImplementedBusinessModule,
   isVisibleRbacRole,
   moduleScopeForRole,
   permissionModuleLabel,
@@ -37,11 +39,16 @@ export async function listRoleSummaries(): Promise<RoleSummary[]> {
   const db = await client();
   if (!db) return [];
 
-  const { data: roles, error } = await db
+  const withModule = await db
     .from("roles")
-    .select("id, code, name, description")
+    .select("id, code, name, description, module")
     .order("name", { ascending: true });
-  if (error || !roles) return [];
+  const roleRows =
+    withModule.error || !withModule.data
+      ? await db.from("roles").select("id, code, name, description").order("name", { ascending: true })
+      : withModule;
+  const roles = roleRows.data;
+  if (roleRows.error || !roles) return [];
 
   const { data: grants } = await db.from("role_permissions").select("role_id, permission_code");
   const byRole = new Map<string, string[]>();
@@ -52,48 +59,25 @@ export async function listRoleSummaries(): Promise<RoleSummary[]> {
   }
 
   const ownerRows = (
-    roles as Array<{ id: string; code: string; name: string; description: string | null }>
+    roles as Array<{ id: string; code: string; name: string; description: string | null; module: string | null }>
   ).filter((role) => isOwnerRole(role.code));
   const canonicalOwner =
     ownerRows.find((role) => role.code === "OWNER") ?? ownerRows[0] ?? null;
 
   const summaries: RoleSummary[] = [];
-  for (const role of roles as Array<{ id: string; code: string; name: string; description: string | null }>) {
-    const definition = ROLE_DEFINITIONS.find((item) => item.code === role.code);
-    if (!definition || !isVisibleRbacRole(definition)) continue;
+  for (const role of roles as Array<{
+    id: string;
+    code: string;
+    name: string;
+    description: string | null;
+    module: string | null;
+  }>) {
+    const summary = summaryFromRoleRow(role, byRole.get(role.id) ?? []);
+    if (!summary) continue;
     if (isOwnerRole(role.code)) {
       if (!canonicalOwner || role.id !== canonicalOwner.id) continue;
-      summaries.push({
-        id: role.id,
-        code: role.code,
-        name: displayRoleName(role.code),
-        description: "Full system access across RM Holdings.",
-        moduleCount: 0,
-        permissionCount: 0,
-        moduleLabel: "All modules",
-        locked: true,
-        slug: "owner",
-      });
-      continue;
     }
-
-    const scope = moduleScopeForRole(definition);
-    const scopedCatalog = scope && scope !== "*" ? catalogForModule(scope) : OPERABLE_PERMISSION_CATALOG;
-    const stored = byRole.get(role.id);
-    const codes = (stored ?? permissionsForRole(definition)).filter((code) =>
-      scopedCatalog.some((item) => item.code === code),
-    );
-    summaries.push({
-      id: role.id,
-      code: role.code,
-      name: displayRoleName(role.code, role.name),
-      description: descriptionFor(role.code, role.description),
-      moduleCount: scope ? 1 : 0,
-      permissionCount: codes.length,
-      moduleLabel: scope ? permissionModuleLabel(scope) : "Platform",
-      locked: false,
-      slug: roleSlug(role.code),
-    });
+    summaries.push(summary);
   }
 
   return summaries.sort((a, b) => {
@@ -107,9 +91,20 @@ function relatedRecord<T extends object>(value: unknown): T | null {
   return item && typeof item === "object" ? (item as T) : null;
 }
 
-function summaryFromRoleRow(role: { id: string; code: string; name: string; description: string | null }): RoleSummary | null {
+function summaryFromRoleRow(
+  role: { id: string; code: string; name: string; description: string | null; module?: string | null },
+  storedCodes: string[] = [],
+): RoleSummary | null {
   const definition = ROLE_DEFINITIONS.find((item) => item.code === role.code);
-  if (!definition || !isVisibleRbacRole(definition)) return null;
+  if (role.code === ROLE_CODES.SCHOOL_ADMIN) return null;
+  if (definition && !isVisibleRbacRole(definition)) return null;
+
+  const inferred = definition ? moduleScopeForRole(definition) : null;
+  const scope = role.module || (inferred && inferred !== "*" ? inferred : null);
+  if (!definition) {
+    if (!scope || !isImplementedBusinessModule(scope)) return null;
+  }
+
   if (isOwnerRole(role.code)) {
     return {
       id: role.id,
@@ -119,19 +114,29 @@ function summaryFromRoleRow(role: { id: string; code: string; name: string; desc
       moduleCount: 0,
       permissionCount: 0,
       moduleLabel: "All modules",
+      moduleCode: null,
+      permissionCodes: [],
       locked: true,
       slug: "owner",
     };
   }
-  const scope = moduleScopeForRole(definition);
+
+  const editorScope = scope ?? (inferred === "*" ? null : inferred);
+  const scopedCatalog = editorScope ? catalogForModule(editorScope) : OPERABLE_PERMISSION_CATALOG;
+  const codes = (storedCodes.length ? storedCodes : definition ? permissionsForRole(definition) : []).filter((code) =>
+    scopedCatalog.some((item) => item.code === code),
+  );
+  const moduleCode = editorScope ?? "platform";
   return {
     id: role.id,
     code: role.code,
     name: displayRoleName(role.code, role.name),
     description: descriptionFor(role.code, role.description),
-    moduleCount: scope ? 1 : 0,
-    permissionCount: 0,
-    moduleLabel: scope ? permissionModuleLabel(scope) : "Platform",
+    moduleCount: editorScope ? 1 : 0,
+    permissionCount: codes.length,
+    moduleLabel: editorScope ? permissionModuleLabel(editorScope) : "Platform",
+    moduleCode,
+    permissionCodes: codes,
     locked: false,
     slug: roleSlug(role.code),
   };
@@ -140,13 +145,20 @@ function summaryFromRoleRow(role: { id: string; code: string; name: string; desc
 export async function getRolePermissionState(roleId: string): Promise<RolePermissionState | null> {
   const db = await client();
   if (!db) return null;
-  const { data: row } = await db
+  const withModule = await db
     .from("roles")
-    .select("id, code, name, description")
+    .select("id, code, name, description, module")
     .eq("id", roleId)
     .maybeSingle();
+  const row =
+    withModule.data ??
+    (
+      await db.from("roles").select("id, code, name, description").eq("id", roleId).maybeSingle()
+    ).data;
   if (!row) return null;
-  const role = summaryFromRoleRow(row as { id: string; code: string; name: string; description: string | null });
+  const role = summaryFromRoleRow(
+    row as { id: string; code: string; name: string; description: string | null; module: string | null },
+  );
   if (!role) return null;
 
   if (isOwnerRole(role.code) || role.locked) {
@@ -154,8 +166,8 @@ export async function getRolePermissionState(roleId: string): Promise<RolePermis
   }
 
   const definition = roleDefinition(role.code);
-  const scope = definition ? moduleScopeForRole(definition) : null;
-  const scoped = new Set((scope ? catalogForModule(scope) : []).map((item) => item.code));
+  const scope = role.moduleCode || (definition ? moduleScopeForRole(definition) : null);
+  const scoped = new Set((scope && scope !== "*" ? catalogForModule(scope) : []).map((item) => item.code));
 
   const { data, error } = await db
     .from("role_permissions")
