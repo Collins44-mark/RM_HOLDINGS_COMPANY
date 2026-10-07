@@ -1,5 +1,5 @@
-import { ConsoleLoading } from "@/components/layout/ConsoleLoading";
+import { SchoolOverviewRouteShell } from "@/components/school/SchoolOverviewPage";
 
 export default function Loading() {
-  return <ConsoleLoading />;
+  return <SchoolOverviewRouteShell />;
 }
