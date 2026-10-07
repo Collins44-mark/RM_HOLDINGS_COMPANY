@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { ChevronDown, Loader2 } from "lucide-react";
 import {
   getPettyCashWorkspaceAction,
   reversePettyCashTransactionAction,
@@ -15,23 +16,134 @@ import {
   type PettyCashTxnType,
 } from "@/actions/supermarket/petty-cash";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
+import { cn } from "@/lib/cn";
 import { filterClass, inputClass, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { EmptyState } from "@/components/ui/PageHeader";
 import { EXPENSE_CATEGORIES } from "@/lib/data/sample-supermarket-finance";
 import { formatTzs } from "@/lib/format/currency";
 import { moneyToCents } from "@/lib/supermarket/money";
 import { canApprovePreparedWork } from "@/lib/supermarket/sod";
+import { stripTechnicalIds } from "@/lib/supermarket/payment-display";
 import {
   MoneyField,
   primaryButton,
   reconGlass,
+  ReconPulse,
   secondaryButton,
   StatusBadge,
   useReconPeriod,
 } from "@/components/supermarket/reconciliation/shared";
 
+type LoadPhase = "loading" | "ready" | "error";
+
+const selectFilterClass = cn(filterClass, "appearance-none pr-10");
+
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  children,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  children: ReactNode;
+}) {
+  return (
+    <label className="relative block min-w-0 overflow-hidden rounded-full">
+      <span className="sr-only">{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)} className={selectFilterClass}>
+        {children}
+      </select>
+      <ChevronDown
+        className="pointer-events-none absolute inset-y-0 right-3.5 my-auto h-4 w-4 text-slate-400"
+        strokeWidth={2}
+      />
+    </label>
+  );
+}
+
+function WorkflowAction({
+  className,
+  busy,
+  disabled,
+  idleLabel,
+  successLabel,
+  confirmed,
+  onClick,
+}: {
+  className: string;
+  busy: boolean;
+  disabled?: boolean;
+  idleLabel: string;
+  successLabel: string;
+  confirmed?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" disabled={disabled || busy} onClick={onClick} className={cn(className, "relative min-w-[8.75rem]")}>
+      <span className={cn("inline-flex items-center justify-center", busy && "invisible")}>
+        {confirmed ? successLabel : idleLabel}
+      </span>
+      {busy ? (
+        <span className="absolute inset-0 flex items-center justify-center">
+          <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} />
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+export function PettyCashRouteShell({
+  period,
+}: {
+  period?: ReturnType<typeof useReconPeriod>;
+}) {
+  return (
+    <div className="min-w-0 max-w-full space-y-5 pb-10">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">Petty Cash</h1>
+        </div>
+        {period ? (
+          <FinancePeriodFilter
+            preset={period.preset}
+            label={period.period.label}
+            range={period.range}
+            onPreset={period.setPreset}
+            onRange={period.setRange}
+          />
+        ) : (
+          <div className="h-10 w-40 rounded-full bg-slate-200/60" />
+        )}
+      </header>
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {["Current balance", "Total spent", "Total replenished", "Variance"].map((label) => (
+          <div key={label} className={`${reconGlass} px-5 py-5`}>
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</p>
+            <p className="mt-2">
+              <ReconPulse className="h-6 w-24" />
+            </p>
+          </div>
+        ))}
+      </section>
+      <div className="h-10 w-44 rounded-full bg-slate-200/50" />
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="h-10 rounded-full bg-white/80" />
+        <div className="h-10 rounded-full bg-white/80" />
+        <div className="h-10 rounded-full bg-white/80" />
+      </div>
+      <div className={`${reconGlass} overflow-hidden`}>
+        <div className="px-4 py-8 text-center text-[13.5px] text-slate-400"> </div>
+      </div>
+    </div>
+  );
+}
+
 export function PettyCashPage() {
-  const { preset, setPreset, range, setRange, period } = useReconPeriod();
+  const periodState = useReconPeriod();
+  const { preset, setPreset, range, setRange, period } = periodState;
+  const [phase, setPhase] = useState<LoadPhase>("loading");
   const [fund, setFund] = useState<{ id: string; name: string; currentBalance: string; openingBalance: string } | null>(null);
   const [summary, setSummary] = useState({ currentBalance: "0.00", totalSpent: "0.00", totalReplenished: "0.00", variance: "0.00" });
   const [rows, setRows] = useState<PettyCashTxn[]>([]);
@@ -54,6 +166,7 @@ export function PettyCashPage() {
   const [modal, setModal] = useState<"expense" | "replenish" | "reconcile" | null>(null);
   const [tick, setTick] = useState(0);
   const [fundForm, setFundForm] = useState({ name: "Petty Cash", openingBalance: "0.00" });
+  const [fundBusy, setFundBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -68,10 +181,11 @@ export function PettyCashPage() {
       if (!active) return;
       if (!result.ok) {
         setError(result.error);
-        setRows([]);
+        setPhase("error");
         return;
       }
       setError(null);
+      setPhase("ready");
       setFund(result.fund);
       setSummary(result.summary);
       setRows(result.transactions);
@@ -93,47 +207,60 @@ export function PettyCashPage() {
   }, [period.start, period.end, type, status, category, page, tick]);
 
   const pages = Math.max(1, Math.ceil(total / pageSize));
+  const showEmptyFund = phase === "ready" && !fund;
+  const valuesReady = Boolean(fund);
 
   return (
     <div className="min-w-0 max-w-full space-y-5 pb-10">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">Petty Cash</h1>
-          <p className="mt-1.5 text-[13.5px] text-slate-500">
-            Manage petty cash expenses, replenishments and cash balance.
-          </p>
         </div>
         <FinancePeriodFilter
           preset={preset}
           label={period.label}
           range={range}
-          onPreset={setPreset}
-          onRange={setRange}
+          onPreset={(next) => {
+            setPreset(next);
+            setPage(1);
+          }}
+          onRange={(next) => {
+            setRange(next);
+            setPage(1);
+          }}
         />
       </header>
-      {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
+      {phase === "error" && error ? (
+        <p className="text-[13px] text-[#c45b66]">Couldn&apos;t load petty cash data. {error}</p>
+      ) : error ? (
+        <p className="text-[13px] text-[#c45b66]">{error}</p>
+      ) : null}
 
-      {!fund ? (
+      {showEmptyFund ? (
         <div className={`${reconGlass} space-y-4 px-5 py-6`}>
           <EmptyState
             title="No petty cash fund configured"
-            description="Create the supermarket petty cash fund with a real opening balance. No sample fund is created automatically."
+            description="Create the supermarket petty cash fund with a real opening balance."
           />
           {caps.canApprove ? (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               <input className={inputClass} value={fundForm.name} onChange={(e) => setFundForm((f) => ({ ...f, name: e.target.value }))} />
               <input className={inputClass} value={fundForm.openingBalance} onChange={(e) => setFundForm((f) => ({ ...f, openingBalance: e.target.value }))} />
-              <button
-                type="button"
+              <WorkflowAction
                 className={primaryButton}
-                onClick={async () => {
-                  const result = await savePettyCashFundAction(fundForm);
-                  if (!result.ok) setError(result.error);
-                  else setTick((n) => n + 1);
+                busy={fundBusy}
+                idleLabel="Create fund"
+                successLabel="Saved ✓"
+                onClick={() => {
+                  if (fundBusy) return;
+                  setFundBusy(true);
+                  void savePettyCashFundAction(fundForm).then((result) => {
+                    setFundBusy(false);
+                    if (!result.ok) setError(result.error);
+                    else setTick((n) => n + 1);
+                  });
                 }}
-              >
-                Create fund
-              </button>
+              />
             </div>
           ) : null}
         </div>
@@ -149,7 +276,7 @@ export function PettyCashPage() {
               <div key={label} className={`${reconGlass} px-5 py-5`}>
                 <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</p>
                 <p className="mt-2 text-[20px] font-semibold tracking-[-0.04em] text-navy">
-                  {formatTzs(moneyToCents(value) / 100)}
+                  {valuesReady ? formatTzs(moneyToCents(value) / 100) : <ReconPulse className="h-6 w-24" />}
                 </p>
               </div>
             ))}
@@ -191,25 +318,46 @@ export function PettyCashPage() {
               </button>
             ) : null}
           </div>
-          <div className="flex flex-wrap gap-2">
-            <select className={filterClass} value={type} onChange={(e) => { setType(e.target.value as PettyCashTxnType | "ALL"); setPage(1); }}>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <FilterSelect
+              label="All types"
+              value={type}
+              onChange={(value) => {
+                setType(value as PettyCashTxnType | "ALL");
+                setPage(1);
+              }}
+            >
               <option value="ALL">All types</option>
               <option value="EXPENSE">Expense</option>
               <option value="REPLENISHMENT">Replenishment</option>
               <option value="REVERSAL">Reversal</option>
-            </select>
-            <select className={filterClass} value={status} onChange={(e) => { setStatus(e.target.value as PettyCashPostingStatus | "ALL"); setPage(1); }}>
+            </FilterSelect>
+            <FilterSelect
+              label="All statuses"
+              value={status}
+              onChange={(value) => {
+                setStatus(value as PettyCashPostingStatus | "ALL");
+                setPage(1);
+              }}
+            >
               <option value="ALL">All statuses</option>
               <option value="DRAFT">Draft</option>
               <option value="POSTED">Posted</option>
               <option value="REVERSED">Reversed</option>
-            </select>
-            <select className={filterClass} value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }}>
+            </FilterSelect>
+            <FilterSelect
+              label="All categories"
+              value={category}
+              onChange={(value) => {
+                setCategory(value);
+                setPage(1);
+              }}
+            >
               <option value="">All categories</option>
               {EXPENSE_CATEGORIES.map((item) => (
                 <option key={item} value={item}>{item}</option>
               ))}
-            </select>
+            </FilterSelect>
           </div>
           <div className={`${reconGlass} overflow-hidden`}>
             <div className={tableScrollClass}>
@@ -233,11 +381,11 @@ export function PettyCashPage() {
                     <tr key={row.id} className="border-t border-black/[0.04]">
                       <td className="px-4 py-2.5">{row.txnDate}</td>
                       <td className="px-4 py-2.5">{row.txnType === "EXPENSE" ? "Expense" : row.txnType === "REPLENISHMENT" ? "Replenishment" : "Reversal"}</td>
-                      <td className="px-4 py-2.5">{row.description || "—"}</td>
+                      <td className="px-4 py-2.5">{stripTechnicalIds(row.description) || "—"}</td>
                       <td className="px-4 py-2.5">{row.category || "—"}</td>
                       <td className="px-4 py-2.5 tabular-nums">{formatTzs(moneyToCents(row.amount) / 100)}</td>
                       <td className="px-4 py-2.5">{row.txnType === "EXPENSE" ? "Petty cash" : row.source === "BANK" ? "Bank" : row.source === "MAIN_CASH" ? "Main cash" : "—"}</td>
-                      <td className="px-4 py-2.5">{row.reference || "—"}</td>
+                      <td className="px-4 py-2.5">{stripTechnicalIds(row.reference) || "—"}</td>
                       <td className="px-4 py-2.5">
                         <StatusBadge
                           label={row.postingStatus === "DRAFT" ? "Draft" : row.postingStatus === "REVERSED" ? "Reversed" : "Posted"}
@@ -310,10 +458,8 @@ export function PettyCashPage() {
                 </tbody>
               </table>
             </div>
-            {rows.length === 0 ? (
-              <div className="p-6">
-                <EmptyState title="No petty cash transactions for this period" description="Record a real expense or replenishment. Empty history is not replaced with sample rows." />
-              </div>
+            {phase === "ready" && rows.length === 0 ? (
+              <p className="px-4 py-8 text-center text-[13.5px] text-slate-500">No petty cash transactions for this period.</p>
             ) : null}
           </div>
           <div className="flex items-center justify-between">
@@ -376,7 +522,9 @@ function PettyCashModal({
   const [bankAccountId, setBankAccountId] = useState(accounts[0]?.id ?? "");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
   const [recon, setRecon] = useState<{ system: string; variance: string } | null>(null);
+  const lock = useRef(false);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -386,17 +534,26 @@ function PettyCashModal({
   const after = moneyToCents(currentBalance) + (kind === "expense" ? -moneyToCents(amount) : moneyToCents(amount));
 
   async function persist(post: boolean) {
+    if (lock.current) return;
     if (kind !== "reconcile" && moneyToCents(amount) <= 0) {
       setError("Amount must be positive.");
       return;
     }
+    lock.current = true;
     setSaving(true);
+    setError("");
     if (kind === "expense") {
       const result = await savePettyCashExpenseAction({
         fundId, amount, date, category, description, reference, notes, post,
       });
+      if (!result.ok) {
+        lock.current = false;
+        setSaving(false);
+        setError(result.error);
+        return;
+      }
       setSaving(false);
-      if (!result.ok) { setError(result.error); return; }
+      setConfirmed(true);
       onSaved();
       return;
     }
@@ -404,8 +561,14 @@ function PettyCashModal({
       const result = await savePettyCashReplenishmentAction({
         fundId, amount, date, source, bankAccountId: source === "BANK" ? bankAccountId : null, reference, description, notes, post,
       });
+      if (!result.ok) {
+        lock.current = false;
+        setSaving(false);
+        setError(result.error);
+        return;
+      }
       setSaving(false);
-      if (!result.ok) { setError(result.error); return; }
+      setConfirmed(true);
       onSaved();
     }
   }
@@ -482,39 +645,52 @@ function PettyCashModal({
           <button type="button" className={secondaryButton} onClick={onClose}>Cancel</button>
           {kind === "reconcile" ? (
             <>
-              <button
-                type="button"
+              <WorkflowAction
                 className={secondaryButton}
-                disabled={saving}
-                onClick={async () => {
+                busy={saving}
+                idleLabel="Save draft"
+                successLabel="Saved ✓"
+                confirmed={Boolean(recon) && !saving}
+                onClick={() => {
+                  if (lock.current) return;
+                  lock.current = true;
                   setSaving(true);
-                  const result = await savePettyCashReconciliationAction({
+                  void savePettyCashReconciliationAction({
                     fundId, date, actualCounted: amount, varianceReason: notes, notes: "",
-                  });
-                  setSaving(false);
-                  if (!result.ok) setError(result.error);
-                  else setRecon({ system: result.system, variance: result.variance });
-                }}
-              >
-                Save draft
-              </button>
-              {canApprove ? (
-                <button
-                  type="button"
-                  className={primaryButton}
-                  disabled={saving}
-                  onClick={async () => {
-                    setSaving(true);
-                    const result = await savePettyCashReconciliationAction({
-                      fundId, date, actualCounted: amount, varianceReason: notes, notes: "", submit: true,
-                    });
+                  }).then((result) => {
+                    lock.current = false;
                     setSaving(false);
                     if (!result.ok) setError(result.error);
-                    else onSaved();
+                    else setRecon({ system: result.system, variance: result.variance });
+                  });
+                }}
+              />
+              {canApprove ? (
+                <WorkflowAction
+                  className={primaryButton}
+                  busy={saving}
+                  idleLabel="Submit count"
+                  successLabel="Reconciled ✓"
+                  confirmed={confirmed}
+                  onClick={() => {
+                    if (lock.current) return;
+                    lock.current = true;
+                    setSaving(true);
+                    void savePettyCashReconciliationAction({
+                      fundId, date, actualCounted: amount, varianceReason: notes, notes: "", submit: true,
+                    }).then((result) => {
+                      if (!result.ok) {
+                        lock.current = false;
+                        setSaving(false);
+                        setError(result.error);
+                        return;
+                      }
+                      setSaving(false);
+                      setConfirmed(true);
+                      onSaved();
+                    });
                   }}
-                >
-                  Submit count
-                </button>
+                />
               ) : null}
             </>
           ) : step === "form" ? (
@@ -531,11 +707,23 @@ function PettyCashModal({
             </button>
           ) : (
             <>
-              <button type="button" className={secondaryButton} disabled={saving} onClick={() => void persist(false)}>{saving ? "Saving…" : "Save draft"}</button>
+              <WorkflowAction
+                className={secondaryButton}
+                busy={saving}
+                idleLabel="Save draft"
+                successLabel="Saved ✓"
+                confirmed={confirmed}
+                onClick={() => void persist(false)}
+              />
               {canApprove && isOwner ? (
-                <button type="button" className={primaryButton} disabled={saving} onClick={() => void persist(true)}>
-                  {kind === "expense" ? "Post expense" : "Post replenishment"}
-                </button>
+                <WorkflowAction
+                  className={primaryButton}
+                  busy={saving}
+                  idleLabel={kind === "expense" ? "Post expense" : "Post replenishment"}
+                  successLabel="Posted ✓"
+                  confirmed={confirmed}
+                  onClick={() => void persist(true)}
+                />
               ) : null}
             </>
           )}

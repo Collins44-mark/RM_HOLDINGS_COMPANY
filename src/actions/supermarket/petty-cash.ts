@@ -80,6 +80,7 @@ export async function getPettyCashWorkspaceAction(input: {
   page?: number;
 }) {
   try {
+    const user = await requireAuth();
     const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.petty_cash.view");
     const page = Math.max(1, input.page ?? 1);
     const pageSize = 50;
@@ -95,91 +96,96 @@ export async function getPettyCashWorkspaceAction(input: {
     if (fundRes.error) mapDbError(fundRes.error);
 
     const fundId = fundRes.data?.id ? String(fundRes.data.id) : null;
-    let current = 0;
+    let listQuery = fundId
+      ? supabase
+          .from("sm_petty_cash_transactions")
+          .select(
+            "id, fund_id, txn_date, txn_type, category, description, amount, source, bank_account_id, reference, posting_status, created_by",
+            { count: "exact" },
+          )
+          .eq("fund_id", fundId)
+          .gte("txn_date", input.from)
+          .lte("txn_date", input.to)
+          .order("txn_date", { ascending: false })
+          .range(from, to)
+      : null;
+    if (listQuery && input.type && input.type !== "ALL") listQuery = listQuery.eq("txn_type", input.type);
+    if (listQuery && input.status && input.status !== "ALL") listQuery = listQuery.eq("posting_status", input.status);
+    if (listQuery && input.category) listQuery = listQuery.eq("category", input.category);
+
+    const [balanceRes, postedRes, reconRes, listRes, accountsRes, sod] = await Promise.all([
+      fundId
+        ? supabase.rpc("sm_petty_cash_balance", { p_fund_id: fundId })
+        : Promise.resolve({ data: 0 as unknown, error: null }),
+      fundId
+        ? supabase
+            .from("sm_petty_cash_transactions")
+            .select("txn_type, amount")
+            .eq("fund_id", fundId)
+            .eq("posting_status", "POSTED")
+            .gte("txn_date", input.from)
+            .lte("txn_date", input.to)
+        : Promise.resolve({ data: [] as Array<{ txn_type: string; amount: unknown }>, error: null }),
+      fundId
+        ? supabase
+            .from("sm_petty_cash_reconciliations")
+            .select("id, variance, status, reconciliation_date, prepared_by")
+            .eq("fund_id", fundId)
+            .order("reconciliation_date", { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      listQuery ?? Promise.resolve({ data: [] as Array<Record<string, unknown>>, count: 0, error: null }),
+      supabase
+        .from("sm_bank_accounts")
+        .select("id, bank_name, account_name")
+        .eq("business_unit_id", businessUnitId)
+        .eq("is_active", true)
+        .order("bank_name"),
+      loadSodControls(supabase, businessUnitId),
+    ]);
+    if (balanceRes.error) mapDbError(balanceRes.error);
+    if (postedRes.error) mapDbError(postedRes.error);
+    if (reconRes.error) mapDbError(reconRes.error);
+    if (listRes.error) mapDbError(listRes.error);
+    if (accountsRes.error) mapDbError(accountsRes.error);
+
+    const current = moneyToCents(balanceRes.data);
     let spent = 0;
     let replenished = 0;
-    if (fundId) {
-      const { data: balance, error: balanceError } = await supabase.rpc("sm_petty_cash_balance", {
-        p_fund_id: fundId,
-      });
-      if (balanceError) mapDbError(balanceError);
-      current = moneyToCents(balance);
-      const postedRes = await supabase
-        .from("sm_petty_cash_transactions")
-        .select("txn_type, amount")
-        .eq("fund_id", fundId)
-        .eq("posting_status", "POSTED")
-        .gte("txn_date", input.from)
-        .lte("txn_date", input.to);
-      if (postedRes.error) mapDbError(postedRes.error);
-      for (const row of postedRes.data ?? []) {
-        const amount = moneyToCents(row.amount);
-        if (row.txn_type === "EXPENSE") spent = addCents(spent, amount);
-        if (row.txn_type === "REPLENISHMENT") replenished = addCents(replenished, amount);
-      }
+    for (const row of postedRes.data ?? []) {
+      const amount = moneyToCents(row.amount);
+      if (row.txn_type === "EXPENSE") spent = addCents(spent, amount);
+      if (row.txn_type === "REPLENISHMENT") replenished = addCents(replenished, amount);
     }
 
-    const reconRes = fundId
-      ? await supabase
-          .from("sm_petty_cash_reconciliations")
-          .select("id, variance, status, reconciliation_date, prepared_by")
-          .eq("fund_id", fundId)
-          .order("reconciliation_date", { ascending: false })
-          .limit(1)
-          .maybeSingle()
-      : { data: null, error: null };
-    if (reconRes.error) mapDbError(reconRes.error);
-
-    let txns: PettyCashTxn[] = [];
-    let total = 0;
-    if (fundId) {
-      let query = supabase
-        .from("sm_petty_cash_transactions")
-        .select(
-          "id, fund_id, txn_date, txn_type, category, description, amount, source, bank_account_id, reference, posting_status, created_by",
-          { count: "exact" },
-        )
-        .eq("fund_id", fundId)
-        .gte("txn_date", input.from)
-        .lte("txn_date", input.to)
-        .order("txn_date", { ascending: false })
-        .range(from, to);
-      if (input.type && input.type !== "ALL") query = query.eq("txn_type", input.type);
-      if (input.status && input.status !== "ALL") query = query.eq("posting_status", input.status);
-      if (input.category) query = query.eq("category", input.category);
-      const listRes = await query;
-      if (listRes.error) mapDbError(listRes.error);
-      total = listRes.count ?? 0;
-      const ids = [...new Set((listRes.data ?? []).map((row) => String(row.created_by || "")).filter(Boolean))];
-      const names = new Map<string, string>();
-      if (ids.length) {
-        const { data: profiles } = await supabase.from("profiles").select("id, full_name").in("id", ids);
-        for (const profile of profiles ?? []) names.set(String(profile.id), String(profile.full_name || ""));
-      }
-      txns = (listRes.data ?? []).map((row) => ({
-        id: String(row.id),
-        fundId: String(row.fund_id),
-        txnDate: String(row.txn_date),
-        txnType: asType(row.txn_type),
-        category: String(row.category ?? ""),
-        description: String(row.description ?? ""),
-        amount: centsToMoney(moneyToCents(row.amount)),
-        source: (String(row.source || "NONE") as PettyCashSource) || "NONE",
-        bankAccountId: row.bank_account_id ? String(row.bank_account_id) : null,
-        reference: String(row.reference ?? ""),
-        postingStatus: (String(row.posting_status) as PettyCashPostingStatus) || "DRAFT",
-        createdBy: row.created_by ? String(row.created_by) : null,
-        createdByName: row.created_by ? names.get(String(row.created_by)) || "Staff" : "Staff",
-      }));
+    const listRows = (listRes.data ?? []) as Array<Record<string, unknown>>;
+    const total = "count" in listRes && typeof listRes.count === "number" ? listRes.count : listRows.length;
+    const ids = [...new Set(listRows.map((row) => String(row.created_by || "")).filter(Boolean))];
+    const names = new Map<string, string>();
+    if (ids.length) {
+      const { data: profiles } = await supabase.from("profiles").select("id, full_name").in("id", ids);
+      for (const profile of profiles ?? []) names.set(String(profile.id), String(profile.full_name || ""));
     }
+    const txns: PettyCashTxn[] = listRows.map((row) => ({
+      id: String(row.id),
+      fundId: String(row.fund_id),
+      txnDate: String(row.txn_date),
+      txnType: asType(row.txn_type),
+      category: String(row.category ?? ""),
+      description: String(row.description ?? ""),
+      amount: centsToMoney(moneyToCents(row.amount)),
+      source: (String(row.source || "NONE") as PettyCashSource) || "NONE",
+      bankAccountId: row.bank_account_id ? String(row.bank_account_id) : null,
+      reference: String(row.reference ?? ""),
+      postingStatus: (String(row.posting_status) as PettyCashPostingStatus) || "DRAFT",
+      createdBy: row.created_by ? String(row.created_by) : null,
+      createdByName: row.created_by ? names.get(String(row.created_by)) || "Staff" : "Staff",
+    }));
 
-    const accountsRes = await supabase
-      .from("sm_bank_accounts")
-      .select("id, bank_name, account_name, account_reference, opening_balance, is_active")
-      .eq("business_unit_id", businessUnitId)
-      .eq("is_active", true)
-      .order("bank_name");
-    if (accountsRes.error) mapDbError(accountsRes.error);
+    const owner = isOwnerRole(user.roleCode);
+    const has = (code: string) =>
+      owner || user.permissions.some((matcher) => matcher !== "*" && matchPermission(code, matcher));
 
     return {
       ok: true as const,
@@ -215,7 +221,14 @@ export async function getPettyCashWorkspaceAction(input: {
             preparedBy: reconRes.data.prepared_by ? String(reconRes.data.prepared_by) : null,
           }
         : null,
-      capabilities: await caps(),
+      capabilities: {
+        canView: has("supermarket.petty_cash.view"),
+        canCreate: has("supermarket.petty_cash.create"),
+        canApprove: has("supermarket.petty_cash.approve"),
+        isOwner: owner,
+        userId: user.id,
+        sodPettyCash: sodControlEnabled(sod, "pettyCash"),
+      },
     };
   } catch (error) {
     return { ok: false as const, error: actionErrorMessage(error) };
