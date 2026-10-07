@@ -72,7 +72,8 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "admissions", actions: ["view", "manage"] },
       { resource: "parents", actions: ["view", "manage"] },
       { resource: "classes", actions: ["view", "manage"] },
-      { resource: "teachers", actions: [...CRUD] },
+      { resource: "staff", actions: ["view", "manage"] },
+      { resource: "teachers", actions: ["view", "manage"] },
       { resource: "subjects", actions: [...CRUD] },
       { resource: "attendance", actions: ["view", "create", "edit"] },
       { resource: "exams", actions: [...CRUD] },
@@ -172,7 +173,9 @@ export function isOperablePermission(code: string) {
     code === "school.students.view" ||
     code === "school.students.manage" ||
     code === "school.parents.view" ||
-    code === "school.parents.manage"
+    code === "school.parents.manage" ||
+    code === "school.staff.view" ||
+    code === "school.staff.manage"
   );
 }
 
@@ -348,6 +351,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
     permissionMatchers: [
       "school.students.view",
       "school.classes.view",
+      "school.staff.view",
       "school.subjects.view",
       "school.attendance.*",
       "school.exams.*",

@@ -69,6 +69,8 @@ const ROUTE_PERMISSION_RULES: RoutePermissionRule[] = [
   { prefix: "/school/admissions", any: ["school.admissions.view", "school.admissions.manage"] },
   { prefix: "/school/students", any: ["school.students.view", "school.students.manage"] },
   { prefix: "/school/parents", any: ["school.parents.view", "school.parents.manage"] },
+  { prefix: "/school/staff", any: ["school.staff.view", "school.staff.manage"] },
+  { prefix: "/school/teachers", any: ["school.staff.view", "school.staff.manage"] },
 ];
 
 const SORTED_RULES = [...ROUTE_PERMISSION_RULES].sort((a, b) => b.prefix.length - a.prefix.length);

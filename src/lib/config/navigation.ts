@@ -59,7 +59,7 @@ export const SCHOOL_NAV: NavItem[] = [
   { href: "/school/admissions", label: "Admissions", icon: "user-plus" },
   { href: "/school/parents", label: "Parents / Guardians", icon: "users-round" },
   { href: "/school/classes", label: "Classes", icon: "book" },
-  { href: "/school/teachers", label: "Teachers", icon: "users" },
+  { href: "/school/staff", label: "Staff", icon: "users", alsoActive: ["/school/teachers"] },
   { href: "/school/subjects", label: "Subjects", icon: "book" },
   { href: "/school/attendance", label: "Attendance", icon: "clipboard" },
   { href: "/school/exams", label: "Exams & Results", icon: "reports" },

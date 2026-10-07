@@ -341,10 +341,33 @@ export async function getSchoolClassDetailAction(
       const profiles = await supabase.from("profiles").select("id, full_name").in("id", teacherIds);
       for (const row of profiles.data ?? []) names.set(String(row.id), String(row.full_name));
     }
+    const streamIds = (streamsRes.data ?? []).map((row) => String(row.id));
+    const assignmentNames = new Map<string, string>();
+    if (streamIds.length) {
+      const assigns = await supabase
+        .from("sch_staff_assignments")
+        .select("stream_id, sch_staff(first_name, last_name)")
+        .eq("business_unit_id", businessUnitId)
+        .eq("assignment_type", "CLASS_TEACHER")
+        .eq("is_active", true)
+        .eq("is_primary", true)
+        .in("stream_id", streamIds);
+      if (!assigns.error) {
+        for (const row of assigns.data ?? []) {
+          const person = row.sch_staff as { first_name?: string; last_name?: string } | null;
+          const label = [String(person?.first_name ?? "").trim(), String(person?.last_name ?? "").trim()].filter(Boolean).join(" ");
+          if (row.stream_id && label) assignmentNames.set(String(row.stream_id), label);
+        }
+      }
+    }
     const streams = (streamsRes.data ?? [])
       .filter((row) => allowsStream(scope, String(row.id)))
       .map((row) =>
-        mapStream(row, row.class_teacher_user_id ? names.get(String(row.class_teacher_user_id)) ?? null : null),
+        mapStream(
+          row,
+          assignmentNames.get(String(row.id)) ??
+            (row.class_teacher_user_id ? names.get(String(row.class_teacher_user_id)) ?? null : null),
+        ),
       );
     return {
       ok: true as const,
