@@ -71,7 +71,7 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "students", actions: [...CRUD] },
       { resource: "admissions", actions: [...CRUD] },
       { resource: "parents", actions: [...CRUD] },
-      { resource: "classes", actions: [...CRUD] },
+      { resource: "classes", actions: ["view", "manage"] },
       { resource: "teachers", actions: [...CRUD] },
       { resource: "subjects", actions: [...CRUD] },
       { resource: "attendance", actions: ["view", "create", "edit"] },
@@ -164,7 +164,9 @@ export function isOperablePermission(code: string) {
     code.startsWith("platform.") ||
     code.startsWith("supermarket.") ||
     code === "school.settings.view" ||
-    code === "school.settings.manage"
+    code === "school.settings.manage" ||
+    code === "school.classes.view" ||
+    code === "school.classes.manage"
   );
 }
 

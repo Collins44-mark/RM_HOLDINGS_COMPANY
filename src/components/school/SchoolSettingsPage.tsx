@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import {
   getSchoolSettingsWorkspaceAction,
   saveAcademicYearAction,
   saveAttendanceSettingsAction,
   saveAttendanceStatusAction,
-  saveClassLevelAction,
   saveFeeCategoryAction,
   saveGradingBandAction,
   saveSchoolProfileAction,
@@ -16,7 +16,6 @@ import {
   type AcademicYearRow,
   type AttendanceSettings,
   type AttendanceStatusRow,
-  type ClassLevelRow,
   type FeeCategoryRow,
   type GradingBandRow,
   type SchoolProfile,
@@ -37,7 +36,7 @@ import {
 
 type Tab = "general" | "academic" | "fees" | "attendance" | "transport";
 type LoadPhase = "loading" | "ready" | "error";
-type DrawerKind = "year" | "term" | "class" | "grade" | "fee" | "status" | null;
+type DrawerKind = "year" | "term" | "grade" | "fee" | "status" | null;
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "general", label: "General" },
@@ -115,7 +114,6 @@ export function SchoolSettingsPage() {
   });
   const [years, setYears] = useState<AcademicYearRow[]>([]);
   const [terms, setTerms] = useState<TermRow[]>([]);
-  const [classes, setClasses] = useState<ClassLevelRow[]>([]);
   const [bands, setBands] = useState<GradingBandRow[]>([]);
   const [fees, setFees] = useState<FeeCategoryRow[]>([]);
   const [attendance, setAttendance] = useState<AttendanceSettings>({
@@ -158,7 +156,6 @@ export function SchoolSettingsPage() {
         setEditingProfile(false);
         setYears(result.years);
         setTerms(result.terms);
-        setClasses(result.classes);
         setBands(result.gradingBands);
         setFees(result.fees);
         setAttendance(result.attendance);
@@ -351,16 +348,15 @@ export function SchoolSettingsPage() {
               onEdit: canManage ? () => openDrawer("term", row.id) : undefined,
             }))}
           />
-          <ConfigList
-            title="Classes / Grades"
-            empty={phase === "ready" ? "No classes configured yet." : ""}
-            action={canManage ? { label: "+ Add class", onClick: () => openDrawer("class") } : null}
-            rows={classes.map((row) => ({
-              id: row.id,
-              cells: [row.name, row.code, String(row.sortOrder), row.isActive ? "Active" : "Inactive"],
-              onEdit: canManage ? () => openDrawer("class", row.id) : undefined,
-            }))}
-          />
+          <section className={`${glassPanel} flex flex-wrap items-center justify-between gap-3`}>
+            <div>
+              <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Levels and classes</h2>
+              <p className="mt-1 text-[13px] text-slate-500">Academic structure is managed in Classes.</p>
+            </div>
+            <Link href="/school/classes" className={secondaryButton}>
+              Open Classes
+            </Link>
+          </section>
           <ConfigList
             title="Grading"
             empty={phase === "ready" ? "No grading rules configured yet." : ""}
@@ -494,7 +490,6 @@ export function SchoolSettingsPage() {
           editId={editId}
           years={years}
           terms={terms}
-          classes={classes}
           bands={bands}
           fees={fees}
           statuses={statuses}
@@ -574,7 +569,6 @@ function SettingsRecordDrawer({
   editId,
   years,
   terms,
-  classes,
   bands,
   fees,
   statuses,
@@ -586,7 +580,6 @@ function SettingsRecordDrawer({
   editId: string | null;
   years: AcademicYearRow[];
   terms: TermRow[];
-  classes: ClassLevelRow[];
   bands: GradingBandRow[];
   fees: FeeCategoryRow[];
   statuses: AttendanceStatusRow[];
@@ -599,18 +592,17 @@ function SettingsRecordDrawer({
   const [confirmed, setConfirmed] = useState(false);
   const year = years.find((row) => row.id === editId);
   const term = terms.find((row) => row.id === editId);
-  const klass = classes.find((row) => row.id === editId);
   const band = bands.find((row) => row.id === editId);
   const fee = fees.find((row) => row.id === editId);
   const status = statuses.find((row) => row.id === editId);
 
-  const [name, setName] = useState(year?.name ?? term?.name ?? klass?.name ?? fee?.name ?? status?.name ?? band?.grade ?? "");
-  const [code, setCode] = useState(klass?.code ?? fee?.code ?? status?.code ?? "");
+  const [name, setName] = useState(year?.name ?? term?.name ?? fee?.name ?? status?.name ?? band?.grade ?? "");
+  const [code, setCode] = useState(fee?.code ?? status?.code ?? "");
   const [startDate, setStartDate] = useState(year?.startDate ?? term?.startDate ?? "");
   const [endDate, setEndDate] = useState(year?.endDate ?? term?.endDate ?? "");
-  const [sortOrder, setSortOrder] = useState(String(term?.sortOrder ?? klass?.sortOrder ?? band?.sortOrder ?? status?.sortOrder ?? 1));
+  const [sortOrder, setSortOrder] = useState(String(term?.sortOrder ?? band?.sortOrder ?? status?.sortOrder ?? 1));
   const [isCurrent, setIsCurrent] = useState(year?.isCurrent ?? false);
-  const [isActive, setIsActive] = useState(year?.isActive ?? term?.isActive ?? klass?.isActive ?? band?.isActive ?? fee?.isActive ?? status?.isActive ?? true);
+  const [isActive, setIsActive] = useState(year?.isActive ?? term?.isActive ?? band?.isActive ?? fee?.isActive ?? status?.isActive ?? true);
   const [academicYearId, setAcademicYearId] = useState(term?.academicYearId ?? years.find((row) => row.isCurrent)?.id ?? years[0]?.id ?? "");
   const [minMark, setMinMark] = useState(band ? String(band.minMark) : "");
   const [maxMark, setMaxMark] = useState(band ? String(band.maxMark) : "");
@@ -622,7 +614,6 @@ function SettingsRecordDrawer({
   const titles: Record<Exclude<DrawerKind, null>, string> = {
     year: editId ? "Edit academic year" : "Add academic year",
     term: editId ? "Edit term" : "Add term",
-    class: editId ? "Edit class" : "Add class",
     grade: editId ? "Edit grade" : "Add grade",
     fee: editId ? "Edit fee category" : "Add fee category",
     status: editId ? "Edit attendance status" : "Add attendance status",
@@ -650,14 +641,6 @@ function SettingsRecordDrawer({
         sortOrder: Number(sortOrder),
         startDate,
         endDate,
-        isActive,
-      });
-    } else if (kind === "class") {
-      result = await saveClassLevelAction({
-        id: editId ?? undefined,
-        name,
-        code,
-        sortOrder: Number(sortOrder),
         isActive,
       });
     } else if (kind === "grade") {
@@ -727,7 +710,7 @@ function SettingsRecordDrawer({
         <Field label={kind === "grade" ? "Grade" : kind === "status" ? "Status name" : "Name"}>
           <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        {kind === "class" || kind === "fee" || kind === "status" ? (
+        {kind === "fee" || kind === "status" ? (
           <Field label="Code">
             <input className={inputClass} value={code} onChange={(e) => setCode(e.target.value)} />
           </Field>
@@ -773,7 +756,7 @@ function SettingsRecordDrawer({
             </Field>
           </>
         ) : null}
-        {kind === "term" || kind === "class" || kind === "grade" || kind === "status" ? (
+        {kind === "term" || kind === "grade" || kind === "status" ? (
           <Field label="Order">
             <input className={inputClass} value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
           </Field>

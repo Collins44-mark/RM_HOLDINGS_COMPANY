@@ -52,14 +52,6 @@ export type TermRow = {
   isActive: boolean;
 };
 
-export type ClassLevelRow = {
-  id: string;
-  name: string;
-  code: string;
-  sortOrder: number;
-  isActive: boolean;
-};
-
 export type GradingBandRow = {
   id: string;
   scaleId: string;
@@ -181,7 +173,6 @@ export async function getSchoolSettingsWorkspaceAction() {
       profileRes,
       yearsRes,
       termsRes,
-      classesRes,
       scalesRes,
       bandsRes,
       feesRes,
@@ -199,11 +190,6 @@ export async function getSchoolSettingsWorkspaceAction() {
       supabase
         .from("sch_terms")
         .select("id, academic_year_id, name, sort_order, start_date, end_date, is_active")
-        .eq("business_unit_id", businessUnitId)
-        .order("sort_order"),
-      supabase
-        .from("sch_class_levels")
-        .select("id, name, code, sort_order, is_active")
         .eq("business_unit_id", businessUnitId)
         .order("sort_order"),
       supabase
@@ -250,10 +236,6 @@ export async function getSchoolSettingsWorkspaceAction() {
       yearsRes.error && !isSchoolUnconfiguredRead(yearsRes.error) ? mapSchoolDbError(yearsRes.error, "load") : (yearsRes.data ?? []);
     const termsRows =
       termsRes.error && !isSchoolUnconfiguredRead(termsRes.error) ? mapSchoolDbError(termsRes.error, "load") : (termsRes.data ?? []);
-    const classRows =
-      classesRes.error && !isSchoolUnconfiguredRead(classesRes.error)
-        ? mapSchoolDbError(classesRes.error, "load")
-        : (classesRes.data ?? []);
     const scaleRow =
       scalesRes.error && !isSchoolUnconfiguredRead(scalesRes.error) ? mapSchoolDbError(scalesRes.error, "load") : scalesRes.data;
     const bandRows =
@@ -308,13 +290,6 @@ export async function getSchoolSettingsWorkspaceAction() {
         sortOrder: Number(row.sort_order),
         startDate: String(row.start_date),
         endDate: String(row.end_date),
-        isActive: Boolean(row.is_active),
-      })),
-      classes: classRows.map((row) => ({
-        id: String(row.id),
-        name: String(row.name),
-        code: String(row.code),
-        sortOrder: Number(row.sort_order),
         isActive: Boolean(row.is_active),
       })),
       gradingScaleId: scaleRow?.id ? String(scaleRow.id) : null,
@@ -501,41 +476,6 @@ export async function saveTermAction(input: {
       action: input.id ? "school.term_updated" : "school.term_created",
       description: input.id ? `Term updated · ${name}` : `Term created · ${name}`,
       entityType: "sch_terms",
-      entityId: input.id ?? null,
-      businessUnitId,
-    });
-    return { ok: true as const };
-  } catch (error) {
-    return { ok: false as const, error: schoolActionError(error) };
-  }
-}
-
-export async function saveClassLevelAction(input: {
-  id?: string;
-  name: string;
-  code: string;
-  sortOrder: number;
-  isActive: boolean;
-}) {
-  try {
-    const { supabase, businessUnitId } = await requireSchoolPermission(MANAGE);
-    const name = requiredName(input.name, "Class");
-    const code = requiredName(input.code, "Code", 40);
-    const row = {
-      business_unit_id: businessUnitId,
-      name,
-      code,
-      sort_order: sortValue(input.sortOrder),
-      is_active: Boolean(input.isActive),
-    };
-    const result = input.id
-      ? await supabase.from("sch_class_levels").update(row).eq("id", input.id).eq("business_unit_id", businessUnitId)
-      : await supabase.from("sch_class_levels").insert(row);
-    if (result.error) mapSchoolDbError(result.error);
-    await audit({
-      action: input.id ? "school.class_updated" : "school.class_created",
-      description: input.id ? `Class configuration updated · ${name}` : `Class configuration created · ${name}`,
-      entityType: "sch_class_levels",
       entityId: input.id ?? null,
       businessUnitId,
     });

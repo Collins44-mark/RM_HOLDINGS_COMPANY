@@ -130,6 +130,12 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "petty_cash.transaction.reversed": "Petty cash transaction reversed",
   "petty_cash.reconciled": "Petty cash reconciled",
   "petty_cash.adjustment.approved": "Petty cash adjustment approved",
+  "school.level_created": "School level created",
+  "school.level_updated": "School level updated",
+  "school.level_archived": "School level archived",
+  "school.class_created": "School class created",
+  "school.class_updated": "School class updated",
+  "school.class_archived": "School class archived",
 };
 
 export const AUDIT_MODULE_LABELS: Record<string, string> = {
@@ -139,6 +145,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   business_units: "Business Units",
   reports: "Reports",
   supermarket: "Supermarket",
+  school: "School",
   profile: "Profile",
 };
 
