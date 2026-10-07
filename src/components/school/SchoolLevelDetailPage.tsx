@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, GraduationCap } from "lucide-react";
 import {
   archiveSchoolClassAction,
+  getSchoolLevelDetailAction,
   saveSchoolClassAction,
   type SchoolClassRow,
   type SchoolLevelRow,
@@ -20,6 +21,8 @@ import {
   tableScrollClass,
 } from "@/components/supermarket/purchasing-ui";
 import { SchoolConfirmDialog, SchoolField, SchoolGlassModal, SchoolIconWell, SchoolWorkflowButton } from "@/components/school/school-ui";
+import { SchoolPagination, replaceSchoolPageParam } from "@/components/school/SchoolPagination";
+import type { SchoolListFilter, SchoolPageMeta } from "@/lib/school/pagination";
 
 function classCountLabel(count: number) {
   return `${count} ${count === 1 ? "class" : "classes"}`;
@@ -32,17 +35,20 @@ function streamCountLabel(count: number) {
 export function SchoolLevelDetailPage({
   level: initialLevel,
   classes: initialClasses,
+  page: initialPage,
   canManage,
   error,
 }: {
   level: SchoolLevelRow | null;
   classes: SchoolClassRow[];
+  page: SchoolPageMeta;
   canManage: boolean;
   error: string | null;
 }) {
-  const level = initialLevel;
+  const [level, setLevel] = useState(initialLevel);
   const [classes, setClasses] = useState(initialClasses);
-  const [filter, setFilter] = useState<"active" | "archived" | "all">("active");
+  const [page, setPage] = useState(initialPage);
+  const [filter, setFilter] = useState<SchoolListFilter>("active");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
@@ -51,15 +57,22 @@ export function SchoolLevelDetailPage({
   const [confirmed, setConfirmed] = useState(false);
   const lock = useRef(false);
   const editing = classes.find((row) => row.id === editId) ?? null;
-  const visible = useMemo(
-    () =>
-      classes
-        .filter((row) => (filter === "active" ? row.isActive : filter === "archived" ? !row.isActive : true))
-        .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)),
-    [classes, filter],
-  );
-  const activeCount = classes.filter((row) => row.isActive).length;
   const nextOrder = Math.max(0, ...classes.map((row) => row.sortOrder)) + 1;
+
+  function load(nextPage: number, nextFilter: SchoolListFilter) {
+    if (!level) return;
+    void getSchoolLevelDetailAction(level.id, { page: nextPage, status: nextFilter }).then((result) => {
+      if (!result.ok) {
+        setSaveError(result.error);
+        return;
+      }
+      setLevel(result.level);
+      setClasses(result.classes);
+      setPage(result.page);
+      setFilter(nextFilter);
+      replaceSchoolPageParam(result.page.page);
+    });
+  }
 
   if (!level) {
     return (
@@ -84,7 +97,7 @@ export function SchoolLevelDetailPage({
           <SchoolIconWell icon={GraduationCap} />
           <div>
             <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">{level.name}</h1>
-            <p className="mt-1 text-[13.5px] text-slate-500">{classCountLabel(activeCount)}</p>
+            <p className="mt-1 text-[13.5px] text-slate-500">{classCountLabel(level.classCount)}</p>
           </div>
         </div>
         {canManage ? (
@@ -119,7 +132,7 @@ export function SchoolLevelDetailPage({
               <button
                 key={id}
                 type="button"
-                onClick={() => setFilter(id)}
+                onClick={() => load(1, id)}
                 className={`h-8 rounded-full px-3.5 text-[12.5px] font-semibold transition duration-200 ${
                   filter === id ? "bg-white text-navy shadow-[0_4px_12px_rgba(15,35,64,0.08)]" : "text-slate-500 hover:text-navy"
                 }`}
@@ -129,7 +142,7 @@ export function SchoolLevelDetailPage({
             ))}
           </div>
         </div>
-        {visible.length === 0 ? (
+        {classes.length === 0 ? (
           <div className="py-6">
             <p className="text-[13.5px] text-slate-500">
               {filter === "archived" ? "No archived classes for this level." : "No classes configured for this level yet."}
@@ -161,10 +174,10 @@ export function SchoolLevelDetailPage({
                 </tr>
               </thead>
               <tbody>
-                {visible.map((row) => (
+                {classes.map((row) => (
                   <tr key={row.id} className="border-t border-black/[0.04]">
                     <td className="px-4 py-2.5">
-                      <Link href={`/school/classes/${level.id}/${row.id}`} className="block min-w-0">
+                      <Link href={`/school/classes/${level.id}/${row.id}`} prefetch className="block min-w-0">
                         <span className="font-medium text-navy">{row.name}</span>
                         <span className="mt-0.5 block text-[12.5px] text-slate-400">{streamCountLabel(row.streamCount)}</span>
                       </Link>
@@ -198,6 +211,9 @@ export function SchoolLevelDetailPage({
             </table>
           </div>
         )}
+        <div className="px-4">
+          <SchoolPagination page={page.page} total={page.total} onPage={(next) => load(next, filter)} />
+        </div>
       </section>
 
       {modal && level ? (
@@ -233,19 +249,19 @@ export function SchoolLevelDetailPage({
                 return;
               }
               setConfirmed(true);
-              setClasses((current) => {
-                const exists = current.some((row) => row.id === result.classRow.id);
-                return exists
-                  ? current.map((row) =>
-                      row.id === result.classRow.id ? { ...result.classRow, streamCount: row.streamCount } : row,
-                    )
-                  : [...current, result.classRow];
-              });
-              window.setTimeout(() => {
-                setModal(null);
-                setEditId(null);
-                setConfirmed(false);
-              }, 180);
+              const exists = classes.some((row) => row.id === result.classRow.id);
+              if (exists) {
+                setClasses((current) =>
+                  current.map((row) =>
+                    row.id === result.classRow.id ? { ...result.classRow, streamCount: row.streamCount } : row,
+                  ),
+                );
+              } else {
+                load(1, filter);
+              }
+              setModal(null);
+              setEditId(null);
+              setConfirmed(false);
             });
           }}
         />

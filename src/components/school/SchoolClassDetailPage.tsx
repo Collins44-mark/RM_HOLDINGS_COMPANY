@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Layers } from "lucide-react";
 import {
   archiveSchoolStreamAction,
+  getSchoolClassDetailAction,
   saveSchoolStreamAction,
   type SchoolClassRow,
   type SchoolLevelRow,
@@ -21,6 +22,8 @@ import {
   tableScrollClass,
 } from "@/components/supermarket/purchasing-ui";
 import { SchoolConfirmDialog, SchoolField, SchoolGlassModal, SchoolIconWell, SchoolWorkflowButton } from "@/components/school/school-ui";
+import { SchoolPagination, replaceSchoolPageParam } from "@/components/school/SchoolPagination";
+import type { SchoolListFilter, SchoolPageMeta } from "@/lib/school/pagination";
 
 function streamCountLabel(count: number) {
   return `${count} ${count === 1 ? "stream" : "streams"}`;
@@ -30,17 +33,21 @@ export function SchoolClassDetailPage({
   level,
   classRow: initialClass,
   streams: initialStreams,
+  page: initialPage,
   canManage,
   error,
 }: {
   level: SchoolLevelRow | null;
   classRow: SchoolClassRow | null;
   streams: SchoolStreamRow[];
+  page: SchoolPageMeta;
   canManage: boolean;
   error: string | null;
 }) {
+  const [classRow, setClassRow] = useState(initialClass);
   const [streams, setStreams] = useState(initialStreams);
-  const [filter, setFilter] = useState<"active" | "archived" | "all">("active");
+  const [page, setPage] = useState(initialPage);
+  const [filter, setFilter] = useState<SchoolListFilter>("active");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
@@ -49,17 +56,24 @@ export function SchoolClassDetailPage({
   const [confirmed, setConfirmed] = useState(false);
   const lock = useRef(false);
   const editing = streams.find((row) => row.id === editId) ?? null;
-  const visible = useMemo(
-    () =>
-      streams
-        .filter((row) => (filter === "active" ? row.isActive : filter === "archived" ? !row.isActive : true))
-        .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)),
-    [filter, streams],
-  );
-  const activeCount = streams.filter((row) => row.isActive).length;
   const nextOrder = Math.max(0, ...streams.map((row) => row.sortOrder)) + 1;
 
-  if (!level || !initialClass) {
+  function load(nextPage: number, nextFilter: SchoolListFilter) {
+    if (!level || !classRow) return;
+    void getSchoolClassDetailAction(level.id, classRow.id, { page: nextPage, status: nextFilter }).then((result) => {
+      if (!result.ok) {
+        setSaveError(result.error);
+        return;
+      }
+      setClassRow(result.classRow);
+      setStreams(result.streams);
+      setPage(result.page);
+      setFilter(nextFilter);
+      replaceSchoolPageParam(result.page.page);
+    });
+  }
+
+  if (!level || !classRow) {
     return (
       <div className="min-w-0 max-w-full space-y-4 pb-10">
         <Link href="/school/classes" className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 transition duration-200 hover:text-navy">
@@ -84,8 +98,9 @@ export function SchoolClassDetailPage({
         <div className="flex items-start gap-3">
           <SchoolIconWell icon={Layers} />
           <div>
-            <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">{initialClass.name}</h1>
-            <p className="mt-1 text-[13.5px] text-slate-500">{streamCountLabel(activeCount)}</p>
+            <p className="text-[12.5px] font-medium uppercase tracking-[0.08em] text-slate-400">{level.name}</p>
+            <h1 className="mt-1 text-[26px] font-semibold tracking-[-0.045em] text-navy">{classRow.name}</h1>
+            <p className="mt-1 text-[13.5px] text-slate-500">{streamCountLabel(classRow.streamCount)}</p>
           </div>
         </div>
         {canManage ? (
@@ -120,7 +135,7 @@ export function SchoolClassDetailPage({
               <button
                 key={id}
                 type="button"
-                onClick={() => setFilter(id)}
+                onClick={() => load(1, id)}
                 className={`h-8 rounded-full px-3.5 text-[12.5px] font-semibold transition duration-200 ${
                   filter === id ? "bg-white text-navy shadow-[0_4px_12px_rgba(15,35,64,0.08)]" : "text-slate-500 hover:text-navy"
                 }`}
@@ -130,25 +145,11 @@ export function SchoolClassDetailPage({
             ))}
           </div>
         </div>
-        {visible.length === 0 ? (
+        {streams.length === 0 ? (
           <div className="py-6">
             <p className="text-[13.5px] text-slate-500">
               {filter === "archived" ? "No archived streams for this class." : "No streams configured for this class yet."}
             </p>
-            {canManage && filter !== "archived" ? (
-              <button
-                type="button"
-                className={`${primaryButton} mt-3`}
-                onClick={() => {
-                  setEditId(null);
-                  setConfirmed(false);
-                  setSaveError(null);
-                  setModal("create");
-                }}
-              >
-                + Add Stream
-              </button>
-            ) : null}
           </div>
         ) : (
           <div className={tableScrollClass}>
@@ -163,7 +164,7 @@ export function SchoolClassDetailPage({
                 </tr>
               </thead>
               <tbody>
-                {visible.map((row) => (
+                {streams.map((row) => (
                   <tr key={row.id} className="border-t border-black/[0.04]">
                     <td className="px-4 py-2.5 font-medium text-navy">{row.name}</td>
                     <td className="px-4 py-2.5 text-slate-500">{row.code}</td>
@@ -196,13 +197,16 @@ export function SchoolClassDetailPage({
             </table>
           </div>
         )}
+        <div className="px-4">
+          <SchoolPagination page={page.page} total={page.total} onPage={(next) => load(next, filter)} />
+        </div>
       </section>
 
-      {modal && initialClass ? (
+      {modal && classRow ? (
         <StreamForm
           key={editId ?? "new"}
           title={modal === "edit" ? "Edit stream" : "Add stream"}
-          parentClassName={initialClass.name}
+          parentClassName={classRow.name}
           initial={editing}
           nextOrder={nextOrder}
           busy={busy}
@@ -214,14 +218,14 @@ export function SchoolClassDetailPage({
             setEditId(null);
           }}
           onSubmit={(values) => {
-            if (lock.current || !initialClass) return;
+            if (lock.current || !classRow) return;
             lock.current = true;
             setBusy(true);
             setConfirmed(false);
             setSaveError(null);
             void saveSchoolStreamAction({
               id: editId ?? undefined,
-              classId: initialClass.id,
+              classId: classRow.id,
               ...values,
             }).then((result) => {
               lock.current = false;
@@ -231,17 +235,15 @@ export function SchoolClassDetailPage({
                 return;
               }
               setConfirmed(true);
-              setStreams((current) => {
-                const exists = current.some((row) => row.id === result.stream.id);
-                return exists
-                  ? current.map((row) => (row.id === result.stream.id ? result.stream : row))
-                  : [...current, result.stream];
-              });
-              window.setTimeout(() => {
-                setModal(null);
-                setEditId(null);
-                setConfirmed(false);
-              }, 180);
+              const exists = streams.some((row) => row.id === result.stream.id);
+              if (exists) {
+                setStreams((current) => current.map((row) => (row.id === result.stream.id ? result.stream : row)));
+              } else {
+                load(1, filter);
+              }
+              setModal(null);
+              setEditId(null);
+              setConfirmed(false);
             });
           }}
         />

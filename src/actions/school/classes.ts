@@ -21,6 +21,12 @@ import {
   canWriteStream,
   loadSchoolStructureScope,
 } from "@/lib/school/structure-scope";
+import {
+  applyActiveFilter,
+  schoolPageMeta,
+  schoolPageRange,
+  type SchoolListFilter,
+} from "@/lib/school/pagination";
 
 const VIEW = "school.classes.view";
 const MANAGE = "school.classes.manage";
@@ -145,6 +151,11 @@ function denyUnless(ok: boolean, message: string): void {
   if (!ok) throw new SchoolError(message, "NOT_FOUND");
 }
 
+function scopedIds(ids: Set<string>, schoolWide: boolean) {
+  if (schoolWide) return null;
+  return ids.size ? [...ids] : ["00000000-0000-0000-0000-000000000000"];
+}
+
 async function audit(input: {
   action: string;
   description: string;
@@ -159,34 +170,41 @@ async function audit(input: {
   });
 }
 
-export async function getSchoolLevelsAction() {
+export async function getSchoolLevelsAction(input: { page?: number; status?: SchoolListFilter } = {}) {
   try {
     const user = await requireAuth();
     const ctx = await requireSchoolPermission(VIEW);
     const { supabase, businessUnitId } = ctx;
     const scope = await loadSchoolStructureScope(ctx);
+    const status = input.status ?? "active";
+    const { page, from, to, pageSize } = schoolPageRange(input.page ?? 1);
+    const levelScope = scopedIds(scope.levelIds, scope.schoolWide);
+    let levelsQuery = supabase
+      .from("sch_class_levels")
+      .select("id, name, code, sort_order, is_active", { count: "exact" })
+      .eq("business_unit_id", businessUnitId)
+      .order("sort_order");
+    levelsQuery = applyActiveFilter(levelsQuery, status);
+    if (levelScope) levelsQuery = levelsQuery.in("id", levelScope);
     const [levelsRes, classesRes] = await Promise.all([
-      supabase
-        .from("sch_class_levels")
-        .select("id, name, code, sort_order, is_active")
-        .eq("business_unit_id", businessUnitId)
-        .order("sort_order"),
-      supabase.from("sch_classes").select("id, level_id, is_active").eq("business_unit_id", businessUnitId),
+      levelsQuery.range(from, to),
+      supabase.from("sch_classes").select("id, level_id, is_active").eq("business_unit_id", businessUnitId).eq("is_active", true),
     ]);
     if (levelsRes.error && !isSchoolUnconfiguredRead(levelsRes.error)) mapSchoolDbError(levelsRes.error, "load");
     if (classesRes.error && !isSchoolUnconfiguredRead(classesRes.error)) mapSchoolDbError(classesRes.error, "load");
     const counts = new Map<string, number>();
     for (const row of classesRes.data ?? []) {
-      if (!row.is_active) continue;
       if (!allowsClass(scope, String(row.id))) continue;
       const levelId = String(row.level_id);
       counts.set(levelId, (counts.get(levelId) ?? 0) + 1);
     }
+    const levels = (levelsRes.data ?? [])
+      .filter((row) => allowsLevel(scope, String(row.id)))
+      .map((row) => mapLevel(row, counts.get(String(row.id)) ?? 0));
     return {
       ok: true as const,
-      levels: (levelsRes.data ?? [])
-        .filter((row) => allowsLevel(scope, String(row.id)))
-        .map((row) => mapLevel(row, counts.get(String(row.id)) ?? 0)),
+      levels,
+      page: schoolPageMeta(page, levelsRes.count ?? levels.length, pageSize),
       capabilities: { canView: true, canManage: canManage(user) },
     };
   } catch (error) {
@@ -194,7 +212,10 @@ export async function getSchoolLevelsAction() {
   }
 }
 
-export async function getSchoolLevelDetailAction(levelId: string) {
+export async function getSchoolLevelDetailAction(
+  levelId: string,
+  input: { page?: number; status?: SchoolListFilter } = {},
+) {
   try {
     const user = await requireAuth();
     const ctx = await requireSchoolPermission(VIEW);
@@ -203,28 +224,48 @@ export async function getSchoolLevelDetailAction(levelId: string) {
     const id = str(levelId);
     if (!id) throw new SchoolError("Level was not found.", "NOT_FOUND");
     denyUnless(allowsLevel(scope, id), "Level was not found.");
-    const [levelRes, classesRes, streamsRes] = await Promise.all([
+    const status = input.status ?? "active";
+    const { page, from, to, pageSize } = schoolPageRange(input.page ?? 1);
+    const classScope = scopedIds(scope.classIds, scope.schoolWide);
+    let classesQuery = supabase
+      .from("sch_classes")
+      .select("id, level_id, name, code, sort_order, is_active", { count: "exact" })
+      .eq("business_unit_id", businessUnitId)
+      .eq("level_id", id)
+      .order("sort_order");
+    classesQuery = applyActiveFilter(classesQuery, status);
+    if (classScope) classesQuery = classesQuery.in("id", classScope);
+    const [levelRes, classesRes, activeCountRes] = await Promise.all([
       supabase
         .from("sch_class_levels")
         .select("id, name, code, sort_order, is_active")
         .eq("business_unit_id", businessUnitId)
         .eq("id", id)
         .maybeSingle(),
+      classesQuery.range(from, to),
       supabase
         .from("sch_classes")
-        .select("id, level_id, name, code, sort_order, is_active")
+        .select("id", { count: "exact", head: true })
         .eq("business_unit_id", businessUnitId)
         .eq("level_id", id)
-        .order("sort_order"),
-      supabase.from("sch_class_streams").select("id, class_id, is_active").eq("business_unit_id", businessUnitId),
+        .eq("is_active", true),
     ]);
     if (levelRes.error && !isSchoolUnconfiguredRead(levelRes.error)) mapSchoolDbError(levelRes.error, "load");
     if (!levelRes.data) throw new SchoolError("Level was not found.", "NOT_FOUND");
     if (classesRes.error && !isSchoolUnconfiguredRead(classesRes.error)) mapSchoolDbError(classesRes.error, "load");
+    const pageClassIds = (classesRes.data ?? []).map((row) => String(row.id));
+    const streamsRes = pageClassIds.length
+      ? await supabase
+          .from("sch_class_streams")
+          .select("id, class_id, is_active")
+          .eq("business_unit_id", businessUnitId)
+          .eq("is_active", true)
+          .in("class_id", pageClassIds)
+      : { data: [], error: null };
     if (streamsRes.error && !isSchoolUnconfiguredRead(streamsRes.error)) mapSchoolDbError(streamsRes.error, "load");
     const streamCounts = new Map<string, number>();
     for (const row of streamsRes.data ?? []) {
-      if (!row.is_active || !allowsStream(scope, String(row.id))) continue;
+      if (!allowsStream(scope, String(row.id))) continue;
       const classId = String(row.class_id);
       streamCounts.set(classId, (streamCounts.get(classId) ?? 0) + 1);
     }
@@ -233,8 +274,9 @@ export async function getSchoolLevelDetailAction(levelId: string) {
       .map((row) => mapClass(row, streamCounts.get(String(row.id)) ?? 0));
     return {
       ok: true as const,
-      level: mapLevel(levelRes.data, classes.filter((row) => row.isActive).length),
+      level: mapLevel(levelRes.data, activeCountRes.count ?? classes.filter((row) => row.isActive).length),
       classes,
+      page: schoolPageMeta(page, classesRes.count ?? classes.length, pageSize),
       capabilities: { canView: true, canManage: canManage(user) },
     };
   } catch (error) {
@@ -242,7 +284,11 @@ export async function getSchoolLevelDetailAction(levelId: string) {
   }
 }
 
-export async function getSchoolClassDetailAction(levelId: string, classId: string) {
+export async function getSchoolClassDetailAction(
+  levelId: string,
+  classId: string,
+  input: { page?: number; status?: SchoolListFilter } = {},
+) {
   try {
     const user = await requireAuth();
     const ctx = await requireSchoolPermission(VIEW);
@@ -252,7 +298,18 @@ export async function getSchoolClassDetailAction(levelId: string, classId: strin
     const nextClassId = str(classId);
     if (!nextLevelId || !nextClassId) throw new SchoolError("Class was not found.", "NOT_FOUND");
     denyUnless(allowsClass(scope, nextClassId), "Class was not found.");
-    const [levelRes, classRes, streamsRes] = await Promise.all([
+    const status = input.status ?? "active";
+    const { page, from, to, pageSize } = schoolPageRange(input.page ?? 1);
+    const streamScope = scopedIds(scope.streamIds, scope.schoolWide);
+    let streamsQuery = supabase
+      .from("sch_class_streams")
+      .select("id, class_id, name, code, sort_order, is_active, class_teacher_user_id", { count: "exact" })
+      .eq("business_unit_id", businessUnitId)
+      .eq("class_id", nextClassId)
+      .order("sort_order");
+    streamsQuery = applyActiveFilter(streamsQuery, status);
+    if (streamScope) streamsQuery = streamsQuery.in("id", streamScope);
+    const [levelRes, classRes, streamsRes, activeCountRes] = await Promise.all([
       supabase
         .from("sch_class_levels")
         .select("id, name, code, sort_order, is_active")
@@ -266,12 +323,13 @@ export async function getSchoolClassDetailAction(levelId: string, classId: strin
         .eq("id", nextClassId)
         .eq("level_id", nextLevelId)
         .maybeSingle(),
+      streamsQuery.range(from, to),
       supabase
         .from("sch_class_streams")
-        .select("id, class_id, name, code, sort_order, is_active, class_teacher_user_id")
+        .select("id", { count: "exact", head: true })
         .eq("business_unit_id", businessUnitId)
         .eq("class_id", nextClassId)
-        .order("sort_order"),
+        .eq("is_active", true),
     ]);
     if (levelRes.error && !isSchoolUnconfiguredRead(levelRes.error)) mapSchoolDbError(levelRes.error, "load");
     if (classRes.error && !isSchoolUnconfiguredRead(classRes.error)) mapSchoolDbError(classRes.error, "load");
@@ -291,9 +349,38 @@ export async function getSchoolClassDetailAction(levelId: string, classId: strin
     return {
       ok: true as const,
       level: mapLevel(levelRes.data),
-      classRow: mapClass(classRes.data, streams.filter((row) => row.isActive).length),
+      classRow: mapClass(classRes.data, activeCountRes.count ?? streams.filter((row) => row.isActive).length),
       streams,
+      page: schoolPageMeta(page, streamsRes.count ?? streams.length, pageSize),
       capabilities: { canView: true, canManage: canManage(user) },
+    };
+  } catch (error) {
+    return { ok: false as const, error: schoolActionError(error) };
+  }
+}
+
+export async function getSchoolClassesForLevelAction(levelId: string) {
+  try {
+    const ctx = await requireSchoolPermission(VIEW);
+    const { supabase, businessUnitId } = ctx;
+    const scope = await loadSchoolStructureScope(ctx);
+    const id = str(levelId);
+    if (!id) return { ok: true as const, classes: [] };
+    denyUnless(allowsLevel(scope, id), "Level was not found.");
+    const classScope = scopedIds(scope.classIds, scope.schoolWide);
+    let query = supabase
+      .from("sch_classes")
+      .select("id, level_id, name, code, sort_order, is_active")
+      .eq("business_unit_id", businessUnitId)
+      .eq("level_id", id)
+      .eq("is_active", true)
+      .order("sort_order");
+    if (classScope) query = query.in("id", classScope);
+    const result = await query;
+    if (result.error && !isSchoolUnconfiguredRead(result.error)) mapSchoolDbError(result.error, "load");
+    return {
+      ok: true as const,
+      classes: (result.data ?? []).filter((row) => allowsClass(scope, String(row.id))).map((row) => mapClass(row, 0)),
     };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };

@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight, GraduationCap } from "lucide-react";
 import {
   archiveSchoolLevelAction,
+  getSchoolLevelsAction,
   saveSchoolLevelAction,
   type SchoolLevelRow,
 } from "@/actions/school/classes";
@@ -13,8 +14,8 @@ import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu"
 import { glassCard, glassPanel, inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
 import { cn } from "@/lib/cn";
 import { SchoolConfirmDialog, SchoolField, SchoolGlassModal, SchoolIconWell, SchoolWorkflowButton } from "@/components/school/school-ui";
-
-type Filter = "active" | "archived" | "all";
+import { SchoolPagination, replaceSchoolPageParam } from "@/components/school/SchoolPagination";
+import type { SchoolListFilter, SchoolPageMeta } from "@/lib/school/pagination";
 
 function classCountLabel(count: number) {
   return `${count} ${count === 1 ? "class" : "classes"}`;
@@ -22,16 +23,19 @@ function classCountLabel(count: number) {
 
 export function SchoolClassesPage({
   levels: initialLevels,
+  page: initialPage,
   canManage,
   error,
 }: {
   levels: SchoolLevelRow[];
+  page: SchoolPageMeta;
   canManage: boolean;
   error: string | null;
 }) {
   const router = useRouter();
   const [levels, setLevels] = useState(initialLevels);
-  const [filter, setFilter] = useState<Filter>("active");
+  const [page, setPage] = useState(initialPage);
+  const [filter, setFilter] = useState<SchoolListFilter>("active");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
@@ -40,14 +44,20 @@ export function SchoolClassesPage({
   const [confirmed, setConfirmed] = useState(false);
   const lock = useRef(false);
   const editing = levels.find((row) => row.id === editId) ?? null;
-  const visible = useMemo(
-    () =>
-      levels
-        .filter((row) => (filter === "active" ? row.isActive : filter === "archived" ? !row.isActive : true))
-        .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)),
-    [filter, levels],
-  );
   const nextOrder = Math.max(0, ...levels.map((row) => row.sortOrder)) + 1;
+
+  function load(nextPage: number, nextFilter: SchoolListFilter) {
+    void getSchoolLevelsAction({ page: nextPage, status: nextFilter }).then((result) => {
+      if (!result.ok) {
+        setSaveError(result.error);
+        return;
+      }
+      setLevels(result.levels);
+      setPage(result.page);
+      setFilter(nextFilter);
+      replaceSchoolPageParam(result.page.page);
+    });
+  }
 
   function openCreate() {
     setEditId(null);
@@ -91,7 +101,7 @@ export function SchoolClassesPage({
           <button
             key={id}
             type="button"
-            onClick={() => setFilter(id)}
+            onClick={() => load(1, id)}
             className={cn(
               "h-8 rounded-full px-3.5 text-[12.5px] font-semibold transition duration-200",
               filter === id ? "bg-white text-navy shadow-[0_4px_12px_rgba(15,35,64,0.08)]" : "text-slate-500 hover:text-navy",
@@ -102,7 +112,7 @@ export function SchoolClassesPage({
         ))}
       </div>
 
-      {!error && visible.length === 0 ? (
+      {!error && levels.length === 0 ? (
         <section className={cn(glassPanel, "flex flex-col items-start gap-3 py-10")}>
           <SchoolIconWell icon={GraduationCap} />
           <h2 className="text-[18px] font-semibold tracking-[-0.04em] text-navy">Academic Structure</h2>
@@ -117,7 +127,7 @@ export function SchoolClassesPage({
         </section>
       ) : (
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {visible.map((level) => (
+          {levels.map((level) => (
             <article
               key={level.id}
               className={cn(
@@ -125,7 +135,7 @@ export function SchoolClassesPage({
                 "relative px-5 py-5 transition duration-200 hover:-translate-y-px hover:shadow-[0_14px_32px_rgba(15,35,64,0.08)]",
               )}
             >
-              <Link href={`/school/classes/${level.id}`} className="block min-w-0 pr-10">
+              <Link href={`/school/classes/${level.id}`} prefetch className="block min-w-0 pr-10">
                 <SchoolIconWell icon={GraduationCap} />
                 <p className="mt-3 text-[16px] font-semibold tracking-[-0.03em] text-navy">{level.name}</p>
                 <p className="mt-1 text-[13px] text-slate-400">{classCountLabel(level.classCount)}</p>
@@ -147,6 +157,7 @@ export function SchoolClassesPage({
           ))}
         </section>
       )}
+      <SchoolPagination page={page.page} total={page.total} onPage={(next) => load(next, filter)} />
 
       {modal ? (
         <LevelForm
@@ -179,17 +190,19 @@ export function SchoolClassesPage({
                 return;
               }
               setConfirmed(true);
-              setLevels((current) => {
-                const next = current.some((row) => row.id === result.level.id)
-                  ? current.map((row) => (row.id === result.level.id ? { ...row, ...result.level, classCount: row.classCount } : row))
-                  : [...current, { ...result.level, classCount: 0 }];
-                return next;
-              });
-              window.setTimeout(() => {
-                setModal(null);
-                setEditId(null);
-                setConfirmed(false);
-              }, 180);
+              const exists = levels.some((row) => row.id === result.level.id);
+              if (exists) {
+                setLevels((current) =>
+                  current.map((row) =>
+                    row.id === result.level.id ? { ...row, ...result.level, classCount: row.classCount } : row,
+                  ),
+                );
+              } else {
+                load(1, filter);
+              }
+              setModal(null);
+              setEditId(null);
+              setConfirmed(false);
             });
           }}
         />
