@@ -132,10 +132,16 @@ export function schoolActionError(error: unknown): string {
 }
 
 export async function requireSchoolPermission(permission: string): Promise<SchoolContext> {
+  return requireAnySchoolPermission([permission]);
+}
+
+export async function requireAnySchoolPermission(permissions: string[]): Promise<SchoolContext> {
   const ctx = await requireSchoolContext();
   const user = await requireAuth();
   if (isOwnerRole(user.roleCode)) return ctx;
-  const allowed = user.permissions.some((matcher) => matcher !== "*" && matchPermission(permission, matcher));
+  const allowed = permissions.some((permission) =>
+    user.permissions.some((matcher) => matcher !== "*" && matchPermission(permission, matcher)),
+  );
   if (!allowed) throw new SchoolError("This action isn’t available.", "UNAUTHORIZED");
   return ctx;
 }

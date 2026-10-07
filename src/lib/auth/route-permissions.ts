@@ -64,7 +64,10 @@ const ROUTE_PERMISSION_RULES: RoutePermissionRule[] = [
     all: ["supermarket.sales.view", "supermarket.purchases.view"],
   },
   { prefix: "/supermarket/reports", any: SUPERMARKET_REPORT_VIEW_PERMISSIONS },
-  { prefix: "/school/settings", any: ["school.settings.view", "school.settings.manage"] },
+  {
+    prefix: "/school/settings",
+    any: ["school.settings.view", "school.settings.manage", "school.fees.view", "school.fees.manage"],
+  },
   { prefix: "/school/classes", any: ["school.classes.view", "school.classes.manage"] },
   { prefix: "/school/admissions", any: ["school.admissions.view", "school.admissions.manage"] },
   { prefix: "/school/students", any: ["school.students.view", "school.students.manage"] },

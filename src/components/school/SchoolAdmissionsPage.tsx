@@ -145,12 +145,7 @@ export function SchoolAdmissionsPage({
         <section className={cn(glassPanel, "flex flex-col items-start gap-3 py-10")}>
           <SchoolIconWell icon={UserPlus} />
           <h2 className="text-[18px] font-semibold tracking-[-0.04em] text-navy">No admissions yet</h2>
-          <p className="text-[13.5px] text-slate-500">Create the first student admission to get started.</p>
-          {canManage ? (
-            <Link href="/school/admissions/new" className={primaryButton}>
-              + New Admission
-            </Link>
-          ) : null}
+          <p className="text-[13.5px] text-slate-500">Create your first student admission to get started.</p>
         </section>
       ) : (
         <section className={glassPanel}>

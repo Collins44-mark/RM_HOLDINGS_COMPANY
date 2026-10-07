@@ -11,6 +11,7 @@ import {
   isSchoolEmptyRead,
   isSchoolUnconfiguredRead,
   mapSchoolDbError,
+  requireAnySchoolPermission,
   requireSchoolPermission,
   schoolActionError,
   SchoolError,
@@ -19,6 +20,8 @@ import { applyActiveFilter, schoolPageMeta, schoolPageRange, type SchoolListFilt
 
 const VIEW = "school.settings.view";
 const MANAGE = "school.settings.manage";
+const FEES_VIEW = "school.fees.view";
+const FEES_MANAGE = "school.fees.manage";
 
 export type SchoolProfile = {
   name: string;
@@ -87,6 +90,22 @@ export type FeeAssignmentRow = {
   termName: string | null;
   amount: string;
   frequency: FeeCategoryRow["frequency"];
+  isActive: boolean;
+};
+
+export type FeeStructureTermInput = { termId: string; amount: string };
+
+export type FeeStructureRow = {
+  id: string;
+  academicYearId: string;
+  academicYearName: string;
+  levelId: string;
+  levelName: string;
+  classId: string;
+  className: string;
+  annualAmount: string;
+  termCount: number;
+  terms: Array<{ termId: string; termName: string; amount: string }>;
   isActive: boolean;
 };
 
@@ -179,9 +198,29 @@ async function audit(input: {
   });
 }
 
-function canManage(user: Awaited<ReturnType<typeof requireAuth>>) {
+function hasPerm(user: Awaited<ReturnType<typeof requireAuth>>, permission: string) {
   if (isOwnerRole(user.roleCode)) return true;
-  return user.permissions.some((matcher) => matcher !== "*" && matchPermission(MANAGE, matcher));
+  return user.permissions.some((matcher) => matcher !== "*" && matchPermission(permission, matcher));
+}
+
+function canManage(user: Awaited<ReturnType<typeof requireAuth>>) {
+  return hasPerm(user, MANAGE);
+}
+
+function canManageFees(user: Awaited<ReturnType<typeof requireAuth>>) {
+  return hasPerm(user, FEES_MANAGE) || hasPerm(user, MANAGE);
+}
+
+function canViewFees(user: Awaited<ReturnType<typeof requireAuth>>) {
+  return hasPerm(user, FEES_VIEW) || hasPerm(user, FEES_MANAGE) || hasPerm(user, VIEW) || hasPerm(user, MANAGE);
+}
+
+async function requireFeeView() {
+  return requireAnySchoolPermission([FEES_VIEW, FEES_MANAGE, VIEW, MANAGE]);
+}
+
+async function requireFeeManage() {
+  return requireAnySchoolPermission([FEES_MANAGE, MANAGE]);
 }
 
 function asFrequency(value: unknown): FeeCategoryRow["frequency"] {
@@ -239,10 +278,67 @@ async function hydrateFeeAssignments(
   });
 }
 
+async function hydrateFeeStructures(
+  supabase: Awaited<ReturnType<typeof requireSchoolPermission>>["supabase"],
+  businessUnitId: string,
+  rows: Record<string, unknown>[],
+): Promise<FeeStructureRow[]> {
+  if (!rows.length) return [];
+  const classIds = [...new Set(rows.map((row) => String(row.class_id)))];
+  const levelIds = [...new Set(rows.map((row) => String(row.level_id)))];
+  const yearIds = [...new Set(rows.map((row) => String(row.academic_year_id)))];
+  const structureIds = rows.map((row) => String(row.id));
+  const [classesRes, levelsRes, yearsHydrate, termsHydrate] = await Promise.all([
+    supabase.from("sch_classes").select("id, name").eq("business_unit_id", businessUnitId).in("id", classIds),
+    supabase.from("sch_class_levels").select("id, name").eq("business_unit_id", businessUnitId).in("id", levelIds),
+    supabase.from("sch_academic_years").select("id, name").eq("business_unit_id", businessUnitId).in("id", yearIds),
+    supabase
+      .from("sch_fee_structure_terms")
+      .select("fee_structure_id, term_id, amount")
+      .eq("business_unit_id", businessUnitId)
+      .in("fee_structure_id", structureIds),
+  ]);
+  const termIds = [...new Set((termsHydrate.data ?? []).map((row) => String(row.term_id)))];
+  const termNamesRes = termIds.length
+    ? await supabase.from("sch_terms").select("id, name").eq("business_unit_id", businessUnitId).in("id", termIds)
+    : { data: [] as Array<{ id: string; name: string }> };
+  const classMap = new Map((classesRes.data ?? []).map((row) => [String(row.id), String(row.name)]));
+  const levelMap = new Map((levelsRes.data ?? []).map((row) => [String(row.id), String(row.name)]));
+  const yearMap = new Map((yearsHydrate.data ?? []).map((row) => [String(row.id), String(row.name)]));
+  const termNameMap = new Map((termNamesRes.data ?? []).map((row) => [String(row.id), String(row.name)]));
+  const termsByStructure = new Map<string, Array<{ termId: string; termName: string; amount: string }>>();
+  for (const row of termsHydrate.data ?? []) {
+    const structureId = String(row.fee_structure_id);
+    const list = termsByStructure.get(structureId) ?? [];
+    list.push({
+      termId: String(row.term_id),
+      termName: termNameMap.get(String(row.term_id)) ?? "Term",
+      amount: String(row.amount),
+    });
+    termsByStructure.set(structureId, list);
+  }
+  return rows.map((row) => {
+    const terms = termsByStructure.get(String(row.id)) ?? [];
+    return {
+      id: String(row.id),
+      academicYearId: String(row.academic_year_id),
+      academicYearName: yearMap.get(String(row.academic_year_id)) ?? "Year",
+      levelId: String(row.level_id),
+      levelName: levelMap.get(String(row.level_id)) ?? "Level",
+      classId: String(row.class_id),
+      className: classMap.get(String(row.class_id)) ?? "Class",
+      annualAmount: String(row.annual_amount),
+      termCount: terms.length,
+      terms,
+      isActive: Boolean(row.is_active),
+    };
+  });
+}
+
 export async function getSchoolSettingsWorkspaceAction() {
   try {
     const user = await requireAuth();
-    const { supabase, businessUnitId } = await requireSchoolPermission(VIEW);
+    const { supabase, businessUnitId } = await requireAnySchoolPermission([VIEW, MANAGE, FEES_VIEW, FEES_MANAGE]);
     const [
       buRes,
       profileRes,
@@ -250,8 +346,7 @@ export async function getSchoolSettingsWorkspaceAction() {
       termsRes,
       scalesRes,
       bandsRes,
-      feesRes,
-      assignmentsRes,
+      structuresRes,
       attendanceRes,
       statusesRes,
       transportRes,
@@ -285,16 +380,9 @@ export async function getSchoolSettingsWorkspaceAction() {
         .order("sort_order")
         .range(0, 19),
       supabase
-        .from("sch_fee_categories")
-        .select("id, name, code, amount, frequency, is_active", { count: "exact" })
+        .from("sch_fee_structures")
+        .select("id, academic_year_id, level_id, class_id, annual_amount, is_active", { count: "exact" })
         .eq("business_unit_id", businessUnitId)
-        .order("name")
-        .range(0, 19),
-      supabase
-        .from("sch_fee_assignments")
-        .select("id, fee_category_id, class_id, academic_year_id, term_id, amount, frequency, is_active", { count: "exact" })
-        .eq("business_unit_id", businessUnitId)
-        .eq("is_active", true)
         .order("created_at", { ascending: false })
         .range(0, 19),
       supabase
@@ -342,12 +430,10 @@ export async function getSchoolSettingsWorkspaceAction() {
       scalesRes.error && !isSchoolUnconfiguredRead(scalesRes.error) ? mapSchoolDbError(scalesRes.error, "load") : scalesRes.data;
     const bandRows =
       bandsRes.error && !isSchoolUnconfiguredRead(bandsRes.error) ? mapSchoolDbError(bandsRes.error, "load") : (bandsRes.data ?? []);
-    const feeRows =
-      feesRes.error && !isSchoolUnconfiguredRead(feesRes.error) ? mapSchoolDbError(feesRes.error, "load") : (feesRes.data ?? []);
-    const assignmentRows =
-      assignmentsRes.error && !isSchoolUnconfiguredRead(assignmentsRes.error)
-        ? mapSchoolDbError(assignmentsRes.error, "load")
-        : (assignmentsRes.data ?? []);
+    const structureRows =
+      structuresRes.error && !isSchoolUnconfiguredRead(structuresRes.error)
+        ? mapSchoolDbError(structuresRes.error, "load")
+        : (structuresRes.data ?? []);
     const attendanceRow =
       attendanceRes.error && !isSchoolUnconfiguredRead(attendanceRes.error)
         ? mapSchoolDbError(attendanceRes.error, "load")
@@ -377,21 +463,11 @@ export async function getSchoolSettingsWorkspaceAction() {
       isActive: profileRow ? Boolean(profileRow.is_active) : true,
     };
 
-    const feeAssignments = await hydrateFeeAssignments(supabase, businessUnitId, assignmentRows as Record<string, unknown>[]);
-    const feeCategoryOptionsRes = await supabase
-      .from("sch_fee_categories")
-      .select("id, name, frequency")
-      .eq("business_unit_id", businessUnitId)
-      .eq("is_active", true)
-      .order("name");
-    const feeCategoryOptions =
-      feeCategoryOptionsRes.error && !isSchoolUnconfiguredRead(feeCategoryOptionsRes.error)
-        ? []
-        : (feeCategoryOptionsRes.data ?? []).map((row) => ({
-            id: String(row.id),
-            name: String(row.name),
-            frequency: asFrequency(row.frequency),
-          }));
+    const feeStructures = await hydrateFeeStructures(
+      supabase,
+      businessUnitId,
+      structureRows as Record<string, unknown>[],
+    );
     const yearOptions =
       yearOptionsRes.error && !isSchoolUnconfiguredRead(yearOptionsRes.error)
         ? []
@@ -433,16 +509,7 @@ export async function getSchoolSettingsWorkspaceAction() {
         sortOrder: Number(row.sort_order),
         isActive: Boolean(row.is_active),
       })),
-      fees: feeRows.map((row) => ({
-        id: String(row.id),
-        name: String(row.name),
-        code: String(row.code),
-        amount: row.amount == null ? null : String(row.amount),
-        frequency: (["TERM", "YEAR", "MONTH", "ONCE", "OTHER"].includes(String(row.frequency))
-          ? (row.frequency as FeeCategoryRow["frequency"])
-          : "OTHER"),
-        isActive: Boolean(row.is_active),
-      })),
+      fees: [] as FeeCategoryRow[],
       attendance: attendanceRow
         ? {
             schoolStart: String(attendanceRow.school_start).slice(0, 5),
@@ -466,21 +533,23 @@ export async function getSchoolSettingsWorkspaceAction() {
           }
         : { enabled: false, pickupDropoffEnabled: false },
       transportSaved: Boolean(transportRow),
-      feeAssignments,
+      feeStructures,
       levelOptions,
       yearOptions,
-      feeCategoryOptions,
       pages: {
         years: schoolPageMeta(1, yearsRes.count ?? yearsRows.length),
         terms: schoolPageMeta(1, termsRes.count ?? termsRows.length),
         bands: schoolPageMeta(1, bandsRes.count ?? bandRows.length),
-        fees: schoolPageMeta(1, feesRes.count ?? feeRows.length),
+        fees: schoolPageMeta(1, 0),
         statuses: schoolPageMeta(1, statusesRes.count ?? statusRows.length),
-        assignments: schoolPageMeta(1, assignmentsRes.count ?? assignmentRows.length),
+        structures: schoolPageMeta(1, structuresRes.count ?? structureRows.length),
       },
       capabilities: {
         canView: true,
+        canViewSettings: hasPerm(user, VIEW) || hasPerm(user, MANAGE),
         canManage: canManage(user),
+        canViewFees: canViewFees(user),
+        canManageFees: canManageFees(user),
       },
     };
   } catch (error) {
@@ -831,26 +900,33 @@ export async function saveTransportSettingsAction(input: TransportSettings) {
 }
 
 export async function listSchoolSettingsAction(input: {
-  kind: "years" | "terms" | "bands" | "fees" | "statuses" | "assignments";
+  kind: "years" | "terms" | "bands" | "fees" | "statuses" | "structures";
   page?: number;
   status?: SchoolListFilter;
+  academicYearId?: string;
+  levelId?: string;
+  classId?: string;
 }) {
   try {
-    const { supabase, businessUnitId } = await requireSchoolPermission(VIEW);
+    const { supabase, businessUnitId } =
+      input.kind === "structures" ? await requireFeeView() : await requireSchoolPermission(VIEW);
     const { page, from, to, pageSize } = schoolPageRange(input.page ?? 1);
-    const status = input.status ?? (input.kind === "assignments" ? "active" : "all");
-    if (input.kind === "assignments") {
+    const status = input.status ?? "all";
+    if (input.kind === "structures") {
       let query = supabase
-        .from("sch_fee_assignments")
-        .select("id, fee_category_id, class_id, academic_year_id, term_id, amount, frequency, is_active", { count: "exact" })
+        .from("sch_fee_structures")
+        .select("id, academic_year_id, level_id, class_id, annual_amount, is_active", { count: "exact" })
         .eq("business_unit_id", businessUnitId)
         .order("created_at", { ascending: false });
       query = applyActiveFilter(query, status);
+      if (str(input.academicYearId)) query = query.eq("academic_year_id", str(input.academicYearId));
+      if (str(input.levelId)) query = query.eq("level_id", str(input.levelId));
+      if (str(input.classId)) query = query.eq("class_id", str(input.classId));
       const result = await query.range(from, to);
       if (result.error && !isSchoolUnconfiguredRead(result.error)) mapSchoolDbError(result.error, "load");
       return {
         ok: true as const,
-        assignments: await hydrateFeeAssignments(supabase, businessUnitId, (result.data ?? []) as Record<string, unknown>[]),
+        structures: await hydrateFeeStructures(supabase, businessUnitId, (result.data ?? []) as Record<string, unknown>[]),
         page: schoolPageMeta(page, result.count ?? 0, pageSize),
       };
     }
@@ -1084,6 +1160,217 @@ export async function archiveFeeAssignmentAction(id: string) {
       businessUnitId,
     });
     return { ok: true as const };
+  } catch (error) {
+    return { ok: false as const, error: schoolActionError(error) };
+  }
+}
+
+export async function listFeeStructureClassesAction(levelId: string) {
+  try {
+    const { supabase, businessUnitId } = await requireFeeView();
+    const id = str(levelId);
+    if (!id) return { ok: true as const, classes: [] as Array<{ id: string; name: string }> };
+    const result = await supabase
+      .from("sch_classes")
+      .select("id, name")
+      .eq("business_unit_id", businessUnitId)
+      .eq("level_id", id)
+      .eq("is_active", true)
+      .order("sort_order");
+    if (result.error && !isSchoolUnconfiguredRead(result.error)) mapSchoolDbError(result.error, "load");
+    return {
+      ok: true as const,
+      classes: (result.data ?? []).map((row) => ({ id: String(row.id), name: String(row.name) })),
+    };
+  } catch (error) {
+    return { ok: false as const, error: schoolActionError(error) };
+  }
+}
+
+export async function listSchoolTermsForYearAction(academicYearId: string) {
+  try {
+    const { supabase, businessUnitId } = await requireFeeView();
+    const yearId = str(academicYearId);
+    if (!yearId) return { ok: true as const, terms: [] as TermRow[] };
+    const result = await supabase
+      .from("sch_terms")
+      .select("id, academic_year_id, name, sort_order, start_date, end_date, is_active")
+      .eq("business_unit_id", businessUnitId)
+      .eq("academic_year_id", yearId)
+      .eq("is_active", true)
+      .order("sort_order");
+    if (result.error && !isSchoolUnconfiguredRead(result.error)) mapSchoolDbError(result.error, "load");
+    return {
+      ok: true as const,
+      terms: (result.data ?? []).map((row) => ({
+        id: String(row.id),
+        academicYearId: String(row.academic_year_id),
+        name: String(row.name),
+        sortOrder: Number(row.sort_order),
+        startDate: String(row.start_date),
+        endDate: String(row.end_date),
+        isActive: Boolean(row.is_active),
+      })),
+    };
+  } catch (error) {
+    return { ok: false as const, error: schoolActionError(error) };
+  }
+}
+
+export async function saveFeeStructureAction(input: {
+  id?: string;
+  academicYearId: string;
+  levelId: string;
+  classId: string;
+  annualAmount: string;
+  termAmounts: FeeStructureTermInput[];
+  isActive: boolean;
+}) {
+  try {
+    const { supabase, businessUnitId } = await requireFeeManage();
+    const annualAmount = amountValue(input.annualAmount);
+    if (annualAmount == null) throw new SchoolError("Annual fee is required.", "VALIDATION");
+    if (!Number.isFinite(annualAmount) || annualAmount < 0) {
+      throw new SchoolError("Enter a valid annual fee.", "VALIDATION");
+    }
+    const academicYearId = str(input.academicYearId);
+    const levelId = str(input.levelId);
+    const classId = str(input.classId);
+    if (!academicYearId) throw new SchoolError("Academic year is required.", "VALIDATION");
+    if (!levelId) throw new SchoolError("Level is required.", "VALIDATION");
+    if (!classId) throw new SchoolError("Class is required.", "VALIDATION");
+    const classRes = await supabase
+      .from("sch_classes")
+      .select("id, level_id")
+      .eq("id", classId)
+      .eq("business_unit_id", businessUnitId)
+      .maybeSingle();
+    if (classRes.error && !isSchoolUnconfiguredRead(classRes.error)) mapSchoolDbError(classRes.error);
+    if (!classRes.data || String(classRes.data.level_id) !== levelId) {
+      throw new SchoolError("That class does not belong to the selected level.", "VALIDATION");
+    }
+    const yearRes = await supabase
+      .from("sch_academic_years")
+      .select("id")
+      .eq("id", academicYearId)
+      .eq("business_unit_id", businessUnitId)
+      .maybeSingle();
+    if (!yearRes.data) throw new SchoolError("Academic year was not found.", "VALIDATION");
+
+    const parsedTerms: Array<{ termId: string; amount: number }> = [];
+    for (const row of input.termAmounts) {
+      const termId = str(row.termId);
+      const raw = str(row.amount);
+      if (!termId || !raw) continue;
+      const amount = amountValue(raw);
+      if (amount == null) continue;
+      parsedTerms.push({ termId, amount });
+    }
+    if (parsedTerms.length) {
+      const termsRes = await supabase
+        .from("sch_terms")
+        .select("id, academic_year_id")
+        .eq("business_unit_id", businessUnitId)
+        .eq("academic_year_id", academicYearId)
+        .in("id", parsedTerms.map((row) => row.termId));
+      if (termsRes.error && !isSchoolUnconfiguredRead(termsRes.error)) mapSchoolDbError(termsRes.error);
+      const valid = new Set((termsRes.data ?? []).map((row) => String(row.id)));
+      if (parsedTerms.some((row) => !valid.has(row.termId))) {
+        throw new SchoolError("A term fee does not belong to the selected academic year.", "VALIDATION");
+      }
+    }
+
+    const payload = {
+      business_unit_id: businessUnitId,
+      academic_year_id: academicYearId,
+      level_id: levelId,
+      class_id: classId,
+      annual_amount: annualAmount,
+      is_active: Boolean(input.isActive),
+    };
+    const result = input.id
+      ? await supabase
+          .from("sch_fee_structures")
+          .update(payload)
+          .eq("id", input.id)
+          .eq("business_unit_id", businessUnitId)
+          .select("id, academic_year_id, level_id, class_id, annual_amount, is_active")
+          .maybeSingle()
+      : await supabase
+          .from("sch_fee_structures")
+          .insert(payload)
+          .select("id, academic_year_id, level_id, class_id, annual_amount, is_active")
+          .maybeSingle();
+    if (result.error?.code === "23505") {
+      throw new SchoolError("An active fee structure already exists for this class and academic year.", "CONFLICT");
+    }
+    if (result.error) mapSchoolDbError(result.error);
+    if (!result.data) throw new SchoolError("Couldn't save. Please try again.", "DATABASE");
+    const structureId = String(result.data.id);
+    await supabase.from("sch_fee_structure_terms").delete().eq("fee_structure_id", structureId).eq("business_unit_id", businessUnitId);
+    if (parsedTerms.length) {
+      const insertTerms = await supabase.from("sch_fee_structure_terms").insert(
+        parsedTerms.map((row) => ({
+          business_unit_id: businessUnitId,
+          fee_structure_id: structureId,
+          term_id: row.termId,
+          amount: row.amount,
+        })),
+      );
+      if (insertTerms.error) mapSchoolDbError(insertTerms.error);
+    }
+    const [hydrated] = await hydrateFeeStructures(supabase, businessUnitId, [result.data as Record<string, unknown>]);
+    if (!hydrated) throw new SchoolError("Couldn't save. Please try again.", "DATABASE");
+    await audit({
+      action: input.id ? "school.fee_structure_updated" : "school.fee_structure_created",
+      description: input.id
+        ? `Fee structure updated · ${hydrated.levelName} · ${hydrated.className} · ${hydrated.academicYearName}`
+        : `Fee structure created · ${hydrated.levelName} · ${hydrated.className} · ${hydrated.academicYearName}`,
+      entityType: "sch_fee_structures",
+      entityId: structureId,
+      businessUnitId,
+    });
+    return { ok: true as const, structure: hydrated };
+  } catch (error) {
+    return { ok: false as const, error: schoolActionError(error) };
+  }
+}
+
+export async function setFeeStructureActiveAction(id: string, isActive: boolean) {
+  try {
+    const { supabase, businessUnitId } = await requireFeeManage();
+    const existing = await supabase
+      .from("sch_fee_structures")
+      .select("id")
+      .eq("id", id)
+      .eq("business_unit_id", businessUnitId)
+      .maybeSingle();
+    if (existing.error && !isSchoolUnconfiguredRead(existing.error)) mapSchoolDbError(existing.error);
+    if (!existing.data) throw new SchoolError("Fee structure was not found.", "NOT_FOUND");
+    const result = await supabase
+      .from("sch_fee_structures")
+      .update({ is_active: Boolean(isActive) })
+      .eq("id", id)
+      .eq("business_unit_id", businessUnitId)
+      .select("id, academic_year_id, level_id, class_id, annual_amount, is_active")
+      .maybeSingle();
+    if (result.error?.code === "23505") {
+      throw new SchoolError("An active fee structure already exists for this class and academic year.", "CONFLICT");
+    }
+    if (result.error) mapSchoolDbError(result.error);
+    const [hydrated] = result.data
+      ? await hydrateFeeStructures(supabase, businessUnitId, [result.data as Record<string, unknown>])
+      : [];
+    await audit({
+      action: isActive ? "school.fee_structure_updated" : "school.fee_structure_archived",
+      description: isActive
+        ? `Fee structure activated · ${hydrated?.levelName ?? ""} · ${hydrated?.className ?? ""} · ${hydrated?.academicYearName ?? ""}`.trim()
+        : `Fee structure deactivated · ${hydrated?.levelName ?? ""} · ${hydrated?.className ?? ""} · ${hydrated?.academicYearName ?? ""}`.trim(),
+      entityType: "sch_fee_structures",
+      entityId: id,
+      businessUnitId,
+    });
+    return { ok: true as const, structure: hydrated ?? null };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
   }

@@ -2,25 +2,27 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
+import { Loader2, Wallet } from "lucide-react";
 import {
-  archiveFeeAssignmentAction,
   getSchoolSettingsWorkspaceAction,
+  listFeeStructureClassesAction,
   listSchoolSettingsAction,
+  listSchoolTermsForYearAction,
   saveAcademicYearAction,
   saveAttendanceSettingsAction,
   saveAttendanceStatusAction,
-  saveFeeAssignmentAction,
   saveFeeCategoryAction,
+  saveFeeStructureAction,
   saveGradingBandAction,
   saveSchoolProfileAction,
   saveTermAction,
   saveTransportSettingsAction,
+  setFeeStructureActiveAction,
   type AcademicYearRow,
   type AttendanceSettings,
   type AttendanceStatusRow,
-  type FeeAssignmentRow,
   type FeeCategoryRow,
+  type FeeStructureRow,
   type GradingBandRow,
   type SchoolOption,
   type SchoolProfile,
@@ -28,9 +30,10 @@ import {
   type TransportSettings,
   type SchoolSettingsWorkspaceResult,
 } from "@/actions/school/settings";
-import { getSchoolClassesForLevelAction, type SchoolClassRow } from "@/actions/school/classes";
+import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
+import { formatTzs } from "@/lib/format/currency";
 import { ContainedDrawer, DrawerCancel } from "@/components/ui/ContainedDrawer";
-import { SchoolConfirmDialog, SchoolGlassModal, SchoolWorkflowButton } from "@/components/school/school-ui";
+import { SchoolConfirmDialog, SchoolIconWell, SchoolWorkflowButton } from "@/components/school/school-ui";
 import { SchoolPagination } from "@/components/school/SchoolPagination";
 import { schoolPageMeta, type SchoolPageMeta } from "@/lib/school/pagination";
 import { cn } from "@/lib/cn";
@@ -46,7 +49,7 @@ import {
 
 type Tab = "general" | "academic" | "fees" | "attendance" | "transport";
 type LoadPhase = "loading" | "ready" | "error";
-type DrawerKind = "year" | "term" | "grade" | "fee" | "status" | "structure" | null;
+type DrawerKind = "year" | "term" | "grade" | "fee" | "status" | "structure" | "structure-view" | null;
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "general", label: "General" },
@@ -116,24 +119,46 @@ const EMPTY_PROFILE: SchoolProfile = {
   isActive: true,
 };
 
-export function SchoolSettingsPage({ initial }: { initial: SchoolSettingsWorkspaceResult }) {
-  const [tab, setTab] = useState<Tab>("general");
+function asTab(value: string | undefined, canViewSettings: boolean, canViewFees: boolean): Tab {
+  if (value === "fees" && canViewFees) return "fees";
+  if (value === "academic" || value === "attendance" || value === "transport" || value === "general") {
+    return canViewSettings ? value : canViewFees ? "fees" : "general";
+  }
+  if (canViewSettings) return "general";
+  if (canViewFees) return "fees";
+  return "general";
+}
+
+export function SchoolSettingsPage({
+  initial,
+  initialTab,
+}: {
+  initial: SchoolSettingsWorkspaceResult;
+  initialTab?: string;
+}) {
+  const [tab, setTab] = useState<Tab>(() =>
+    asTab(
+      initialTab,
+      initial.ok ? initial.capabilities.canViewSettings : false,
+      initial.ok ? initial.capabilities.canViewFees : false,
+    ),
+  );
   const [phase, setPhase] = useState<LoadPhase>(initial.ok ? "ready" : "error");
   const [loadError, setLoadError] = useState<string | null>(initial.ok ? null : initial.error);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [canManage, setCanManage] = useState(initial.ok ? initial.capabilities.canManage : false);
+  const [canViewSettings, setCanViewSettings] = useState(initial.ok ? initial.capabilities.canViewSettings : false);
+  const [canViewFees, setCanViewFees] = useState(initial.ok ? initial.capabilities.canViewFees : false);
+  const [canManageFees, setCanManageFees] = useState(initial.ok ? initial.capabilities.canManageFees : false);
   const [profile, setProfile] = useState<SchoolProfile>(initial.ok ? initial.profile : EMPTY_PROFILE);
   const [years, setYears] = useState<AcademicYearRow[]>(initial.ok ? initial.years : []);
   const [terms, setTerms] = useState<TermRow[]>(initial.ok ? initial.terms : []);
   const [bands, setBands] = useState<GradingBandRow[]>(initial.ok ? initial.gradingBands : []);
   const [fees, setFees] = useState<FeeCategoryRow[]>(initial.ok ? initial.fees : []);
-  const [assignments, setAssignments] = useState<FeeAssignmentRow[]>(initial.ok ? initial.feeAssignments : []);
+  const [structures, setStructures] = useState<FeeStructureRow[]>(initial.ok ? initial.feeStructures : []);
   const [levelOptions, setLevelOptions] = useState<SchoolOption[]>(initial.ok ? initial.levelOptions : []);
   const [yearOptions, setYearOptions] = useState<SchoolOption[]>(initial.ok ? initial.yearOptions : []);
-  const [feeCategoryOptions, setFeeCategoryOptions] = useState<Array<SchoolOption & { frequency: FeeCategoryRow["frequency"] }>>(
-    initial.ok ? initial.feeCategoryOptions : [],
-  );
   const [pages, setPages] = useState(
     initial.ok
       ? initial.pages
@@ -143,10 +168,11 @@ export function SchoolSettingsPage({ initial }: { initial: SchoolSettingsWorkspa
           bands: schoolPageMeta(1, 0),
           fees: schoolPageMeta(1, 0),
           statuses: schoolPageMeta(1, 0),
-          assignments: schoolPageMeta(1, 0),
+          structures: schoolPageMeta(1, 0),
         },
   );
-  const [archiveAssignmentId, setArchiveAssignmentId] = useState<string | null>(null);
+  const [feeFilter, setFeeFilter] = useState({ yearId: "", levelId: "", classId: "", status: "all" });
+  const [deactivateId, setDeactivateId] = useState<string | null>(null);
   const [attendance, setAttendance] = useState<AttendanceSettings>(
     initial.ok ? initial.attendance : { schoolStart: "", schoolEnd: "", lateThresholdMinutes: 0 },
   );
@@ -183,6 +209,9 @@ export function SchoolSettingsPage({ initial }: { initial: SchoolSettingsWorkspa
         setSaveError(null);
         setPhase("ready");
         setCanManage(result.capabilities.canManage);
+        setCanViewSettings(result.capabilities.canViewSettings);
+        setCanViewFees(result.capabilities.canViewFees);
+        setCanManageFees(result.capabilities.canManageFees);
         setProfile(result.profile);
         setProfileDraft(result.profile);
         setEditingProfile(false);
@@ -190,10 +219,9 @@ export function SchoolSettingsPage({ initial }: { initial: SchoolSettingsWorkspa
         setTerms(result.terms);
         setBands(result.gradingBands);
         setFees(result.fees);
-        setAssignments(result.feeAssignments);
+        setStructures(result.feeStructures);
         setLevelOptions(result.levelOptions);
         setYearOptions(result.yearOptions);
-        setFeeCategoryOptions(result.feeCategoryOptions);
         setPages(result.pages);
         setAttendance(result.attendance);
         setStatuses(result.attendanceStatuses);
@@ -209,8 +237,19 @@ export function SchoolSettingsPage({ initial }: { initial: SchoolSettingsWorkspa
     };
   }, [tick]);
 
-  function loadList(kind: "years" | "terms" | "bands" | "fees" | "statuses" | "assignments", page: number) {
-    void listSchoolSettingsAction({ kind, page }).then((result) => {
+  function loadList(kind: "years" | "terms" | "bands" | "fees" | "statuses" | "structures", page: number) {
+    void listSchoolSettingsAction({
+      kind,
+      page,
+      ...(kind === "structures"
+        ? {
+            academicYearId: feeFilter.yearId || undefined,
+            levelId: feeFilter.levelId || undefined,
+            classId: feeFilter.classId || undefined,
+            status: feeFilter.status === "all" ? "all" : feeFilter.status === "inactive" ? "archived" : "active",
+          }
+        : {}),
+    }).then((result) => {
       if (!result.ok) {
         setSaveError(asSaveError(result.error));
         return;
@@ -220,7 +259,7 @@ export function SchoolSettingsPage({ initial }: { initial: SchoolSettingsWorkspa
       if (kind === "bands" && "gradingBands" in result) setBands(result.gradingBands ?? []);
       if (kind === "fees" && "fees" in result) setFees(result.fees ?? []);
       if (kind === "statuses" && "attendanceStatuses" in result) setStatuses(result.attendanceStatuses ?? []);
-      if (kind === "assignments" && "assignments" in result) setAssignments(result.assignments ?? []);
+      if (kind === "structures" && "structures" in result) setStructures(result.structures ?? []);
       setPages((current) => ({ ...current, [kind]: result.page }));
     });
   }
@@ -240,7 +279,7 @@ export function SchoolSettingsPage({ initial }: { initial: SchoolSettingsWorkspa
       {saveError ? <p className="text-[13px] text-[#c45b66]">{saveError}</p> : null}
 
       <div className="flex flex-wrap gap-1 rounded-full bg-[#eef3f8] p-1">
-        {TABS.map((item) => (
+        {TABS.filter((item) => (item.id === "fees" ? canViewFees : canViewSettings)).map((item) => (
           <button
             key={item.id}
             type="button"
@@ -429,44 +468,52 @@ export function SchoolSettingsPage({ initial }: { initial: SchoolSettingsWorkspa
         </div>
       ) : null}
 
-      {tab === "fees" ? (
-        <div className="space-y-4">
-          <ConfigList
-            title="Fee Structures"
-            empty={phase === "ready" ? "No fee structures configured yet." : ""}
-            action={canManage ? { label: "+ Add Fee Structure", onClick: () => openDrawer("structure") } : null}
-            headings={["Fee", "Level", "Class", "Amount", "Frequency", "Academic Year", "Status", ""]}
-            page={pages.assignments}
-            onPage={(next) => loadList("assignments", next)}
-            rows={assignments.map((row) => ({
-              id: row.id,
-              cells: [
-                row.feeName,
-                row.levelName,
-                row.className,
-                row.amount,
-                row.frequency,
-                row.termName ? `${row.academicYearName} · ${row.termName}` : row.academicYearName,
-                row.isActive ? "Active" : "Inactive",
-              ],
-              onEdit: canManage ? () => openDrawer("structure", row.id) : undefined,
-              onArchive: canManage && row.isActive ? () => setArchiveAssignmentId(row.id) : undefined,
-            }))}
-          />
-          <ConfigList
-            title="Fee Categories"
-            empty={phase === "ready" ? "No fee categories configured yet." : ""}
-            action={canManage ? { label: "+ Add Fee Category", onClick: () => openDrawer("fee") } : null}
-            headings={["Name", "Code", "Amount", "Status", ""]}
-            page={pages.fees}
-            onPage={(next) => loadList("fees", next)}
-            rows={fees.map((row) => ({
-              id: row.id,
-              cells: [row.name, row.code, row.amount ?? "—", row.isActive ? "Active" : "Inactive"],
-              onEdit: canManage ? () => openDrawer("fee", row.id) : undefined,
-            }))}
-          />
-        </div>
+      {tab === "fees" && canViewFees ? (
+        <FeeStructuresPanel
+          rows={structures}
+          page={pages.structures}
+          years={yearOptions}
+          levels={levelOptions}
+          filter={feeFilter}
+          canManage={canManageFees}
+          emptyReady={phase === "ready"}
+          onFilter={(next) => {
+            setFeeFilter(next);
+            void listSchoolSettingsAction({
+              kind: "structures",
+              page: 1,
+              academicYearId: next.yearId || undefined,
+              levelId: next.levelId || undefined,
+              classId: next.classId || undefined,
+              status: next.status === "all" ? "all" : next.status === "inactive" ? "archived" : "active",
+            }).then((result) => {
+              if (!result.ok) {
+                setSaveError(asSaveError(result.error));
+                return;
+              }
+              setStructures(result.structures ?? []);
+              setPages((current) => ({ ...current, structures: result.page }));
+            });
+          }}
+          onPage={(next) => loadList("structures", next)}
+          onAdd={() => openDrawer("structure")}
+          onView={(id) => openDrawer("structure-view", id)}
+          onEdit={(id) => openDrawer("structure", id)}
+          onToggle={(id, isActive) => {
+            if (!isActive) setDeactivateId(id);
+            else {
+              void setFeeStructureActiveAction(id, true).then((result) => {
+                if (!result.ok) {
+                  setSaveError(asSaveError(result.error));
+                  return;
+                }
+                if (result.structure) {
+                  setStructures((current) => current.map((row) => (row.id === id ? result.structure! : row)));
+                }
+              });
+            }
+          }}
+        />
       ) : null}
 
       {tab === "attendance" ? (
@@ -571,7 +618,7 @@ export function SchoolSettingsPage({ initial }: { initial: SchoolSettingsWorkspa
         </section>
       ) : null}
 
-      {drawer && drawer !== "structure" ? (
+      {drawer && drawer !== "structure" && drawer !== "structure-view" ? (
         <SettingsRecordDrawer
           kind={drawer}
           editId={editId}
@@ -599,15 +646,13 @@ export function SchoolSettingsPage({ initial }: { initial: SchoolSettingsWorkspa
       {drawer === "structure" ? (
         <FeeStructureForm
           key={editId ?? "new"}
-          initial={assignments.find((row) => row.id === editId) ?? null}
-          feeCategories={feeCategoryOptions}
+          initial={structures.find((row) => row.id === editId) ?? null}
           levels={levelOptions}
-          years={yearOptions}
-          terms={terms}
+          years={years.length ? years : yearOptions.map((row) => ({ id: row.id, name: row.name, startDate: "", endDate: "", isCurrent: false, isActive: true }))}
           onClose={() => setDrawer(null)}
           onError={(message) => setSaveError(asSaveError(message))}
           onSaved={(row) => {
-            setAssignments((current) => {
+            setStructures((current) => {
               const exists = current.some((item) => item.id === row.id);
               return exists ? current.map((item) => (item.id === row.id ? row : item)) : [row, ...current];
             });
@@ -616,27 +661,237 @@ export function SchoolSettingsPage({ initial }: { initial: SchoolSettingsWorkspa
         />
       ) : null}
 
+      {drawer === "structure-view" ? (
+        <FeeStructureView row={structures.find((item) => item.id === editId) ?? null} onClose={() => setDrawer(null)} />
+      ) : null}
+
       <SchoolConfirmDialog
-        open={Boolean(archiveAssignmentId)}
-        title="Archive this fee structure?"
-        message="This fee structure will no longer appear in the active fee list. Historical records remain."
-        confirmLabel="Archive"
-        onCancel={() => setArchiveAssignmentId(null)}
+        open={Boolean(deactivateId)}
+        title="Deactivate this fee structure?"
+        message="This fee structure will no longer apply to new enrollments. Historical records remain."
+        confirmLabel="Deactivate"
+        onCancel={() => setDeactivateId(null)}
         onConfirm={() => {
-          if (!archiveAssignmentId) return;
-          const id = archiveAssignmentId;
-          void archiveFeeAssignmentAction(id).then((result) => {
+          if (!deactivateId) return;
+          const id = deactivateId;
+          void setFeeStructureActiveAction(id, false).then((result) => {
             if (!result.ok) {
               setSaveError(asSaveError(result.error));
-              setArchiveAssignmentId(null);
               return;
             }
-            setAssignments((current) => current.filter((row) => row.id !== id));
-            setArchiveAssignmentId(null);
+            setDeactivateId(null);
+            setStructures((current) => current.map((row) => (row.id === id ? { ...row, isActive: false } : row)));
           });
         }}
       />
     </div>
+  );
+}
+
+function parseAmountDisplay(value: string) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return value;
+  return formatTzs(n);
+}
+
+function FeeStructuresPanel({
+  rows,
+  page,
+  years,
+  levels,
+  filter,
+  canManage,
+  emptyReady,
+  onFilter,
+  onPage,
+  onAdd,
+  onView,
+  onEdit,
+  onToggle,
+}: {
+  rows: FeeStructureRow[];
+  page: SchoolPageMeta;
+  years: SchoolOption[];
+  levels: SchoolOption[];
+  filter: { yearId: string; levelId: string; classId: string; status: string };
+  canManage: boolean;
+  emptyReady: boolean;
+  onFilter: (next: { yearId: string; levelId: string; classId: string; status: string }) => void;
+  onPage: (page: number) => void;
+  onAdd: () => void;
+  onView: (id: string) => void;
+  onEdit: (id: string) => void;
+  onToggle: (id: string, isActive: boolean) => void;
+}) {
+  const [classes, setClasses] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    if (!filter.levelId) return;
+    let active = true;
+    void listFeeStructureClassesAction(filter.levelId).then((result) => {
+      if (!active || !result.ok) return;
+      setClasses(result.classes);
+    });
+    return () => {
+      active = false;
+    };
+  }, [filter.levelId]);
+
+  return (
+    <section className={`${glassPanel} space-y-3 !px-0 !py-0 overflow-hidden`}>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
+        <div>
+          <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Fee Structures</h2>
+          <p className="mt-1 text-[13px] text-slate-500">Annual school fees by academic year, level and class.</p>
+        </div>
+        {canManage ? (
+          <button type="button" className={primaryButton} onClick={onAdd}>
+            + Add Fee Structure
+          </button>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 px-5">
+        <select
+          className={cn(inputClass, "!h-9 !rounded-full min-w-[140px]")}
+          value={filter.yearId}
+          onChange={(event) => onFilter({ ...filter, yearId: event.target.value })}
+        >
+          <option value="">Academic Year</option>
+          {years.map((row) => (
+            <option key={row.id} value={row.id}>
+              {row.name}
+            </option>
+          ))}
+        </select>
+        <select
+          className={cn(inputClass, "!h-9 !rounded-full min-w-[140px]")}
+          value={filter.levelId}
+          onChange={(event) => {
+            setClasses([]);
+            onFilter({ ...filter, levelId: event.target.value, classId: "" });
+          }}
+        >
+          <option value="">Level</option>
+          {levels.map((row) => (
+            <option key={row.id} value={row.id}>
+              {row.name}
+            </option>
+          ))}
+        </select>
+        <select
+          className={cn(inputClass, "!h-9 !rounded-full min-w-[140px]")}
+          value={filter.classId}
+          onChange={(event) => onFilter({ ...filter, classId: event.target.value })}
+          disabled={!filter.levelId}
+        >
+          <option value="">Class</option>
+          {(filter.levelId ? classes : []).map((row) => (
+            <option key={row.id} value={row.id}>
+              {row.name}
+            </option>
+          ))}
+        </select>
+        <select
+          className={cn(inputClass, "!h-9 !rounded-full min-w-[120px]")}
+          value={filter.status}
+          onChange={(event) => onFilter({ ...filter, status: event.target.value })}
+        >
+          <option value="all">Status</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </div>
+      {rows.length === 0 && emptyReady ? (
+        <div className="flex flex-col items-start gap-3 px-5 py-10">
+          <SchoolIconWell icon={Wallet} />
+          <h3 className="text-[18px] font-semibold tracking-[-0.04em] text-navy">No fee structures configured yet.</h3>
+          <p className="text-[13.5px] text-slate-500">Configure annual school fees by level and class.</p>
+          {canManage ? (
+            <button type="button" className={primaryButton} onClick={onAdd}>
+              + Add Fee Structure
+            </button>
+          ) : null}
+        </div>
+      ) : (
+        <div className={tableScrollClass}>
+          <table className="min-w-full text-left text-[13px]">
+            <thead className={tableHead}>
+              <tr>
+                {["Fee", "Level", "Class", "Annual Fee", "Term Fees", "Academic Year", "Status", ""].map((heading) => (
+                  <th key={heading || "actions"} className="px-5 py-3">
+                    {heading}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id} className="border-t border-black/[0.04]">
+                  <td className="px-5 py-2.5">School fees</td>
+                  <td className="px-5 py-2.5">{row.levelName}</td>
+                  <td className="px-5 py-2.5">{row.className}</td>
+                  <td className="px-5 py-2.5">{parseAmountDisplay(row.annualAmount)}</td>
+                  <td className="px-5 py-2.5">{row.termCount ? `${row.termCount} term${row.termCount === 1 ? "" : "s"}` : "—"}</td>
+                  <td className="px-5 py-2.5">{row.academicYearName}</td>
+                  <td className="px-5 py-2.5">
+                    <StatusPill value={row.isActive ? "Active" : "Inactive"} />
+                  </td>
+                  <td className="px-5 py-2.5">
+                    <CompactActionsMenu
+                      ariaLabel={`${row.className} fee actions`}
+                      items={[
+                        { label: "View", onSelect: () => onView(row.id) },
+                        ...(canManage ? [{ label: "Edit", onSelect: () => onEdit(row.id) }] : []),
+                        ...(canManage
+                          ? [
+                              {
+                                label: row.isActive ? "Deactivate" : "Activate",
+                                onSelect: () => onToggle(row.id, !row.isActive),
+                              },
+                            ]
+                          : []),
+                      ]}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="px-5">
+        <SchoolPagination page={page.page} total={page.total} onPage={onPage} />
+      </div>
+    </section>
+  );
+}
+
+function FeeStructureView({ row, onClose }: { row: FeeStructureRow | null; onClose: () => void }) {
+  if (!row) return null;
+  return (
+    <ContainedDrawer title="Fee structure" onClose={onClose} footer={<DrawerCancel />}>
+      <div className="space-y-3 text-[13.5px] text-navy">
+        <p>Academic Year: {row.academicYearName}</p>
+        <p>Level: {row.levelName}</p>
+        <p>Class: {row.className}</p>
+        <p>Annual Fee: {parseAmountDisplay(row.annualAmount)}</p>
+        <p>Status: {row.isActive ? "Active" : "Inactive"}</p>
+        <div>
+          <p className="mb-1.5 font-semibold">Term breakdown</p>
+          {row.terms.length ? (
+            <ul className="space-y-1 text-slate-600">
+              {row.terms.map((term) => (
+                <li key={term.termId}>
+                  {term.termName} — {parseAmountDisplay(term.amount)}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-slate-500">No term fees configured.</p>
+          )}
+        </div>
+      </div>
+    </ContainedDrawer>
   );
 }
 
@@ -729,7 +984,7 @@ function SettingsRecordDrawer({
   onSaved,
   onError,
 }: {
-  kind: Exclude<DrawerKind, null | "structure">;
+  kind: Exclude<DrawerKind, null | "structure" | "structure-view">;
   editId: string | null;
   years: AcademicYearRow[];
   terms: TermRow[];
@@ -764,7 +1019,7 @@ function SettingsRecordDrawer({
   const [frequency, setFrequency] = useState<FeeCategoryRow["frequency"]>(fee?.frequency ?? "TERM");
   const [countsAsPresent, setCountsAsPresent] = useState(status?.countsAsPresent ?? false);
 
-  const titles: Record<Exclude<DrawerKind, null | "structure">, string> = {
+  const titles: Record<Exclude<DrawerKind, null | "structure" | "structure-view">, string> = {
     year: editId ? "Edit academic year" : "Add academic year",
     term: editId ? "Edit term" : "Add term",
     grade: editId ? "Edit grade" : "Add grade",
@@ -937,64 +1192,76 @@ function SettingsRecordDrawer({
 
 function FeeStructureForm({
   initial,
-  feeCategories,
   levels,
   years,
-  terms,
   onClose,
   onSaved,
   onError,
 }: {
-  initial: FeeAssignmentRow | null;
-  feeCategories: Array<SchoolOption & { frequency: FeeCategoryRow["frequency"] }>;
+  initial: FeeStructureRow | null;
   levels: SchoolOption[];
-  years: SchoolOption[];
-  terms: TermRow[];
+  years: AcademicYearRow[];
   onClose: () => void;
-  onSaved: (row: FeeAssignmentRow) => void;
+  onSaved: (row: FeeStructureRow) => void;
   onError: (error: string) => void;
 }) {
   const lock = useRef(false);
+  const currentYear = years.find((row) => row.isCurrent) ?? years[0];
   const [busy, setBusy] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-  const [feeCategoryId, setFeeCategoryId] = useState(initial?.feeCategoryId ?? feeCategories[0]?.id ?? "");
+  const [academicYearId, setAcademicYearId] = useState(initial?.academicYearId ?? currentYear?.id ?? "");
   const [levelId, setLevelId] = useState(initial?.levelId ?? "");
   const [classId, setClassId] = useState(initial?.classId ?? "");
-  const [classes, setClasses] = useState<SchoolClassRow[]>(
-    initial ? [{ id: initial.classId, levelId: initial.levelId, name: initial.className, code: "", sortOrder: 1, isActive: true, streamCount: 0 }] : [],
+  const [classes, setClasses] = useState<Array<{ id: string; name: string }>>(
+    initial ? [{ id: initial.classId, name: initial.className }] : [],
   );
-  const [amount, setAmount] = useState(initial?.amount ?? "");
-  const [frequency, setFrequency] = useState<FeeCategoryRow["frequency"]>(initial?.frequency ?? "TERM");
-  const [academicYearId, setAcademicYearId] = useState(initial?.academicYearId ?? years[0]?.id ?? "");
-  const [termId, setTermId] = useState(initial?.termId ?? "");
+  const [annualAmount, setAnnualAmount] = useState(initial?.annualAmount ?? "");
+  const [yearTerms, setYearTerms] = useState<TermRow[]>([]);
+  const [termAmounts, setTermAmounts] = useState<Record<string, string>>(
+    Object.fromEntries((initial?.terms ?? []).map((row) => [row.termId, row.amount])),
+  );
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
-  const yearTerms = terms.filter((row) => row.academicYearId === academicYearId);
 
-  function selectLevel(nextLevelId: string) {
-    setLevelId(nextLevelId);
-    setClassId("");
-    if (!nextLevelId) {
-      setClasses([]);
-      return;
-    }
-    void getSchoolClassesForLevelAction(nextLevelId).then((result) => {
+  useEffect(() => {
+    if (!academicYearId) return;
+    let active = true;
+    void listSchoolTermsForYearAction(academicYearId).then((result) => {
+      if (!active) return;
       if (!result.ok) {
-        onError(result.error);
+        setYearTerms([]);
+        return;
+      }
+      setYearTerms(result.terms);
+    });
+    return () => {
+      active = false;
+    };
+  }, [academicYearId]);
+
+  useEffect(() => {
+    if (!levelId) return;
+    let active = true;
+    void listFeeStructureClassesAction(levelId).then((result) => {
+      if (!active) return;
+      if (!result.ok) {
+        setClasses([]);
         return;
       }
       setClasses(result.classes);
     });
-  }
+    return () => {
+      active = false;
+    };
+  }, [levelId]);
 
   return (
-    <SchoolGlassModal
+    <ContainedDrawer
       title={initial ? "Edit fee structure" : "Add fee structure"}
       onClose={onClose}
+      busy={busy}
       footer={
         <>
-          <button type="button" className={secondaryButton} disabled={busy} onClick={onClose}>
-            Cancel
-          </button>
+          <DrawerCancel disabled={busy} />
           <SchoolWorkflowButton
             className={primaryButton}
             busy={busy}
@@ -1004,15 +1271,13 @@ function FeeStructureForm({
               if (lock.current) return;
               lock.current = true;
               setBusy(true);
-              void saveFeeAssignmentAction({
+              void saveFeeStructureAction({
                 id: initial?.id,
-                feeCategoryId,
+                academicYearId,
                 levelId,
                 classId,
-                academicYearId,
-                termId: termId || null,
-                amount,
-                frequency,
+                annualAmount,
+                termAmounts: yearTerms.map((term) => ({ termId: term.id, amount: termAmounts[term.id] ?? "" })),
                 isActive,
               }).then((result) => {
                 lock.current = false;
@@ -1022,88 +1287,90 @@ function FeeStructureForm({
                   return;
                 }
                 setConfirmed(true);
-                onSaved(result.assignment);
+                onSaved(result.structure);
               });
             }}
           />
         </>
       }
     >
-      <Field label="Fee category">
-        <select
-          className={inputClass}
-          value={feeCategoryId}
-          onChange={(event) => {
-            const next = event.target.value;
-            setFeeCategoryId(next);
-            const selected = feeCategories.find((row) => row.id === next);
-            if (selected) setFrequency(selected.frequency);
-          }}
-        >
-          <option value="">Select fee</option>
-          {feeCategories.map((row) => (
-            <option key={row.id} value={row.id}>
-              {row.name}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Level">
-        <select className={inputClass} value={levelId} onChange={(event) => selectLevel(event.target.value)}>
-          <option value="">Select level</option>
-          {levels.map((row) => (
-            <option key={row.id} value={row.id}>
-              {row.name}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Class">
-        <select className={inputClass} value={classId} onChange={(event) => setClassId(event.target.value)} disabled={!levelId}>
-          <option value="">Select class</option>
-          {classes.map((row) => (
-            <option key={row.id} value={row.id}>
-              {row.name}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Amount">
-        <input className={inputClass} value={amount} onChange={(event) => setAmount(event.target.value)} />
-      </Field>
-      <Field label="Frequency">
-        <select className={inputClass} value={frequency} onChange={(event) => setFrequency(event.target.value as FeeCategoryRow["frequency"])}>
-          <option value="TERM">Term</option>
-          <option value="YEAR">Year</option>
-          <option value="MONTH">Month</option>
-          <option value="ONCE">Once</option>
-          <option value="OTHER">Other</option>
-        </select>
-      </Field>
-      <Field label="Academic year">
-        <select className={inputClass} value={academicYearId} onChange={(event) => setAcademicYearId(event.target.value)}>
-          <option value="">Select year</option>
-          {years.map((row) => (
-            <option key={row.id} value={row.id}>
-              {row.name}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Term">
-        <select className={inputClass} value={termId} onChange={(event) => setTermId(event.target.value)}>
-          <option value="">All terms</option>
-          {yearTerms.map((row) => (
-            <option key={row.id} value={row.id}>
-              {row.name}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <label className="flex items-center gap-3 text-[14px] text-navy">
-        <input type="checkbox" checked={isActive} onChange={(event) => setIsActive(event.target.checked)} />
-        Active
-      </label>
-    </SchoolGlassModal>
+      <div className="space-y-3">
+        <Field label="Academic Year">
+          <select
+            className={inputClass}
+            value={academicYearId}
+            onChange={(event) => {
+              setAcademicYearId(event.target.value);
+              setTermAmounts({});
+              setYearTerms([]);
+            }}
+          >
+            <option value="">Select academic year</option>
+            {years.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.name}
+                {row.isCurrent ? " (Current)" : ""}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Level">
+          <select
+            className={inputClass}
+            value={levelId}
+            onChange={(event) => {
+              setLevelId(event.target.value);
+              setClassId("");
+              setClasses([]);
+            }}
+          >
+            <option value="">Select level</option>
+            {levels.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Class">
+          <select className={inputClass} value={classId} onChange={(event) => setClassId(event.target.value)} disabled={!levelId}>
+            <option value="">Select class</option>
+            {classes.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Annual Fee (TZS)">
+          <input className={inputClass} inputMode="decimal" value={annualAmount} onChange={(event) => setAnnualAmount(event.target.value)} />
+        </Field>
+        <div>
+          <p className="mb-1.5 text-[12px] font-medium text-slate-500">Term fees (optional)</p>
+          {!academicYearId ? (
+            <p className="text-[13px] text-slate-500">Select an academic year to load its terms.</p>
+          ) : yearTerms.length === 0 ? (
+            <p className="text-[13px] text-slate-500">No terms configured for this academic year yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {yearTerms.map((term) => (
+                <Field key={term.id} label={term.name}>
+                  <input
+                    className={inputClass}
+                    inputMode="decimal"
+                    value={termAmounts[term.id] ?? ""}
+                    onChange={(event) => setTermAmounts((current) => ({ ...current, [term.id]: event.target.value }))}
+                  />
+                </Field>
+              ))}
+            </div>
+          )}
+        </div>
+        <label className="flex items-center gap-3 text-[14px] text-navy">
+          <input type="checkbox" checked={isActive} onChange={(event) => setIsActive(event.target.checked)} />
+          Active
+        </label>
+      </div>
+    </ContainedDrawer>
   );
 }

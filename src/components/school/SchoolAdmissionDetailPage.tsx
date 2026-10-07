@@ -8,6 +8,7 @@ import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu"
 import { glassPanel, primaryButton, StatusPill } from "@/components/supermarket/purchasing-ui";
 import { SchoolIconWell } from "@/components/school/school-ui";
 import { UserPlus } from "lucide-react";
+import { formatTzs } from "@/lib/format/currency";
 
 function Fact({ label, value }: { label: string; value: string }) {
   return (
@@ -115,16 +116,21 @@ export function SchoolAdmissionDetailPage({
 
       <section className={`${glassPanel} space-y-3`}>
         <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Applicable fees</h2>
-        {admission.fees.length ? (
-          <ul className="space-y-1 text-[13.5px] text-navy">
-            {admission.fees.map((fee) => (
-              <li key={fee.id}>
-                {fee.feeName} · {fee.amount} · {fee.frequency}
-              </li>
-            ))}
-          </ul>
+        {admission.fee.configured ? (
+          <div className="space-y-1 text-[13.5px] text-navy">
+            <p>Annual Fee: {formatTzs(admission.fee.annualAmount ?? 0)}</p>
+            {admission.fee.currentTermAmount != null && admission.fee.currentTermName ? (
+              <p>
+                {admission.fee.currentTermName}: {formatTzs(admission.fee.currentTermAmount)}
+              </p>
+            ) : admission.fee.termCount === 0 ? (
+              <p className="text-slate-500">No term fees configured.</p>
+            ) : (
+              <p className="text-slate-500">Current term fee is not configured.</p>
+            )}
+          </div>
         ) : (
-          <p className="text-[13.5px] text-slate-500">No fee structure is assigned to this class for the selected year.</p>
+          <p className="text-[13.5px] text-slate-500">Fee structure not configured</p>
         )}
         <p className="text-[13px] text-slate-500">
           {admission.attendanceEligible

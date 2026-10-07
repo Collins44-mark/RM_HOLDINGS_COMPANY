@@ -80,7 +80,7 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "subjects", actions: [...CRUD] },
       { resource: "attendance", actions: ["view", "create", "edit"] },
       { resource: "exams", actions: [...CRUD] },
-      { resource: "fees", actions: ["view", "create", "edit"] },
+      { resource: "fees", actions: ["view", "create", "edit", "manage"] },
       { resource: "buses", actions: [...CRUD] },
       { resource: "drivers", actions: [...CRUD] },
       { resource: "routes", actions: [...CRUD] },
@@ -178,7 +178,9 @@ export function isOperablePermission(code: string) {
     code === "school.parents.view" ||
     code === "school.parents.manage" ||
     code === "school.staff.view" ||
-    code === "school.staff.manage"
+    code === "school.staff.manage" ||
+    code === "school.fees.view" ||
+    code === "school.fees.manage"
   );
 }
 
@@ -238,6 +240,7 @@ const RESOURCE_LABELS: Record<string, string> = {
   students: "Students",
   parents: "Parents / Guardians",
   staff: "Staff",
+  fees: "Fees",
 };
 
 export function permissionModuleLabel(module: string) {
@@ -363,6 +366,8 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.parents.manage",
       "school.staff.view",
       "school.staff.manage",
+      "school.fees.view",
+      "school.fees.manage",
     ],
   },
   {
@@ -377,6 +382,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.students.view",
       "school.parents.view",
       "school.staff.view",
+      "school.fees.view",
     ],
   },
   {
@@ -384,7 +390,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
     name: "School Accountant",
     description: "Manages authorized school financial operations.",
     modules: ["school"],
-    permissionMatchers: ["school.classes.view", "school.students.view"],
+    permissionMatchers: ["school.classes.view", "school.students.view", "school.fees.view", "school.fees.manage"],
   },
   {
     code: ROLE_CODES.TEACHER,
@@ -405,6 +411,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.students.view",
       "school.parents.view",
       "school.parents.manage",
+      "school.fees.view",
     ],
   },
   {

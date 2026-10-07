@@ -14,6 +14,7 @@ import {
 } from "@/lib/school/access";
 import { allowsStream, loadSchoolStructureScope } from "@/lib/school/structure-scope";
 import { schoolPageMeta, schoolPageRange } from "@/lib/school/pagination";
+import { findApplicableFeeStructure, type ApplicableFeeStructure } from "@/lib/school/fee-structure";
 
 const VIEW = "school.admissions.view";
 const MANAGE = "school.admissions.manage";
@@ -33,10 +34,12 @@ export type AdmissionListRow = {
 };
 
 export type ApplicableFeeRow = {
-  id: string;
-  feeName: string;
-  amount: string;
-  frequency: string;
+  configured: boolean;
+  annualAmount: number | null;
+  currentTermName: string | null;
+  currentTermAmount: number | null;
+  termCount: number;
+  message: string;
 };
 
 export type AdmissionDetail = {
@@ -72,7 +75,7 @@ export type AdmissionDetail = {
   studentId: string | null;
   studentNumber: string | null;
   attendanceEligible: boolean;
-  fees: ApplicableFeeRow[];
+  fee: ApplicableFeeRow;
 };
 
 export type AdmissionFormInput = {
@@ -263,35 +266,42 @@ function admissionPayload(input: AdmissionFormInput, businessUnitId: string) {
   };
 }
 
+function feeRowFromStructure(structure: ApplicableFeeStructure | null): ApplicableFeeRow {
+  if (!structure) {
+    return {
+      configured: false,
+      annualAmount: null,
+      currentTermName: null,
+      currentTermAmount: null,
+      termCount: 0,
+      message: "Fee structure not configured",
+    };
+  }
+  return {
+    configured: true,
+    annualAmount: structure.annualAmount,
+    currentTermName: structure.currentTermName,
+    currentTermAmount: structure.currentTermAmount,
+    termCount: structure.terms.length,
+    message: "",
+  };
+}
+
 async function loadApplicableFees(
   supabase: Awaited<ReturnType<typeof requireSchoolPermission>>["supabase"],
   businessUnitId: string,
   classId: string,
   academicYearId: string,
   termId: string,
-) {
-  if (!classId || !academicYearId) return [];
-  const result = await supabase
-    .from("sch_fee_assignments")
-    .select("id, fee_category_id, amount, frequency, term_id")
-    .eq("business_unit_id", businessUnitId)
-    .eq("class_id", classId)
-    .eq("academic_year_id", academicYearId)
-    .eq("is_active", true);
-  if (result.error && !isSchoolUnconfiguredRead(result.error)) return [];
-  const rows = (result.data ?? []).filter((row) => !row.term_id || String(row.term_id) === termId || !termId);
-  const categoryIds = [...new Set(rows.map((row) => String(row.fee_category_id)))];
-  const names = new Map<string, string>();
-  if (categoryIds.length) {
-    const cats = await supabase.from("sch_fee_categories").select("id, name").in("id", categoryIds);
-    for (const row of cats.data ?? []) names.set(String(row.id), String(row.name));
-  }
-  return rows.map((row) => ({
-    id: String(row.id),
-    feeName: names.get(String(row.fee_category_id)) ?? "Fee",
-    amount: String(row.amount),
-    frequency: String(row.frequency),
-  }));
+): Promise<ApplicableFeeRow> {
+  const structure = await findApplicableFeeStructure({
+    supabase,
+    businessUnitId,
+    academicYearId,
+    classId,
+    termId,
+  });
+  return feeRowFromStructure(structure);
 }
 
 async function loadPlacementNames(
@@ -574,7 +584,7 @@ export async function getSchoolAdmissionAction(id: string) {
       studentId: row.student_id ? String(row.student_id) : null,
       studentNumber: studentRes.data?.student_number ? String(studentRes.data.student_number) : null,
       attendanceEligible,
-      fees,
+      fee: fees,
     };
     return { ok: true as const, admission: detail, capabilities: caps(user) };
   } catch (error) {
@@ -794,8 +804,8 @@ export async function getAdmissionStreamsAction(classId: string) {
 export async function resolveAdmissionFeesAction(input: { classId: string; academicYearId: string; termId: string }) {
   try {
     const { supabase, businessUnitId } = await requireSchoolPermission(VIEW);
-    const fees = await loadApplicableFees(supabase, businessUnitId, str(input.classId), str(input.academicYearId), str(input.termId));
-    return { ok: true as const, fees };
+    const fee = await loadApplicableFees(supabase, businessUnitId, str(input.classId), str(input.academicYearId), str(input.termId));
+    return { ok: true as const, fee };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
   }

@@ -17,6 +17,7 @@ import {
 import { SchoolConfirmDialog, SchoolField, SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
 import { cn } from "@/lib/cn";
+import { formatTzs } from "@/lib/format/currency";
 
 export type AdmissionFormOptions = {
   years: Array<{ id: string; name: string; isCurrent: boolean }>;
@@ -103,7 +104,7 @@ export function SchoolAdmissionFormPage({
   );
   const [classes, setClasses] = useState<Array<{ id: string; name: string }>>([]);
   const [streams, setStreams] = useState<Array<{ id: string; name: string }>>([]);
-  const [fees, setFees] = useState<ApplicableFeeRow[]>(admission?.fees ?? []);
+  const [fee, setFee] = useState<ApplicableFeeRow | null>(admission?.fee ?? null);
   const [section, setSection] = useState<(typeof SECTIONS)[number][0]>("student");
   const [saveError, setSaveError] = useState<string | null>(error);
   const [saveBusy, setSaveBusy] = useState(false);
@@ -156,7 +157,7 @@ export function SchoolAdmissionFormPage({
       termId: form.termId,
     }).then((result) => {
       if (!active || !result.ok) return;
-      setFees(result.fees);
+      setFee(result.fee);
     });
     return () => {
       active = false;
@@ -168,7 +169,7 @@ export function SchoolAdmissionFormPage({
   const terms = (options?.terms ?? []).filter((row) => row.academicYearId === form.academicYearId);
   const visibleClasses = form.levelId ? classes : [];
   const visibleStreams = form.classId ? streams : [];
-  const visibleFees = form.classId && form.academicYearId ? fees : [];
+  const visibleFee = form.classId && form.academicYearId ? fee : null;
   const yearName = years.find((row) => row.id === form.academicYearId)?.name ?? "—";
   const levelName = levels.find((row) => row.id === form.levelId)?.name ?? "—";
   const className = visibleClasses.find((row) => row.id === form.classId)?.name ?? "—";
@@ -395,20 +396,23 @@ export function SchoolAdmissionFormPage({
           ) : null}
           {form.levelId && !visibleClasses.length ? <p className="text-[13px] text-slate-500">No classes configured for this level yet.</p> : null}
           {form.classId && !visibleStreams.length ? <p className="text-[13px] text-slate-500">No streams configured for this class yet.</p> : null}
-          {visibleFees.length ? (
+          {visibleFee?.configured ? (
             <div className="rounded-[16px] border border-navy/8 bg-white/70 px-4 py-3">
-              <p className="text-[12.5px] font-semibold text-navy">Applicable fees for this class</p>
-              <ul className="mt-2 space-y-1 text-[13px] text-slate-600">
-                {visibleFees.map((fee) => (
-                  <li key={fee.id}>
-                    {fee.feeName} · {fee.amount} · {fee.frequency}
-                  </li>
-                ))}
-              </ul>
+              <p className="text-[12.5px] font-semibold text-navy">Applicable fee</p>
+              <p className="mt-2 text-[13px] text-slate-600">Annual Fee: {formatTzs(visibleFee.annualAmount ?? 0)}</p>
+              {visibleFee.currentTermAmount != null && visibleFee.currentTermName ? (
+                <p className="text-[13px] text-slate-600">
+                  {visibleFee.currentTermName}: {formatTzs(visibleFee.currentTermAmount)}
+                </p>
+              ) : visibleFee.termCount === 0 ? (
+                <p className="text-[13px] text-slate-500">No term fees configured.</p>
+              ) : (
+                <p className="text-[13px] text-slate-500">Current term fee is not configured.</p>
+              )}
             </div>
-          ) : (
-            <p className="text-[13px] text-slate-500">No fee structure is assigned to this class yet. Admission can still be completed.</p>
-          )}
+          ) : form.classId && form.academicYearId ? (
+            <p className="text-[13px] text-slate-500">Fee structure not configured. Admission can still be completed.</p>
+          ) : null}
         </section>
       ) : null}
 

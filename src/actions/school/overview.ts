@@ -78,7 +78,7 @@ export async function getSchoolOverviewAction(): Promise<
         .eq("business_unit_id", businessUnitId)
         .maybeSingle(),
       supabase
-        .from("sch_fee_categories")
+        .from("sch_fee_structures")
         .select("id", { count: "exact", head: true })
         .eq("business_unit_id", businessUnitId)
         .eq("is_active", true),
