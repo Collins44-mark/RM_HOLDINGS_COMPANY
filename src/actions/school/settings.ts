@@ -9,6 +9,7 @@ import { BUSINESS_UNITS_CACHE_TAG } from "@/lib/data/business-units";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   isSchoolEmptyRead,
+  isSchoolUnconfiguredRead,
   mapSchoolDbError,
   requireSchoolPermission,
   schoolActionError,
@@ -238,25 +239,42 @@ export async function getSchoolSettingsWorkspaceAction() {
         .maybeSingle(),
     ]);
 
-    for (const res of [
-      buRes,
-      profileRes,
-      yearsRes,
-      termsRes,
-      classesRes,
-      scalesRes,
-      bandsRes,
-      feesRes,
-      attendanceRes,
-      statusesRes,
-      transportRes,
-    ]) {
-      if (res.error && !isSchoolEmptyRead(res.error)) mapSchoolDbError(res.error, "load");
-    }
+    const buErr = buRes.error && !isSchoolUnconfiguredRead(buRes.error) ? buRes.error : null;
+    if (buErr) mapSchoolDbError(buErr, "load");
+
+    const profileRow =
+      profileRes.error && !isSchoolUnconfiguredRead(profileRes.error)
+        ? mapSchoolDbError(profileRes.error, "load")
+        : profileRes.data;
+    const yearsRows =
+      yearsRes.error && !isSchoolUnconfiguredRead(yearsRes.error) ? mapSchoolDbError(yearsRes.error, "load") : (yearsRes.data ?? []);
+    const termsRows =
+      termsRes.error && !isSchoolUnconfiguredRead(termsRes.error) ? mapSchoolDbError(termsRes.error, "load") : (termsRes.data ?? []);
+    const classRows =
+      classesRes.error && !isSchoolUnconfiguredRead(classesRes.error)
+        ? mapSchoolDbError(classesRes.error, "load")
+        : (classesRes.data ?? []);
+    const scaleRow =
+      scalesRes.error && !isSchoolUnconfiguredRead(scalesRes.error) ? mapSchoolDbError(scalesRes.error, "load") : scalesRes.data;
+    const bandRows =
+      bandsRes.error && !isSchoolUnconfiguredRead(bandsRes.error) ? mapSchoolDbError(bandsRes.error, "load") : (bandsRes.data ?? []);
+    const feeRows =
+      feesRes.error && !isSchoolUnconfiguredRead(feesRes.error) ? mapSchoolDbError(feesRes.error, "load") : (feesRes.data ?? []);
+    const attendanceRow =
+      attendanceRes.error && !isSchoolUnconfiguredRead(attendanceRes.error)
+        ? mapSchoolDbError(attendanceRes.error, "load")
+        : attendanceRes.data;
+    const statusRows =
+      statusesRes.error && !isSchoolUnconfiguredRead(statusesRes.error)
+        ? mapSchoolDbError(statusesRes.error, "load")
+        : (statusesRes.data ?? []);
+    const transportRow =
+      transportRes.error && !isSchoolUnconfiguredRead(transportRes.error)
+        ? mapSchoolDbError(transportRes.error, "load")
+        : transportRes.data;
 
     const buName = str(buRes.data?.name) || "School Management";
     const buCity = str(buRes.data?.location);
-    const profileRow = profileRes.data;
     const profile: SchoolProfile = {
       name: str(profileRow?.name) || buName,
       shortName: str(profileRow?.short_name),
@@ -275,7 +293,7 @@ export async function getSchoolSettingsWorkspaceAction() {
       ok: true as const,
       profileSaved: Boolean(profileRow),
       profile,
-      years: (yearsRes.data ?? []).map((row) => ({
+      years: yearsRows.map((row) => ({
         id: String(row.id),
         name: String(row.name),
         startDate: String(row.start_date),
@@ -283,7 +301,7 @@ export async function getSchoolSettingsWorkspaceAction() {
         isCurrent: Boolean(row.is_current),
         isActive: Boolean(row.is_active),
       })),
-      terms: (termsRes.data ?? []).map((row) => ({
+      terms: termsRows.map((row) => ({
         id: String(row.id),
         academicYearId: String(row.academic_year_id),
         name: String(row.name),
@@ -292,15 +310,15 @@ export async function getSchoolSettingsWorkspaceAction() {
         endDate: String(row.end_date),
         isActive: Boolean(row.is_active),
       })),
-      classes: (classesRes.data ?? []).map((row) => ({
+      classes: classRows.map((row) => ({
         id: String(row.id),
         name: String(row.name),
         code: String(row.code),
         sortOrder: Number(row.sort_order),
         isActive: Boolean(row.is_active),
       })),
-      gradingScaleId: scalesRes.data?.id ? String(scalesRes.data.id) : null,
-      gradingBands: (bandsRes.data ?? []).map((row) => ({
+      gradingScaleId: scaleRow?.id ? String(scaleRow.id) : null,
+      gradingBands: bandRows.map((row) => ({
         id: String(row.id),
         scaleId: String(row.scale_id),
         grade: String(row.grade),
@@ -310,7 +328,7 @@ export async function getSchoolSettingsWorkspaceAction() {
         sortOrder: Number(row.sort_order),
         isActive: Boolean(row.is_active),
       })),
-      fees: (feesRes.data ?? []).map((row) => ({
+      fees: feeRows.map((row) => ({
         id: String(row.id),
         name: String(row.name),
         code: String(row.code),
@@ -320,15 +338,15 @@ export async function getSchoolSettingsWorkspaceAction() {
           : "OTHER"),
         isActive: Boolean(row.is_active),
       })),
-      attendance: attendanceRes.data
+      attendance: attendanceRow
         ? {
-            schoolStart: String(attendanceRes.data.school_start).slice(0, 5),
-            schoolEnd: String(attendanceRes.data.school_end).slice(0, 5),
-            lateThresholdMinutes: Number(attendanceRes.data.late_threshold_minutes),
+            schoolStart: String(attendanceRow.school_start).slice(0, 5),
+            schoolEnd: String(attendanceRow.school_end).slice(0, 5),
+            lateThresholdMinutes: Number(attendanceRow.late_threshold_minutes),
           }
         : { schoolStart: "", schoolEnd: "", lateThresholdMinutes: 0 },
-      attendanceSaved: Boolean(attendanceRes.data),
-      attendanceStatuses: (statusesRes.data ?? []).map((row) => ({
+      attendanceSaved: Boolean(attendanceRow),
+      attendanceStatuses: statusRows.map((row) => ({
         id: String(row.id),
         code: String(row.code),
         name: String(row.name),
@@ -336,13 +354,13 @@ export async function getSchoolSettingsWorkspaceAction() {
         sortOrder: Number(row.sort_order),
         isActive: Boolean(row.is_active),
       })),
-      transport: transportRes.data
+      transport: transportRow
         ? {
-            enabled: Boolean(transportRes.data.enabled),
-            pickupDropoffEnabled: Boolean(transportRes.data.pickup_dropoff_enabled),
+            enabled: Boolean(transportRow.enabled),
+            pickupDropoffEnabled: Boolean(transportRow.pickup_dropoff_enabled),
           }
         : { enabled: false, pickupDropoffEnabled: false },
-      transportSaved: Boolean(transportRes.data),
+      transportSaved: Boolean(transportRow),
       capabilities: {
         canView: true,
         canManage: canManage(user),

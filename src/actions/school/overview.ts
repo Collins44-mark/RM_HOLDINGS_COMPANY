@@ -2,7 +2,7 @@
 
 import { hasPermission } from "@/lib/auth/rbac";
 import { requireAuth, identityFromUser } from "@/lib/auth/session";
-import { isSchoolEmptyRead, requireSchoolContext, schoolActionError, SchoolError } from "@/lib/school/access";
+import { isSchoolUnconfiguredRead, requireSchoolContext, schoolActionError, SchoolError } from "@/lib/school/access";
 import type { ConfigStatus, OverviewMetric, SchoolOverviewView } from "@/lib/school/overview";
 
 function unavailable(): OverviewMetric<number> {
@@ -76,7 +76,7 @@ export async function getSchoolOverviewAction(): Promise<
         .maybeSingle(),
     ]);
 
-    if (buRes.error && !isSchoolEmptyRead(buRes.error) && profileRes.error && !isSchoolEmptyRead(profileRes.error)) {
+    if (buRes.error && !isSchoolUnconfiguredRead(buRes.error) && profileRes.error && !isSchoolUnconfiguredRead(profileRes.error)) {
       throw new SchoolError("Couldn't load school overview.", "DATABASE");
     }
 
@@ -91,7 +91,7 @@ export async function getSchoolOverviewAction(): Promise<
     const location = profileCity || buLocation || "Not configured";
 
     let academicYear: SchoolOverviewView["academicYear"];
-    if (currentYearsRes.error && !isSchoolEmptyRead(currentYearsRes.error)) academicYear = { status: "error" };
+    if (currentYearsRes.error && !isSchoolUnconfiguredRead(currentYearsRes.error)) academicYear = { status: "error" };
     else if ((currentYearsRes.data ?? []).length > 1) academicYear = { status: "conflict" };
     else if ((currentYearsRes.data ?? []).length === 1) {
       academicYear = { status: "ok", name: String(currentYearsRes.data![0].name) };
@@ -109,7 +109,7 @@ export async function getSchoolOverviewAction(): Promise<
         .eq("business_unit_id", businessUnitId)
         .eq("academic_year_id", yearId)
         .eq("is_active", true);
-      if (termsRes.error && !isSchoolEmptyRead(termsRes.error)) currentTerm = { status: "error" };
+      if (termsRes.error && !isSchoolUnconfiguredRead(termsRes.error)) currentTerm = { status: "error" };
       else if ((termsRes.data ?? []).length === 1) {
         currentTerm = { status: "ok", name: String(termsRes.data![0].name) };
       } else if ((termsRes.data ?? []).length > 1) currentTerm = { status: "multiple" };
@@ -117,24 +117,28 @@ export async function getSchoolOverviewAction(): Promise<
     }
 
     const classLevels: OverviewMetric<number> =
-      classCountRes.error && !isSchoolEmptyRead(classCountRes.error)
+      classCountRes.error && !isSchoolUnconfiguredRead(classCountRes.error)
         ? { status: "error" }
-        : { status: "ok", value: classCountRes.count ?? 0 };
+        : typeof classCountRes.count === "number"
+          ? { status: "ok", value: classCountRes.count }
+          : { status: "error" };
 
     const grading: ConfigStatus =
-      gradingRes.error && !isSchoolEmptyRead(gradingRes.error)
+      gradingRes.error && !isSchoolUnconfiguredRead(gradingRes.error)
         ? "error"
         : configFromRow(Boolean(gradingRes.data?.id), "presence");
     const attendanceRules: ConfigStatus =
-      attendanceRes.error && !isSchoolEmptyRead(attendanceRes.error)
+      attendanceRes.error && !isSchoolUnconfiguredRead(attendanceRes.error)
         ? "error"
         : configFromRow(Boolean(attendanceRes.data), "presence");
     const feeStructure: ConfigStatus =
-      feeCountRes.error && !isSchoolEmptyRead(feeCountRes.error)
+      feeCountRes.error && !isSchoolUnconfiguredRead(feeCountRes.error)
         ? "error"
-        : configFromRow((feeCountRes.count ?? 0) > 0, "presence");
+        : typeof feeCountRes.count === "number"
+          ? configFromRow(feeCountRes.count > 0, "presence")
+          : "not_configured";
     const transport: ConfigStatus =
-      transportRes.error && !isSchoolEmptyRead(transportRes.error)
+      transportRes.error && !isSchoolUnconfiguredRead(transportRes.error)
         ? "error"
         : configFromRow(Boolean(transportRes.data), "flag", Boolean(transportRes.data?.enabled));
 

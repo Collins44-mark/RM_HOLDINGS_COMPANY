@@ -141,29 +141,35 @@ export function SchoolSettingsPage() {
 
   useEffect(() => {
     let active = true;
-    void getSchoolSettingsWorkspaceAction().then((result) => {
-      if (!active) return;
-      if (!result.ok) {
+    void getSchoolSettingsWorkspaceAction()
+      .then((result) => {
+        if (!active) return;
+        if (!result.ok) {
+          setLoadError(result.error);
+          setPhase("error");
+          return;
+        }
+        setLoadError(null);
+        setSaveError(null);
+        setPhase("ready");
+        setCanManage(result.capabilities.canManage);
+        setProfile(result.profile);
+        setProfileDraft(result.profile);
+        setEditingProfile(false);
+        setYears(result.years);
+        setTerms(result.terms);
+        setClasses(result.classes);
+        setBands(result.gradingBands);
+        setFees(result.fees);
+        setAttendance(result.attendance);
+        setStatuses(result.attendanceStatuses);
+        setTransport(result.transport);
+      })
+      .catch(() => {
+        if (!active) return;
         setLoadError("Couldn't load school settings.");
         setPhase("error");
-        return;
-      }
-      setLoadError(null);
-      setSaveError(null);
-      setPhase("ready");
-      setCanManage(result.capabilities.canManage);
-      setProfile(result.profile);
-      setProfileDraft(result.profile);
-      setEditingProfile(false);
-      setYears(result.years);
-      setTerms(result.terms);
-      setClasses(result.classes);
-      setBands(result.gradingBands);
-      setFees(result.fees);
-      setAttendance(result.attendance);
-      setStatuses(result.attendanceStatuses);
-      setTransport(result.transport);
-    });
+      });
     return () => {
       active = false;
     };

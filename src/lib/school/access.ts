@@ -56,14 +56,37 @@ export const requireSchoolContext = cache(async (): Promise<SchoolContext> => {
   return { supabase, businessUnitId, userId: user.id };
 });
 
-/** PostgREST `maybeSingle()` with no row — a valid empty read, not a failure. */
-export function isSchoolEmptyRead(error: { message?: string; code?: string; details?: string } | null | undefined) {
+type SchoolReadError = { message?: string; code?: string; details?: string } | null | undefined;
+
+function schoolErrorBlob(error: SchoolReadError) {
+  return `${error?.code ?? ""} ${error?.message ?? ""} ${error?.details ?? ""}`.toLowerCase();
+}
+
+/** PostgREST `maybeSingle()` / `single()` with no row — a valid empty read, not a failure. */
+export function isSchoolEmptyRead(error: SchoolReadError) {
   if (!error) return true;
   if (error.code === "PGRST116") return true;
-  const blob = `${error.code ?? ""} ${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
+  const blob = schoolErrorBlob(error);
   return (
     blob.includes("json object requested") && (blob.includes("0 rows") || blob.includes("no rows") || blob.includes("or no) rows"))
   );
+}
+
+/** Relation is not in PostgREST yet — no configuration exists to load. */
+export function isSchoolMissingRelation(error: SchoolReadError) {
+  if (!error) return false;
+  if (error.code === "PGRST205" || error.code === "42P01") return true;
+  const blob = schoolErrorBlob(error);
+  return (
+    blob.includes("schema cache") ||
+    blob.includes("could not find the table") ||
+    (blob.includes("does not exist") && (blob.includes("relation") || blob.includes("table")))
+  );
+}
+
+/** Successful Settings/Overview read with nothing stored (zero rows or unconfigured schema). */
+export function isSchoolUnconfiguredRead(error: SchoolReadError) {
+  return isSchoolEmptyRead(error) || isSchoolMissingRelation(error);
 }
 
 export function mapSchoolDbError(
