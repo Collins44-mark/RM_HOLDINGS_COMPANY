@@ -29,7 +29,6 @@ import {
   glassPanel,
   inputClass,
   primaryButton,
-  PulseBar,
   secondaryButton,
   StatusPill,
   tableHead,
@@ -86,25 +85,12 @@ function WorkflowAction({
   );
 }
 
-export function SchoolSettingsRouteShell() {
-  return (
-    <div className="min-w-0 max-w-full space-y-5 pb-10">
-      <header>
-        <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">School Settings</h1>
-        <p className="mt-1 text-[13.5px] text-slate-500">Configure school-wide settings used across the School Management system.</p>
-      </header>
-      <div className="flex flex-wrap gap-1 rounded-full bg-slate-100/80 p-1">
-        {TABS.map((tab) => (
-          <span key={tab.id} className="h-9 min-w-[5.5rem] rounded-full bg-white/50" />
-        ))}
-      </div>
-      <div className={`${glassPanel} space-y-3`}>
-        <PulseBar className="h-4 w-40" />
-        <PulseBar className="h-12 w-full" />
-        <PulseBar className="h-12 w-full" />
-      </div>
-    </div>
-  );
+function displayValue(value: string) {
+  return value.trim() ? value : "Not configured";
+}
+
+function asSaveError(message: string) {
+  return message.startsWith("Couldn't save") ? "Couldn't save school settings. Please try again." : message;
 }
 
 export function SchoolSettingsPage() {
@@ -147,6 +133,8 @@ export function SchoolSettingsPage() {
   const [attendanceSaved, setAttendanceSaved] = useState(false);
   const [transportBusy, setTransportBusy] = useState(false);
   const [transportSaved, setTransportSaved] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileDraft, setProfileDraft] = useState<SchoolProfile>(profile);
   const profileLock = useRef(false);
   const attendanceLock = useRef(false);
   const transportLock = useRef(false);
@@ -165,6 +153,8 @@ export function SchoolSettingsPage() {
       setPhase("ready");
       setCanManage(result.capabilities.canManage);
       setProfile(result.profile);
+      setProfileDraft(result.profile);
+      setEditingProfile(false);
       setYears(result.years);
       setTerms(result.terms);
       setClasses(result.classes);
@@ -211,63 +201,120 @@ export function SchoolSettingsPage() {
 
       {tab === "general" ? (
         <section className={`${glassPanel} space-y-4`}>
-          <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">School Information</h2>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Field label="School name">
-              <input className={inputClass} value={profile.name} onChange={(e) => setProfile((p) => ({ ...p, name: e.target.value }))} />
-            </Field>
-            <Field label="Short name">
-              <input className={inputClass} value={profile.shortName} onChange={(e) => setProfile((p) => ({ ...p, shortName: e.target.value }))} />
-            </Field>
-            <Field label="School code">
-              <input className={inputClass} value={profile.schoolCode} onChange={(e) => setProfile((p) => ({ ...p, schoolCode: e.target.value }))} />
-            </Field>
-            <Field label="Location">
-              <input className={inputClass} value={profile.city} onChange={(e) => setProfile((p) => ({ ...p, city: e.target.value }))} />
-            </Field>
-            <Field label="Address">
-              <input className={inputClass} value={profile.address} onChange={(e) => setProfile((p) => ({ ...p, address: e.target.value }))} />
-            </Field>
-            <Field label="Phone">
-              <input className={inputClass} value={profile.phone} onChange={(e) => setProfile((p) => ({ ...p, phone: e.target.value }))} />
-            </Field>
-            <Field label="Email">
-              <input className={inputClass} value={profile.email} onChange={(e) => setProfile((p) => ({ ...p, email: e.target.value }))} />
-            </Field>
-            <Field label="Website">
-              <input className={inputClass} value={profile.website} onChange={(e) => setProfile((p) => ({ ...p, website: e.target.value }))} />
-            </Field>
-            <Field label="Principal / Head">
-              <input className={inputClass} value={profile.principalName} onChange={(e) => setProfile((p) => ({ ...p, principalName: e.target.value }))} />
-            </Field>
-            <Field label="Logo URL">
-              <input className={inputClass} value={profile.logoUrl} onChange={(e) => setProfile((p) => ({ ...p, logoUrl: e.target.value }))} />
-            </Field>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">School Information</h2>
+            {canManage && !editingProfile ? (
+              <button
+                type="button"
+                className={secondaryButton}
+                onClick={() => {
+                  setProfileDraft(profile);
+                  setEditingProfile(true);
+                  setProfileSaved(false);
+                }}
+              >
+                Edit
+              </button>
+            ) : null}
           </div>
-          {canManage ? (
-            <WorkflowAction
-              className={primaryButton}
-              busy={profileBusy}
-              confirmed={profileSaved}
-              idleLabel="Save Changes"
-              onClick={() => {
-                if (profileLock.current) return;
-                profileLock.current = true;
-                setProfileBusy(true);
-                setProfileSaved(false);
-                void saveSchoolProfileAction(profile).then((result) => {
-                  profileLock.current = false;
-                  setProfileBusy(false);
-                  if (!result.ok) setSaveError(result.error);
-                  else {
+          {editingProfile ? (
+            <>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <Field label="School name">
+                  <input className={inputClass} value={profileDraft.name} onChange={(e) => setProfileDraft((p) => ({ ...p, name: e.target.value }))} />
+                </Field>
+                <Field label="Short name">
+                  <input className={inputClass} value={profileDraft.shortName} onChange={(e) => setProfileDraft((p) => ({ ...p, shortName: e.target.value }))} />
+                </Field>
+                <Field label="School code">
+                  <input className={inputClass} value={profileDraft.schoolCode} onChange={(e) => setProfileDraft((p) => ({ ...p, schoolCode: e.target.value }))} />
+                </Field>
+                <Field label="Location">
+                  <input className={inputClass} value={profileDraft.city} onChange={(e) => setProfileDraft((p) => ({ ...p, city: e.target.value }))} />
+                </Field>
+                <Field label="Address">
+                  <input className={inputClass} value={profileDraft.address} onChange={(e) => setProfileDraft((p) => ({ ...p, address: e.target.value }))} />
+                </Field>
+                <Field label="Phone">
+                  <input className={inputClass} value={profileDraft.phone} onChange={(e) => setProfileDraft((p) => ({ ...p, phone: e.target.value }))} />
+                </Field>
+                <Field label="Email">
+                  <input className={inputClass} value={profileDraft.email} onChange={(e) => setProfileDraft((p) => ({ ...p, email: e.target.value }))} />
+                </Field>
+                <Field label="Website">
+                  <input className={inputClass} value={profileDraft.website} onChange={(e) => setProfileDraft((p) => ({ ...p, website: e.target.value }))} />
+                </Field>
+                <Field label="Principal / Head">
+                  <input className={inputClass} value={profileDraft.principalName} onChange={(e) => setProfileDraft((p) => ({ ...p, principalName: e.target.value }))} />
+                </Field>
+                <Field label="Logo URL">
+                  <input className={inputClass} value={profileDraft.logoUrl} onChange={(e) => setProfileDraft((p) => ({ ...p, logoUrl: e.target.value }))} />
+                </Field>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={secondaryButton}
+                  disabled={profileBusy}
+                  onClick={() => {
+                    setProfileDraft(profile);
+                    setEditingProfile(false);
+                    setProfileSaved(false);
                     setSaveError(null);
-                    setProfileSaved(true);
-                    setTick((n) => n + 1);
-                  }
-                });
-              }}
-            />
-          ) : null}
+                  }}
+                >
+                  Cancel
+                </button>
+                <WorkflowAction
+                  className={primaryButton}
+                  busy={profileBusy}
+                  confirmed={profileSaved}
+                  idleLabel="Save Changes"
+                  onClick={() => {
+                    if (profileLock.current) return;
+                    profileLock.current = true;
+                    setProfileBusy(true);
+                    setProfileSaved(false);
+                    void saveSchoolProfileAction(profileDraft).then((result) => {
+                      profileLock.current = false;
+                      setProfileBusy(false);
+                      if (!result.ok) setSaveError(asSaveError(result.error));
+                      else {
+                        setSaveError(null);
+                        setProfile(profileDraft);
+                        setProfileSaved(true);
+                        setEditingProfile(false);
+                      }
+                    });
+                  }}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
+              {(
+                [
+                  ["School name", profile.name],
+                  ["Short name", profile.shortName],
+                  ["School code", profile.schoolCode],
+                  ["Location", profile.city],
+                  ["Address", profile.address],
+                  ["Phone", profile.phone],
+                  ["Email", profile.email],
+                  ["Website", profile.website],
+                  ["Principal / Head", profile.principalName],
+                  ["Logo URL", profile.logoUrl],
+                ] as const
+              ).map(([label, value]) => (
+                <div key={label} className="flex items-baseline justify-between gap-4 border-b border-black/[0.04] py-2.5">
+                  <p className="text-[13px] text-slate-500">{label}</p>
+                  <p className="text-right text-[13.5px] font-medium text-navy">
+                    {phase === "ready" ? displayValue(value) : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       ) : null}
 
@@ -369,7 +416,7 @@ export function SchoolSettingsPage() {
                   void saveAttendanceSettingsAction(attendance).then((result) => {
                     attendanceLock.current = false;
                     setAttendanceBusy(false);
-                    if (!result.ok) setSaveError(result.error);
+                    if (!result.ok) setSaveError(asSaveError(result.error));
                     else {
                       setSaveError(null);
                       setAttendanceSaved(true);
@@ -422,7 +469,7 @@ export function SchoolSettingsPage() {
                 void saveTransportSettingsAction(transport).then((result) => {
                   transportLock.current = false;
                   setTransportBusy(false);
-                  if (!result.ok) setSaveError(result.error);
+                  if (!result.ok) setSaveError(asSaveError(result.error));
                   else {
                     setSaveError(null);
                     setTransportSaved(true);
@@ -450,7 +497,7 @@ export function SchoolSettingsPage() {
             setDrawer(null);
             setTick((n) => n + 1);
           }}
-          onError={setSaveError}
+          onError={(message) => setSaveError(asSaveError(message))}
         />
       ) : null}
     </div>

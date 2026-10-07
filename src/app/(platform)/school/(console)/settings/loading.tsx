@@ -1,5 +1,8 @@
-import { SchoolSettingsRouteShell } from "@/components/school/SchoolSettingsPage";
-
 export default function Loading() {
-  return <SchoolSettingsRouteShell />;
+  return (
+    <div className="min-w-0 max-w-full pb-10">
+      <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">School Settings</h1>
+      <p className="mt-1 text-[13.5px] text-slate-500">Configure school-wide settings used across the School Management system.</p>
+    </div>
+  );
 }

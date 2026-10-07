@@ -60,15 +60,18 @@ export const requireSchoolContext = cache(async (): Promise<SchoolContext> => {
 export function isSchoolEmptyRead(error: { message?: string; code?: string; details?: string } | null | undefined) {
   if (!error) return true;
   if (error.code === "PGRST116") return true;
-  const blob = `${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
-  return blob.includes("json object requested") && (blob.includes("0 rows") || blob.includes("no rows"));
+  const blob = `${error.code ?? ""} ${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
+  return (
+    blob.includes("json object requested") && (blob.includes("0 rows") || blob.includes("no rows") || blob.includes("or no) rows"))
+  );
 }
 
 export function mapSchoolDbError(
   error: { message: string; code?: string } | null,
   operation: "load" | "save" = "save",
 ): never {
-  const fallback = operation === "load" ? "Couldn't load school settings." : "Couldn't save school settings.";
+  const fallback =
+    operation === "load" ? "Couldn't load school settings." : "Couldn't save school settings. Please try again.";
   if (!error) throw new SchoolError(fallback, "DATABASE");
   if (error.code === "23505") {
     throw new SchoolError("That name or code is already in use.", "CONFLICT");
