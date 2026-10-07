@@ -26,6 +26,7 @@ import {
   type SchoolProfile,
   type TermRow,
   type TransportSettings,
+  type SchoolSettingsWorkspaceResult,
 } from "@/actions/school/settings";
 import { getSchoolClassesForLevelAction, type SchoolClassRow } from "@/actions/school/classes";
 import { ContainedDrawer, DrawerCancel } from "@/components/ui/ContainedDrawer";
@@ -101,50 +102,58 @@ function asSaveError(message: string) {
   return message.startsWith("Couldn't save") ? "Couldn't save school settings. Please try again." : message;
 }
 
-export function SchoolSettingsPage() {
+const EMPTY_PROFILE: SchoolProfile = {
+  name: "",
+  shortName: "",
+  schoolCode: "",
+  address: "",
+  city: "",
+  phone: "",
+  email: "",
+  website: "",
+  principalName: "",
+  logoUrl: "",
+  isActive: true,
+};
+
+export function SchoolSettingsPage({ initial }: { initial: SchoolSettingsWorkspaceResult }) {
   const [tab, setTab] = useState<Tab>("general");
-  const [phase, setPhase] = useState<LoadPhase>("loading");
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [phase, setPhase] = useState<LoadPhase>(initial.ok ? "ready" : "error");
+  const [loadError, setLoadError] = useState<string | null>(initial.ok ? null : initial.error);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
-  const [canManage, setCanManage] = useState(false);
-  const [profile, setProfile] = useState<SchoolProfile>({
-    name: "",
-    shortName: "",
-    schoolCode: "",
-    address: "",
-    city: "",
-    phone: "",
-    email: "",
-    website: "",
-    principalName: "",
-    logoUrl: "",
-    isActive: true,
-  });
-  const [years, setYears] = useState<AcademicYearRow[]>([]);
-  const [terms, setTerms] = useState<TermRow[]>([]);
-  const [bands, setBands] = useState<GradingBandRow[]>([]);
-  const [fees, setFees] = useState<FeeCategoryRow[]>([]);
-  const [assignments, setAssignments] = useState<FeeAssignmentRow[]>([]);
-  const [levelOptions, setLevelOptions] = useState<SchoolOption[]>([]);
-  const [yearOptions, setYearOptions] = useState<SchoolOption[]>([]);
-  const [feeCategoryOptions, setFeeCategoryOptions] = useState<Array<SchoolOption & { frequency: FeeCategoryRow["frequency"] }>>([]);
-  const [pages, setPages] = useState({
-    years: schoolPageMeta(1, 0),
-    terms: schoolPageMeta(1, 0),
-    bands: schoolPageMeta(1, 0),
-    fees: schoolPageMeta(1, 0),
-    statuses: schoolPageMeta(1, 0),
-    assignments: schoolPageMeta(1, 0),
-  });
+  const [canManage, setCanManage] = useState(initial.ok ? initial.capabilities.canManage : false);
+  const [profile, setProfile] = useState<SchoolProfile>(initial.ok ? initial.profile : EMPTY_PROFILE);
+  const [years, setYears] = useState<AcademicYearRow[]>(initial.ok ? initial.years : []);
+  const [terms, setTerms] = useState<TermRow[]>(initial.ok ? initial.terms : []);
+  const [bands, setBands] = useState<GradingBandRow[]>(initial.ok ? initial.gradingBands : []);
+  const [fees, setFees] = useState<FeeCategoryRow[]>(initial.ok ? initial.fees : []);
+  const [assignments, setAssignments] = useState<FeeAssignmentRow[]>(initial.ok ? initial.feeAssignments : []);
+  const [levelOptions, setLevelOptions] = useState<SchoolOption[]>(initial.ok ? initial.levelOptions : []);
+  const [yearOptions, setYearOptions] = useState<SchoolOption[]>(initial.ok ? initial.yearOptions : []);
+  const [feeCategoryOptions, setFeeCategoryOptions] = useState<Array<SchoolOption & { frequency: FeeCategoryRow["frequency"] }>>(
+    initial.ok ? initial.feeCategoryOptions : [],
+  );
+  const [pages, setPages] = useState(
+    initial.ok
+      ? initial.pages
+      : {
+          years: schoolPageMeta(1, 0),
+          terms: schoolPageMeta(1, 0),
+          bands: schoolPageMeta(1, 0),
+          fees: schoolPageMeta(1, 0),
+          statuses: schoolPageMeta(1, 0),
+          assignments: schoolPageMeta(1, 0),
+        },
+  );
   const [archiveAssignmentId, setArchiveAssignmentId] = useState<string | null>(null);
-  const [attendance, setAttendance] = useState<AttendanceSettings>({
-    schoolStart: "",
-    schoolEnd: "",
-    lateThresholdMinutes: 0,
-  });
-  const [statuses, setStatuses] = useState<AttendanceStatusRow[]>([]);
-  const [transport, setTransport] = useState<TransportSettings>({ enabled: false, pickupDropoffEnabled: false });
+  const [attendance, setAttendance] = useState<AttendanceSettings>(
+    initial.ok ? initial.attendance : { schoolStart: "", schoolEnd: "", lateThresholdMinutes: 0 },
+  );
+  const [statuses, setStatuses] = useState<AttendanceStatusRow[]>(initial.ok ? initial.attendanceStatuses : []);
+  const [transport, setTransport] = useState<TransportSettings>(
+    initial.ok ? initial.transport : { enabled: false, pickupDropoffEnabled: false },
+  );
   const [drawer, setDrawer] = useState<DrawerKind>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [profileBusy, setProfileBusy] = useState(false);
@@ -154,12 +163,13 @@ export function SchoolSettingsPage() {
   const [transportBusy, setTransportBusy] = useState(false);
   const [transportSaved, setTransportSaved] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
-  const [profileDraft, setProfileDraft] = useState<SchoolProfile>(profile);
+  const [profileDraft, setProfileDraft] = useState<SchoolProfile>(initial.ok ? initial.profile : EMPTY_PROFILE);
   const profileLock = useRef(false);
   const attendanceLock = useRef(false);
   const transportLock = useRef(false);
 
   useEffect(() => {
+    if (tick === 0) return;
     let active = true;
     void getSchoolSettingsWorkspaceAction()
       .then((result) => {

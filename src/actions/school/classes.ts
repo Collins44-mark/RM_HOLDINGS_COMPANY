@@ -387,6 +387,34 @@ export async function getSchoolClassesForLevelAction(levelId: string) {
   }
 }
 
+export async function getSchoolStreamsForClassAction(classId: string) {
+  try {
+    const ctx = await requireSchoolPermission(VIEW);
+    const { supabase, businessUnitId } = ctx;
+    const scope = await loadSchoolStructureScope(ctx);
+    const id = str(classId);
+    if (!id) return { ok: true as const, streams: [] };
+    denyUnless(allowsClass(scope, id), "Class was not found.");
+    const streamScope = scopedIds(scope.streamIds, scope.schoolWide);
+    let query = supabase
+      .from("sch_class_streams")
+      .select("id, class_id, name, code, sort_order, is_active")
+      .eq("business_unit_id", businessUnitId)
+      .eq("class_id", id)
+      .eq("is_active", true)
+      .order("sort_order");
+    if (streamScope) query = query.in("id", streamScope);
+    const result = await query;
+    if (result.error && !isSchoolUnconfiguredRead(result.error)) mapSchoolDbError(result.error, "load");
+    return {
+      ok: true as const,
+      streams: (result.data ?? []).filter((row) => allowsStream(scope, String(row.id))).map((row) => mapStream(row)),
+    };
+  } catch (error) {
+    return { ok: false as const, error: schoolActionError(error) };
+  }
+}
+
 export async function saveSchoolLevelAction(input: {
   id?: string;
   name: string;

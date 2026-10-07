@@ -142,6 +142,12 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "school.fee_structure_created": "School fee structure created",
   "school.fee_structure_updated": "School fee structure updated",
   "school.fee_structure_archived": "School fee structure archived",
+  "school.admission_created": "Admission created",
+  "school.admission_updated": "Admission updated",
+  "school.admission_completed": "Admission completed",
+  "school.admission_cancelled": "Admission cancelled",
+  "school.student_created": "Student created",
+  "school.guardian_linked": "Guardian linked",
 };
 
 export const AUDIT_MODULE_LABELS: Record<string, string> = {

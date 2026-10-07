@@ -30,6 +30,7 @@ export async function getSchoolOverviewAction(): Promise<
       profileRes,
       currentYearsRes,
       classCountRes,
+      studentCountRes,
       gradingRes,
       attendanceRes,
       feeCountRes,
@@ -52,6 +53,11 @@ export async function getSchoolOverviewAction(): Promise<
         .select("id", { count: "exact", head: true })
         .eq("business_unit_id", businessUnitId)
         .eq("is_active", true),
+      supabase
+        .from("sch_students")
+        .select("id", { count: "exact", head: true })
+        .eq("business_unit_id", businessUnitId)
+        .eq("status", "active"),
       supabase
         .from("sch_grading_scales")
         .select("id")
@@ -159,7 +165,12 @@ export async function getSchoolOverviewAction(): Promise<
         academicYear,
         currentTerm,
         classLevels,
-        students: unavailable(),
+        students:
+          studentCountRes.error && !isSchoolUnconfiguredRead(studentCountRes.error)
+            ? { status: "error" as const }
+            : typeof studentCountRes.count === "number"
+              ? { status: "ok" as const, value: studentCountRes.count }
+              : unavailable(),
         teachers: unavailable(),
         attendance: unavailable(),
         feesCollected: unavailable(),

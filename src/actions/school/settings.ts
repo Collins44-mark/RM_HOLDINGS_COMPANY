@@ -488,6 +488,8 @@ export async function getSchoolSettingsWorkspaceAction() {
   }
 }
 
+export type SchoolSettingsWorkspaceResult = Awaited<ReturnType<typeof getSchoolSettingsWorkspaceAction>>;
+
 export async function saveSchoolProfileAction(input: SchoolProfile) {
   try {
     const { supabase, businessUnitId } = await requireSchoolPermission(MANAGE);
