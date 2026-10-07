@@ -4,31 +4,43 @@ import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { MoreHorizontal } from "lucide-react";
 
-const MENU_WIDTH = 148;
-const MENU_HEIGHT = 88;
+const MENU_WIDTH = 168;
+const ITEM_HEIGHT = 36;
+const MENU_PAD = 8;
+
+function menuHeight(count: number) {
+  return MENU_PAD + count * ITEM_HEIGHT;
+}
 
 export function UserActionsMenu({
   onView,
   onCustomize,
   customizeDisabled,
+  onLinkStaff,
+  onCreateStaff,
 }: {
   onView: () => void;
   onCustomize: () => void;
   customizeDisabled?: boolean;
+  onLinkStaff?: () => void;
+  onCreateStaff?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
+  const extra = [onLinkStaff, onCreateStaff].filter(Boolean).length;
+  const count = 2 + extra;
 
   function coordsFromButton(button: HTMLButtonElement) {
+    const height = menuHeight(count);
     const rect = button.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
-    const openUp = spaceBelow < MENU_HEIGHT + 8 && rect.top > MENU_HEIGHT + 8;
+    const openUp = spaceBelow < height + 8 && rect.top > height + 8;
     const top = openUp
-      ? Math.max(8, rect.top - MENU_HEIGHT - 6)
-      : Math.min(window.innerHeight - MENU_HEIGHT - 8, rect.bottom + 6);
+      ? Math.max(8, rect.top - height - 6)
+      : Math.min(window.innerHeight - height - 8, rect.bottom + 6);
     const left = Math.min(Math.max(8, rect.right - MENU_WIDTH), window.innerWidth - MENU_WIDTH - 8);
     return { top, left };
   }
@@ -52,7 +64,7 @@ export function UserActionsMenu({
       window.removeEventListener("resize", onReposition);
       window.removeEventListener("scroll", onReposition, true);
     };
-  }, [open]);
+  }, [open, count]);
 
   return (
     <div className="relative">
@@ -104,8 +116,34 @@ export function UserActionsMenu({
                   onCustomize();
                 }}
               >
-                Customize
+                Customize Access
               </button>
+              {onLinkStaff ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="block w-full px-3 py-2 text-left text-[13px] font-medium text-navy hover:bg-[#f4f7fb]"
+                  onClick={() => {
+                    setOpen(false);
+                    onLinkStaff();
+                  }}
+                >
+                  Link Staff
+                </button>
+              ) : null}
+              {onCreateStaff ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="block w-full px-3 py-2 text-left text-[13px] font-medium text-navy hover:bg-[#f4f7fb]"
+                  onClick={() => {
+                    setOpen(false);
+                    onCreateStaff();
+                  }}
+                >
+                  Create Staff Profile
+                </button>
+              ) : null}
             </div>,
             document.body,
           )

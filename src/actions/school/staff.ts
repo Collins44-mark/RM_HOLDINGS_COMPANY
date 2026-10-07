@@ -1,9 +1,11 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { writeAuditEvent } from "@/lib/audit";
-import { requireAuth } from "@/lib/auth/session";
+import { requireAuth, requireVerifiedOwner } from "@/lib/auth/session";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { matchPermission } from "@/lib/config/permissions";
+import { createUserAction } from "@/actions/users";
 import {
   isSchoolUnconfiguredRead,
   mapSchoolDbError,
@@ -12,6 +14,12 @@ import {
   SchoolError,
 } from "@/lib/school/access";
 import { schoolPageMeta, schoolPageRange } from "@/lib/school/pagination";
+import {
+  adminOrNull,
+  linkedProfileIds,
+  setStaffProfileId,
+  type StaffLinkUserOption,
+} from "@/lib/school/staff-profile-link";
 
 const VIEW = "school.staff.view";
 const MANAGE = "school.staff.manage";
@@ -42,6 +50,7 @@ export type StaffListRow = {
   primaryAssignment: string;
   status: StaffStatus;
   allowsAcademicAssignments: boolean;
+  hasSystemAccess: boolean;
 };
 
 export type StaffAssignmentRow = {
@@ -76,7 +85,9 @@ export type StaffProfile = {
   allowsAcademicAssignments: boolean;
   employmentStatus: StaffStatus;
   employmentDate: string;
-  linkedUser: boolean;
+  hasSystemAccess: boolean;
+  linkedAccountName: string;
+  linkedAccountEmail: string;
   assignments: StaffAssignmentRow[];
 };
 
@@ -115,6 +126,14 @@ function str(value: unknown) {
 function canManage(user: Awaited<ReturnType<typeof requireAuth>>) {
   if (isOwnerRole(user.roleCode)) return true;
   return user.permissions.some((matcher) => matcher !== "*" && matchPermission(MANAGE, matcher));
+}
+
+function canManageSystemAccess(user: Awaited<ReturnType<typeof requireAuth>>) {
+  return isOwnerRole(user.roleCode);
+}
+
+function staffCaps(user: Awaited<ReturnType<typeof requireAuth>>) {
+  return { canView: true, canManage: canManage(user), canManageSystemAccess: canManageSystemAccess(user) };
 }
 
 function searchNeedle(value: unknown) {
@@ -304,29 +323,34 @@ export async function listSchoolStaffAction(input: { page?: number; q?: string; 
     const { page, from, to, pageSize } = schoolPageRange(input.page ?? 1);
     const q = searchNeedle(input.q);
     const status = str(input.status);
-    let query = supabase
-      .from("sch_staff")
-      .select(
-        "id, staff_number, first_name, middle_name, last_name, employment_status, staff_type_id, position_id, sch_staff_types(name, kind), sch_staff_positions(name, allows_academic_assignments)",
-        { count: "exact" },
-      )
-      .eq("business_unit_id", businessUnitId)
-      .order("created_at", { ascending: false })
-      .range(from, to);
-    if (status === "active" || status === "inactive") query = query.eq("employment_status", status);
-    if (q) {
-      const positions = await supabase
-        .from("sch_staff_positions")
-        .select("id")
+    const listSelect = (linkColumn: "profile_id" | "user_id") =>
+      `id, staff_number, first_name, middle_name, last_name, employment_status, staff_type_id, position_id, ${linkColumn}, sch_staff_types(name, kind), sch_staff_positions(name, allows_academic_assignments)`;
+    async function runList(linkColumn: "profile_id" | "user_id") {
+      let query = supabase
+        .from("sch_staff")
+        .select(listSelect(linkColumn), { count: "exact" })
         .eq("business_unit_id", businessUnitId)
-        .ilike("name", `%${q}%`);
-      const positionIds = (positions.data ?? []).map((row) => String(row.id));
-      const positionFilter = positionIds.length ? `,position_id.in.(${positionIds.join(",")})` : "";
-      query = query.or(`staff_number.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%${positionFilter}`);
+        .order("created_at", { ascending: false })
+        .range(from, to);
+      if (status === "active" || status === "inactive") query = query.eq("employment_status", status);
+      if (q) {
+        const positions = await supabase
+          .from("sch_staff_positions")
+          .select("id")
+          .eq("business_unit_id", businessUnitId)
+          .ilike("name", `%${q}%`);
+        const positionIds = (positions.data ?? []).map((row) => String(row.id));
+        const positionFilter = positionIds.length ? `,position_id.in.(${positionIds.join(",")})` : "";
+        query = query.or(
+          `staff_number.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%${positionFilter}`,
+        );
+      }
+      return await query;
     }
-    const result = await query;
+    let result = await runList("profile_id");
+    if (result.error) result = await runList("user_id");
     if (result.error && !isSchoolUnconfiguredRead(result.error)) mapSchoolDbError(result.error, "load");
-    const rows = (result.data ?? []) as Record<string, unknown>[];
+    const rows = (result.data ?? []) as unknown as Record<string, unknown>[];
     const ids = rows.map((row) => String(row.id));
     const primary = new Map<string, string>();
     if (ids.length) {
@@ -368,10 +392,11 @@ export async function listSchoolStaffAction(input: { page?: number; q?: string; 
           primaryAssignment: primary.get(String(row.id)) ?? "",
           status: asStatus(row.employment_status),
           allowsAcademicAssignments: Boolean(position?.allows_academic_assignments),
+          hasSystemAccess: Boolean(str(row.profile_id) || str(row.user_id)),
         };
       }),
       page: schoolPageMeta(page, result.count ?? rows.length, pageSize),
-      capabilities: { canView: true, canManage: canManage(user) },
+      capabilities: staffCaps(user),
     };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
@@ -422,7 +447,9 @@ export async function getSchoolStaffAction(id: string) {
       allowsAcademicAssignments: Boolean(position?.allows_academic_assignments),
       employmentStatus: asStatus(row.employment_status),
       employmentDate: String(row.employment_date ?? ""),
-      linkedUser: Boolean(row.user_id),
+      hasSystemAccess: Boolean(str(row.profile_id) || str(row.user_id)),
+      linkedAccountName: "",
+      linkedAccountEmail: "",
       assignments: (assigns.data ?? []).map((item) => ({
         id: String(item.id),
         assignmentType: readAssignmentType(item.assignment_type) ?? "SUBJECT_TEACHER",
@@ -436,7 +463,20 @@ export async function getSchoolStaffAction(id: string) {
         isActive: Boolean(item.is_active),
       })),
     };
-    return { ok: true as const, staff: profile, capabilities: { canView: true, canManage: canManage(user) } };
+    const profileId = str(row.profile_id) || str(row.user_id);
+    if (profileId) {
+      const admin = adminOrNull();
+      const client = admin ?? supabase;
+      const linked = await client.from("profiles").select("full_name, email").eq("id", profileId).maybeSingle();
+      if (linked.data) {
+        profile.linkedAccountName = str(linked.data.full_name);
+        const email = str(linked.data.email);
+        profile.linkedAccountEmail = email.endsWith("@users.rmholdings.internal") ? "" : email;
+      } else {
+        profile.linkedAccountName = "Linked account";
+      }
+    }
+    return { ok: true as const, staff: profile, capabilities: staffCaps(user) };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
   }
@@ -633,7 +673,7 @@ export async function saveSchoolStaffAction(input: StaffFormInput) {
       if (updated.error) mapSchoolDbError(updated.error, "save");
       await audit({
         action: "school.staff_updated",
-        description: `Staff updated · ${String(current.data.staff_number)}`,
+        description: `Staff updated · ${personName(firstName, str(input.middleName), lastName)}`,
         entityType: "sch_staff",
         entityId: existingId,
         businessUnitId,
@@ -654,7 +694,7 @@ export async function saveSchoolStaffAction(input: StaffFormInput) {
     if (inserted.error || !inserted.data) mapSchoolDbError(inserted.error, "save");
     await audit({
       action: "school.staff_created",
-      description: `Staff created · ${String(inserted.data!.staff_number)}`,
+      description: `Staff created · ${personName(firstName, str(input.middleName), lastName)}`,
       entityType: "sch_staff",
       entityId: String(inserted.data!.id),
       businessUnitId,
@@ -864,6 +904,203 @@ export async function archiveStaffAssignmentAction(id: string) {
     const updated = await supabase.from("sch_staff_assignments").update({ is_active: false }).eq("id", assignmentId);
     if (updated.error) mapSchoolDbError(updated.error, "save");
     return { ok: true as const };
+  } catch (error) {
+    return { ok: false as const, error: schoolActionError(error) };
+  }
+}
+
+export async function archiveSchoolStaffAction(id: string) {
+  try {
+    const { supabase, businessUnitId } = await requireSchoolPermission(MANAGE);
+    const staffId = str(id);
+    const current = await supabase
+      .from("sch_staff")
+      .select("id, first_name, last_name, staff_number")
+      .eq("business_unit_id", businessUnitId)
+      .eq("id", staffId)
+      .maybeSingle();
+    if (!current.data) throw new SchoolError("Staff member was not found.", "NOT_FOUND");
+    const updated = await supabase
+      .from("sch_staff")
+      .update({ employment_status: "inactive", updated_at: new Date().toISOString() })
+      .eq("id", staffId)
+      .eq("business_unit_id", businessUnitId);
+    if (updated.error) mapSchoolDbError(updated.error, "save");
+    const name = personName(str(current.data.first_name), "", str(current.data.last_name));
+    await audit({
+      action: "school.staff_archived",
+      description: `Staff archived · ${name}`,
+      entityType: "sch_staff",
+      entityId: staffId,
+      businessUnitId,
+    });
+    revalidatePath("/school/staff");
+    return { ok: true as const };
+  } catch (error) {
+    return { ok: false as const, error: schoolActionError(error) };
+  }
+}
+
+function revalidateStaffIdentity(staffId: string) {
+  revalidatePath("/school/staff");
+  revalidatePath(`/school/staff/${staffId}`);
+  revalidatePath("/owner/users");
+}
+
+export async function searchUnlinkedUsersAction(q: string): Promise<
+  { ok: true; users: StaffLinkUserOption[] } | { ok: false; error: string }
+> {
+  try {
+    await requireVerifiedOwner();
+    await requireSchoolPermission(VIEW);
+    const admin = adminOrNull();
+    if (!admin) throw new SchoolError("Server is missing SUPABASE_SERVICE_ROLE_KEY.", "NOT_CONFIGURED");
+    const needle = searchNeedle(q);
+    let query = admin.from("profiles").select("id, full_name, email, phone").eq("is_active", true).order("full_name").limit(24);
+    if (needle) {
+      query = query.or(`full_name.ilike.%${needle}%,email.ilike.%${needle}%,phone.ilike.%${needle}%`);
+    }
+    const result = await query;
+    if (result.error) mapSchoolDbError(result.error, "load");
+    const taken = await linkedProfileIds(admin);
+    return {
+      ok: true as const,
+      users: (result.data ?? [])
+        .filter((row) => !taken.has(String(row.id)))
+        .slice(0, 12)
+        .map((row) => ({
+          id: String(row.id),
+          name: str(row.full_name),
+          email: str(row.email).endsWith("@users.rmholdings.internal") ? "" : str(row.email),
+          phone: str(row.phone),
+        })),
+    };
+  } catch (error) {
+    return { ok: false as const, error: schoolActionError(error) };
+  }
+}
+
+export async function linkStaffToUserAction(input: { staffId: string; profileId: string }) {
+  try {
+    await requireVerifiedOwner();
+    const { businessUnitId } = await requireSchoolPermission(MANAGE);
+    const admin = adminOrNull();
+    if (!admin) throw new SchoolError("Server is missing SUPABASE_SERVICE_ROLE_KEY.", "NOT_CONFIGURED");
+    const staffId = str(input.staffId);
+    const profileId = str(input.profileId);
+    if (!staffId || !profileId) throw new SchoolError("Choose a staff member and a user account.", "VALIDATION");
+    const staffRes = await admin
+      .from("sch_staff")
+      .select("id, first_name, last_name, profile_id")
+      .eq("business_unit_id", businessUnitId)
+      .eq("id", staffId)
+      .maybeSingle();
+    if (!staffRes.data) throw new SchoolError("Staff member was not found.", "NOT_FOUND");
+    if (str(staffRes.data.profile_id) && str(staffRes.data.profile_id) !== profileId) {
+      throw new SchoolError("This staff member is already linked to a user account.", "CONFLICT");
+    }
+    if (str(staffRes.data.profile_id) === profileId) {
+      return { ok: true as const };
+    }
+    const linked = await setStaffProfileId(admin, { staffId, profileId, businessUnitId });
+    if ("error" in linked && linked.error) throw new SchoolError(linked.error, "CONFLICT");
+    const name = personName(str(staffRes.data.first_name), "", str(staffRes.data.last_name));
+    await audit({
+      action: "school.staff_linked_user",
+      description: `Staff linked to user account · ${name}`,
+      entityType: "sch_staff",
+      entityId: staffId,
+      businessUnitId,
+    });
+    revalidateStaffIdentity(staffId);
+    return { ok: true as const };
+  } catch (error) {
+    return { ok: false as const, error: schoolActionError(error) };
+  }
+}
+
+export async function unlinkStaffFromUserAction(staffId: string) {
+  try {
+    await requireVerifiedOwner();
+    const { businessUnitId } = await requireSchoolPermission(MANAGE);
+    const admin = adminOrNull();
+    if (!admin) throw new SchoolError("Server is missing SUPABASE_SERVICE_ROLE_KEY.", "NOT_CONFIGURED");
+    const id = str(staffId);
+    const staffRes = await admin
+      .from("sch_staff")
+      .select("id, first_name, last_name, profile_id")
+      .eq("business_unit_id", businessUnitId)
+      .eq("id", id)
+      .maybeSingle();
+    if (!staffRes.data) throw new SchoolError("Staff member was not found.", "NOT_FOUND");
+    if (!str(staffRes.data.profile_id)) return { ok: true as const };
+    const linked = await setStaffProfileId(admin, { staffId: id, profileId: null, businessUnitId });
+    if ("error" in linked && linked.error) throw new SchoolError(linked.error, "DATABASE");
+    const name = personName(str(staffRes.data.first_name), "", str(staffRes.data.last_name));
+    await audit({
+      action: "school.staff_unlinked_user",
+      description: `Staff unlinked from user account · ${name}`,
+      entityType: "sch_staff",
+      entityId: id,
+      businessUnitId,
+    });
+    revalidateStaffIdentity(id);
+    return { ok: true as const };
+  } catch (error) {
+    return { ok: false as const, error: schoolActionError(error) };
+  }
+}
+
+export async function grantStaffSystemAccessAction(input: {
+  staffId: string;
+  email?: string;
+  phone?: string;
+  roleCode: string;
+}) {
+  try {
+    await requireVerifiedOwner();
+    const { supabase, businessUnitId } = await requireSchoolPermission(MANAGE);
+    const staffId = str(input.staffId);
+    const staffRes = await supabase
+      .from("sch_staff")
+      .select("id, first_name, middle_name, last_name, email, phone, profile_id")
+      .eq("business_unit_id", businessUnitId)
+      .eq("id", staffId)
+      .maybeSingle();
+    if (!staffRes.data) throw new SchoolError("Staff member was not found.", "NOT_FOUND");
+    if (str(staffRes.data.profile_id)) {
+      throw new SchoolError("This staff member already has system access.", "CONFLICT");
+    }
+    const name = personName(str(staffRes.data.first_name), str(staffRes.data.middle_name), str(staffRes.data.last_name));
+    const formData = new FormData();
+    formData.set("name", name);
+    formData.set("email", str(input.email) || str(staffRes.data.email));
+    formData.set("phone", str(input.phone) || str(staffRes.data.phone));
+    formData.set("roleCode", str(input.roleCode));
+    formData.append("modules", "school");
+    const created = await createUserAction(null, formData);
+    if (created?.error || !created?.createdUser) {
+      throw new SchoolError(created?.error || "Unable to create the user account.", "DATABASE");
+    }
+    const admin = adminOrNull();
+    if (!admin) throw new SchoolError("Server is missing SUPABASE_SERVICE_ROLE_KEY.", "NOT_CONFIGURED");
+    const linked = await setStaffProfileId(admin, {
+      staffId,
+      profileId: created.createdUser.id,
+      businessUnitId,
+    });
+    if ("error" in linked && linked.error) {
+      throw new SchoolError(linked.error, "CONFLICT");
+    }
+    await audit({
+      action: "school.staff_system_access_granted",
+      description: `System access granted · ${name}`,
+      entityType: "sch_staff",
+      entityId: staffId,
+      businessUnitId,
+    });
+    revalidateStaffIdentity(staffId);
+    return { ok: true as const, credentials: created.credentials };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
   }

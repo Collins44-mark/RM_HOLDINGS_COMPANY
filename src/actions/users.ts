@@ -29,6 +29,13 @@ import {
 } from "@/lib/data/app-users";
 import { writeAuditEvent } from "@/lib/audit";
 import { syncUserAccessClaims } from "@/lib/auth/effective-access";
+import {
+  insertStaffForProfile,
+  schoolBusinessUnitId,
+  setStaffProfileId,
+  type LinkedStaffInfo,
+  type StaffLinkStaffOption,
+} from "@/lib/school/staff-profile-link";
 
 export type CredentialsPayload = {
   name: string;
@@ -40,6 +47,7 @@ export type CredentialsPayload = {
 
 export type UsersActionState = {
   error?: string;
+  warning?: string;
   credentials?: CredentialsPayload;
   createdUser?: ManagedUser;
 } | null;
@@ -63,9 +71,10 @@ function adminOrError() {
 function revalidateUsersWorkspace() {
   updateTag(BUSINESS_UNITS_CACHE_TAG);
   revalidatePath("/owner/users");
+  revalidatePath("/school/staff");
 }
 
-async function ownerCount(admin: NonNullable<ReturnType<typeof createSupabaseAdminClient>>) {
+async function ownerCount(_admin: NonNullable<ReturnType<typeof createSupabaseAdminClient>>) {
   const users = await listManagedUsers();
   return users.filter((user) => isOwnerRole(user.roleCode) && user.isActive).length;
 }
@@ -281,8 +290,63 @@ export async function createUserAction(
     lastLoginAt: null,
     createdAt,
     status: "pending_password",
+    staff: null,
   };
   createdUser.status = statusOf(createdUser);
+
+  const createAsStaff = String(formData.get("createAsStaff") ?? "") === "1";
+  const linkStaffId = String(formData.get("linkStaffId") ?? "").trim();
+  let warning: string | undefined;
+  if (createAsStaff && !linkStaffId) {
+    const staffResult = await insertStaffForProfile(admin, {
+      profileId: createdUser.id,
+      fullName: parsed.data.name,
+      phone: phoneValue ?? "",
+      email: emailValue,
+      staffTypeId: String(formData.get("staffTypeId") ?? "").trim(),
+      staffPositionId: String(formData.get("staffPositionId") ?? "").trim(),
+    });
+    if ("error" in staffResult && staffResult.error) {
+      warning = `User created. Staff profile was not created: ${staffResult.error}`;
+    } else if ("staff" in staffResult) {
+      createdUser.staff = staffResult.staff;
+      await writeAuditEvent({
+        action: "school.staff_created",
+        module: "school",
+        description: `Staff created · ${staffResult.staff.name}`,
+        severity: "medium",
+        entityType: "sch_staff",
+        entityId: staffResult.staff.id,
+        businessUnitId: staffResult.businessUnitId,
+      });
+    }
+  } else if (linkStaffId) {
+    const businessUnitId = await schoolBusinessUnitId(admin);
+    if (!businessUnitId) {
+      warning = "User created. School business unit was not found for the staff link.";
+    } else {
+      const linked = await setStaffProfileId(admin, {
+        staffId: linkStaffId,
+        profileId: createdUser.id,
+        businessUnitId,
+      });
+      if ("error" in linked && linked.error) {
+        warning = `User created. Staff was not linked: ${linked.error}`;
+      } else if ("staff" in linked) {
+        createdUser.staff = linked.staff;
+        await writeAuditEvent({
+          action: "school.staff_linked_user",
+          module: "school",
+          description: `Staff linked to user account · ${linked.staff.name}`,
+          severity: "medium",
+          entityType: "sch_staff",
+          entityId: linked.staff.id,
+          businessUnitId,
+        });
+      }
+    }
+  }
+
   revalidateUsersWorkspace();
   await writeAuditEvent({
     action: "user.created",
@@ -295,6 +359,7 @@ export async function createUserAction(
   });
 
   return {
+    warning,
     credentials: {
       name: parsed.data.name,
       loginIdentifier: emailValue || phoneValue || authEmail,
@@ -496,6 +561,112 @@ export async function updateUserAction(
     },
   });
   return {};
+}
+
+function personName(first: string, middle: string, last: string) {
+  return [first, middle, last].filter(Boolean).join(" ");
+}
+
+export async function searchUnlinkedStaffAction(q: string): Promise<
+  { ok: true; staff: StaffLinkStaffOption[] } | { ok: false; error: string }
+> {
+  await requireVerifiedOwner();
+  const ready = adminOrError();
+  if (!ready.ok) return { ok: false, error: ready.error };
+  const businessUnitId = await schoolBusinessUnitId(ready.admin);
+  if (!businessUnitId) return { ok: true, staff: [] };
+  const needle = String(q ?? "").trim().replace(/[%_,()]/g, " ").slice(0, 80);
+  let query = ready.admin
+    .from("sch_staff")
+    .select("id, staff_number, first_name, middle_name, last_name, sch_staff_positions(name)")
+    .eq("business_unit_id", businessUnitId)
+    .is("profile_id", null)
+    .eq("employment_status", "active")
+    .order("last_name")
+    .limit(12);
+  if (needle) {
+    query = query.or(`staff_number.ilike.%${needle}%,first_name.ilike.%${needle}%,last_name.ilike.%${needle}%`);
+  }
+  const result = await query;
+  if (result.error) return { ok: false, error: "Unable to search staff members." };
+  return {
+    ok: true,
+    staff: (result.data ?? []).map((row) => {
+      const position = row.sch_staff_positions as { name?: string } | { name?: string }[] | null;
+      const positionName = Array.isArray(position) ? String(position[0]?.name ?? "") : String(position?.name ?? "");
+      return {
+        id: String(row.id),
+        staffNumber: String(row.staff_number),
+        name: personName(String(row.first_name ?? ""), String(row.middle_name ?? ""), String(row.last_name ?? "")),
+        positionName,
+      };
+    }),
+  };
+}
+
+export async function linkUserToStaffAction(input: {
+  userId: string;
+  staffId: string;
+}): Promise<{ error?: string; staff?: LinkedStaffInfo }> {
+  await requireVerifiedOwner();
+  const ready = adminOrError();
+  if (!ready.ok) return { error: ready.error };
+  const userId = String(input.userId ?? "").trim();
+  const staffId = String(input.staffId ?? "").trim();
+  if (!userId || !staffId) return { error: "Choose a user and a staff member." };
+  const businessUnitId = await schoolBusinessUnitId(ready.admin);
+  if (!businessUnitId) return { error: "School business unit was not found." };
+  const existing = await ready.admin.from("sch_staff").select("id, staff_number").eq("profile_id", userId).maybeSingle();
+  if (existing.data && String(existing.data.id) !== staffId) {
+    return { error: `This account is already linked to ${String(existing.data.staff_number)}.` };
+  }
+  const linked = await setStaffProfileId(ready.admin, { staffId, profileId: userId, businessUnitId });
+  if ("error" in linked) return { error: linked.error };
+  revalidateUsersWorkspace();
+  await writeAuditEvent({
+    action: "school.staff_linked_user",
+    module: "school",
+    description: `Staff linked to user account · ${linked.staff.name}`,
+    severity: "medium",
+    entityType: "sch_staff",
+    entityId: linked.staff.id,
+    businessUnitId,
+  });
+  return { staff: linked.staff };
+}
+
+export async function createStaffProfileForUserAction(input: {
+  userId: string;
+  staffTypeId: string;
+  staffPositionId: string;
+}): Promise<{ error?: string; staff?: LinkedStaffInfo }> {
+  await requireVerifiedOwner();
+  const ready = adminOrError();
+  if (!ready.ok) return { error: ready.error };
+  const userId = String(input.userId ?? "").trim();
+  if (!userId) return { error: "User was not found." };
+  const profile = await ready.admin.from("profiles").select("id, full_name, email, phone").eq("id", userId).maybeSingle();
+  if (!profile.data) return { error: "User was not found." };
+  const result = await insertStaffForProfile(ready.admin, {
+    profileId: userId,
+    fullName: String(profile.data.full_name ?? ""),
+    phone: String(profile.data.phone ?? ""),
+    email: String(profile.data.email ?? ""),
+    staffTypeId: String(input.staffTypeId ?? "").trim(),
+    staffPositionId: String(input.staffPositionId ?? "").trim(),
+  });
+  if ("error" in result) return { error: result.error };
+  revalidateUsersWorkspace();
+  await writeAuditEvent({
+    action: "school.staff_created",
+    module: "school",
+    description: `Staff created · ${result.staff.name}`,
+    severity: "medium",
+    entityType: "sch_staff",
+    entityId: result.staff.id,
+    businessUnitId: result.businessUnitId,
+  });
+  return { staff: result.staff };
 }
 
 export type { ManagedUser };

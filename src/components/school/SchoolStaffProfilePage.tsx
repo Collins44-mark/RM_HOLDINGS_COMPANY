@@ -4,19 +4,27 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import {
+  archiveSchoolStaffAction,
   archiveStaffAssignmentAction,
   getSchoolStaffAction,
   getStaffClassesAction,
   getStaffStreamsAction,
+  grantStaffSystemAccessAction,
+  linkStaffToUserAction,
+  searchUnlinkedUsersAction,
   saveSchoolDepartmentAction,
   saveSchoolSubjectRecordAction,
   saveStaffAssignmentAction,
+  unlinkStaffFromUserAction,
   type AssignmentType,
   type DepartmentRow,
   type StaffOption,
   type StaffProfile,
   type SubjectRow,
 } from "@/actions/school/staff";
+import { rolesForSelectedModules, displayRoleName } from "@/lib/auth/role-options";
+import type { CredentialsPayload } from "@/actions/users";
+import type { StaffLinkUserOption } from "@/lib/school/staff-profile-link";
 import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
 import { SchoolConfirmDialog, SchoolField, SchoolGlassModal, SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, secondaryButton, StatusPill } from "@/components/supermarket/purchasing-ui";
@@ -44,6 +52,8 @@ export function SchoolStaffProfilePage({
   departments: initialDepartments,
   subjects: initialSubjects,
   canManage,
+  canManageSystemAccess,
+  openAccess = false,
   error,
 }: {
   staff: StaffProfile | null;
@@ -52,6 +62,8 @@ export function SchoolStaffProfilePage({
   departments: DepartmentRow[];
   subjects: SubjectRow[];
   canManage: boolean;
+  canManageSystemAccess: boolean;
+  openAccess?: boolean;
   error: string | null;
 }) {
   const [staff, setStaff] = useState(initialStaff);
@@ -73,6 +85,8 @@ export function SchoolStaffProfilePage({
   const [streams, setStreams] = useState<StaffOption[]>([]);
   const [deptName, setDeptName] = useState("");
   const [subjectName, setSubjectName] = useState("");
+  const [accessOpen, setAccessOpen] = useState(openAccess);
+  const [credentials, setCredentials] = useState<CredentialsPayload | null>(null);
   const lock = useRef(false);
 
   useEffect(() => {
@@ -177,8 +191,25 @@ export function SchoolStaffProfilePage({
           <StatusPill value={staff.employmentStatus === "active" ? "Active" : "Inactive"} />
           {canManage ? (
             <Link href={`/school/staff/${staff.id}/edit`} className={secondaryButton}>
-              Edit
+              Edit Staff
             </Link>
+          ) : null}
+          {canManage && staff.employmentStatus === "active" ? (
+            <button
+              type="button"
+              className={secondaryButton}
+              onClick={() => {
+                void archiveSchoolStaffAction(staff.id).then((result) => {
+                  if (!result.ok) {
+                    setSaveError(result.error);
+                    return;
+                  }
+                  reload();
+                });
+              }}
+            >
+              Archive Staff
+            </button>
           ) : null}
         </div>
       </header>
@@ -192,7 +223,49 @@ export function SchoolStaffProfilePage({
         <Fact label="Email" value={staff.email} />
         <Fact label="Address" value={staff.address} />
         <Fact label="Employment date" value={staff.employmentDate} />
-        <Fact label="System login" value={staff.linkedUser ? "Linked" : "Not linked"} />
+      </section>
+
+      <section className={`${glassPanel} space-y-3`}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">System Access</h2>
+          {canManageSystemAccess ? (
+            staff.hasSystemAccess ? (
+              <div className="flex gap-2">
+                <Link href="/owner/users" className={secondaryButton}>
+                  View User Access
+                </Link>
+                <button
+                  type="button"
+                  className={secondaryButton}
+                  onClick={() => {
+                    void unlinkStaffFromUserAction(staff.id).then((result) => {
+                      if (!result.ok) {
+                        setSaveError(result.error);
+                        return;
+                      }
+                      reload();
+                    });
+                  }}
+                >
+                  Unlink account
+                </button>
+              </div>
+            ) : (
+              <button type="button" className={primaryButton} onClick={() => setAccessOpen(true)}>
+                Give System Access
+              </button>
+            )
+          ) : null}
+        </div>
+        {staff.hasSystemAccess ? (
+          <p className="text-[13.5px] text-navy">
+            Linked to user account
+            {staff.linkedAccountName ? ` · ${staff.linkedAccountName}` : ""}
+            {staff.linkedAccountEmail ? ` · ${staff.linkedAccountEmail}` : ""}
+          </p>
+        ) : (
+          <p className="text-[13.5px] text-slate-500">No system access</p>
+        )}
       </section>
 
       <section className={`${glassPanel} space-y-3`}>
@@ -393,6 +466,43 @@ export function SchoolStaffProfilePage({
         </SchoolGlassModal>
       ) : null}
 
+      {accessOpen && canManageSystemAccess ? (
+        <StaffSystemAccessDialog
+          staff={staff}
+          busy={busy}
+          onClose={() => setAccessOpen(false)}
+          onError={setSaveError}
+          onBusy={setBusy}
+          onLinked={() => {
+            setAccessOpen(false);
+            reload();
+          }}
+          onCreated={(next) => {
+            setAccessOpen(false);
+            if (next) setCredentials(next);
+            reload();
+          }}
+        />
+      ) : null}
+
+      {credentials ? (
+        <SchoolGlassModal
+          title="System access created"
+          subtitle="Copy these login details now. The temporary password will not be shown again."
+          onClose={() => setCredentials(null)}
+          footer={
+            <button type="button" className={primaryButton} onClick={() => setCredentials(null)}>
+              Done
+            </button>
+          }
+        >
+          <p className="text-[13.5px] text-navy">Name: {credentials.name}</p>
+          <p className="text-[13.5px] text-navy">Login: {credentials.loginIdentifier}</p>
+          <p className="text-[13.5px] text-navy">Temporary password: {credentials.temporaryPassword}</p>
+          <p className="text-[13.5px] text-navy">Role: {credentials.roleName}</p>
+        </SchoolGlassModal>
+      ) : null}
+
       <SchoolConfirmDialog
         open={Boolean(conflict)}
         title="Assignment already held"
@@ -426,5 +536,136 @@ export function SchoolStaffProfilePage({
         }}
       />
     </div>
+  );
+}
+
+function StaffSystemAccessDialog({
+  staff,
+  busy,
+  onClose,
+  onError,
+  onBusy,
+  onLinked,
+  onCreated,
+}: {
+  staff: StaffProfile;
+  busy: boolean;
+  onClose: () => void;
+  onError: (message: string) => void;
+  onBusy: (value: boolean) => void;
+  onLinked: () => void;
+  onCreated: (credentials: CredentialsPayload | undefined) => void;
+}) {
+  const [mode, setMode] = useState<"link" | "create">("link");
+  const [query, setQuery] = useState("");
+  const [users, setUsers] = useState<StaffLinkUserOption[]>([]);
+  const [email, setEmail] = useState(staff.email);
+  const [phone, setPhone] = useState(staff.phone);
+  const schoolRoles = rolesForSelectedModules(["school"]);
+  const [roleCode, setRoleCode] = useState<string>(schoolRoles[0]?.code ?? "");
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      void searchUnlinkedUsersAction(query).then((result) => {
+        if (result.ok) setUsers(result.users);
+      });
+    }, 200);
+    return () => window.clearTimeout(handle);
+  }, [query]);
+
+  return (
+    <SchoolGlassModal
+      title="Give System Access"
+      subtitle="Create a login with the existing Users & Permissions flow, or link an account that already exists."
+      onClose={onClose}
+      footer={
+        mode === "create" ? (
+          <>
+            <button type="button" className={secondaryButton} onClick={onClose}>
+              Cancel
+            </button>
+            <SchoolWorkflowButton
+              className={primaryButton}
+              busy={busy}
+              idleLabel="Create account"
+              onClick={() => {
+                onBusy(true);
+                void grantStaffSystemAccessAction({ staffId: staff.id, email, phone, roleCode }).then((result) => {
+                  onBusy(false);
+                  if (!result.ok) {
+                    onError(result.error);
+                    return;
+                  }
+                  onCreated(result.credentials);
+                });
+              }}
+            />
+          </>
+        ) : (
+          <button type="button" className={secondaryButton} onClick={onClose}>
+            Close
+          </button>
+        )
+      }
+    >
+      <div className="flex gap-2">
+        <button type="button" className={mode === "link" ? primaryButton : secondaryButton} onClick={() => setMode("link")}>
+          Link existing
+        </button>
+        <button type="button" className={mode === "create" ? primaryButton : secondaryButton} onClick={() => setMode("create")}>
+          Create new account
+        </button>
+      </div>
+      {mode === "link" ? (
+        <div className="space-y-2">
+          <input
+            className={inputClass}
+            value={query}
+            placeholder="Search existing users"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          {users.map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              className="w-full rounded-[12px] border border-navy/8 bg-white px-3 py-2.5 text-left"
+              onClick={() => {
+                onBusy(true);
+                void linkStaffToUserAction({ staffId: staff.id, profileId: row.id }).then((result) => {
+                  onBusy(false);
+                  if (!result.ok) {
+                    onError(result.error);
+                    return;
+                  }
+                  onLinked();
+                });
+              }}
+            >
+              <p className="text-[13.5px] font-semibold text-navy">{row.name}</p>
+              <p className="text-[12px] text-slate-500">{[row.email, row.phone].filter(Boolean).join(" · ") || "No contact"}</p>
+            </button>
+          ))}
+          {users.length === 0 ? <p className="text-[13px] text-slate-500">No unlinked user accounts match.</p> : null}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <SchoolField label="Email">
+            <input className={inputClass} value={email} onChange={(event) => setEmail(event.target.value)} />
+          </SchoolField>
+          <SchoolField label="Phone">
+            <input className={inputClass} value={phone} onChange={(event) => setPhone(event.target.value)} />
+          </SchoolField>
+          <SchoolField label="System role">
+            <select className={inputClass} value={roleCode} onChange={(event) => setRoleCode(event.target.value)}>
+              {schoolRoles.map((role) => (
+                <option key={role.code} value={role.code}>
+                  {displayRoleName(role.code, role.name)}
+                </option>
+              ))}
+            </select>
+          </SchoolField>
+        </div>
+      )}
+    </SchoolGlassModal>
   );
 }

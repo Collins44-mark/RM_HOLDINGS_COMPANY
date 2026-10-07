@@ -6,6 +6,9 @@ import { isOwnerRole } from "@/lib/auth/rbac";
 import { displayRoleName, permissionsForRoleCode } from "@/lib/auth/role-options";
 import { displayLoginIdentifier } from "@/lib/auth/identifiers";
 import { BUSINESS_UNITS } from "@/lib/config/app";
+import { staffByProfileIds, type LinkedStaffInfo } from "@/lib/school/staff-profile-link";
+
+export type { LinkedStaffInfo };
 
 export type ManagedUserStatus = "active" | "pending_password" | "locked" | "disabled";
 
@@ -26,6 +29,7 @@ export type ManagedUser = {
   lastLoginAt: string | null;
   createdAt: string;
   status: ManagedUserStatus;
+  staff: LinkedStaffInfo | null;
 };
 
 export type LightProfileRecord = {
@@ -141,6 +145,7 @@ export function toManagedUser(profile: ProfileRecord): ManagedUser {
     lastLoginAt: profile.last_login_at,
     createdAt: profile.created_at,
     status: "active",
+    staff: null,
   };
   user.status = statusOf(user);
   return user;
@@ -170,7 +175,13 @@ export async function listManagedUsers() {
     .order("full_name", { ascending: true });
 
   if (error || !data) return [];
-  return (data as unknown as ProfileRecord[]).map(toManagedUser);
+  return attachStaffLinks((data as unknown as ProfileRecord[]).map(toManagedUser), client);
+}
+
+async function attachStaffLinks(users: ReturnType<typeof toManagedUser>[], client: NonNullable<ReturnType<typeof createSupabaseAdminClient>> | Awaited<ReturnType<typeof createSupabaseServerClient>>) {
+  if (!users.length || !client) return users;
+  const map = await staffByProfileIds(client, users.map((user) => user.id));
+  return users.map((user) => ({ ...user, staff: map.get(user.id) ?? null }));
 }
 
 /** Users with a `user_business_units` row for the given unit. Owners with `*` are not included unless assigned. */
@@ -194,7 +205,7 @@ export async function listManagedUsersForBusinessUnit(businessUnitId: string) {
     .order("full_name", { ascending: true });
 
   if (error || !data) return [];
-  return (data as unknown as ProfileRecord[]).map(toManagedUser);
+  return attachStaffLinks((data as unknown as ProfileRecord[]).map(toManagedUser), client);
 }
 
 export const findProfileById = cache(async function findProfileById(id: string) {

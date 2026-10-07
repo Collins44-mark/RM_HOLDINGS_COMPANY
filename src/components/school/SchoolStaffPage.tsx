@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Users } from "lucide-react";
-import { listSchoolStaffAction, type StaffListRow } from "@/actions/school/staff";
+import { archiveSchoolStaffAction, listSchoolStaffAction, type StaffListRow } from "@/actions/school/staff";
 import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
 import {
   glassPanel,
@@ -23,6 +23,7 @@ export function SchoolStaffPage({
   staff: initialRows,
   page: initialPage,
   canManage,
+  canManageSystemAccess,
   query,
   status,
   error,
@@ -30,6 +31,7 @@ export function SchoolStaffPage({
   staff: StaffListRow[];
   page: SchoolPageMeta;
   canManage: boolean;
+  canManageSystemAccess: boolean;
   query: string;
   status: string;
   error: string | null;
@@ -122,6 +124,7 @@ export function SchoolStaffPage({
                   <th className="px-4 py-3 font-semibold">Staff No.</th>
                   <th className="px-4 py-3 font-semibold">Type</th>
                   <th className="px-4 py-3 font-semibold">Position</th>
+                  <th className="px-4 py-3 font-semibold">System Access</th>
                   <th className="px-4 py-3 font-semibold">Primary assignment</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 font-semibold">Actions</th>
@@ -138,6 +141,7 @@ export function SchoolStaffPage({
                     <td className="px-4 py-3">{row.staffNumber}</td>
                     <td className="px-4 py-3">{row.typeName || "—"}</td>
                     <td className="px-4 py-3">{row.positionName || "—"}</td>
+                    <td className="px-4 py-3">{row.hasSystemAccess ? "System Access" : "No system access"}</td>
                     <td className="px-4 py-3">{row.primaryAssignment || "—"}</td>
                     <td className="px-4 py-3">
                       <StatusPill value={row.status === "active" ? "Active" : "Inactive"} />
@@ -145,7 +149,41 @@ export function SchoolStaffPage({
                     <td className="px-4 py-3">
                       <CompactActionsMenu
                         ariaLabel={`${row.name} actions`}
-                        items={[{ label: "View", onSelect: () => router.push(`/school/staff/${row.id}`) }]}
+                        items={[
+                          { label: "View Staff", onSelect: () => router.push(`/school/staff/${row.id}`) },
+                          ...(canManage
+                            ? [
+                                { label: "Edit Staff", onSelect: () => router.push(`/school/staff/${row.id}/edit`) },
+                                ...(row.allowsAcademicAssignments
+                                  ? [{ label: "Manage Assignments", onSelect: () => router.push(`/school/staff/${row.id}`) }]
+                                  : []),
+                              ]
+                            : []),
+                          ...(canManageSystemAccess
+                            ? [
+                                {
+                                  label: row.hasSystemAccess ? "View User Access" : "Give System Access",
+                                  onSelect: () => router.push(`/school/staff/${row.id}${row.hasSystemAccess ? "" : "?access=1"}`),
+                                },
+                              ]
+                            : []),
+                          ...(canManage && row.status === "active"
+                            ? [
+                                {
+                                  label: "Archive Staff",
+                                  onSelect: () => {
+                                    void archiveSchoolStaffAction(row.id).then((result) => {
+                                      if (!result.ok) {
+                                        setSaveError(result.error);
+                                        return;
+                                      }
+                                      load(page.page, q, filter);
+                                    });
+                                  },
+                                },
+                              ]
+                            : []),
+                        ]}
                       />
                     </td>
                   </tr>

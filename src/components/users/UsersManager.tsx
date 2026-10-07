@@ -17,15 +17,20 @@ import { isOwnerRole } from "@/lib/auth/rbac";
 import type { ManagedUser, ManagedUserStatus } from "@/lib/data/app-users";
 import type { RoleSummary } from "@/lib/auth/rbac-types";
 import {
+  createStaffProfileForUserAction,
   createUserAction,
   disableUserAction,
   enableUserAction,
+  linkUserToStaffAction,
   resetPasswordAction,
+  searchUnlinkedStaffAction,
   unlockUserAction,
   updateUserAction,
   type CredentialsPayload,
   type UsersActionState,
 } from "@/actions/users";
+import { getStaffWorkspaceOptionsAction, type StaffPositionRow, type StaffTypeRow } from "@/actions/school/staff";
+import type { StaffLinkStaffOption } from "@/lib/school/staff-profile-link";
 
 export type UsersWorkspaceView = UsersWorkspaceTab;
 
@@ -108,6 +113,7 @@ export function UsersManager({
   const [credentials, setCredentials] = useState<CredentialsPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [staffTarget, setStaffTarget] = useState<{ user: ManagedUser; mode: "link" | "create" } | null>(null);
 
   const selectedUnit = unitCode ? units.find((unit) => unit.code === unitCode) ?? null : null;
   const showingUnitUsers = tab === "business" && Boolean(selectedUnit);
@@ -206,6 +212,7 @@ export function UsersManager({
       setError(result.error);
       return;
     }
+    if (result?.warning) setError(result.warning);
     if (result?.createdUser) {
       const created = result.createdUser;
       const belongsToUnit = !unitCode || created.modules.includes(unitCode);
@@ -391,6 +398,7 @@ export function UsersManager({
                   <th className="px-5 py-3 font-medium">Email / Phone</th>
                   <th className="px-5 py-3 font-medium">Role</th>
                   {showModulesColumn ? <th className="px-5 py-3 font-medium">Module(s)</th> : null}
+                  <th className="px-5 py-3 font-medium">Staff / Position</th>
                   <th className="px-5 py-3 font-medium">Status</th>
                   <th className="px-5 py-3 font-medium">Last Login</th>
                   <th className="px-5 py-3 font-medium">Actions</th>
@@ -413,6 +421,9 @@ export function UsersManager({
                     {showModulesColumn ? (
                       <td className="px-5 py-3.5 text-slate-600">{user.moduleNames.join(", ")}</td>
                     ) : null}
+                    <td className="px-5 py-3.5 text-slate-600">
+                      {user.staff ? `${user.staff.positionName || "Staff"} · ${user.staff.staffNumber}` : "—"}
+                    </td>
                     <td className="px-5 py-3.5">
                       <StatusBadge status={user.status} />
                     </td>
@@ -422,6 +433,8 @@ export function UsersManager({
                         onView={() => setSelected(user)}
                         onCustomize={() => openCustomize(user)}
                         customizeDisabled={user.id === currentUserId || isOwnerRole(user.roleCode)}
+                        onLinkStaff={user.staff ? undefined : () => setStaffTarget({ user, mode: "link" })}
+                        onCreateStaff={user.staff ? undefined : () => setStaffTarget({ user, mode: "create" })}
                       />
                     </td>
                   </tr>
@@ -446,11 +459,16 @@ export function UsersManager({
                   <span className="mt-1 block text-[12px] text-slate-500">
                     {showModulesColumn ? `${user.roleName} · ${user.moduleNames.join(", ")}` : user.roleName}
                   </span>
+                  <span className="mt-1 block text-[12px] text-slate-500">
+                    {user.staff ? `${user.staff.positionName || "Staff"} · ${user.staff.staffNumber}` : "No staff profile"}
+                  </span>
                 </span>
                 <UserActionsMenu
                   onView={() => setSelected(user)}
                   onCustomize={() => openCustomize(user)}
                   customizeDisabled={user.id === currentUserId || isOwnerRole(user.roleCode)}
+                  onLinkStaff={user.staff ? undefined : () => setStaffTarget({ user, mode: "link" })}
+                  onCreateStaff={user.staff ? undefined : () => setStaffTarget({ user, mode: "create" })}
                 />
               </div>
             ))}
@@ -510,6 +528,26 @@ export function UsersManager({
               handleResult(result, () => setSelected(null));
             });
           }}
+          onLinkStaff={() => setStaffTarget({ user: selected, mode: "link" })}
+          onCreateStaff={() => setStaffTarget({ user: selected, mode: "create" })}
+        />
+      ) : null}
+
+      {staffTarget ? (
+        <UserStaffDialog
+          user={staffTarget.user}
+          mode={staffTarget.mode}
+          pending={pending}
+          onClose={() => setStaffTarget(null)}
+          onLinked={(staff) => {
+            setRows((current) =>
+              current.map((row) => (row.id === staffTarget.user.id ? { ...row, staff } : row)),
+            );
+            setSelected((current) => (current?.id === staffTarget.user.id ? { ...current, staff } : current));
+            setStaffTarget(null);
+          }}
+          onError={setError}
+          startTransition={startTransition}
         />
       ) : null}
 
@@ -668,6 +706,7 @@ function UserFormDialog({
             ))}
           </div>
         </div>
+        {!user ? <CreateAsStaffFields /> : null}
         <label className="block">
           <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Role</span>
           <select
@@ -714,6 +753,8 @@ function UserDetails({
   onEnable,
   onReset,
   onSave,
+  onLinkStaff,
+  onCreateStaff,
 }: {
   user: ManagedUser;
   currentUserId: string;
@@ -725,6 +766,8 @@ function UserDetails({
   onEnable: () => void;
   onReset: () => void;
   onSave: (formData: FormData) => void;
+  onLinkStaff: () => void;
+  onCreateStaff: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const self = user.id === currentUserId;
@@ -766,6 +809,10 @@ function UserDetails({
           <dl className="mt-3 space-y-2 text-[13.5px]">
             <Row label="Assigned Module(s)" value={user.moduleNames.join(", ")} />
             <Row label="Role" value={user.roleName} />
+            <Row
+              label="Staff / Position"
+              value={user.staff ? `${user.staff.positionName || "Staff"} · ${user.staff.staffNumber}` : "Not a staff member"}
+            />
           </dl>
         </section>
         <div className="flex flex-wrap gap-2">
@@ -814,6 +861,24 @@ function UserDetails({
               Enable Account
             </button>
           )}
+          {!user.staff ? (
+            <>
+              <button
+                type="button"
+                onClick={onLinkStaff}
+                className="h-10 rounded-[12px] bg-white px-3 text-[13px] font-semibold text-navy ring-1 ring-black/10"
+              >
+                Link Staff
+              </button>
+              <button
+                type="button"
+                onClick={onCreateStaff}
+                className="h-10 rounded-[12px] bg-white px-3 text-[13px] font-semibold text-navy ring-1 ring-black/10"
+              >
+                Create Staff Profile
+              </button>
+            </>
+          ) : null}
         </div>
       </div>
     </Modal>
@@ -918,5 +983,235 @@ function Row({ label, value }: { label: string; value: string }) {
       <dt className="text-slate-500">{label}</dt>
       <dd className="break-words font-medium text-navy">{value}</dd>
     </div>
+  );
+}
+
+function CreateAsStaffFields() {
+  const [enabled, setEnabled] = useState(false);
+  const [types, setTypes] = useState<StaffTypeRow[]>([]);
+  const [positions, setPositions] = useState<StaffPositionRow[]>([]);
+  const [staffTypeId, setStaffTypeId] = useState("");
+
+  useEffect(() => {
+    if (!enabled || types.length) return;
+    void getStaffWorkspaceOptionsAction("view").then((result) => {
+      if (!result.ok) return;
+      setTypes(result.types.filter((row) => row.isActive));
+      setPositions(result.positions.filter((row) => row.isActive));
+    });
+  }, [enabled, types.length]);
+
+  const typePositions = positions.filter((row) => row.staffTypeId === staffTypeId);
+
+  return (
+    <div className="space-y-3 rounded-[14px] bg-[#f8fafc] p-3">
+      <label className="flex items-center gap-2 text-[13px] font-medium text-navy">
+        <input
+          type="checkbox"
+          name="createAsStaff"
+          value="1"
+          checked={enabled}
+          onChange={(event) => setEnabled(event.target.checked)}
+        />
+        Create as Staff member
+      </label>
+      {enabled ? (
+        <>
+          <label className="block">
+            <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Staff type</span>
+            <select
+              name="staffTypeId"
+              required
+              value={staffTypeId}
+              onChange={(event) => setStaffTypeId(event.target.value)}
+              className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
+            >
+              <option value="">Select type</option>
+              {types.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Position</span>
+            <select
+              name="staffPositionId"
+              required
+              className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
+            >
+              <option value="">Select position</option>
+              {typePositions.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function UserStaffDialog({
+  user,
+  mode,
+  pending,
+  onClose,
+  onLinked,
+  onError,
+  startTransition,
+}: {
+  user: ManagedUser;
+  mode: "link" | "create";
+  pending: boolean;
+  onClose: () => void;
+  onLinked: (staff: NonNullable<ManagedUser["staff"]>) => void;
+  onError: (message: string) => void;
+  startTransition: (fn: () => Promise<void> | void) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<StaffLinkStaffOption[]>([]);
+  const [types, setTypes] = useState<StaffTypeRow[]>([]);
+  const [positions, setPositions] = useState<StaffPositionRow[]>([]);
+  const [staffTypeId, setStaffTypeId] = useState("");
+  const [staffPositionId, setStaffPositionId] = useState("");
+
+  useEffect(() => {
+    if (mode !== "create") return;
+    void getStaffWorkspaceOptionsAction("view").then((result) => {
+      if (!result.ok) return;
+      setTypes(result.types.filter((row) => row.isActive));
+      setPositions(result.positions.filter((row) => row.isActive));
+    });
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== "link") return;
+    const handle = window.setTimeout(() => {
+      void searchUnlinkedStaffAction(query).then((result) => {
+        if (result.ok) setResults(result.staff);
+      });
+    }, 200);
+    return () => window.clearTimeout(handle);
+  }, [mode, query]);
+
+  const typePositions = positions.filter((row) => row.staffTypeId === staffTypeId);
+
+  return (
+    <Modal onClose={onClose} title={mode === "link" ? "Link Staff" : "Create Staff Profile"}>
+      <p className="text-[13.5px] text-slate-500">
+        {mode === "link"
+          ? `Link ${user.name} to an existing School staff record. This does not create another person.`
+          : `Create a School staff profile for ${user.name} using this same account.`}
+      </p>
+      {mode === "link" ? (
+        <div className="mt-4 space-y-3">
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search staff name or number"
+            className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy outline-none focus:border-[#9bb6e0]"
+          />
+          <ul className="max-h-64 space-y-1 overflow-y-auto">
+            {results.map((row) => (
+              <li key={row.id}>
+                <button
+                  type="button"
+                  disabled={pending}
+                  className="w-full rounded-[12px] px-3 py-2.5 text-left hover:bg-[#f4f7fb]"
+                  onClick={() => {
+                    startTransition(async () => {
+                      const result = await linkUserToStaffAction({ userId: user.id, staffId: row.id });
+                      if (result.error || !result.staff) {
+                        onError(result.error || "Unable to link staff.");
+                        return;
+                      }
+                      onLinked(result.staff);
+                    });
+                  }}
+                >
+                  <p className="text-[13.5px] font-semibold text-navy">{row.name}</p>
+                  <p className="text-[12px] text-slate-500">
+                    {row.staffNumber}
+                    {row.positionName ? ` · ${row.positionName}` : ""}
+                  </p>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {results.length === 0 ? <p className="text-[13px] text-slate-500">No unlinked staff members match.</p> : null}
+        </div>
+      ) : (
+        <form
+          className="mt-4 space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            startTransition(async () => {
+              const result = await createStaffProfileForUserAction({
+                userId: user.id,
+                staffTypeId,
+                staffPositionId,
+              });
+              if (result.error || !result.staff) {
+                onError(result.error || "Unable to create the staff profile.");
+                return;
+              }
+              onLinked(result.staff);
+            });
+          }}
+        >
+          <label className="block">
+            <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Staff type</span>
+            <select
+              required
+              value={staffTypeId}
+              onChange={(event) => {
+                setStaffTypeId(event.target.value);
+                setStaffPositionId("");
+              }}
+              className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
+            >
+              <option value="">Select type</option>
+              {types.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Position</span>
+            <select
+              required
+              value={staffPositionId}
+              onChange={(event) => setStaffPositionId(event.target.value)}
+              className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
+            >
+              <option value="">Select position</option>
+              {typePositions.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 text-[14px] font-medium text-slate-600">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={pending}
+              className="h-11 rounded-[14px] bg-navy px-4 text-[14px] font-semibold text-white disabled:opacity-60"
+            >
+              {pending ? "Saving..." : "Create Staff Profile"}
+            </button>
+          </div>
+        </form>
+      )}
+    </Modal>
   );
 }
