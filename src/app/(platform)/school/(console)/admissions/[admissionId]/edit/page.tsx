@@ -12,7 +12,11 @@ export default async function SchoolEditAdmissionRoute({
   const [options, detail] = await Promise.all([getAdmissionFormOptionsAction("manage"), getSchoolAdmissionAction(admissionId)]);
   return (
     <SchoolAdmissionFormPage
-      options={options.ok ? options : null}
+      options={
+        options.ok
+          ? options
+          : { years: [], terms: [], levels: [], today: new Date().toISOString().slice(0, 10), capabilities: { canView: true, canManage: true, canConfigureAcademic: false } }
+      }
       admission={detail.ok ? detail.admission : null}
       error={detail.ok ? (options.ok ? null : options.error) : detail.error}
     />

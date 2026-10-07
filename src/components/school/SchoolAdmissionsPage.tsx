@@ -97,7 +97,7 @@ export function SchoolAdmissionsPage({
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">Admissions</h1>
-          <p className="mt-1 text-[13.5px] text-slate-500">Register students into the school through a complete admission.</p>
+          <p className="mt-1 text-[13.5px] text-slate-500">Register and manage student admissions.</p>
         </div>
         {canManage ? (
           <Link href="/school/admissions/new" className={primaryButton}>
@@ -141,11 +141,11 @@ export function SchoolAdmissionsPage({
         </form>
       </div>
 
-      {!error && rows.length === 0 ? (
+      {rows.length === 0 ? (
         <section className={cn(glassPanel, "flex flex-col items-start gap-3 py-10")}>
           <SchoolIconWell icon={UserPlus} />
-          <h2 className="text-[18px] font-semibold tracking-[-0.04em] text-navy">No admissions recorded yet.</h2>
-          <p className="text-[13.5px] text-slate-500">Create an admission to register a student into the school.</p>
+          <h2 className="text-[18px] font-semibold tracking-[-0.04em] text-navy">No admissions yet</h2>
+          <p className="text-[13.5px] text-slate-500">Create the first student admission to get started.</p>
           {canManage ? (
             <Link href="/school/admissions/new" className={primaryButton}>
               + New Admission

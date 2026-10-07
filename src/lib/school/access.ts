@@ -40,7 +40,7 @@ export const requireSchoolContext = cache(async (): Promise<SchoolContext> => {
   let businessUnitId = cachedSchoolBuId;
   if (!businessUnitId) {
     const { data: bu, error } = await supabase.from("business_units").select("id").eq("code", "school").maybeSingle();
-    if (error) throw new SchoolError("Couldn't load school settings.", "DATABASE");
+    if (error) throw new SchoolError("Couldn't load School.", "DATABASE");
     if (!bu?.id) throw new SchoolError("School business unit was not found.", "NOT_FOUND");
     cachedSchoolBuId = String(bu.id);
     businessUnitId = cachedSchoolBuId;
@@ -75,11 +75,16 @@ export function isSchoolEmptyRead(error: SchoolReadError) {
 /** Relation is not in PostgREST yet — no configuration exists to load. */
 export function isSchoolMissingRelation(error: SchoolReadError) {
   if (!error) return false;
-  if (error.code === "PGRST205" || error.code === "42P01") return true;
+  if (error.code === "PGRST200" || error.code === "PGRST201" || error.code === "PGRST205" || error.code === "42P01" || error.code === "42703") {
+    return true;
+  }
   const blob = schoolErrorBlob(error);
   return (
     blob.includes("schema cache") ||
     blob.includes("could not find the table") ||
+    blob.includes("could not find a relationship") ||
+    blob.includes("more than one relationship") ||
+    (blob.includes("column") && blob.includes("does not exist")) ||
     (blob.includes("does not exist") && (blob.includes("relation") || blob.includes("table")))
   );
 }
@@ -94,7 +99,7 @@ export function mapSchoolDbError(
   operation: "load" | "save" = "save",
 ): never {
   const fallback =
-    operation === "load" ? "Couldn't load school settings." : "Couldn't save school settings. Please try again.";
+    operation === "load" ? "Couldn't load this page." : "Couldn't save. Please try again.";
   if (!error) throw new SchoolError(fallback, "DATABASE");
   if (error.code === "23505") {
     throw new SchoolError("That name or code is already in use.", "CONFLICT");

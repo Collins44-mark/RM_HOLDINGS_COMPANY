@@ -2,8 +2,9 @@
 
 import { writeAuditEvent } from "@/lib/audit";
 import { requireAuth } from "@/lib/auth/session";
-import { isOwnerRole } from "@/lib/auth/rbac";
+import { hasPermission, isOwnerRole } from "@/lib/auth/rbac";
 import { matchPermission } from "@/lib/config/permissions";
+import { identityFromUser } from "@/lib/auth/types";
 import {
   isSchoolUnconfiguredRead,
   mapSchoolDbError,
@@ -112,6 +113,20 @@ function asStatus(value: unknown): AdmissionStatus {
 function canManage(user: Awaited<ReturnType<typeof requireAuth>>) {
   if (isOwnerRole(user.roleCode)) return true;
   return user.permissions.some((matcher) => matcher !== "*" && matchPermission(MANAGE, matcher));
+}
+
+function canConfigureAcademic(user: Awaited<ReturnType<typeof requireAuth>>) {
+  if (isOwnerRole(user.roleCode)) return true;
+  const identity = identityFromUser(user);
+  return hasPermission(identity, "school.settings.view") || hasPermission(identity, "school.settings.manage");
+}
+
+function caps(user: Awaited<ReturnType<typeof requireAuth>>) {
+  return {
+    canView: true,
+    canManage: canManage(user),
+    canConfigureAcademic: canConfigureAcademic(user),
+  };
 }
 
 function studentName(first: string, middle: string, last: string) {
@@ -279,27 +294,45 @@ async function loadApplicableFees(
   }));
 }
 
-function mapListRow(row: Record<string, unknown>): AdmissionListRow {
-  const student = row.sch_students as { student_number?: string } | null;
-  const stream = row.sch_class_streams as
-    | { name?: string; sch_classes?: { name?: string; sch_class_levels?: { name?: string } | null } | null }
-    | null;
-  const classRow = stream?.sch_classes;
-  return {
-    id: String(row.id),
-    admissionNumber: String(row.admission_number ?? ""),
-    studentName: studentName(str(row.first_name), str(row.middle_name), str(row.last_name)) || "—",
-    studentNumber: student?.student_number ? String(student.student_number) : null,
-    levelName: str(classRow?.sch_class_levels?.name),
-    className: str(classRow?.name),
-    streamName: str(stream?.name),
-    admissionDate: String(row.admission_date ?? ""),
-    status: asStatus(row.status),
-  };
+async function loadPlacementNames(
+  supabase: Awaited<ReturnType<typeof requireSchoolPermission>>["supabase"],
+  businessUnitId: string,
+  streamIds: string[],
+) {
+  const names = new Map<string, { levelName: string; className: string; streamName: string }>();
+  const ids = [...new Set(streamIds.filter(Boolean))];
+  if (!ids.length) return names;
+  const streams = await supabase
+    .from("sch_class_streams")
+    .select("id, name, class_id")
+    .eq("business_unit_id", businessUnitId)
+    .in("id", ids);
+  if (streams.error && !isSchoolUnconfiguredRead(streams.error)) return names;
+  const classIds = [...new Set((streams.data ?? []).map((row) => str(row.class_id)).filter(Boolean))];
+  const classes = classIds.length
+    ? await supabase.from("sch_classes").select("id, name, level_id").eq("business_unit_id", businessUnitId).in("id", classIds)
+    : { data: [] as Array<{ id: string; name: string; level_id: string }>, error: null };
+  if (classes.error && !isSchoolUnconfiguredRead(classes.error)) return names;
+  const levelIds = [...new Set((classes.data ?? []).map((row) => str(row.level_id)).filter(Boolean))];
+  const levels = levelIds.length
+    ? await supabase.from("sch_class_levels").select("id, name").eq("business_unit_id", businessUnitId).in("id", levelIds)
+    : { data: [] as Array<{ id: string; name: string }>, error: null };
+  const classMap = new Map((classes.data ?? []).map((row) => [String(row.id), row]));
+  const levelMap = new Map((levels.data ?? []).map((row) => [String(row.id), str(row.name)]));
+  for (const stream of streams.data ?? []) {
+    const classRow = classMap.get(str(stream.class_id));
+    names.set(String(stream.id), {
+      streamName: str(stream.name),
+      className: str(classRow?.name),
+      levelName: classRow ? levelMap.get(str(classRow.level_id)) ?? "" : "",
+    });
+  }
+  return names;
 }
 
 export async function getAdmissionFormOptionsAction(mode: "view" | "manage" = "view") {
   try {
+    const user = await requireAuth();
     const ctx = await requireSchoolPermission(mode === "manage" ? MANAGE : VIEW);
     const { supabase, businessUnitId } = ctx;
     const scope = await loadSchoolStructureScope(ctx);
@@ -342,6 +375,8 @@ export async function getAdmissionFormOptionsAction(mode: "view" | "manage" = "v
         name: String(row.name),
       })),
       levels,
+      today: new Date().toISOString().slice(0, 10),
+      capabilities: caps(user),
     };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
@@ -360,7 +395,7 @@ export async function listSchoolAdmissionsAction(input: { page?: number; q?: str
     let query = supabase
       .from("sch_admissions")
       .select(
-        "id, admission_number, status, admission_date, first_name, middle_name, last_name, student_id, stream_id, sch_students(student_number), sch_class_streams(name, sch_classes(name, sch_class_levels(name)))",
+        "id, admission_number, status, admission_date, first_name, middle_name, last_name, student_id, stream_id",
         { count: "exact" },
       )
       .eq("business_unit_id", businessUnitId)
@@ -377,19 +412,61 @@ export async function listSchoolAdmissionsAction(input: { page?: number; q?: str
         .ilike("student_number", `%${q}%`);
       const ids = (students.data ?? []).map((row) => String(row.id));
       const studentFilter = ids.length ? `,student_id.in.(${ids.join(",")})` : "";
-      query = query.or(`admission_number.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%${studentFilter}`);
+      query = query.or(
+        `admission_number.ilike.%${q}%,first_name.ilike.%${q}%,middle_name.ilike.%${q}%,last_name.ilike.%${q}%${studentFilter}`,
+      );
     }
     const result = await query;
     if (result.error && !isSchoolUnconfiguredRead(result.error)) mapSchoolDbError(result.error, "load");
-    const rows = ((result.data ?? []) as Record<string, unknown>[]).map(mapListRow);
+    const raw = ((result.data ?? []) as Record<string, unknown>[]);
+    const placement = await loadPlacementNames(
+      supabase,
+      businessUnitId,
+      raw.map((row) => str(row.stream_id)),
+    );
+    const studentIds = [...new Set(raw.map((row) => str(row.student_id)).filter(Boolean))];
+    const numbers = new Map<string, string>();
+    if (studentIds.length) {
+      const students = await supabase
+        .from("sch_students")
+        .select("id, student_number")
+        .eq("business_unit_id", businessUnitId)
+        .in("id", studentIds);
+      for (const row of students.data ?? []) numbers.set(String(row.id), str(row.student_number));
+    }
+    const rows = raw.map((row) => {
+      const place = placement.get(str(row.stream_id));
+      return {
+        id: String(row.id),
+        admissionNumber: str(row.admission_number),
+        studentName: studentName(str(row.first_name), str(row.middle_name), str(row.last_name)) || "—",
+        studentNumber: numbers.get(str(row.student_id)) || null,
+        levelName: place?.levelName ?? "",
+        className: place?.className ?? "",
+        streamName: place?.streamName ?? "",
+        admissionDate: String(row.admission_date ?? ""),
+        status: asStatus(row.status),
+      };
+    });
     return {
       ok: true as const,
       admissions: rows,
       page: schoolPageMeta(page, result.count ?? rows.length, pageSize),
-      capabilities: { canView: true, canManage: canManage(user) },
+      capabilities: caps(user),
     };
   } catch (error) {
-    return { ok: false as const, error: schoolActionError(error) };
+    try {
+      const user = await requireAuth();
+      return {
+        ok: false as const,
+        error: schoolActionError(error),
+        admissions: [] as AdmissionListRow[],
+        page: schoolPageMeta(1, 0),
+        capabilities: caps(user),
+      };
+    } catch {
+      return { ok: false as const, error: schoolActionError(error) };
+    }
   }
 }
 
@@ -499,7 +576,7 @@ export async function getSchoolAdmissionAction(id: string) {
       attendanceEligible,
       fees,
     };
-    return { ok: true as const, admission: detail, capabilities: { canView: true, canManage: canManage(user) } };
+    return { ok: true as const, admission: detail, capabilities: caps(user) };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
   }

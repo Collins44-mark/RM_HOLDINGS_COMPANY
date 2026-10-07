@@ -22,6 +22,8 @@ export type AdmissionFormOptions = {
   years: Array<{ id: string; name: string; isCurrent: boolean }>;
   terms: Array<{ id: string; academicYearId: string; name: string }>;
   levels: Array<{ id: string; name: string }>;
+  today?: string;
+  capabilities?: { canView: boolean; canManage: boolean; canConfigureAcademic: boolean };
 };
 
 const SECTIONS = [
@@ -49,7 +51,7 @@ function emptyForm(options: AdmissionFormOptions): AdmissionFormInput {
     levelId: "",
     classId: "",
     streamId: "",
-    admissionDate: new Date().toISOString().slice(0, 10),
+    admissionDate: options.today ?? "",
     guardianFullName: "",
     guardianRelationship: "",
     guardianPhone: "",
@@ -97,7 +99,7 @@ export function SchoolAdmissionFormPage({
 }) {
   const router = useRouter();
   const [form, setForm] = useState<AdmissionFormInput>(
-    admission ? fromDetail(admission) : emptyForm(options ?? { years: [], terms: [], levels: [] }),
+    admission ? fromDetail(admission) : emptyForm(options ?? { years: [], terms: [], levels: [], today: "" }),
   );
   const [classes, setClasses] = useState<Array<{ id: string; name: string }>>([]);
   const [streams, setStreams] = useState<Array<{ id: string; name: string }>>([]);
@@ -227,8 +229,11 @@ export function SchoolAdmissionFormPage({
           <p className="mt-1 text-[13.5px] text-slate-500">Student, placement, and guardian details become a student only when this admission is completed.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <SchoolWorkflowButton className={secondaryButton} busy={saveBusy} confirmed={saved} idleLabel="Save draft" onClick={runSave} />
-          <SchoolWorkflowButton className={primaryButton} busy={completeBusy} confirmed={completed} idleLabel="Complete admission" onClick={() => runComplete(false)} />
+          <Link href="/school/admissions" className={secondaryButton}>
+            Cancel
+          </Link>
+          <SchoolWorkflowButton className={secondaryButton} busy={saveBusy} confirmed={saved} idleLabel="Save draft" confirmedLabel="Saved ✓" onClick={runSave} />
+          <SchoolWorkflowButton className={primaryButton} busy={completeBusy} confirmed={completed} idleLabel="Complete admission" confirmedLabel="Admission completed ✓" onClick={() => runComplete(false)} />
         </div>
       </header>
       {saveError ? <p className="text-[13px] text-[#c45b66]">{saveError}</p> : null}
@@ -362,6 +367,34 @@ export function SchoolAdmissionFormPage({
               </select>
             </SchoolField>
           </div>
+          {!years.length ? (
+            <p className="text-[13px] text-slate-500">
+              Academic year is not configured yet.
+              {options?.capabilities?.canConfigureAcademic ? (
+                <>
+                  {" "}
+                  <Link href="/school/settings" className="font-semibold text-navy underline-offset-2 hover:underline">
+                    School Settings → Academic
+                  </Link>
+                </>
+              ) : null}
+            </p>
+          ) : null}
+          {years.length && !levels.length ? (
+            <p className="text-[13px] text-slate-500">
+              No levels configured yet.
+              {options?.capabilities?.canConfigureAcademic ? (
+                <>
+                  {" "}
+                  <Link href="/school/classes" className="font-semibold text-navy underline-offset-2 hover:underline">
+                    Open Classes
+                  </Link>
+                </>
+              ) : null}
+            </p>
+          ) : null}
+          {form.levelId && !visibleClasses.length ? <p className="text-[13px] text-slate-500">No classes configured for this level yet.</p> : null}
+          {form.classId && !visibleStreams.length ? <p className="text-[13px] text-slate-500">No streams configured for this class yet.</p> : null}
           {visibleFees.length ? (
             <div className="rounded-[16px] border border-navy/8 bg-white/70 px-4 py-3">
               <p className="text-[12.5px] font-semibold text-navy">Applicable fees for this class</p>
