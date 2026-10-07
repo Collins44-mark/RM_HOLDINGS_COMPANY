@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import {
   completeSchoolAdmissionAction,
@@ -31,7 +30,6 @@ const SECTIONS = [
   ["student", "Student"],
   ["placement", "Placement"],
   ["guardian", "Guardian"],
-  ["admission", "Admission"],
   ["review", "Review"],
 ] as const;
 
@@ -72,8 +70,8 @@ function fromDetail(admission: AdmissionDetail): AdmissionFormInput {
     gender: admission.gender,
     nationality: admission.nationality,
     address: admission.address,
-    phone: admission.phone,
-    email: admission.email,
+    phone: "",
+    email: "",
     academicYearId: admission.academicYearId,
     termId: admission.termId,
     levelId: admission.levelId,
@@ -89,6 +87,26 @@ function fromDetail(admission: AdmissionDetail): AdmissionFormInput {
   };
 }
 
+function FeeReadout({ fee, ready }: { fee: ApplicableFeeRow | null; ready: boolean }) {
+  if (!ready) return null;
+  if (!fee?.configured) {
+    return <p className="text-[13px] text-slate-500">Fee structure not configured for this class.</p>;
+  }
+  return (
+    <div className="rounded-[16px] border border-navy/8 bg-white/70 px-4 py-3">
+      <p className="text-[12.5px] font-semibold text-navy">Applicable Annual Fee</p>
+      <p className="mt-1 text-[13.5px] font-medium text-navy">{formatTzs(fee.annualAmount ?? 0)}</p>
+      {fee.currentTermAmount != null && fee.currentTermName ? (
+        <p className="mt-1 text-[13px] text-slate-600">
+          Current Term Fee · {fee.currentTermName}: {formatTzs(fee.currentTermAmount)}
+        </p>
+      ) : (
+        <p className="mt-1 text-[13px] text-slate-500">Term fee not configured</p>
+      )}
+    </div>
+  );
+}
+
 export function SchoolAdmissionFormPage({
   options,
   admission,
@@ -98,12 +116,17 @@ export function SchoolAdmissionFormPage({
   admission: AdmissionDetail | null;
   error: string | null;
 }) {
-  const router = useRouter();
   const [form, setForm] = useState<AdmissionFormInput>(
     admission ? fromDetail(admission) : emptyForm(options ?? { years: [], terms: [], levels: [], today: "" }),
   );
-  const [classes, setClasses] = useState<Array<{ id: string; name: string }>>([]);
-  const [streams, setStreams] = useState<Array<{ id: string; name: string }>>([]);
+  const [classes, setClasses] = useState<Array<{ id: string; name: string }>>(
+    admission?.classId ? [{ id: admission.classId, name: admission.className }] : [],
+  );
+  const [streams, setStreams] = useState<Array<{ id: string; name: string }>>(
+    admission?.streamId ? [{ id: admission.streamId, name: admission.streamName }] : [],
+  );
+  const [classesReady, setClassesReady] = useState(!admission?.levelId);
+  const [streamsReady, setStreamsReady] = useState(!admission?.classId);
   const [fee, setFee] = useState<ApplicableFeeRow | null>(admission?.fee ?? null);
   const [section, setSection] = useState<(typeof SECTIONS)[number][0]>("student");
   const [saveError, setSaveError] = useState<string | null>(error);
@@ -111,6 +134,11 @@ export function SchoolAdmissionFormPage({
   const [completeBusy, setCompleteBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [completed, setCompleted] = useState(false);
+  const [completion, setCompletion] = useState<{
+    admissionNumber: string;
+    studentNumber: string | null;
+    studentId: string | null;
+  } | null>(null);
   const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [duplicateMeta, setDuplicateMeta] = useState<{ studentId: string; studentNumber: string } | null>(null);
   const lock = useRef(false);
@@ -125,8 +153,9 @@ export function SchoolAdmissionFormPage({
     if (!levelId) return;
     let active = true;
     void getAdmissionClassesAction(levelId).then((result) => {
-      if (!active || !result.ok) return;
-      setClasses(result.classes);
+      if (!active) return;
+      setClasses(result.ok ? result.classes : []);
+      setClassesReady(true);
     });
     return () => {
       active = false;
@@ -138,8 +167,9 @@ export function SchoolAdmissionFormPage({
     if (!classId) return;
     let active = true;
     void getAdmissionStreamsAction(classId).then((result) => {
-      if (!active || !result.ok) return;
-      setStreams(result.streams);
+      if (!active) return;
+      setStreams(result.ok ? result.streams : []);
+      setStreamsReady(true);
     });
     return () => {
       active = false;
@@ -174,9 +204,12 @@ export function SchoolAdmissionFormPage({
   const levelName = levels.find((row) => row.id === form.levelId)?.name ?? "—";
   const className = visibleClasses.find((row) => row.id === form.classId)?.name ?? "—";
   const streamName = visibleStreams.find((row) => row.id === form.streamId)?.name ?? "—";
+  const studentName = [form.firstName, form.middleName, form.lastName].filter(Boolean).join(" ");
+  const canManage = options?.capabilities?.canManage !== false;
+  const busy = saveBusy || completeBusy;
 
   function runSave() {
-    if (lock.current) return;
+    if (lock.current || completed) return;
     lock.current = true;
     setSaveBusy(true);
     setSaveError(null);
@@ -187,14 +220,14 @@ export function SchoolAdmissionFormPage({
         setSaveError(result.error);
         return;
       }
+      setForm((current) => ({ ...current, id: result.id }));
       setSaved(true);
-      patch({ id: result.id });
-      if (!admission) router.replace(`/school/admissions/${result.id}/edit`);
+      if (!admission) window.history.replaceState(null, "", `/school/admissions/${result.id}/edit`);
     });
   }
 
   function runComplete(acknowledgeDuplicate = false) {
-    if (lock.current) return;
+    if (lock.current || completed) return;
     lock.current = true;
     setCompleteBusy(true);
     setSaveError(null);
@@ -212,8 +245,64 @@ export function SchoolAdmissionFormPage({
         return;
       }
       setCompleted(true);
-      router.push(`/school/admissions/${result.id}`);
+      setCompletion({
+        admissionNumber: result.admissionNumber,
+        studentNumber: result.studentNumber,
+        studentId: result.studentId,
+      });
+      if (result.id) window.history.replaceState(null, "", `/school/admissions/${result.id}`);
     });
+  }
+
+  if (completed && completion) {
+    return (
+      <div className="min-w-0 max-w-full space-y-5 pb-10">
+        <Link href="/school/admissions" className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 transition duration-200 hover:text-navy">
+          <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
+          Admissions
+        </Link>
+        <section className={cn(glassPanel, "space-y-4")}>
+          <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">Admission completed ✓</h1>
+          <dl className="grid grid-cols-1 gap-3 text-[13.5px] md:grid-cols-2">
+            <div>
+              <dt className="text-slate-500">Admission No</dt>
+              <dd className="font-medium text-navy">{completion.admissionNumber}</dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Student No</dt>
+              <dd className="font-medium text-navy">{completion.studentNumber || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Student</dt>
+              <dd className="font-medium text-navy">{studentName || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Class</dt>
+              <dd className="font-medium text-navy">
+                {className}
+                {streamName && streamName !== "—" ? ` ${streamName}` : ""}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Fee</dt>
+              <dd className="font-medium text-navy">
+                {visibleFee?.configured ? `${formatTzs(visibleFee.annualAmount ?? 0)} annual` : "Not configured"}
+              </dd>
+            </div>
+          </dl>
+          <div className="flex flex-wrap gap-2">
+            {completion.studentId ? (
+              <Link href={`/school/students/${completion.studentId}`} className={primaryButton}>
+                View Student
+              </Link>
+            ) : null}
+            <Link href="/school/admissions" className={secondaryButton}>
+              Back to Admissions
+            </Link>
+          </div>
+        </section>
+      </div>
+    );
   }
 
   return (
@@ -227,14 +316,36 @@ export function SchoolAdmissionFormPage({
           <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">
             {admission ? admission.admissionNumber : "New Admission"}
           </h1>
-          <p className="mt-1 text-[13.5px] text-slate-500">Student, placement, and guardian details become a student only when this admission is completed.</p>
+          <p className="mt-1 text-[13.5px] text-slate-500">
+            {admission ? "Update this draft admission and complete when ready." : "Register a new student and place them in the school."}
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link href="/school/admissions" className={secondaryButton}>
             Cancel
           </Link>
-          <SchoolWorkflowButton className={secondaryButton} busy={saveBusy} confirmed={saved} idleLabel="Save draft" confirmedLabel="Saved ✓" onClick={runSave} />
-          <SchoolWorkflowButton className={primaryButton} busy={completeBusy} confirmed={completed} idleLabel="Complete admission" confirmedLabel="Admission completed ✓" onClick={() => runComplete(false)} />
+          {canManage ? (
+            <>
+              <SchoolWorkflowButton
+                className={secondaryButton}
+                busy={saveBusy}
+                disabled={busy}
+                confirmed={saved}
+                idleLabel="Save Draft"
+                confirmedLabel="Saved ✓"
+                onClick={runSave}
+              />
+              <SchoolWorkflowButton
+                className={primaryButton}
+                busy={completeBusy}
+                disabled={busy}
+                confirmed={completed}
+                idleLabel="Complete Admission"
+                confirmedLabel="Admission completed ✓"
+                onClick={() => runComplete(false)}
+              />
+            </>
+          ) : null}
         </div>
       </header>
       {saveError ? <p className="text-[13px] text-[#c45b66]">{saveError}</p> : null}
@@ -282,11 +393,8 @@ export function SchoolAdmissionFormPage({
             <SchoolField label="Nationality">
               <input className={inputClass} value={form.nationality} onChange={(event) => patch({ nationality: event.target.value })} />
             </SchoolField>
-            <SchoolField label="Phone">
-              <input className={inputClass} value={form.phone} onChange={(event) => patch({ phone: event.target.value })} />
-            </SchoolField>
-            <SchoolField label="Email">
-              <input className={inputClass} value={form.email} onChange={(event) => patch({ email: event.target.value })} />
+            <SchoolField label="Admission date">
+              <input type="date" className={inputClass} value={form.admissionDate} onChange={(event) => patch({ admissionDate: event.target.value })} />
             </SchoolField>
           </div>
           <SchoolField label="Address">
@@ -327,7 +435,14 @@ export function SchoolAdmissionFormPage({
               <select
                 className={inputClass}
                 value={form.levelId}
-                onChange={(event) => patch({ levelId: event.target.value, classId: "", streamId: "" })}
+                onChange={(event) => {
+                  setClasses([]);
+                  setStreams([]);
+                  setFee(null);
+                  setClassesReady(!event.target.value);
+                  setStreamsReady(true);
+                  patch({ levelId: event.target.value, classId: "", streamId: "" });
+                }}
               >
                 <option value="">Select level</option>
                 {levels.map((row) => (
@@ -342,7 +457,12 @@ export function SchoolAdmissionFormPage({
                 className={inputClass}
                 value={form.classId}
                 disabled={!form.levelId}
-                onChange={(event) => patch({ classId: event.target.value, streamId: "" })}
+                onChange={(event) => {
+                  setStreams([]);
+                  setFee(null);
+                  setStreamsReady(!event.target.value);
+                  patch({ classId: event.target.value, streamId: "" });
+                }}
               >
                 <option value="">Select class</option>
                 {visibleClasses.map((row) => (
@@ -370,7 +490,7 @@ export function SchoolAdmissionFormPage({
           </div>
           {!years.length ? (
             <p className="text-[13px] text-slate-500">
-              Academic year is not configured yet.
+              Configure an academic year before completing an admission.
               {options?.capabilities?.canConfigureAcademic ? (
                 <>
                   {" "}
@@ -383,7 +503,7 @@ export function SchoolAdmissionFormPage({
           ) : null}
           {years.length && !levels.length ? (
             <p className="text-[13px] text-slate-500">
-              No levels configured yet.
+              Configure school levels before placing a student.
               {options?.capabilities?.canConfigureAcademic ? (
                 <>
                   {" "}
@@ -394,25 +514,13 @@ export function SchoolAdmissionFormPage({
               ) : null}
             </p>
           ) : null}
-          {form.levelId && !visibleClasses.length ? <p className="text-[13px] text-slate-500">No classes configured for this level yet.</p> : null}
-          {form.classId && !visibleStreams.length ? <p className="text-[13px] text-slate-500">No streams configured for this class yet.</p> : null}
-          {visibleFee?.configured ? (
-            <div className="rounded-[16px] border border-navy/8 bg-white/70 px-4 py-3">
-              <p className="text-[12.5px] font-semibold text-navy">Applicable fee</p>
-              <p className="mt-2 text-[13px] text-slate-600">Annual Fee: {formatTzs(visibleFee.annualAmount ?? 0)}</p>
-              {visibleFee.currentTermAmount != null && visibleFee.currentTermName ? (
-                <p className="text-[13px] text-slate-600">
-                  {visibleFee.currentTermName}: {formatTzs(visibleFee.currentTermAmount)}
-                </p>
-              ) : visibleFee.termCount === 0 ? (
-                <p className="text-[13px] text-slate-500">No term fees configured.</p>
-              ) : (
-                <p className="text-[13px] text-slate-500">Current term fee is not configured.</p>
-              )}
-            </div>
-          ) : form.classId && form.academicYearId ? (
-            <p className="text-[13px] text-slate-500">Fee structure not configured. Admission can still be completed.</p>
+          {form.levelId && classesReady && !visibleClasses.length ? (
+            <p className="text-[13px] text-slate-500">Configure classes before placing a student.</p>
           ) : null}
+          {form.classId && streamsReady && !visibleStreams.length ? (
+            <p className="text-[13px] text-slate-500">Configure streams before placing a student.</p>
+          ) : null}
+          <FeeReadout fee={visibleFee} ready={Boolean(form.classId && form.academicYearId)} />
         </section>
       ) : null}
 
@@ -442,26 +550,16 @@ export function SchoolAdmissionFormPage({
         </section>
       ) : null}
 
-      {section === "admission" ? (
-        <section className={cn(glassPanel, "space-y-4")}>
-          <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Admission information</h2>
-          <SchoolField label="Admission date">
-            <input type="date" className={inputClass} value={form.admissionDate} onChange={(event) => patch({ admissionDate: event.target.value })} />
-          </SchoolField>
-          <p className="text-[13px] text-slate-500">The admission number is generated by the system when this record is first saved.</p>
-        </section>
-      ) : null}
-
       {section === "review" ? (
         <section className={cn(glassPanel, "space-y-3")}>
-          <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Review & complete</h2>
+          <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Review</h2>
           <dl className="grid grid-cols-1 gap-2 text-[13.5px] md:grid-cols-2">
             <div>
               <dt className="text-slate-500">Student</dt>
-              <dd className="font-medium text-navy">{[form.firstName, form.middleName, form.lastName].filter(Boolean).join(" ") || "—"}</dd>
+              <dd className="font-medium text-navy">{studentName || "—"}</dd>
             </div>
             <div>
-              <dt className="text-slate-500">Placement</dt>
+              <dt className="text-slate-500">Academic</dt>
               <dd className="font-medium text-navy">
                 {yearName} · {levelName} · {className} · {streamName}
               </dd>
@@ -478,7 +576,8 @@ export function SchoolAdmissionFormPage({
               <dd className="font-medium text-navy">{form.admissionDate || "—"}</dd>
             </div>
           </dl>
-          <p className="text-[13px] text-slate-500">Completing this admission creates the student, enrollment, and guardian relationship in one transaction.</p>
+          <FeeReadout fee={visibleFee} ready={Boolean(form.classId && form.academicYearId)} />
+          <p className="text-[13px] text-slate-500">Completing this admission creates the student, enrollment, and guardian relationship in one transaction. Payments are recorded later in Fees & Payments.</p>
         </section>
       ) : null}
 

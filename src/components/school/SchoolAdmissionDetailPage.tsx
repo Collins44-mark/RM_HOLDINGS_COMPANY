@@ -96,8 +96,6 @@ export function SchoolAdmissionDetailPage({
           <Fact label="Date of birth" value={admission.dateOfBirth} />
           <Fact label="Gender" value={admission.gender} />
           <Fact label="Nationality" value={admission.nationality} />
-          <Fact label="Phone" value={admission.phone} />
-          <Fact label="Email" value={admission.email} />
           <Fact label="Address" value={admission.address} />
         </div>
       </section>
@@ -118,19 +116,17 @@ export function SchoolAdmissionDetailPage({
         <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Applicable fees</h2>
         {admission.fee.configured ? (
           <div className="space-y-1 text-[13.5px] text-navy">
-            <p>Annual Fee: {formatTzs(admission.fee.annualAmount ?? 0)}</p>
+            <p>Applicable Annual Fee: {formatTzs(admission.fee.annualAmount ?? 0)}</p>
             {admission.fee.currentTermAmount != null && admission.fee.currentTermName ? (
               <p>
-                {admission.fee.currentTermName}: {formatTzs(admission.fee.currentTermAmount)}
+                Current Term Fee · {admission.fee.currentTermName}: {formatTzs(admission.fee.currentTermAmount)}
               </p>
-            ) : admission.fee.termCount === 0 ? (
-              <p className="text-slate-500">No term fees configured.</p>
             ) : (
-              <p className="text-slate-500">Current term fee is not configured.</p>
+              <p className="text-slate-500">Term fee not configured</p>
             )}
           </div>
         ) : (
-          <p className="text-[13.5px] text-slate-500">Fee structure not configured</p>
+          <p className="text-[13.5px] text-slate-500">Fee structure not configured for this class.</p>
         )}
         <p className="text-[13px] text-slate-500">
           {admission.attendanceEligible

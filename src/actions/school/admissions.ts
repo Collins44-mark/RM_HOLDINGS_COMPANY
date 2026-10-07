@@ -251,8 +251,8 @@ function admissionPayload(input: AdmissionFormInput, businessUnitId: string) {
     gender: genderValue(input.gender),
     nationality: str(input.nationality).slice(0, 80),
     address: str(input.address).slice(0, 240),
-    phone: str(input.phone).slice(0, 40),
-    email: str(input.email).slice(0, 160),
+    phone: "",
+    email: "",
     academic_year_id: str(input.academicYearId) || null,
     term_id: str(input.termId) || null,
     stream_id: str(input.streamId) || null,
@@ -274,7 +274,7 @@ function feeRowFromStructure(structure: ApplicableFeeStructure | null): Applicab
       currentTermName: null,
       currentTermAmount: null,
       termCount: 0,
-      message: "Fee structure not configured",
+      message: "Fee structure not configured for this class.",
     };
   }
   return {
