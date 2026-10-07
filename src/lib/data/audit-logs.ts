@@ -136,6 +136,9 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "school.class_created": "School class created",
   "school.class_updated": "School class updated",
   "school.class_archived": "School class archived",
+  "school.stream_created": "School stream created",
+  "school.stream_updated": "School stream updated",
+  "school.stream_archived": "School stream archived",
 };
 
 export const AUDIT_MODULE_LABELS: Record<string, string> = {
