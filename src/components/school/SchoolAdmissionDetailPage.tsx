@@ -24,11 +24,13 @@ export function SchoolAdmissionDetailPage({
   canManage,
   error,
   pending = false,
+  preview = false,
 }: {
   admission: AdmissionDetail | null;
   canManage: boolean;
   error: string | null;
   pending?: boolean;
+  preview?: boolean;
 }) {
   const router = useRouter();
   if (!admission && pending) {
@@ -113,40 +115,44 @@ export function SchoolAdmissionDetailPage({
         </div>
       </section>
 
-      <section className={`${glassPanel} space-y-3`}>
-        <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Guardian</h2>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <Fact label="Name" value={admission.guardianFullName} />
-          <Fact label="Relationship" value={admission.guardianRelationship} />
-          <Fact label="Phone" value={admission.guardianPhone} />
-          <Fact label="Email" value={admission.guardianEmail} />
-          <Fact label="Occupation" value={admission.guardianOccupation} />
-          <Fact label="Address" value={admission.guardianAddress} />
-        </div>
-      </section>
+      {preview ? null : (
+        <>
+          <section className={`${glassPanel} space-y-3`}>
+            <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Guardian</h2>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <Fact label="Name" value={admission.guardianFullName} />
+              <Fact label="Relationship" value={admission.guardianRelationship} />
+              <Fact label="Phone" value={admission.guardianPhone} />
+              <Fact label="Email" value={admission.guardianEmail} />
+              <Fact label="Occupation" value={admission.guardianOccupation} />
+              <Fact label="Address" value={admission.guardianAddress} />
+            </div>
+          </section>
 
-      <section className={`${glassPanel} space-y-3`}>
-        <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Applicable fees</h2>
-        {admission.fee.configured ? (
-          <div className="space-y-1 text-[13.5px] text-navy">
-            <p>Applicable Annual Fee: {formatTzs(admission.fee.annualAmount ?? 0)}</p>
-            {admission.fee.currentTermAmount != null && admission.fee.currentTermName ? (
-              <p>
-                Current Term Fee · {admission.fee.currentTermName}: {formatTzs(admission.fee.currentTermAmount)}
-              </p>
+          <section className={`${glassPanel} space-y-3`}>
+            <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Applicable fees</h2>
+            {admission.fee.configured ? (
+              <div className="space-y-1 text-[13.5px] text-navy">
+                <p>Applicable Annual Fee: {formatTzs(admission.fee.annualAmount ?? 0)}</p>
+                {admission.fee.currentTermAmount != null && admission.fee.currentTermName ? (
+                  <p>
+                    Current Term Fee · {admission.fee.currentTermName}: {formatTzs(admission.fee.currentTermAmount)}
+                  </p>
+                ) : (
+                  <p className="text-slate-500">Term fee not configured</p>
+                )}
+              </div>
             ) : (
-              <p className="text-slate-500">Term fee not configured</p>
+              <p className="text-[13.5px] text-slate-500">Fee structure not configured for this class.</p>
             )}
-          </div>
-        ) : (
-          <p className="text-[13.5px] text-slate-500">Fee structure not configured for this class.</p>
-        )}
-        <p className="text-[13px] text-slate-500">
-          {admission.attendanceEligible
-            ? "This student is eligible for attendance through the active enrollment."
-            : "Attendance eligibility starts after this admission is completed."}
-        </p>
-      </section>
+            <p className="text-[13px] text-slate-500">
+              {admission.attendanceEligible
+                ? "This student is eligible for attendance through the active enrollment."
+                : "Attendance eligibility starts after this admission is completed."}
+            </p>
+          </section>
+        </>
+      )}
     </div>
   );
 }

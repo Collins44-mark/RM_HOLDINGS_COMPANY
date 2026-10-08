@@ -9,7 +9,9 @@ export function PageTransition({ children }: { children: ReactNode }) {
   const key =
     pathname === "/supermarket/finance/banking" || pathname === "/supermarket/finance/bank-reconciliation"
       ? "/supermarket/finance/banking-workspace"
-      : pathname;
+      : pathname.startsWith("/school")
+        ? "/school"
+        : pathname;
   return (
     <div key={key} className="page-enter min-w-0 w-full max-w-full">
       {children}

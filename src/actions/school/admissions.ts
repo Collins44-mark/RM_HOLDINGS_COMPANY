@@ -27,6 +27,9 @@ export type AdmissionListRow = {
   id: string;
   admissionNumber: string;
   studentName: string;
+  firstName: string;
+  middleName: string;
+  lastName: string;
   studentNumber: string | null;
   levelName: string;
   className: string;
@@ -372,23 +375,16 @@ export async function listSchoolAdmissionsAction(input: { page?: number; pageSiz
       ctx,
       raw.map((row) => str(row.stream_id)),
     );
-    const studentIds = [...new Set(raw.map((row) => str(row.student_id)).filter(Boolean))];
-    const numbers = new Map<string, string>();
-    if (studentIds.length) {
-      const students = await supabase
-        .from("sch_students")
-        .select("id, student_number")
-        .eq("business_unit_id", businessUnitId)
-        .in("id", studentIds);
-      for (const row of students.data ?? []) numbers.set(String(row.id), str(row.student_number));
-    }
     const rows = raw.map((row) => {
       const place = placement.get(str(row.stream_id));
       return {
         id: String(row.id),
         admissionNumber: str(row.admission_number),
         studentName: studentName(str(row.first_name), str(row.middle_name), str(row.last_name)) || "—",
-        studentNumber: numbers.get(str(row.student_id)) || null,
+        firstName: str(row.first_name),
+        middleName: str(row.middle_name),
+        lastName: str(row.last_name),
+        studentNumber: null,
         levelName: place?.levelName ?? "",
         className: place?.className ?? "",
         streamName: place?.streamName ?? "",

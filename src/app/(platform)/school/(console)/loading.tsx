@@ -8,6 +8,7 @@ import { SchoolStaffFormPage } from "@/components/school/SchoolStaffFormPage";
 import { SchoolStudentProfilePage } from "@/components/school/SchoolStudentProfilePage";
 import { SchoolStudentsPage } from "@/components/school/SchoolStudentsPage";
 import { schoolPageMeta } from "@/lib/school/pagination";
+import { admissionPreviewFromList, peekAdmissionView } from "@/lib/school/admission-flash";
 
 const EMPTY_OPTIONS = {
   years: [] as Array<{ id: string; name: string; isCurrent: boolean }>,
@@ -43,7 +44,17 @@ export default function SchoolConsoleLoading() {
     );
   }
   if (pathname.startsWith("/school/admissions/")) {
-    return <SchoolAdmissionDetailPage admission={null} canManage={false} error={null} pending />;
+    const id = pathname.split("/")[3] ?? "";
+    const snapshot = typeof window !== "undefined" ? peekAdmissionView(id) : null;
+    return (
+      <SchoolAdmissionDetailPage
+        admission={snapshot ? admissionPreviewFromList(snapshot) : null}
+        canManage={false}
+        error={null}
+        pending={!snapshot}
+        preview={Boolean(snapshot)}
+      />
+    );
   }
   if (pathname === "/school/students") {
     return (

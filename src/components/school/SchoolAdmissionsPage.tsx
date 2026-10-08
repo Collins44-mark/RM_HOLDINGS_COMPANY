@@ -21,9 +21,9 @@ import {
 } from "@/components/supermarket/purchasing-ui";
 import { SchoolConfirmDialog, SchoolIconWell } from "@/components/school/school-ui";
 import { SchoolPagination, replaceSchoolPageParam } from "@/components/school/SchoolPagination";
-import type { SchoolPageMeta } from "@/lib/school/pagination";
+import { parseSchoolPage, parseSchoolPageSize, type SchoolPageMeta } from "@/lib/school/pagination";
 import { cn } from "@/lib/cn";
-import { consumeAdmissionFlash } from "@/lib/school/admission-flash";
+import { consumeAdmissionFlash, writeAdmissionView } from "@/lib/school/admission-flash";
 
 const STATUS_FILTERS: Array<{ id: "all" | AdmissionStatus; label: string }> = [
   { id: "all", label: "All" },
@@ -66,7 +66,7 @@ export function SchoolAdmissionsPage({
   useEffect(() => {
     const flash = consumeAdmissionFlash();
     if (!flash) return;
-    const activeFilter = status || "all";
+    const activeFilter = filter || "all";
     if (activeFilter !== "all" && activeFilter !== flash.status) return;
     queueMicrotask(() => {
       setRows((current) => {
@@ -75,10 +75,17 @@ export function SchoolAdmissionsPage({
         return [flash, ...current];
       });
     });
-  }, [status]);
+  }, [filter]);
 
-  function load(nextPage: number, nextQ: string, nextStatus: string, nextSize = pageSize) {
+  function syncUrl(nextPage: number, nextQ: string, nextStatus: string, nextSize: number) {
+    replaceSchoolPageParam(nextPage, nextSize, { status: nextStatus, q: nextQ });
+  }
+
+  function load(nextPage: number, nextQ: string, nextStatus: string, nextSize = pageSize, skipUrl = false) {
+    setFilter(nextStatus);
+    setPageSize(nextSize);
     setPaging(true);
+    if (!skipUrl) syncUrl(nextPage, nextQ, nextStatus, nextSize);
     void listSchoolAdmissionsAction({
       page: nextPage,
       pageSize: nextSize,
@@ -90,13 +97,35 @@ export function SchoolAdmissionsPage({
         setSaveError(result.error);
         return;
       }
+      setSaveError(null);
       setRows(result.admissions);
       setPage(result.page);
       setPageSize(result.page.pageSize);
-      setFilter(nextStatus);
-      replaceSchoolPageParam(result.page.page, result.page.pageSize);
     });
   }
+
+  useEffect(() => {
+    function applyUrl(skipUrl: boolean) {
+      const url = new URL(window.location.href);
+      const nextStatus = url.searchParams.get("status") || "all";
+      const nextQ = url.searchParams.get("q") || "";
+      const nextPage = parseSchoolPage(url.searchParams.get("page"));
+      const nextSize = parseSchoolPageSize(url.searchParams.get("pageSize"));
+      setQ(nextQ);
+      load(nextPage, nextQ, nextStatus, nextSize, skipUrl);
+    }
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("status") || url.searchParams.get("q") || url.searchParams.get("page") || url.searchParams.get("pageSize")) {
+      queueMicrotask(() => applyUrl(true));
+    }
+    function onPop() {
+      applyUrl(true);
+    }
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+    // First URL hydrate + back/forward only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function runCancel() {
     if (!cancelId || lock.current) return;
@@ -140,6 +169,7 @@ export function SchoolAdmissionsPage({
               key={item.id}
               type="button"
               onClick={() => load(1, q, item.id)}
+              aria-pressed={filter === item.id}
               className={cn(
                 "h-8 rounded-full px-3.5 text-[12.5px] font-semibold transition duration-200",
                 filter === item.id ? "bg-white text-navy shadow-[0_4px_12px_rgba(15,35,64,0.08)]" : "text-slate-500 hover:text-navy",
@@ -170,7 +200,7 @@ export function SchoolAdmissionsPage({
         </form>
       </div>
 
-      {rows.length === 0 && !pending ? (
+      {rows.length === 0 && !pending && !paging ? (
         <section className={cn(glassPanel, "flex flex-col items-start gap-3 py-10")}>
           <SchoolIconWell icon={UserPlus} />
           <h2 className="text-[18px] font-semibold tracking-[-0.04em] text-navy">No admissions yet</h2>
@@ -196,7 +226,12 @@ export function SchoolAdmissionsPage({
                 {rows.map((row) => (
                   <tr key={row.id} className="border-t border-navy/5 text-[13.5px] text-navy">
                     <td className="px-4 py-3">
-                      <Link href={`/school/admissions/${row.id}`} className="font-semibold hover:underline">
+                      <Link
+                        href={`/school/admissions/${row.id}`}
+                        prefetch
+                        className="font-semibold hover:underline"
+                        onClick={() => writeAdmissionView(row)}
+                      >
                         {row.admissionNumber}
                       </Link>
                     </td>
@@ -212,10 +247,10 @@ export function SchoolAdmissionsPage({
                       <CompactActionsMenu
                         ariaLabel={`${row.admissionNumber} actions`}
                         items={[
-                          { label: "View", onSelect: () => router.push(`/school/admissions/${row.id}`) },
+                          { label: "View", href: `/school/admissions/${row.id}`, onSelect: () => writeAdmissionView(row) },
                           ...(canManage && row.status === "draft"
                             ? [
-                                { label: "Edit", onSelect: () => router.push(`/school/admissions/${row.id}/edit`) },
+                                { label: "Edit", href: `/school/admissions/${row.id}/edit` },
                                 { label: "Complete", onSelect: () => setCompleteId(row.id) },
                                 { label: "Cancel", onSelect: () => setCancelId(row.id) },
                               ]

@@ -1,30 +1,19 @@
 import { listSchoolAdmissionsAction } from "@/actions/school/admissions";
 import { SchoolAdmissionsPage } from "@/components/school/SchoolAdmissionsPage";
-import { parseSchoolPage, parseSchoolPageSize, schoolPageMeta } from "@/lib/school/pagination";
+import { schoolPageMeta } from "@/lib/school/pagination";
 
 export const metadata = { title: "Admissions" };
 export const dynamic = "force-dynamic";
 
-export default async function SchoolAdmissionsRoute({
-  searchParams,
-}: {
-  searchParams: Promise<{ page?: string; q?: string; status?: string; pageSize?: string }>;
-}) {
-  const params = await searchParams;
-  const pageSize = parseSchoolPageSize(params.pageSize);
-  const result = await listSchoolAdmissionsAction({
-    page: parseSchoolPage(params.page),
-    pageSize,
-    q: params.q,
-    status: params.status,
-  });
+export default async function SchoolAdmissionsRoute() {
+  const result = await listSchoolAdmissionsAction();
   return (
     <SchoolAdmissionsPage
       admissions={result.ok ? result.admissions : result.admissions ?? []}
-      page={result.ok ? result.page : result.page ?? schoolPageMeta(1, 0, pageSize)}
+      page={result.ok ? result.page : result.page ?? schoolPageMeta(1, 0)}
       canManage={result.capabilities?.canManage ?? false}
-      query={params.q ?? ""}
-      status={params.status ?? "all"}
+      query=""
+      status="all"
       error={result.ok ? null : result.error}
     />
   );

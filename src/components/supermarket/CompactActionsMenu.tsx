@@ -2,11 +2,13 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { MoreHorizontal } from "lucide-react";
 
 export type CompactMenuItem = {
   label: string;
-  onSelect: () => void;
+  onSelect?: () => void;
+  href?: string;
   disabled?: boolean;
 };
 
@@ -99,22 +101,38 @@ export function CompactActionsMenu({
               style={{ top: coords.top, left: coords.left, width: MENU_WIDTH }}
               className="fixed z-[90] overflow-hidden rounded-[14px] border border-white/80 bg-white/95 py-1 shadow-[0_12px_30px_rgba(20,40,70,0.12)] backdrop-blur-md"
             >
-              {items.map((item) => (
-                <button
-                  key={item.label}
-                  type="button"
-                  role="menuitem"
-                  disabled={item.disabled}
-                  className="block w-full px-3 py-2 text-left text-[13px] font-medium text-navy hover:bg-[#f4f7fb] disabled:text-slate-400"
-                  onClick={() => {
-                    if (item.disabled) return;
-                    setOpen(false);
-                    item.onSelect();
-                  }}
-                >
-                  {item.label}
-                </button>
-              ))}
+              {items.map((item) =>
+                item.href && !item.disabled ? (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    prefetch
+                    role="menuitem"
+                    className="block w-full px-3 py-2 text-left text-[13px] font-medium text-navy hover:bg-[#f4f7fb]"
+                    onClick={() => {
+                      setOpen(false);
+                      item.onSelect?.();
+                    }}
+                  >
+                    {item.label}
+                  </Link>
+                ) : (
+                  <button
+                    key={item.label}
+                    type="button"
+                    role="menuitem"
+                    disabled={item.disabled}
+                    className="block w-full px-3 py-2 text-left text-[13px] font-medium text-navy hover:bg-[#f4f7fb] disabled:text-slate-400"
+                    onClick={() => {
+                      if (item.disabled) return;
+                      setOpen(false);
+                      item.onSelect?.();
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ),
+              )}
             </div>,
             document.body,
           )

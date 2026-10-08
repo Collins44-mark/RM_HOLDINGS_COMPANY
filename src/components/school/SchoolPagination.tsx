@@ -3,12 +3,22 @@
 import { SCHOOL_PAGE_SIZE, SCHOOL_PAGE_SIZES, schoolPageMeta } from "@/lib/school/pagination";
 import { cn } from "@/lib/cn";
 
-export function replaceSchoolPageParam(page: number, pageSize?: number) {
+export function replaceSchoolPageParam(
+  page: number,
+  pageSize?: number,
+  extra?: { status?: string; q?: string },
+) {
   const url = new URL(window.location.href);
   if (page <= 1) url.searchParams.delete("page");
   else url.searchParams.set("page", String(page));
   if (pageSize && pageSize !== SCHOOL_PAGE_SIZE) url.searchParams.set("pageSize", String(pageSize));
   else if (pageSize === SCHOOL_PAGE_SIZE) url.searchParams.delete("pageSize");
+  if (extra) {
+    if (extra.status && extra.status !== "all") url.searchParams.set("status", extra.status);
+    else url.searchParams.delete("status");
+    if (extra.q) url.searchParams.set("q", extra.q);
+    else url.searchParams.delete("q");
+  }
   window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
 }
 
