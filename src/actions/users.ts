@@ -361,6 +361,7 @@ export async function createUserAction(
       email: emailValue,
       staffTypeId: String(formData.get("staffTypeId") ?? "").trim(),
       staffPositionId: String(formData.get("staffPositionId") ?? "").trim(),
+      roleId: String(role.id),
     });
     if ("error" in staffResult && staffResult.error) {
       warning = `User created. Staff profile was not created: ${staffResult.error}`;
@@ -712,8 +713,17 @@ export async function createStaffProfileForUserAction(input: {
   if (!ready.ok) return { error: ready.error };
   const userId = String(input.userId ?? "").trim();
   if (!userId) return { error: "User was not found." };
-  const profile = await ready.admin.from("profiles").select("id, full_name, email, phone").eq("id", userId).maybeSingle();
+  const profile = await ready.admin.from("profiles").select("id, full_name, email, phone, role_id").eq("id", userId).maybeSingle();
   if (!profile.data) return { error: "User was not found." };
+  const schoolBuId = await schoolBusinessUnitId(ready.admin);
+  const schoolRole = schoolBuId
+    ? await ready.admin
+        .from("user_module_roles")
+        .select("role_id")
+        .eq("user_id", userId)
+        .eq("business_unit_id", schoolBuId)
+        .maybeSingle()
+    : { data: null };
   const result = await insertStaffForProfile(ready.admin, {
     profileId: userId,
     fullName: String(profile.data.full_name ?? ""),
@@ -721,6 +731,7 @@ export async function createStaffProfileForUserAction(input: {
     email: String(profile.data.email ?? ""),
     staffTypeId: String(input.staffTypeId ?? "").trim(),
     staffPositionId: String(input.staffPositionId ?? "").trim(),
+    roleId: String(schoolRole.data?.role_id ?? profile.data.role_id ?? ""),
   });
   if ("error" in result) return { error: result.error };
   revalidateUsersWorkspace();

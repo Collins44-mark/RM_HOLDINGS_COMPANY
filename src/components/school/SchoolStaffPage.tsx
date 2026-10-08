@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Users } from "lucide-react";
 import { archiveSchoolStaffAction, listSchoolStaffAction, type StaffListRow } from "@/actions/school/staff";
+import { consumeStaffFlash } from "@/lib/school/staff-flash";
 import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
 import {
   glassPanel,
@@ -23,7 +24,6 @@ export function SchoolStaffPage({
   staff: initialRows,
   page: initialPage,
   canManage,
-  canManageSystemAccess,
   query,
   status,
   error,
@@ -42,6 +42,20 @@ export function SchoolStaffPage({
   const [q, setQ] = useState(query);
   const [filter, setFilter] = useState(status || "active");
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const flash = consumeStaffFlash();
+    if (!flash) return;
+    const activeFilter = status || "active";
+    if (activeFilter !== "all" && activeFilter !== flash.status) return;
+    queueMicrotask(() => {
+      setRows((current) => {
+        if (current.some((row) => row.id === flash.id)) return current;
+        setPage((meta) => ({ ...meta, total: meta.total + 1 }));
+        return [flash, ...current];
+      });
+    });
+  }, [status]);
 
   function load(nextPage: number, nextQ: string, nextStatus: string) {
     void listSchoolStaffAction({ page: nextPage, q: nextQ, status: nextStatus === "all" ? "" : nextStatus }).then((result) => {
@@ -115,13 +129,11 @@ export function SchoolStaffPage({
             <table className="w-full min-w-[760px] text-left">
               <thead>
                 <tr className={tableHead}>
-                  <th className="px-4 py-3 font-semibold">Staff</th>
-                  <th className="px-4 py-3 font-semibold">Staff No.</th>
-                  <th className="px-4 py-3 font-semibold">Type</th>
-                  <th className="px-4 py-3 font-semibold">Position</th>
-                  <th className="px-4 py-3 font-semibold">System Access</th>
-                  <th className="px-4 py-3 font-semibold">Primary assignment</th>
+                  <th className="px-4 py-3 font-semibold">Name</th>
+                  <th className="px-4 py-3 font-semibold">Staff Type</th>
+                  <th className="px-4 py-3 font-semibold">Role</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 font-semibold">Phone</th>
                   <th className="px-4 py-3 font-semibold">Actions</th>
                 </tr>
               </thead>
@@ -133,39 +145,24 @@ export function SchoolStaffPage({
                         {row.name}
                       </Link>
                     </td>
-                    <td className="px-4 py-3">{row.staffNumber}</td>
                     <td className="px-4 py-3">{row.typeName || "—"}</td>
-                    <td className="px-4 py-3">{row.positionName || "—"}</td>
-                    <td className="px-4 py-3">{row.hasSystemAccess ? "System Access" : "No system access"}</td>
-                    <td className="px-4 py-3">{row.primaryAssignment || "—"}</td>
+                    <td className="px-4 py-3">{row.roleName || "—"}</td>
                     <td className="px-4 py-3">
                       <StatusPill value={row.status === "active" ? "Active" : "Inactive"} />
                     </td>
+                    <td className="px-4 py-3">{row.phone || "—"}</td>
                     <td className="px-4 py-3">
                       <CompactActionsMenu
                         ariaLabel={`${row.name} actions`}
                         items={[
-                          { label: "View Staff", onSelect: () => router.push(`/school/staff/${row.id}`) },
+                          { label: "View", onSelect: () => router.push(`/school/staff/${row.id}`) },
                           ...(canManage
-                            ? [
-                                { label: "Edit Staff", onSelect: () => router.push(`/school/staff/${row.id}/edit`) },
-                                ...(row.allowsAcademicAssignments
-                                  ? [{ label: "Manage Assignments", onSelect: () => router.push(`/school/staff/${row.id}`) }]
-                                  : []),
-                              ]
-                            : []),
-                          ...(canManageSystemAccess
-                            ? [
-                                {
-                                  label: row.hasSystemAccess ? "View User Access" : "Give System Access",
-                                  onSelect: () => router.push(`/school/staff/${row.id}${row.hasSystemAccess ? "" : "?access=1"}`),
-                                },
-                              ]
+                            ? [{ label: "Edit", onSelect: () => router.push(`/school/staff/${row.id}/edit`) }]
                             : []),
                           ...(canManage && row.status === "active"
                             ? [
                                 {
-                                  label: "Archive Staff",
+                                  label: "Deactivate",
                                   onSelect: () => {
                                     void archiveSchoolStaffAction(row.id).then((result) => {
                                       if (!result.ok) {

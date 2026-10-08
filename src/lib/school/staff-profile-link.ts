@@ -127,6 +127,7 @@ export async function insertStaffForProfile(
     email: string;
     staffTypeId: string;
     staffPositionId: string;
+    roleId?: string;
   },
 ): Promise<{ error: string } | { staff: LinkedStaffInfo; businessUnitId: string }> {
   const businessUnitId = await schoolBusinessUnitId(admin);
@@ -167,6 +168,7 @@ export async function insertStaffForProfile(
       email: str(input.email).slice(0, 160),
       staff_type_id: input.staffTypeId,
       position_id: input.staffPositionId,
+      ...(str(input.roleId) ? { role_id: str(input.roleId) } : {}),
       employment_status: "active",
       profile_id: input.profileId,
     })

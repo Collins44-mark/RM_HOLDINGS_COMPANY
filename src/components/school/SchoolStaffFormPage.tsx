@@ -1,37 +1,40 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import {
+  getStaffFormOptionsAction,
   saveSchoolStaffAction,
-  saveSchoolStaffPositionAction,
-  saveSchoolStaffTypeAction,
+  type SchoolRoleOption,
   type StaffFormInput,
-  type StaffPositionRow,
   type StaffProfile,
   type StaffStatus,
-  type StaffTypeKind,
   type StaffTypeRow,
 } from "@/actions/school/staff";
-import { SchoolField, SchoolGlassModal, SchoolWorkflowButton } from "@/components/school/school-ui";
-import { glassPanel, inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
+import { SchoolField, SchoolWorkflowButton } from "@/components/school/school-ui";
+import { glassPanel, inputClass, primaryButton } from "@/components/supermarket/purchasing-ui";
+import { writeStaffFlash } from "@/lib/school/staff-flash";
+
+const MANAGE_ROLES_HREF = "/owner/users?view=roles";
 
 export function SchoolStaffFormPage({
   types: initialTypes,
-  positions: initialPositions,
+  roles: initialRoles,
   staff,
   error,
+  loadOptions = false,
 }: {
   types: StaffTypeRow[];
-  positions: StaffPositionRow[];
+  roles: SchoolRoleOption[];
   staff: StaffProfile | null;
   error: string | null;
+  loadOptions?: boolean;
 }) {
   const router = useRouter();
   const [types, setTypes] = useState(initialTypes);
-  const [positions, setPositions] = useState(initialPositions);
+  const [roles, setRoles] = useState(initialRoles);
   const [form, setForm] = useState<StaffFormInput>({
     id: staff?.id,
     firstName: staff?.firstName ?? "",
@@ -43,20 +46,31 @@ export function SchoolStaffFormPage({
     email: staff?.email ?? "",
     address: staff?.address ?? "",
     staffTypeId: staff?.staffTypeId ?? "",
-    positionId: staff?.positionId ?? "",
+    roleId: staff?.roleId ?? "",
     employmentStatus: (staff?.employmentStatus ?? "active") as StaffStatus,
     employmentDate: staff?.employmentDate ?? "",
   });
   const [saveError, setSaveError] = useState<string | null>(error);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [typeModal, setTypeModal] = useState(false);
-  const [positionModal, setPositionModal] = useState(false);
-  const [typeName, setTypeName] = useState("");
-  const [typeKind, setTypeKind] = useState<StaffTypeKind>("academic");
-  const [positionName, setPositionName] = useState("");
   const lock = useRef(false);
-  const typePositions = positions.filter((row) => row.staffTypeId === form.staffTypeId && row.isActive);
+
+  useEffect(() => {
+    if (!loadOptions) return;
+    let active = true;
+    void getStaffFormOptionsAction().then((result) => {
+      if (!active) return;
+      if (!result.ok) {
+        setSaveError(result.error);
+        return;
+      }
+      setTypes(result.types);
+      setRoles(result.roles);
+    });
+    return () => {
+      active = false;
+    };
+  }, [loadOptions]);
 
   function patch(next: Partial<StaffFormInput>) {
     setForm((current) => ({ ...current, ...next }));
@@ -69,14 +83,15 @@ export function SchoolStaffFormPage({
     setBusy(true);
     setSaveError(null);
     void saveSchoolStaffAction(form).then((result) => {
-      lock.current = false;
-      setBusy(false);
       if (!result.ok) {
+        lock.current = false;
+        setBusy(false);
         setSaveError(result.error);
         return;
       }
       setSaved(true);
-      router.push(`/school/staff/${result.id}`);
+      if (result.staff) writeStaffFlash(result.staff);
+      router.push("/school/staff");
     });
   }
 
@@ -89,9 +104,16 @@ export function SchoolStaffFormPage({
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">{staff ? staff.staffNumber : "Add Staff"}</h1>
-          <p className="mt-1 text-[13.5px] text-slate-500">One staff record. Academic or transport work is added as assignments.</p>
+          <p className="mt-1 text-[13.5px] text-slate-500">Staff is the school person. School Role comes from Users & Permissions.</p>
         </div>
-        <SchoolWorkflowButton className={primaryButton} busy={busy} confirmed={saved} idleLabel="Save" onClick={runSave} />
+        <SchoolWorkflowButton
+          className={primaryButton}
+          busy={busy}
+          confirmed={saved}
+          idleLabel="Save"
+          busyLabel="Saving…"
+          onClick={runSave}
+        />
       </header>
       {saveError ? <p className="text-[13px] text-[#c45b66]">{saveError}</p> : null}
 
@@ -134,45 +156,32 @@ export function SchoolStaffFormPage({
         <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Employment</h2>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <SchoolField label="Staff type">
-            <div className="flex gap-2">
-              <select
-                className={inputClass}
-                value={form.staffTypeId}
-                onChange={(event) => patch({ staffTypeId: event.target.value, positionId: "" })}
-              >
-                <option value="">Select type</option>
-                {types
-                  .filter((row) => row.isActive)
-                  .map((row) => (
-                    <option key={row.id} value={row.id}>
-                      {row.name}
-                    </option>
-                  ))}
-              </select>
-              <button type="button" className={secondaryButton} onClick={() => setTypeModal(true)}>
-                +
-              </button>
-            </div>
-          </SchoolField>
-          <SchoolField label="Position">
-            <div className="flex gap-2">
-              <select
-                className={inputClass}
-                value={form.positionId}
-                disabled={!form.staffTypeId}
-                onChange={(event) => patch({ positionId: event.target.value })}
-              >
-                <option value="">Select position</option>
-                {typePositions.map((row) => (
+            <select className={inputClass} value={form.staffTypeId} onChange={(event) => patch({ staffTypeId: event.target.value })}>
+              <option value="">Select type</option>
+              {types
+                .filter((row) => row.isActive)
+                .map((row) => (
                   <option key={row.id} value={row.id}>
                     {row.name}
                   </option>
                 ))}
-              </select>
-              <button type="button" className={secondaryButton} disabled={!form.staffTypeId} onClick={() => setPositionModal(true)}>
-                +
-              </button>
-            </div>
+            </select>
+          </SchoolField>
+          <SchoolField label="School Role">
+            <select className={inputClass} value={form.roleId} onChange={(event) => patch({ roleId: event.target.value })}>
+              <option value="">Select School Role</option>
+              {roles.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-[12.5px] text-slate-500">
+              Role not available?{" "}
+              <Link href={MANAGE_ROLES_HREF} className="font-medium text-navy hover:underline">
+                Manage Roles & Permissions →
+              </Link>
+            </p>
           </SchoolField>
           <SchoolField label="Employment status">
             <select
@@ -189,101 +198,6 @@ export function SchoolStaffFormPage({
           </SchoolField>
         </div>
       </section>
-
-      {typeModal ? (
-        <SchoolGlassModal
-          title="Add staff type"
-          subtitle="Academic, administrative, support, or transport."
-          onClose={() => setTypeModal(false)}
-          footer={
-            <>
-              <button type="button" className={secondaryButton} onClick={() => setTypeModal(false)}>
-                Cancel
-              </button>
-              <SchoolWorkflowButton
-                className={primaryButton}
-                busy={busy}
-                idleLabel="Save type"
-                onClick={() => {
-                  if (lock.current) return;
-                  lock.current = true;
-                  setBusy(true);
-                  void saveSchoolStaffTypeAction({ name: typeName, kind: typeKind }).then((result) => {
-                    lock.current = false;
-                    setBusy(false);
-                    if (!result.ok) {
-                      setSaveError(result.error);
-                      return;
-                    }
-                    setTypes((current) => [...current, result.type]);
-                    patch({ staffTypeId: result.type.id, positionId: "" });
-                    setTypeName("");
-                    setTypeModal(false);
-                  });
-                }}
-              />
-            </>
-          }
-        >
-          <SchoolField label="Name">
-            <input className={inputClass} value={typeName} onChange={(event) => setTypeName(event.target.value)} />
-          </SchoolField>
-          <SchoolField label="Function">
-            <select className={inputClass} value={typeKind} onChange={(event) => setTypeKind(event.target.value as StaffTypeKind)}>
-              <option value="academic">Academic</option>
-              <option value="administrative">Administrative</option>
-              <option value="support">Support</option>
-              <option value="transport">Transport</option>
-            </select>
-          </SchoolField>
-        </SchoolGlassModal>
-      ) : null}
-
-      {positionModal ? (
-        <SchoolGlassModal
-          title="Add position"
-          subtitle="Teacher, Driver, Cleaner, and similar roles belong here."
-          onClose={() => setPositionModal(false)}
-          footer={
-            <>
-              <button type="button" className={secondaryButton} onClick={() => setPositionModal(false)}>
-                Cancel
-              </button>
-              <SchoolWorkflowButton
-                className={primaryButton}
-                busy={busy}
-                idleLabel="Save position"
-                onClick={() => {
-                  if (lock.current) return;
-                  lock.current = true;
-                  setBusy(true);
-                  const type = types.find((row) => row.id === form.staffTypeId);
-                  void saveSchoolStaffPositionAction({
-                    staffTypeId: form.staffTypeId,
-                    name: positionName,
-                    allowsAcademicAssignments: type?.kind === "academic",
-                  }).then((result) => {
-                    lock.current = false;
-                    setBusy(false);
-                    if (!result.ok) {
-                      setSaveError(result.error);
-                      return;
-                    }
-                    setPositions((current) => [...current, result.position]);
-                    patch({ positionId: result.position.id });
-                    setPositionName("");
-                    setPositionModal(false);
-                  });
-                }}
-              />
-            </>
-          }
-        >
-          <SchoolField label="Name">
-            <input className={inputClass} value={positionName} onChange={(event) => setPositionName(event.target.value)} />
-          </SchoolField>
-        </SchoolGlassModal>
-      ) : null}
     </div>
   );
 }

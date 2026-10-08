@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { SchoolAdmissionFormPage } from "@/components/school/SchoolAdmissionFormPage";
+import { SchoolStaffFormPage } from "@/components/school/SchoolStaffFormPage";
 
 const EMPTY_OPTIONS = {
   years: [] as Array<{ id: string; name: string; isCurrent: boolean }>,
@@ -21,6 +22,9 @@ export default function SchoolConsoleLoading() {
   const pathname = usePathname();
   if (pathname === "/school/admissions/new") {
     return <SchoolAdmissionFormPage options={EMPTY_OPTIONS} admission={null} error={null} />;
+  }
+  if (pathname === "/school/staff/new") {
+    return <SchoolStaffFormPage types={[]} roles={[]} staff={null} error={null} />;
   }
   return null;
 }

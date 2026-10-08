@@ -1,16 +1,8 @@
-import { getStaffWorkspaceOptionsAction } from "@/actions/school/staff";
 import { SchoolStaffFormPage } from "@/components/school/SchoolStaffFormPage";
 
 export const metadata = { title: "Add Staff" };
+export const dynamic = "force-dynamic";
 
-export default async function SchoolNewStaffRoute() {
-  const options = await getStaffWorkspaceOptionsAction("manage");
-  return (
-    <SchoolStaffFormPage
-      types={options.ok ? options.types : []}
-      positions={options.ok ? options.positions : []}
-      staff={null}
-      error={options.ok ? null : options.error}
-    />
-  );
+export default function SchoolNewStaffRoute() {
+  return <SchoolStaffFormPage types={[]} roles={[]} staff={null} error={null} loadOptions />;
 }

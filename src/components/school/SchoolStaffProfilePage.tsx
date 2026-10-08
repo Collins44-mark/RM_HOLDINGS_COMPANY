@@ -185,7 +185,7 @@ export function SchoolStaffProfilePage({
             {[staff.firstName, staff.middleName, staff.lastName].filter(Boolean).join(" ")}
           </h1>
           <p className="mt-1 text-[13.5px] text-slate-500">
-            {staff.staffNumber} · {staff.positionName || staff.typeName}
+            {staff.staffNumber} · {[staff.typeName, staff.roleName].filter(Boolean).join(" · ") || "Staff"}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -209,7 +209,7 @@ export function SchoolStaffProfilePage({
                 });
               }}
             >
-              Archive Staff
+              Deactivate
             </button>
           ) : null}
         </div>
@@ -218,8 +218,8 @@ export function SchoolStaffProfilePage({
 
       <section className={`${glassPanel} grid grid-cols-1 gap-4 md:grid-cols-2`}>
         <Fact label="Staff no." value={staff.staffNumber} />
-        <Fact label="Type" value={staff.typeName} />
-        <Fact label="Position" value={staff.positionName} />
+        <Fact label="Staff type" value={staff.typeName} />
+        <Fact label="School role" value={staff.roleName} />
         <Fact label="Phone" value={staff.phone} />
         <Fact label="Email" value={staff.email} />
         <Fact label="Address" value={staff.address} />
@@ -279,7 +279,7 @@ export function SchoolStaffProfilePage({
           ) : null}
         </div>
         {!staff.allowsAcademicAssignments ? (
-          <p className="text-[13.5px] text-slate-500">This position does not take academic assignments. Transport and other duties can be linked later from their modules.</p>
+          <p className="text-[13.5px] text-slate-500">This staff type does not take academic assignments. Transport and other duties can be linked later from their modules.</p>
         ) : staff.assignments.filter((row) => row.isActive).length === 0 ? (
           <p className="text-[13.5px] text-slate-500">No academic assignments yet.</p>
         ) : (
@@ -564,7 +564,7 @@ function StaffSystemAccessDialog({
   const [phone, setPhone] = useState(staff.phone);
   const schoolRoles = rolesForSelectedModules(["school"]);
   const [roleCode, setRoleCode] = useState<string>(
-    schoolRoles.find((role) => role.code === ROLE_CODES.TEACHER)?.code ?? schoolRoles[0]?.code ?? "",
+    staff.roleCode || schoolRoles.find((role) => role.code === ROLE_CODES.TEACHER)?.code || schoolRoles[0]?.code || "",
   );
 
   useEffect(() => {

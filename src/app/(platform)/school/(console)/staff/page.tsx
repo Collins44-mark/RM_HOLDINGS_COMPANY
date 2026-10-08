@@ -3,6 +3,7 @@ import { SchoolStaffPage } from "@/components/school/SchoolStaffPage";
 import { parseSchoolPage, schoolPageMeta } from "@/lib/school/pagination";
 
 export const metadata = { title: "Staff" };
+export const dynamic = "force-dynamic";
 
 export default async function SchoolStaffRoute({
   searchParams,
