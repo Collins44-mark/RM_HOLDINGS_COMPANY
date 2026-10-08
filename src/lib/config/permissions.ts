@@ -80,7 +80,7 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "subjects", actions: [...CRUD] },
       { resource: "attendance", actions: ["view", "create", "edit"] },
       { resource: "exams", actions: [...CRUD] },
-      { resource: "fees", actions: ["view", "create", "edit", "manage"] },
+      { resource: "fees", actions: ["view", "create", "edit", "manage", "record", "verify", "receipt"] },
       { resource: "buses", actions: [...CRUD] },
       { resource: "drivers", actions: [...CRUD] },
       { resource: "routes", actions: [...CRUD] },
@@ -180,7 +180,10 @@ export function isOperablePermission(code: string) {
     code === "school.staff.view" ||
     code === "school.staff.manage" ||
     code === "school.fees.view" ||
-    code === "school.fees.manage"
+    code === "school.fees.manage" ||
+    code === "school.fees.record" ||
+    code === "school.fees.verify" ||
+    code === "school.fees.receipt"
   );
 }
 
@@ -368,6 +371,9 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.staff.manage",
       "school.fees.view",
       "school.fees.manage",
+      "school.fees.record",
+      "school.fees.verify",
+      "school.fees.receipt",
     ],
   },
   {
@@ -383,6 +389,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.parents.view",
       "school.staff.view",
       "school.fees.view",
+      "school.fees.receipt",
     ],
   },
   {
@@ -390,7 +397,15 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
     name: "School Accountant",
     description: "Manages authorized school financial operations.",
     modules: ["school"],
-    permissionMatchers: ["school.classes.view", "school.students.view", "school.fees.view", "school.fees.manage"],
+    permissionMatchers: [
+      "school.classes.view",
+      "school.students.view",
+      "school.fees.view",
+      "school.fees.manage",
+      "school.fees.record",
+      "school.fees.verify",
+      "school.fees.receipt",
+    ],
   },
   {
     code: ROLE_CODES.TEACHER,

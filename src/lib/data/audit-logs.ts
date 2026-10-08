@@ -154,6 +154,9 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "school.staff_assignment_created": "Staff assignment created",
   "school.level_head_assigned": "Level head assigned",
   "school.department_head_assigned": "Department head assigned",
+  "school.fee_payment_recorded": "School fee payment recorded",
+  "school.fee_payment_verified": "School fee payment verified",
+  "school.fee_receipt_generated": "School fee receipt generated",
 };
 
 export const AUDIT_MODULE_LABELS: Record<string, string> = {

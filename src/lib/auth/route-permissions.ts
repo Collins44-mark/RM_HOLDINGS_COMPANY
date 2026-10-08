@@ -77,7 +77,7 @@ const ROUTE_PERMISSION_RULES: RoutePermissionRule[] = [
   { prefix: "/school/subjects", any: ["school.subjects.view"] },
   { prefix: "/school/attendance", any: ["school.attendance.view"] },
   { prefix: "/school/exams", any: ["school.exams.view"] },
-  { prefix: "/school/fees", any: ["school.fees.view"] },
+  { prefix: "/school/fees", any: ["school.fees.view", "school.fees.manage", "school.fees.record", "school.fees.verify", "school.fees.receipt"] },
   { prefix: "/school/transport", any: ["school.buses.view"] },
   { prefix: "/school/expenses", any: ["school.expenses.view"] },
   { prefix: "/school/reports", any: ["school.reports.view"] },
