@@ -5,9 +5,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import {
   completeSchoolAdmissionAction,
-  getAdmissionClassesAction,
   getAdmissionFormOptionsAction,
-  getAdmissionStreamsAction,
   resolveAdmissionFeesAction,
   saveSchoolAdmissionAction,
   type AdmissionDetail,
@@ -24,6 +22,8 @@ export type AdmissionFormOptions = {
   years: Array<{ id: string; name: string; isCurrent: boolean }>;
   terms: Array<{ id: string; academicYearId: string; name: string }>;
   levels: Array<{ id: string; name: string }>;
+  classes?: Array<{ id: string; name: string; levelId: string }>;
+  streams?: Array<{ id: string; name: string; classId: string }>;
   today?: string;
   capabilities?: { canView: boolean; canManage: boolean; canConfigureAcademic: boolean };
 };
@@ -126,14 +126,6 @@ export function SchoolAdmissionFormPage({
   const [form, setForm] = useState<AdmissionFormInput>(
     admission ? fromDetail(admission) : emptyForm(options),
   );
-  const [classes, setClasses] = useState<Array<{ id: string; name: string }>>(
-    admission?.classId ? [{ id: admission.classId, name: admission.className }] : [],
-  );
-  const [streams, setStreams] = useState<Array<{ id: string; name: string }>>(
-    admission?.streamId ? [{ id: admission.streamId, name: admission.streamName }] : [],
-  );
-  const [classesReady, setClassesReady] = useState(!admission?.levelId);
-  const [streamsReady, setStreamsReady] = useState(!admission?.classId);
   const [fee, setFee] = useState<ApplicableFeeRow | null>(admission?.fee ?? null);
   const [section, setSection] = useState<(typeof SECTIONS)[number][0]>("student");
   const [saveError, setSaveError] = useState<string | null>(error);
@@ -148,6 +140,7 @@ export function SchoolAdmissionFormPage({
   } | null>(null);
   const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [duplicateMeta, setDuplicateMeta] = useState<{ studentId: string; studentNumber: string } | null>(null);
+  const [catalogReady, setCatalogReady] = useState(!loadOptions);
   const lock = useRef(false);
 
   function patch(next: Partial<AdmissionFormInput>) {
@@ -163,10 +156,13 @@ export function SchoolAdmissionFormPage({
         if (active && result && "error" in result && !result.ok) setSaveError(result.error);
         return;
       }
+      setCatalogReady(true);
       setOptions({
         years: result.years,
         terms: result.terms,
         levels: result.levels,
+        classes: result.classes,
+        streams: result.streams,
         today: result.today,
         capabilities: result.capabilities,
       });
@@ -184,34 +180,6 @@ export function SchoolAdmissionFormPage({
       active = false;
     };
   }, [loadOptions]);
-
-  useEffect(() => {
-    const levelId = form.levelId;
-    if (!levelId) return;
-    let active = true;
-    void getAdmissionClassesAction(levelId).then((result) => {
-      if (!active) return;
-      setClasses(result.ok ? result.classes : []);
-      setClassesReady(true);
-    });
-    return () => {
-      active = false;
-    };
-  }, [form.levelId]);
-
-  useEffect(() => {
-    const classId = form.classId;
-    if (!classId) return;
-    let active = true;
-    void getAdmissionStreamsAction(classId).then((result) => {
-      if (!active) return;
-      setStreams(result.ok ? result.streams : []);
-      setStreamsReady(true);
-    });
-    return () => {
-      active = false;
-    };
-  }, [form.classId]);
 
   useEffect(() => {
     const classId = form.classId;
@@ -234,8 +202,10 @@ export function SchoolAdmissionFormPage({
   const years = options?.years ?? [];
   const levels = options?.levels ?? [];
   const terms = (options?.terms ?? []).filter((row) => row.academicYearId === form.academicYearId);
-  const visibleClasses = form.levelId ? classes : [];
-  const visibleStreams = form.classId ? streams : [];
+  const visibleClasses = form.levelId ? (options.classes ?? []).filter((row) => row.levelId === form.levelId) : [];
+  const visibleStreams = form.classId ? (options.streams ?? []).filter((row) => row.classId === form.classId) : [];
+  const classesReady = catalogReady;
+  const streamsReady = catalogReady;
   const visibleFee = form.classId && form.academicYearId ? fee : null;
   const yearName = years.find((row) => row.id === form.academicYearId)?.name ?? "—";
   const levelName = levels.find((row) => row.id === form.levelId)?.name ?? "—";
@@ -430,6 +400,7 @@ export function SchoolAdmissionFormPage({
                 disabled={busy}
                 confirmed={saved}
                 idleLabel="Save Draft"
+                busyLabel="Saving…"
                 confirmedLabel="Saved ✓"
                 onClick={runSave}
               />
@@ -535,11 +506,7 @@ export function SchoolAdmissionFormPage({
                 className={inputClass}
                 value={form.levelId}
                 onChange={(event) => {
-                  setClasses([]);
-                  setStreams([]);
                   setFee(null);
-                  setClassesReady(!event.target.value);
-                  setStreamsReady(true);
                   patch({ levelId: event.target.value, classId: "", streamId: "" });
                 }}
               >
@@ -557,9 +524,7 @@ export function SchoolAdmissionFormPage({
                 value={form.classId}
                 disabled={!form.levelId}
                 onChange={(event) => {
-                  setStreams([]);
                   setFee(null);
-                  setStreamsReady(!event.target.value);
                   patch({ classId: event.target.value, streamId: "" });
                 }}
               >

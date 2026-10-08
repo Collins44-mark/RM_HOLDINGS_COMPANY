@@ -39,6 +39,7 @@ export function SchoolAdmissionsPage({
   query,
   status,
   error,
+  pending = false,
 }: {
   admissions: AdmissionListRow[];
   page: SchoolPageMeta;
@@ -46,13 +47,17 @@ export function SchoolAdmissionsPage({
   query: string;
   status: string;
   error: string | null;
+  pending?: boolean;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState(initialRows);
   const [page, setPage] = useState(initialPage);
+  const [pageSize, setPageSize] = useState(initialPage.pageSize);
   const [q, setQ] = useState(query);
   const [filter, setFilter] = useState(status || "all");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [paging, setPaging] = useState(false);
+  const searchTimer = useRef<number | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [completeId, setCompleteId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -72,20 +77,24 @@ export function SchoolAdmissionsPage({
     });
   }, [status]);
 
-  function load(nextPage: number, nextQ: string, nextStatus: string) {
+  function load(nextPage: number, nextQ: string, nextStatus: string, nextSize = pageSize) {
+    setPaging(true);
     void listSchoolAdmissionsAction({
       page: nextPage,
+      pageSize: nextSize,
       q: nextQ,
       status: nextStatus === "all" ? "" : nextStatus,
     }).then((result) => {
+      setPaging(false);
       if (!result.ok) {
         setSaveError(result.error);
         return;
       }
       setRows(result.admissions);
       setPage(result.page);
+      setPageSize(result.page.pageSize);
       setFilter(nextStatus);
-      replaceSchoolPageParam(result.page.page);
+      replaceSchoolPageParam(result.page.page, result.page.pageSize);
     });
   }
 
@@ -151,19 +160,24 @@ export function SchoolAdmissionsPage({
             className={inputClass}
             value={q}
             placeholder="Search admission no., student no., or name"
-            onChange={(event) => setQ(event.target.value)}
+            onChange={(event) => {
+              const value = event.target.value;
+              setQ(value);
+              if (searchTimer.current) window.clearTimeout(searchTimer.current);
+              searchTimer.current = window.setTimeout(() => load(1, value, filter), 280);
+            }}
           />
         </form>
       </div>
 
-      {rows.length === 0 ? (
+      {rows.length === 0 && !pending ? (
         <section className={cn(glassPanel, "flex flex-col items-start gap-3 py-10")}>
           <SchoolIconWell icon={UserPlus} />
           <h2 className="text-[18px] font-semibold tracking-[-0.04em] text-navy">No admissions yet</h2>
           <p className="text-[13.5px] text-slate-500">Create your first student admission to get started.</p>
         </section>
       ) : (
-        <section className={glassPanel}>
+        <section className={cn(glassPanel, paging && "opacity-80")}>
           <div className={tableScrollClass}>
             <table className="w-full min-w-[760px] text-left">
               <thead>
@@ -214,7 +228,13 @@ export function SchoolAdmissionsPage({
               </tbody>
             </table>
           </div>
-          <SchoolPagination page={page.page} total={page.total} onPage={(next) => load(next, q, filter)} />
+          <SchoolPagination
+            page={page.page}
+            total={page.total}
+            pageSize={pageSize}
+            onPage={(next) => load(next, q, filter)}
+            onPageSize={(size) => load(1, q, filter, size)}
+          />
         </section>
       )}
 

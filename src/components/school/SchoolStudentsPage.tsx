@@ -16,6 +16,7 @@ import { SchoolPagination, replaceSchoolPageParam } from "@/components/school/Sc
 import { SchoolPlacementFilterBar, type PlacementChoice } from "@/components/school/SchoolPlacementFilterBar";
 import { consumeStudentFlash } from "@/lib/school/admission-flash";
 import { SCHOOL_PAGE_SIZE, type SchoolPageMeta } from "@/lib/school/pagination";
+import { cn } from "@/lib/cn";
 
 export function SchoolStudentsPage({
   students: initialRows,
@@ -27,6 +28,7 @@ export function SchoolStudentsPage({
   streamId: initialStreamId,
   pageSize: initialPageSize,
   error,
+  pending = false,
 }: {
   students: StudentListRow[];
   page: SchoolPageMeta;
@@ -37,6 +39,7 @@ export function SchoolStudentsPage({
   streamId: string;
   pageSize: number;
   error: string | null;
+  pending?: boolean;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState(initialRows);
@@ -50,6 +53,7 @@ export function SchoolStudentsPage({
   const [classes, setClasses] = useState<PlacementChoice[]>([]);
   const [streams, setStreams] = useState<PlacementChoice[]>([]);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [paging, setPaging] = useState(false);
 
   useEffect(() => {
     const flash = consumeStudentFlash();
@@ -90,6 +94,7 @@ export function SchoolStudentsPage({
     const nextClass = next.classId ?? classId;
     const nextStream = next.streamId ?? streamId;
     const nextSize = next.pageSize ?? pageSize;
+    setPaging(true);
     void listSchoolStudentsAction({
       page: nextPage,
       pageSize: nextSize,
@@ -98,6 +103,7 @@ export function SchoolStudentsPage({
       classId: nextClass,
       streamId: nextStream,
     }).then((result) => {
+      setPaging(false);
       if (!result.ok) {
         setSaveError(result.error);
         return;
@@ -148,14 +154,14 @@ export function SchoolStudentsPage({
         onSearch={setQ}
         onSearchSubmit={() => load({ page: 1, q })}
       />
-      {rows.length === 0 && !error ? (
+      {rows.length === 0 && !error && !pending ? (
         <section className={`${glassPanel} flex flex-col items-start gap-3 py-10`}>
           <SchoolIconWell icon={Users} />
           <h2 className="text-[18px] font-semibold tracking-[-0.04em] text-navy">No students yet</h2>
           <p className="text-[13.5px] text-slate-500">Complete an admission to create the first student profile.</p>
         </section>
       ) : (
-        <section className={glassPanel}>
+        <section className={cn(glassPanel, paging && "opacity-80")}>
           <div className={tableScrollClass}>
             <table className="w-full min-w-[920px] text-left">
               <thead>

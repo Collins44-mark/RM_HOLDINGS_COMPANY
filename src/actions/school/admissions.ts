@@ -13,8 +13,10 @@ import {
   SchoolError,
 } from "@/lib/school/access";
 import { allowsStream, loadSchoolStructureScope } from "@/lib/school/structure-scope";
-import { schoolPageMeta, schoolPageRange } from "@/lib/school/pagination";
+import { schoolPageMeta, schoolPageRange, parseSchoolPageSize } from "@/lib/school/pagination";
 import { findApplicableFeeStructure, type ApplicableFeeStructure } from "@/lib/school/fee-structure";
+import { loadPlacementByStreamIds } from "@/lib/school/placement-query";
+import { loadSchoolStructureCatalog } from "@/lib/school/structure-catalog";
 
 const VIEW = "school.admissions.view";
 const MANAGE = "school.admissions.manage";
@@ -303,87 +305,24 @@ async function loadApplicableFees(
   return feeRowFromStructure(structure);
 }
 
-async function loadPlacementNames(
-  supabase: Awaited<ReturnType<typeof requireSchoolPermission>>["supabase"],
-  businessUnitId: string,
-  streamIds: string[],
-) {
-  const names = new Map<string, { levelName: string; className: string; streamName: string }>();
-  const ids = [...new Set(streamIds.filter(Boolean))];
-  if (!ids.length) return names;
-  const streams = await supabase
-    .from("sch_class_streams")
-    .select("id, name, class_id")
-    .eq("business_unit_id", businessUnitId)
-    .in("id", ids);
-  if (streams.error && !isSchoolUnconfiguredRead(streams.error)) return names;
-  const classIds = [...new Set((streams.data ?? []).map((row) => str(row.class_id)).filter(Boolean))];
-  const classes = classIds.length
-    ? await supabase.from("sch_classes").select("id, name, level_id").eq("business_unit_id", businessUnitId).in("id", classIds)
-    : { data: [] as Array<{ id: string; name: string; level_id: string }>, error: null };
-  if (classes.error && !isSchoolUnconfiguredRead(classes.error)) return names;
-  const levelIds = [...new Set((classes.data ?? []).map((row) => str(row.level_id)).filter(Boolean))];
-  const levels = levelIds.length
-    ? await supabase.from("sch_class_levels").select("id, name").eq("business_unit_id", businessUnitId).in("id", levelIds)
-    : { data: [] as Array<{ id: string; name: string }>, error: null };
-  const classMap = new Map((classes.data ?? []).map((row) => [String(row.id), row]));
-  const levelMap = new Map((levels.data ?? []).map((row) => [String(row.id), str(row.name)]));
-  for (const stream of streams.data ?? []) {
-    const classRow = classMap.get(str(stream.class_id));
-    names.set(String(stream.id), {
-      streamName: str(stream.name),
-      className: str(classRow?.name),
-      levelName: classRow ? levelMap.get(str(classRow.level_id)) ?? "" : "",
-    });
-  }
-  return names;
-}
-
 export async function getAdmissionFormOptionsAction(mode: "view" | "manage" = "view") {
   try {
     const user = await requireAuth();
     const ctx = await requireSchoolPermission(mode === "manage" ? MANAGE : VIEW);
-    const { supabase, businessUnitId } = ctx;
-    const scope = isOwnerRole(user.roleCode) ? null : await loadSchoolStructureScope(ctx);
-    const [yearsRes, termsRes, levelsRes] = await Promise.all([
-      supabase
-        .from("sch_academic_years")
-        .select("id, name, is_current")
-        .eq("business_unit_id", businessUnitId)
-        .eq("is_active", true)
-        .order("start_date", { ascending: false }),
-      supabase
-        .from("sch_terms")
-        .select("id, academic_year_id, name")
-        .eq("business_unit_id", businessUnitId)
-        .eq("is_active", true)
-        .order("sort_order"),
-      supabase
-        .from("sch_class_levels")
-        .select("id, name")
-        .eq("business_unit_id", businessUnitId)
-        .eq("is_active", true)
-        .order("sort_order"),
+    const [catalog, scope] = await Promise.all([
+      loadSchoolStructureCatalog(ctx),
+      isOwnerRole(user.roleCode) ? Promise.resolve(null) : loadSchoolStructureScope(ctx),
     ]);
-    if (yearsRes.error && !isSchoolUnconfiguredRead(yearsRes.error)) mapSchoolDbError(yearsRes.error, "load");
-    if (termsRes.error && !isSchoolUnconfiguredRead(termsRes.error)) mapSchoolDbError(termsRes.error, "load");
-    if (levelsRes.error && !isSchoolUnconfiguredRead(levelsRes.error)) mapSchoolDbError(levelsRes.error, "load");
-    const levels = (levelsRes.data ?? [])
-      .filter((row) => !scope || scope.schoolWide || scope.levelIds.has(String(row.id)))
-      .map((row) => ({ id: String(row.id), name: String(row.name) }));
+    const levels = catalog.levels.filter((row) => !scope || scope.schoolWide || scope.levelIds.has(row.id));
+    const classes = catalog.classes.filter((row) => !scope || scope.schoolWide || scope.classIds.has(row.id));
+    const streams = catalog.streams.filter((row) => !scope || scope.schoolWide || scope.streamIds.has(row.id));
     return {
       ok: true as const,
-      years: (yearsRes.data ?? []).map((row) => ({
-        id: String(row.id),
-        name: String(row.name),
-        isCurrent: Boolean(row.is_current),
-      })),
-      terms: (termsRes.data ?? []).map((row) => ({
-        id: String(row.id),
-        academicYearId: String(row.academic_year_id),
-        name: String(row.name),
-      })),
+      years: catalog.years,
+      terms: catalog.terms,
       levels,
+      classes,
+      streams,
       today: new Date().toISOString().slice(0, 10),
       capabilities: caps(user),
     };
@@ -392,13 +331,14 @@ export async function getAdmissionFormOptionsAction(mode: "view" | "manage" = "v
   }
 }
 
-export async function listSchoolAdmissionsAction(input: { page?: number; q?: string; status?: string } = {}) {
+export async function listSchoolAdmissionsAction(input: { page?: number; pageSize?: number; q?: string; status?: string } = {}) {
   try {
     const user = await requireAuth();
     const ctx = await requireSchoolPermission(VIEW);
     const { supabase, businessUnitId } = ctx;
     const scope = await loadSchoolStructureScope(ctx);
-    const { page, from, to, pageSize } = schoolPageRange(input.page ?? 1);
+    const pageSize = parseSchoolPageSize(input.pageSize);
+    const { page, from, to } = schoolPageRange(input.page ?? 1, pageSize);
     const q = searchNeedle(input.q);
     const status = str(input.status);
     let query = supabase
@@ -428,9 +368,8 @@ export async function listSchoolAdmissionsAction(input: { page?: number; q?: str
     const result = await query;
     if (result.error && !isSchoolUnconfiguredRead(result.error)) mapSchoolDbError(result.error, "load");
     const raw = ((result.data ?? []) as Record<string, unknown>[]);
-    const placement = await loadPlacementNames(
-      supabase,
-      businessUnitId,
+    const placement = await loadPlacementByStreamIds(
+      ctx,
       raw.map((row) => str(row.stream_id)),
     );
     const studentIds = [...new Set(raw.map((row) => str(row.student_id)).filter(Boolean))];
@@ -489,66 +428,54 @@ export async function getSchoolAdmissionAction(id: string) {
     if (!admissionId) throw new SchoolError("Admission was not found.", "NOT_FOUND");
     const result = await supabase
       .from("sch_admissions")
-      .select("*")
+      .select(
+        "id, admission_number, status, admission_date, academic_year_id, term_id, stream_id, student_id, first_name, middle_name, last_name, date_of_birth, gender, nationality, address, guardian_full_name, guardian_relationship, guardian_phone, guardian_email, guardian_address, guardian_occupation",
+      )
       .eq("business_unit_id", businessUnitId)
       .eq("id", admissionId)
       .maybeSingle();
     if (result.error && !isSchoolUnconfiguredRead(result.error)) mapSchoolDbError(result.error, "load");
     if (!result.data) throw new SchoolError("Admission was not found.", "NOT_FOUND");
     const row = result.data as Record<string, unknown>;
-    const streamId = str(row.stream_id);
+    let streamId = str(row.stream_id);
     if (streamId && !allowsStream(scope, streamId) && !scope.schoolWide) {
       throw new SchoolError("Admission was not found.", "NOT_FOUND");
     }
 
-    let levelId = "";
-    let classId = "";
-    let levelName = "";
-    let className = "";
-    let streamName = "";
-    if (streamId) {
-      const streamRes = await supabase
-        .from("sch_class_streams")
-        .select("id, name, class_id, sch_classes(id, name, level_id, sch_class_levels(id, name))")
-        .eq("id", streamId)
-        .maybeSingle();
-      const stream = streamRes.data as
-        | {
-            name?: string;
-            class_id?: string;
-            sch_classes?: { id?: string; name?: string; level_id?: string; sch_class_levels?: { id?: string; name?: string } | null };
-          }
-        | null;
-      streamName = str(stream?.name);
-      classId = str(stream?.class_id ?? stream?.sch_classes?.id);
-      className = str(stream?.sch_classes?.name);
-      levelId = str(stream?.sch_classes?.level_id ?? stream?.sch_classes?.sch_class_levels?.id);
-      levelName = str(stream?.sch_classes?.sch_class_levels?.name);
-    }
-
-    const [yearRes, termRes, studentRes, fees] = await Promise.all([
+    const studentId = str(row.student_id);
+    const [yearRes, termRes, studentRes, enrollmentRes, initialPlacement] = await Promise.all([
       row.academic_year_id
-        ? supabase.from("sch_academic_years").select("id, name").eq("id", String(row.academic_year_id)).maybeSingle()
+        ? supabase.from("sch_academic_years").select("name").eq("id", String(row.academic_year_id)).maybeSingle()
         : Promise.resolve({ data: null }),
       row.term_id
-        ? supabase.from("sch_terms").select("id, name").eq("id", String(row.term_id)).maybeSingle()
+        ? supabase.from("sch_terms").select("name").eq("id", String(row.term_id)).maybeSingle()
         : Promise.resolve({ data: null }),
-      row.student_id
-        ? supabase.from("sch_students").select("id, student_number, status").eq("id", String(row.student_id)).maybeSingle()
+      studentId
+        ? supabase.from("sch_students").select("id, student_number, status").eq("id", studentId).maybeSingle()
         : Promise.resolve({ data: null }),
-      loadApplicableFees(supabase, businessUnitId, classId, str(row.academic_year_id), str(row.term_id)),
+      studentId
+        ? supabase
+            .from("sch_student_enrollments")
+            .select("id, stream_id, status")
+            .eq("business_unit_id", businessUnitId)
+            .eq("student_id", studentId)
+            .eq("status", "active")
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      streamId ? loadPlacementByStreamIds(ctx, [streamId]) : Promise.resolve(new Map()),
     ]);
-
-    let attendanceEligible = false;
-    if (row.student_id) {
-      const enrollmentRes = await supabase
-        .from("sch_student_enrollments")
-        .select("id")
-        .eq("student_id", String(row.student_id))
-        .eq("status", "active")
-        .limit(1);
-      attendanceEligible = str(studentRes.data?.status) === "active" && Boolean(enrollmentRes.data?.length);
+    if (!streamId) streamId = str(enrollmentRes.data?.stream_id);
+    let placement = streamId ? initialPlacement.get(streamId) : undefined;
+    if (!placement && streamId) {
+      placement = (await loadPlacementByStreamIds(ctx, [streamId])).get(streamId);
     }
+    const levelId = placement?.levelId ?? "";
+    const classId = placement?.classId ?? "";
+    const levelName = placement?.levelName ?? "";
+    const className = placement?.className ?? "";
+    const streamName = placement?.streamName ?? "";
+    const fees = await loadApplicableFees(supabase, businessUnitId, classId, str(row.academic_year_id), str(row.term_id));
+    const attendanceEligible = str(studentRes.data?.status) === "active" && Boolean(enrollmentRes.data?.id);
 
     const detail: AdmissionDetail = {
       id: String(row.id),

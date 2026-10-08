@@ -21,6 +21,7 @@ import {
   canWriteStream,
   loadSchoolStructureScope,
 } from "@/lib/school/structure-scope";
+import { invalidateSchoolStructureCatalog } from "@/lib/school/structure-catalog";
 import {
   applyActiveFilter,
   schoolPageMeta,
@@ -477,6 +478,7 @@ export async function saveSchoolLevelAction(input: {
       entityId: String(result.data.id),
       businessUnitId,
     });
+    invalidateSchoolStructureCatalog();
     return { ok: true as const, level: mapLevel(result.data) };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
@@ -510,6 +512,7 @@ export async function archiveSchoolLevelAction(id: string) {
       entityId: id,
       businessUnitId,
     });
+    invalidateSchoolStructureCatalog();
     return { ok: true as const };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
@@ -568,6 +571,7 @@ export async function saveSchoolClassAction(input: {
       entityId: String(result.data.id),
       businessUnitId,
     });
+    invalidateSchoolStructureCatalog();
     return { ok: true as const, classRow: mapClass(result.data, 0) };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
@@ -601,6 +605,7 @@ export async function archiveSchoolClassAction(id: string) {
       entityId: id,
       businessUnitId,
     });
+    invalidateSchoolStructureCatalog();
     return { ok: true as const };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
@@ -672,6 +677,7 @@ export async function saveSchoolStreamAction(input: {
       entityId: String(result.data.id),
       businessUnitId,
     });
+    invalidateSchoolStructureCatalog();
     return { ok: true as const, stream: mapStream(result.data, classTeacherName) };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
@@ -705,6 +711,7 @@ export async function archiveSchoolStreamAction(id: string) {
       entityId: id,
       businessUnitId,
     });
+    invalidateSchoolStructureCatalog();
     return { ok: true as const };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };

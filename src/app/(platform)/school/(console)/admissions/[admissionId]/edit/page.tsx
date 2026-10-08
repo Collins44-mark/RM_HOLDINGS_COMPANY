@@ -1,7 +1,17 @@
-import { getAdmissionFormOptionsAction, getSchoolAdmissionAction } from "@/actions/school/admissions";
+import { getSchoolAdmissionAction } from "@/actions/school/admissions";
 import { SchoolAdmissionFormPage } from "@/components/school/SchoolAdmissionFormPage";
 
 export const metadata = { title: "Edit Admission" };
+
+const EMPTY_OPTIONS = {
+  years: [] as Array<{ id: string; name: string; isCurrent: boolean }>,
+  terms: [] as Array<{ id: string; academicYearId: string; name: string }>,
+  levels: [] as Array<{ id: string; name: string }>,
+  classes: [] as Array<{ id: string; name: string; levelId: string }>,
+  streams: [] as Array<{ id: string; name: string; classId: string }>,
+  today: "",
+  capabilities: { canView: true, canManage: true, canConfigureAcademic: false },
+};
 
 export default async function SchoolEditAdmissionRoute({
   params,
@@ -9,16 +19,13 @@ export default async function SchoolEditAdmissionRoute({
   params: Promise<{ admissionId: string }>;
 }) {
   const { admissionId } = await params;
-  const [options, detail] = await Promise.all([getAdmissionFormOptionsAction("manage"), getSchoolAdmissionAction(admissionId)]);
+  const detail = await getSchoolAdmissionAction(admissionId);
   return (
     <SchoolAdmissionFormPage
-      options={
-        options.ok
-          ? options
-          : { years: [], terms: [], levels: [], today: new Date().toISOString().slice(0, 10), capabilities: { canView: true, canManage: true, canConfigureAcademic: false } }
-      }
+      options={EMPTY_OPTIONS}
       admission={detail.ok ? detail.admission : null}
-      error={detail.ok ? (options.ok ? null : options.error) : detail.error}
+      error={detail.ok ? null : detail.error}
+      loadOptions
     />
   );
 }

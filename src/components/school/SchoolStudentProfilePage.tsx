@@ -14,7 +14,26 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function SchoolStudentProfilePage({ student, error }: { student: StudentProfile | null; error: string | null }) {
+export function SchoolStudentProfilePage({
+  student,
+  error,
+  pending = false,
+}: {
+  student: StudentProfile | null;
+  error: string | null;
+  pending?: boolean;
+}) {
+  if (!student && pending) {
+    return (
+      <div className="min-w-0 max-w-full space-y-5 pb-10">
+        <Link href="/school/students" className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 hover:text-navy">
+          <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
+          Students
+        </Link>
+        <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">Student</h1>
+      </div>
+    );
+  }
   if (!student) {
     return (
       <div className="min-w-0 max-w-full space-y-4 pb-10">

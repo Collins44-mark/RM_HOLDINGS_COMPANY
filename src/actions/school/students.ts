@@ -12,7 +12,8 @@ import {
 } from "@/lib/school/access";
 import { loadSchoolStructureScope } from "@/lib/school/structure-scope";
 import { schoolPageMeta, schoolPageRange, SCHOOL_PAGE_SIZE } from "@/lib/school/pagination";
-import { loadActiveLevels, loadPlacementByStreamIds, resolvePlacementStreamIds } from "@/lib/school/placement-query";
+import { loadPlacementByStreamIds, resolvePlacementStreamIds } from "@/lib/school/placement-query";
+import { loadSchoolStructureCatalog } from "@/lib/school/structure-catalog";
 
 const VIEW = "school.students.view";
 const MANAGE = "school.students.manage";
@@ -82,7 +83,8 @@ export async function listSchoolStudentsAction(
     const user = await requireAuth();
     const ctx = await requireSchoolPermission(VIEW);
     const { supabase, businessUnitId } = ctx;
-    const scope = await loadSchoolStructureScope(ctx);
+    const [scope, catalog] = await Promise.all([loadSchoolStructureScope(ctx), loadSchoolStructureCatalog(ctx)]);
+    const levels = catalog.levels.filter((row) => scope.schoolWide || scope.levelIds.has(row.id));
     const pageSize = input.pageSize && input.pageSize > 0 ? input.pageSize : SCHOOL_PAGE_SIZE;
     const { page, from, to } = schoolPageRange(input.page ?? 1, pageSize);
     const q = searchNeedle(input.q);
@@ -94,7 +96,7 @@ export async function listSchoolStudentsAction(
           ok: true as const,
           students: [] as StudentListRow[],
           page: schoolPageMeta(1, 0, pageSize),
-          levels: await loadActiveLevels(ctx),
+          levels,
           capabilities: { canView: true, canManage: canManage(user) },
         };
       }
@@ -110,7 +112,7 @@ export async function listSchoolStudentsAction(
           ok: true as const,
           students: [] as StudentListRow[],
           page: schoolPageMeta(1, 0, pageSize),
-          levels: await loadActiveLevels(ctx),
+          levels,
           capabilities: { canView: true, canManage: canManage(user) },
         };
       }
@@ -180,7 +182,7 @@ export async function listSchoolStudentsAction(
       ok: true as const,
       students: rows,
       page: schoolPageMeta(page, result.count ?? rows.length, pageSize),
-      levels: await loadActiveLevels(ctx),
+      levels,
       capabilities: { canView: true, canManage: canManage(user) },
     };
   } catch (error) {
@@ -197,7 +199,9 @@ export async function getSchoolStudentAction(id: string) {
     if (!studentId) throw new SchoolError("Student was not found.", "NOT_FOUND");
     const studentRes = await supabase
       .from("sch_students")
-      .select("*")
+      .select(
+        "id, student_number, admission_number, first_name, middle_name, last_name, date_of_birth, gender, nationality, address, status",
+      )
       .eq("business_unit_id", businessUnitId)
       .eq("id", studentId)
       .maybeSingle();
@@ -208,9 +212,7 @@ export async function getSchoolStudentAction(id: string) {
     const [enrollmentRes, linksRes] = await Promise.all([
       supabase
         .from("sch_student_enrollments")
-        .select(
-          "status, academic_year_id, term_id, stream_id, sch_class_streams(name, sch_classes(name, sch_class_levels(name))), sch_academic_years(name), sch_terms(name)",
-        )
+        .select("status, academic_year_id, term_id, stream_id")
         .eq("business_unit_id", businessUnitId)
         .eq("student_id", studentId)
         .eq("status", "active")
@@ -223,15 +225,19 @@ export async function getSchoolStudentAction(id: string) {
     ]);
 
     const enrollment = enrollmentRes.data as
-      | {
-          status?: string;
-          stream_id?: string;
-          sch_class_streams?: { name?: string; sch_classes?: { name?: string; sch_class_levels?: { name?: string } | null } | null };
-          sch_academic_years?: { name?: string } | null;
-          sch_terms?: { name?: string } | null;
-        }
+      | { status?: string; academic_year_id?: string; term_id?: string; stream_id?: string }
       | null;
-    const stream = enrollment?.sch_class_streams;
+    const streamId = str(enrollment?.stream_id);
+    const [placementMap, yearRes, termRes] = await Promise.all([
+      streamId ? loadPlacementByStreamIds(ctx, [streamId]) : Promise.resolve(new Map()),
+      enrollment?.academic_year_id
+        ? supabase.from("sch_academic_years").select("name").eq("id", String(enrollment.academic_year_id)).maybeSingle()
+        : Promise.resolve({ data: null }),
+      enrollment?.term_id
+        ? supabase.from("sch_terms").select("name").eq("id", String(enrollment.term_id)).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+    const place = streamId ? placementMap.get(streamId) : undefined;
     const guardians: StudentGuardianRow[] = (linksRes.data ?? []).map((link) => {
       const guardian = link.sch_guardians as { id?: string; full_name?: string; phone?: string; email?: string } | null;
       return {
@@ -254,14 +260,14 @@ export async function getSchoolStudentAction(id: string) {
       gender: str(row.gender),
       nationality: str(row.nationality),
       address: str(row.address),
-      phone: str(row.phone),
-      email: str(row.email),
+      phone: "",
+      email: "",
       status: str(row.status) || "active",
-      academicYearName: str(enrollment?.sch_academic_years?.name),
-      termName: str(enrollment?.sch_terms?.name),
-      levelName: str(stream?.sch_classes?.sch_class_levels?.name),
-      className: str(stream?.sch_classes?.name),
-      streamName: str(stream?.name),
+      academicYearName: str(yearRes.data?.name),
+      termName: str(termRes.data?.name),
+      levelName: place?.levelName ?? "",
+      className: place?.className ?? "",
+      streamName: place?.streamName ?? "",
       enrollmentStatus: str(enrollment?.status),
       attendanceEligible: str(row.status) === "active" && str(enrollment?.status) === "active",
       guardians,

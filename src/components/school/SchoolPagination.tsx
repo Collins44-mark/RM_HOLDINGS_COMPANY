@@ -9,7 +9,7 @@ export function replaceSchoolPageParam(page: number, pageSize?: number) {
   else url.searchParams.set("page", String(page));
   if (pageSize && pageSize !== SCHOOL_PAGE_SIZE) url.searchParams.set("pageSize", String(pageSize));
   else if (pageSize === SCHOOL_PAGE_SIZE) url.searchParams.delete("pageSize");
-  window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
 }
 
 function pageWindow(page: number, totalPages: number) {

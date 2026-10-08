@@ -23,12 +23,25 @@ export function SchoolAdmissionDetailPage({
   admission,
   canManage,
   error,
+  pending = false,
 }: {
   admission: AdmissionDetail | null;
   canManage: boolean;
   error: string | null;
+  pending?: boolean;
 }) {
   const router = useRouter();
+  if (!admission && pending) {
+    return (
+      <div className="min-w-0 max-w-full space-y-5 pb-10">
+        <Link href="/school/admissions" className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 hover:text-navy">
+          <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
+          Admissions
+        </Link>
+        <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">Admission</h1>
+      </div>
+    );
+  }
   if (!admission) {
     return (
       <div className="min-w-0 max-w-full space-y-4 pb-10">

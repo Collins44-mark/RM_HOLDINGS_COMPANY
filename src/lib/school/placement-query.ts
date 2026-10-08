@@ -90,8 +90,17 @@ export function placementLabel(levelName: string, className: string, streamName:
   return [levelName, className, streamName].filter(Boolean).join(" · ");
 }
 
+export type PlacementNames = {
+  levelId: string;
+  classId: string;
+  streamId: string;
+  levelName: string;
+  className: string;
+  streamName: string;
+};
+
 export async function loadPlacementByStreamIds(ctx: SchoolContext, streamIds: string[]) {
-  const names = new Map<string, { levelName: string; className: string; streamName: string }>();
+  const names = new Map<string, PlacementNames>();
   const ids = [...new Set(streamIds.filter(Boolean))];
   if (!ids.length) return names;
   const streams = await ctx.supabase
@@ -113,10 +122,14 @@ export async function loadPlacementByStreamIds(ctx: SchoolContext, streamIds: st
   const levelMap = new Map((levels.data ?? []).map((row) => [String(row.id), str(row.name)]));
   for (const stream of streams.data ?? []) {
     const classRow = classMap.get(str(stream.class_id));
+    const levelId = classRow ? str(classRow.level_id) : "";
     names.set(String(stream.id), {
+      streamId: String(stream.id),
+      classId: str(stream.class_id),
+      levelId,
       streamName: str(stream.name),
       className: str(classRow?.name),
-      levelName: classRow ? levelMap.get(str(classRow.level_id)) ?? "" : "",
+      levelName: levelId ? levelMap.get(levelId) ?? "" : "",
     });
   }
   return names;

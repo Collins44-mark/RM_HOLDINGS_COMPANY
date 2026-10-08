@@ -17,6 +17,7 @@ import {
   SchoolError,
 } from "@/lib/school/access";
 import { applyActiveFilter, schoolPageMeta, schoolPageRange, type SchoolListFilter } from "@/lib/school/pagination";
+import { invalidateSchoolStructureCatalog } from "@/lib/school/structure-catalog";
 
 const VIEW = "school.settings.view";
 const MANAGE = "school.settings.manage";
@@ -640,6 +641,7 @@ export async function saveAcademicYearAction(input: {
       entityId: input.id ?? null,
       businessUnitId,
     });
+    invalidateSchoolStructureCatalog();
     return { ok: true as const };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
@@ -692,6 +694,7 @@ export async function saveTermAction(input: {
       entityId: input.id ?? null,
       businessUnitId,
     });
+    invalidateSchoolStructureCatalog();
     return { ok: true as const };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
