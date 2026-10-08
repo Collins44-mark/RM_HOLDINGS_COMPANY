@@ -81,6 +81,7 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "attendance", actions: ["view", "create", "edit"] },
       { resource: "exams", actions: [...CRUD] },
       { resource: "fees", actions: ["view", "create", "edit", "manage", "record", "verify", "receipt"] },
+      { resource: "transport", actions: ["view"] },
       { resource: "buses", actions: [...CRUD] },
       { resource: "drivers", actions: [...CRUD] },
       { resource: "routes", actions: [...CRUD] },
@@ -183,7 +184,26 @@ export function isOperablePermission(code: string) {
     code === "school.fees.manage" ||
     code === "school.fees.record" ||
     code === "school.fees.verify" ||
-    code === "school.fees.receipt"
+    code === "school.fees.receipt" ||
+    code === "school.transport.view" ||
+    code === "school.buses.view" ||
+    code === "school.buses.create" ||
+    code === "school.buses.edit" ||
+    code === "school.drivers.view" ||
+    code === "school.drivers.create" ||
+    code === "school.drivers.edit" ||
+    code === "school.routes.view" ||
+    code === "school.routes.create" ||
+    code === "school.routes.edit" ||
+    code === "school.fuel.view" ||
+    code === "school.fuel.create" ||
+    code === "school.fuel.edit" ||
+    code === "school.maintenance.view" ||
+    code === "school.maintenance.create" ||
+    code === "school.maintenance.edit" ||
+    code === "school.expenses.view" ||
+    code === "school.expenses.create" ||
+    code === "school.expenses.edit"
   );
 }
 
@@ -374,6 +394,25 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.fees.record",
       "school.fees.verify",
       "school.fees.receipt",
+      "school.transport.view",
+      "school.buses.view",
+      "school.buses.create",
+      "school.buses.edit",
+      "school.drivers.view",
+      "school.drivers.create",
+      "school.drivers.edit",
+      "school.routes.view",
+      "school.routes.create",
+      "school.routes.edit",
+      "school.fuel.view",
+      "school.fuel.create",
+      "school.fuel.edit",
+      "school.maintenance.view",
+      "school.maintenance.create",
+      "school.maintenance.edit",
+      "school.expenses.view",
+      "school.expenses.create",
+      "school.expenses.edit",
     ],
   },
   {
@@ -390,6 +429,13 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.staff.view",
       "school.fees.view",
       "school.fees.receipt",
+      "school.transport.view",
+      "school.buses.view",
+      "school.drivers.view",
+      "school.routes.view",
+      "school.fuel.view",
+      "school.maintenance.view",
+      "school.expenses.view",
     ],
   },
   {
@@ -405,6 +451,17 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.fees.record",
       "school.fees.verify",
       "school.fees.receipt",
+      "school.transport.view",
+      "school.buses.view",
+      "school.fuel.view",
+      "school.fuel.create",
+      "school.fuel.edit",
+      "school.maintenance.view",
+      "school.maintenance.create",
+      "school.maintenance.edit",
+      "school.expenses.view",
+      "school.expenses.create",
+      "school.expenses.edit",
     ],
   },
   {

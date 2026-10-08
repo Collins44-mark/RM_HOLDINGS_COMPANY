@@ -157,6 +157,16 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "school.fee_payment_recorded": "School fee payment recorded",
   "school.fee_payment_verified": "School fee payment verified",
   "school.fee_receipt_generated": "School fee receipt generated",
+  "school.bus_added": "School bus added",
+  "school.bus_updated": "School bus updated",
+  "school.bus_archived": "School bus deactivated",
+  "school.driver_assigned": "Driver assigned",
+  "school.driver_unassigned": "Driver assignment ended",
+  "school.route_created": "Route created",
+  "school.route_updated": "Route updated",
+  "school.route_archived": "Route deactivated",
+  "school.fuel_recorded": "Fuel recorded",
+  "school.maintenance_recorded": "Maintenance recorded",
 };
 
 export const AUDIT_MODULE_LABELS: Record<string, string> = {
