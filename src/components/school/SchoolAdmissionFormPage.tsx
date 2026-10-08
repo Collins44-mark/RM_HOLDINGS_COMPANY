@@ -14,7 +14,7 @@ import {
   type AdmissionFormInput,
   type ApplicableFeeRow,
 } from "@/actions/school/admissions";
-import { writeAdmissionFlash, writeFeeFlash } from "@/lib/school/admission-flash";
+import { writeAdmissionFlash, writeFeeFlash, writeGuardianFlash, writeStudentFlash } from "@/lib/school/admission-flash";
 import { SchoolConfirmDialog, SchoolField, SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
 import { cn } from "@/lib/cn";
@@ -298,6 +298,34 @@ export function SchoolAdmissionFormPage({
         admissionDate: form.admissionDate,
         status: "completed",
       });
+      if (result.studentId) {
+        writeStudentFlash({
+          id: result.studentId,
+          studentNumber: result.studentNumber ?? "",
+          admissionNumber: result.admissionNumber,
+          name: studentName,
+          status: "active",
+          levelName,
+          className,
+          streamName,
+          guardianName: form.guardianFullName,
+        });
+        if (result.guardianId) {
+          writeGuardianFlash({
+            id: result.guardianId,
+            fullName: form.guardianFullName,
+            phone: form.guardianPhone,
+            email: form.guardianEmail,
+            students: [
+              {
+                studentId: result.studentId,
+                name: studentName,
+                placement: [levelName, className, streamName].filter(Boolean).join(" · "),
+              },
+            ],
+          });
+        }
+      }
       if (result.enrollmentId && result.studentId) {
         writeFeeFlash({
           enrollmentId: result.enrollmentId,

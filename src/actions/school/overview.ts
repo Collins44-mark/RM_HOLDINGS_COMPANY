@@ -30,7 +30,7 @@ export async function getSchoolOverviewAction(): Promise<
       profileRes,
       currentYearsRes,
       classCountRes,
-      studentCountRes,
+      enrollmentCountRes,
       teacherCountRes,
       gradingRes,
       attendanceRes,
@@ -55,16 +55,17 @@ export async function getSchoolOverviewAction(): Promise<
         .eq("business_unit_id", businessUnitId)
         .eq("is_active", true),
       supabase
-        .from("sch_students")
-        .select("id", { count: "exact", head: true })
+        .from("sch_student_enrollments")
+        .select("id, sch_students!inner(status)", { count: "exact", head: true })
         .eq("business_unit_id", businessUnitId)
-        .eq("status", "active"),
+        .eq("status", "active")
+        .eq("sch_students.status", "active"),
       supabase
         .from("sch_staff")
-        .select("id, sch_staff_positions!inner(allows_academic_assignments)", { count: "exact", head: true })
+        .select("id, sch_staff_types!inner(kind)", { count: "exact", head: true })
         .eq("business_unit_id", businessUnitId)
         .eq("employment_status", "active")
-        .eq("sch_staff_positions.allows_academic_assignments", true),
+        .eq("sch_staff_types.kind", "academic"),
       supabase
         .from("sch_grading_scales")
         .select("id")
@@ -129,6 +130,37 @@ export async function getSchoolOverviewAction(): Promise<
       else currentTerm = { status: "none" };
     }
 
+    let enrollmentCount = enrollmentCountRes;
+    if (yearId) {
+      const currentEnroll = await supabase
+        .from("sch_student_enrollments")
+        .select("id, sch_students!inner(status)", { count: "exact", head: true })
+        .eq("business_unit_id", businessUnitId)
+        .eq("status", "active")
+        .eq("academic_year_id", yearId)
+        .eq("sch_students.status", "active");
+      if (!currentEnroll.error || isSchoolUnconfiguredRead(currentEnroll.error)) enrollmentCount = currentEnroll;
+    }
+
+    let feesCollected: OverviewMetric<number> = { status: "ok", value: 0 };
+    let outstandingFees: OverviewMetric<number> = { status: "ok", value: 0 };
+    let feeQuery = supabase.from("sch_v_fee_accounts").select("paid_amount, outstanding_amount").eq("business_unit_id", businessUnitId);
+    if (yearId) feeQuery = feeQuery.eq("academic_year_id", yearId);
+    const feeRes = await feeQuery;
+    if (feeRes.error && !isSchoolUnconfiguredRead(feeRes.error)) {
+      feesCollected = { status: "error" };
+      outstandingFees = { status: "error" };
+    } else {
+      let collected = 0;
+      let outstanding = 0;
+      for (const row of feeRes.data ?? []) {
+        collected += Number(row.paid_amount ?? 0) || 0;
+        outstanding += Number(row.outstanding_amount ?? 0) || 0;
+      }
+      feesCollected = { status: "ok", value: collected };
+      outstandingFees = { status: "ok", value: outstanding };
+    }
+
     const classLevels: OverviewMetric<number> =
       classCountRes.error && !isSchoolUnconfiguredRead(classCountRes.error)
         ? { status: "error" }
@@ -173,20 +205,20 @@ export async function getSchoolOverviewAction(): Promise<
         currentTerm,
         classLevels,
         students:
-          studentCountRes.error && !isSchoolUnconfiguredRead(studentCountRes.error)
+          enrollmentCount.error && !isSchoolUnconfiguredRead(enrollmentCount.error)
             ? { status: "error" as const }
-            : typeof studentCountRes.count === "number"
-              ? { status: "ok" as const, value: studentCountRes.count }
-              : unavailable(),
+            : typeof enrollmentCount.count === "number"
+              ? { status: "ok" as const, value: enrollmentCount.count }
+              : { status: "ok" as const, value: 0 },
         teachers:
           teacherCountRes.error && !isSchoolUnconfiguredRead(teacherCountRes.error)
             ? { status: "error" as const }
             : typeof teacherCountRes.count === "number"
               ? { status: "ok" as const, value: teacherCountRes.count }
-              : unavailable(),
+              : { status: "ok" as const, value: 0 },
         attendance: unavailable(),
-        feesCollected: unavailable(),
-        outstandingFees: unavailable(),
+        feesCollected,
+        outstandingFees,
         grading,
         attendanceRules,
         feeStructure,

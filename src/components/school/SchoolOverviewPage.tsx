@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import type { ConfigStatus, OverviewMetric, SchoolOverviewView } from "@/lib/school/overview";
 import { cn } from "@/lib/cn";
+import { formatTzs } from "@/lib/format/currency";
 import { glassCard, glassPanel } from "@/components/supermarket/purchasing-ui";
 
 function metricDisplay(metric: OverviewMetric<number>) {
@@ -118,14 +119,30 @@ export function SchoolOverviewPage({
   overview: SchoolOverviewView | null;
   error: string | null;
 }) {
-  const students = overview ? metricDisplay(overview.students) : { value: "—", hint: "Not available" };
+  const students = overview
+    ? overview.students.status === "ok"
+      ? { value: String(overview.students.value), hint: "Active enrollments" }
+      : metricDisplay(overview.students)
+    : { value: "—", hint: "Not available" };
   const attendance = overview ? metricDisplay(overview.attendance) : { value: "—", hint: "Not available" };
-  const collected = overview ? metricDisplay(overview.feesCollected) : { value: "—", hint: "Not available" };
-  const outstanding = overview ? metricDisplay(overview.outstandingFees) : { value: "—", hint: "Not available" };
-  const teachers = overview ? metricDisplay(overview.teachers) : { value: "—", hint: "Not available" };
+  const collected = overview
+    ? overview.feesCollected.status === "ok"
+      ? { value: formatTzs(overview.feesCollected.value), hint: "Posted payments" }
+      : metricDisplay(overview.feesCollected)
+    : { value: "—", hint: "Not available" };
+  const outstanding = overview
+    ? overview.outstandingFees.status === "ok"
+      ? { value: formatTzs(overview.outstandingFees.value), hint: "Due minus posted payments" }
+      : metricDisplay(overview.outstandingFees)
+    : { value: "—", hint: "Not available" };
+  const teachers = overview
+    ? overview.teachers.status === "ok"
+      ? { value: String(overview.teachers.value), hint: "Active academic staff" }
+      : metricDisplay(overview.teachers)
+    : { value: "—", hint: "Not available" };
   const classes = overview
     ? overview.classLevels.status === "ok"
-      ? { value: String(overview.classLevels.value), hint: "Configured class levels" }
+      ? { value: String(overview.classLevels.value), hint: "Active class levels" }
       : metricDisplay(overview.classLevels)
     : { value: "—", hint: "Not available" };
 

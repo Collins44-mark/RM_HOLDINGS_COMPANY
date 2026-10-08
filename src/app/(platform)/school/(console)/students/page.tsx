@@ -1,21 +1,35 @@
 import { listSchoolStudentsAction } from "@/actions/school/students";
 import { SchoolStudentsPage } from "@/components/school/SchoolStudentsPage";
-import { parseSchoolPage, schoolPageMeta } from "@/lib/school/pagination";
+import { parseSchoolPage, parseSchoolPageSize, schoolPageMeta } from "@/lib/school/pagination";
 
 export const metadata = { title: "Students" };
+export const dynamic = "force-dynamic";
 
 export default async function SchoolStudentsRoute({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; q?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; levelId?: string; classId?: string; streamId?: string; pageSize?: string }>;
 }) {
   const params = await searchParams;
-  const result = await listSchoolStudentsAction({ page: parseSchoolPage(params.page), q: params.q });
+  const pageSize = parseSchoolPageSize(params.pageSize);
+  const result = await listSchoolStudentsAction({
+    page: parseSchoolPage(params.page),
+    pageSize,
+    q: params.q,
+    levelId: params.levelId,
+    classId: params.classId,
+    streamId: params.streamId,
+  });
   return (
     <SchoolStudentsPage
       students={result.ok ? result.students : []}
-      page={result.ok ? result.page : schoolPageMeta(1, 0)}
+      page={result.ok ? result.page : schoolPageMeta(1, 0, pageSize)}
+      levels={result.ok ? result.levels : []}
       query={params.q ?? ""}
+      levelId={params.levelId ?? ""}
+      classId={params.classId ?? ""}
+      streamId={params.streamId ?? ""}
+      pageSize={pageSize}
       error={result.ok ? null : result.error}
     />
   );

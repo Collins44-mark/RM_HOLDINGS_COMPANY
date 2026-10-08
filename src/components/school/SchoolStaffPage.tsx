@@ -108,11 +108,6 @@ export function SchoolStaffPage({
           <SchoolIconWell icon={Users} />
           <h2 className="text-[18px] font-semibold tracking-[-0.04em] text-navy">No staff members added yet.</h2>
           <p className="text-[13.5px] text-slate-500">Add a staff member. Teachers, drivers, and support roles share one staff record.</p>
-          {canManage ? (
-            <Link href="/school/staff/new" className={primaryButton}>
-              + Add Staff
-            </Link>
-          ) : null}
         </section>
       ) : (
         <section className={glassPanel}>

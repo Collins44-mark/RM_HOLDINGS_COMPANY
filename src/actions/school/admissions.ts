@@ -751,6 +751,7 @@ export async function completeSchoolAdmissionAction(input: AdmissionFormInput & 
       studentId,
       studentNumber: result.student_number ? String(result.student_number) : null,
       enrollmentId,
+      guardianId: result.guardian_id ? String(result.guardian_id) : null,
       academicYearId: str(input.academicYearId),
       levelId: str(input.levelId),
       classId: str(input.classId),

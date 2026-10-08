@@ -1,11 +1,14 @@
 "use client";
 
-import { schoolPageMeta, SCHOOL_PAGE_SIZE } from "@/lib/school/pagination";
+import { SCHOOL_PAGE_SIZE, SCHOOL_PAGE_SIZES, schoolPageMeta } from "@/lib/school/pagination";
+import { cn } from "@/lib/cn";
 
-export function replaceSchoolPageParam(page: number) {
+export function replaceSchoolPageParam(page: number, pageSize?: number) {
   const url = new URL(window.location.href);
   if (page <= 1) url.searchParams.delete("page");
   else url.searchParams.set("page", String(page));
+  if (pageSize && pageSize !== SCHOOL_PAGE_SIZE) url.searchParams.set("pageSize", String(pageSize));
+  else if (pageSize === SCHOOL_PAGE_SIZE) url.searchParams.delete("pageSize");
   window.history.replaceState(null, "", `${url.pathname}${url.search}`);
 }
 
@@ -19,13 +22,15 @@ export function SchoolPagination({
   total,
   pageSize = SCHOOL_PAGE_SIZE,
   onPage,
+  onPageSize,
 }: {
   page: number;
   total: number;
   pageSize?: number;
   onPage: (page: number) => void;
+  onPageSize?: (pageSize: number) => void;
 }) {
-  if (total <= pageSize) return null;
+  if (total <= 0) return null;
   const meta = schoolPageMeta(page, total, pageSize);
   const numbers = pageWindow(meta.page, meta.totalPages);
 
@@ -35,41 +40,64 @@ export function SchoolPagination({
         Showing {meta.from}–{meta.to} of {meta.total}
       </p>
       <div className="flex flex-wrap items-center gap-1">
-        <button
-          type="button"
-          disabled={meta.page <= 1}
-          onClick={() => onPage(meta.page - 1)}
-          className="h-8 rounded-full px-3 text-[12.5px] font-semibold text-slate-500 transition duration-200 hover:text-navy disabled:opacity-30"
-        >
-          Previous
-        </button>
-        {numbers.map((value, index) => {
-          const previous = numbers[index - 1];
-          return (
-            <span key={value} className="inline-flex items-center">
-              {previous && value - previous > 1 ? <span className="px-1 text-[12.5px] text-slate-400">…</span> : null}
+        {onPageSize ? (
+          <div className="mr-2 flex flex-wrap gap-1">
+            {SCHOOL_PAGE_SIZES.map((size) => (
               <button
+                key={size}
                 type="button"
-                onClick={() => onPage(value)}
-                className={`h-8 min-w-8 rounded-full px-2.5 text-[12.5px] font-semibold transition duration-200 ${
-                  value === meta.page
+                onClick={() => onPageSize(size)}
+                className={cn(
+                  "h-8 min-w-8 rounded-full px-2.5 text-[12.5px] font-semibold transition duration-200",
+                  size === meta.pageSize
                     ? "bg-navy text-white shadow-[0_4px_10px_rgba(11,34,68,0.16)]"
-                    : "text-slate-500 hover:text-navy"
-                }`}
+                    : "text-slate-500 hover:text-navy",
+                )}
               >
-                {value}
+                {size}
               </button>
-            </span>
-          );
-        })}
-        <button
-          type="button"
-          disabled={meta.page >= meta.totalPages}
-          onClick={() => onPage(meta.page + 1)}
-          className="h-8 rounded-full px-3 text-[12.5px] font-semibold text-slate-500 transition duration-200 hover:text-navy disabled:opacity-30"
-        >
-          Next
-        </button>
+            ))}
+          </div>
+        ) : null}
+        {meta.totalPages > 1 ? (
+          <>
+            <button
+              type="button"
+              disabled={meta.page <= 1}
+              onClick={() => onPage(meta.page - 1)}
+              className="h-8 rounded-full px-3 text-[12.5px] font-semibold text-slate-500 transition duration-200 hover:text-navy disabled:opacity-30"
+            >
+              Previous
+            </button>
+            {numbers.map((value, index) => {
+              const previous = numbers[index - 1];
+              return (
+                <span key={value} className="inline-flex items-center">
+                  {previous && value - previous > 1 ? <span className="px-1 text-[12.5px] text-slate-400">…</span> : null}
+                  <button
+                    type="button"
+                    onClick={() => onPage(value)}
+                    className={`h-8 min-w-8 rounded-full px-2.5 text-[12.5px] font-semibold transition duration-200 ${
+                      value === meta.page
+                        ? "bg-navy text-white shadow-[0_4px_10px_rgba(11,34,68,0.16)]"
+                        : "text-slate-500 hover:text-navy"
+                    }`}
+                  >
+                    {value}
+                  </button>
+                </span>
+              );
+            })}
+            <button
+              type="button"
+              disabled={meta.page >= meta.totalPages}
+              onClick={() => onPage(meta.page + 1)}
+              className="h-8 rounded-full px-3 text-[12.5px] font-semibold text-slate-500 transition duration-200 hover:text-navy disabled:opacity-30"
+            >
+              Next
+            </button>
+          </>
+        ) : null}
       </div>
     </div>
   );

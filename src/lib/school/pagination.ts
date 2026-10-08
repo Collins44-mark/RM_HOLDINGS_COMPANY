@@ -1,4 +1,5 @@
 export const SCHOOL_PAGE_SIZE = 20;
+export const SCHOOL_PAGE_SIZES = [10, 20, 50, 100] as const;
 
 export type SchoolPageMeta = {
   page: number;
@@ -15,6 +16,12 @@ export function parseSchoolPage(value: unknown) {
   const n = Number(value);
   if (!Number.isInteger(n) || n < 1) return 1;
   return n;
+}
+
+export function parseSchoolPageSize(value: unknown, fallback = SCHOOL_PAGE_SIZE) {
+  const n = Number(value);
+  if (SCHOOL_PAGE_SIZES.includes(n as (typeof SCHOOL_PAGE_SIZES)[number])) return n;
+  return fallback;
 }
 
 export function schoolPageRange(page: number, pageSize = SCHOOL_PAGE_SIZE) {
