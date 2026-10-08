@@ -35,6 +35,7 @@ import {
   type FeeSummary,
   type StudentFeeAccount,
 } from "@/lib/school/fee-types";
+import { consumeFeeFlash } from "@/lib/school/admission-flash";
 import { schoolPageMeta, type SchoolPageMeta } from "@/lib/school/pagination";
 
 type Caps = {
@@ -84,6 +85,25 @@ export function SchoolFeesPage({ initial }: { initial: SchoolFeesWorkspaceResult
   const [saved, setSaved] = useState(false);
   const [verifiedId, setVerifiedId] = useState<string | null>(null);
   const lock = useRef(false);
+
+  useEffect(() => {
+    const flash = consumeFeeFlash();
+    if (!flash) return;
+    queueMicrotask(() => {
+      setAccounts((current) => {
+        if (current.some((row) => row.enrollmentId === flash.enrollmentId)) return current;
+        setPage((meta) => ({ ...meta, total: meta.total + 1, to: meta.to + 1 }));
+        setSummary((meta) => ({
+          ...meta,
+          studentsWithBalance:
+            flash.status === "outstanding" || flash.status === "partial" ? meta.studentsWithBalance + 1 : meta.studentsWithBalance,
+          totalFees: meta.totalFees + (flash.annualAmount ?? 0),
+          outstanding: meta.outstanding + (flash.outstandingAmount ?? 0),
+        }));
+        return [flash, ...current];
+      });
+    });
+  }, []);
 
   useEffect(() => {
     if (!levelId) return;

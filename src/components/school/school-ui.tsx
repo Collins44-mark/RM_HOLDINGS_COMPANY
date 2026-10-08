@@ -19,6 +19,7 @@ export function SchoolWorkflowButton({
   busy,
   disabled,
   idleLabel,
+  busyLabel,
   confirmed,
   confirmedLabel = "Saved ✓",
   onClick,
@@ -27,16 +28,26 @@ export function SchoolWorkflowButton({
   busy: boolean;
   disabled?: boolean;
   idleLabel: string;
+  busyLabel?: string;
   confirmed?: boolean;
   confirmedLabel?: string;
   onClick: () => void;
 }) {
   return (
     <button type="button" disabled={disabled || busy} onClick={onClick} className={cn(className, "relative min-w-[8.75rem]")}>
-      <span className={cn("inline-flex items-center justify-center", busy && "invisible")}>
-        {confirmed ? confirmedLabel : idleLabel}
+      <span className={cn("inline-flex items-center justify-center gap-2", busy && !busyLabel && "invisible")}>
+        {busy && busyLabel ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} />
+            {busyLabel}
+          </>
+        ) : confirmed ? (
+          confirmedLabel
+        ) : (
+          idleLabel
+        )}
       </span>
-      {busy ? (
+      {busy && !busyLabel ? (
         <span className="absolute inset-0 flex items-center justify-center">
           <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} />
         </span>

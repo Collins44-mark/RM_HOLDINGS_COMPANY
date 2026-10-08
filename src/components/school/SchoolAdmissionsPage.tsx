@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { UserPlus } from "lucide-react";
@@ -23,6 +23,7 @@ import { SchoolConfirmDialog, SchoolIconWell } from "@/components/school/school-
 import { SchoolPagination, replaceSchoolPageParam } from "@/components/school/SchoolPagination";
 import type { SchoolPageMeta } from "@/lib/school/pagination";
 import { cn } from "@/lib/cn";
+import { consumeAdmissionFlash } from "@/lib/school/admission-flash";
 
 const STATUS_FILTERS: Array<{ id: "all" | AdmissionStatus; label: string }> = [
   { id: "all", label: "All" },
@@ -56,6 +57,20 @@ export function SchoolAdmissionsPage({
   const [completeId, setCompleteId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
+
+  useEffect(() => {
+    const flash = consumeAdmissionFlash();
+    if (!flash) return;
+    const activeFilter = status || "all";
+    if (activeFilter !== "all" && activeFilter !== flash.status) return;
+    queueMicrotask(() => {
+      setRows((current) => {
+        if (current.some((row) => row.id === flash.id)) return current;
+        setPage((meta) => ({ ...meta, total: meta.total + 1 }));
+        return [flash, ...current];
+      });
+    });
+  }, [status]);
 
   function load(nextPage: number, nextQ: string, nextStatus: string) {
     void listSchoolAdmissionsAction({

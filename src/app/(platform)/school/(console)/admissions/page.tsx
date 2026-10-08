@@ -3,6 +3,7 @@ import { SchoolAdmissionsPage } from "@/components/school/SchoolAdmissionsPage";
 import { parseSchoolPage, schoolPageMeta } from "@/lib/school/pagination";
 
 export const metadata = { title: "Admissions" };
+export const dynamic = "force-dynamic";
 
 export default async function SchoolAdmissionsRoute({
   searchParams,

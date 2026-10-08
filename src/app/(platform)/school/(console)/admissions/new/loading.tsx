@@ -1,8 +1,5 @@
 import { SchoolAdmissionFormPage } from "@/components/school/SchoolAdmissionFormPage";
 
-export const metadata = { title: "New Admission" };
-export const dynamic = "force-dynamic";
-
 const EMPTY_OPTIONS = {
   years: [] as Array<{ id: string; name: string; isCurrent: boolean }>,
   terms: [] as Array<{ id: string; academicYearId: string; name: string }>,
@@ -11,6 +8,7 @@ const EMPTY_OPTIONS = {
   capabilities: { canView: true, canManage: true, canConfigureAcademic: false },
 };
 
-export default function SchoolNewAdmissionRoute() {
-  return <SchoolAdmissionFormPage options={EMPTY_OPTIONS} admission={null} error={null} loadOptions />;
+/** Instant form shell while the route module resolves — not a skeleton or blank page. */
+export default function NewAdmissionLoading() {
+  return <SchoolAdmissionFormPage options={EMPTY_OPTIONS} admission={null} error={null} />;
 }

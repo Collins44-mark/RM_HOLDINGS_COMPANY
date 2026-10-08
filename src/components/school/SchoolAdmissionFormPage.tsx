@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import {
   completeSchoolAdmissionAction,
   getAdmissionClassesAction,
+  getAdmissionFormOptionsAction,
   getAdmissionStreamsAction,
   resolveAdmissionFeesAction,
   saveSchoolAdmissionAction,
@@ -13,6 +14,7 @@ import {
   type AdmissionFormInput,
   type ApplicableFeeRow,
 } from "@/actions/school/admissions";
+import { writeAdmissionFlash, writeFeeFlash } from "@/lib/school/admission-flash";
 import { SchoolConfirmDialog, SchoolField, SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
 import { cn } from "@/lib/cn";
@@ -108,16 +110,21 @@ function FeeReadout({ fee, ready }: { fee: ApplicableFeeRow | null; ready: boole
 }
 
 export function SchoolAdmissionFormPage({
-  options,
+  options: initialOptions,
   admission,
   error,
+  loadOptions = false,
 }: {
   options: AdmissionFormOptions | null;
   admission: AdmissionDetail | null;
   error: string | null;
+  loadOptions?: boolean;
 }) {
+  const [options, setOptions] = useState<AdmissionFormOptions>(
+    initialOptions ?? { years: [], terms: [], levels: [], today: "", capabilities: { canView: true, canManage: true, canConfigureAcademic: false } },
+  );
   const [form, setForm] = useState<AdmissionFormInput>(
-    admission ? fromDetail(admission) : emptyForm(options ?? { years: [], terms: [], levels: [], today: "" }),
+    admission ? fromDetail(admission) : emptyForm(options),
   );
   const [classes, setClasses] = useState<Array<{ id: string; name: string }>>(
     admission?.classId ? [{ id: admission.classId, name: admission.className }] : [],
@@ -147,6 +154,36 @@ export function SchoolAdmissionFormPage({
     setForm((current) => ({ ...current, ...next }));
     setSaved(false);
   }
+
+  useEffect(() => {
+    if (!loadOptions) return;
+    let active = true;
+    void getAdmissionFormOptionsAction("manage").then((result) => {
+      if (!active || !result.ok) {
+        if (active && result && "error" in result && !result.ok) setSaveError(result.error);
+        return;
+      }
+      setOptions({
+        years: result.years,
+        terms: result.terms,
+        levels: result.levels,
+        today: result.today,
+        capabilities: result.capabilities,
+      });
+      setForm((current) => {
+        if (current.academicYearId && current.admissionDate) return current;
+        const currentYear = result.years.find((row) => row.isCurrent) ?? result.years[0];
+        return {
+          ...current,
+          academicYearId: current.academicYearId || currentYear?.id || "",
+          admissionDate: current.admissionDate || result.today,
+        };
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [loadOptions]);
 
   useEffect(() => {
     const levelId = form.levelId;
@@ -222,7 +259,6 @@ export function SchoolAdmissionFormPage({
       }
       setForm((current) => ({ ...current, id: result.id }));
       setSaved(true);
-      if (!admission) window.history.replaceState(null, "", `/school/admissions/${result.id}/edit`);
     });
   }
 
@@ -232,9 +268,9 @@ export function SchoolAdmissionFormPage({
     setCompleteBusy(true);
     setSaveError(null);
     void completeSchoolAdmissionAction({ ...form, acknowledgeDuplicate }).then((result) => {
-      lock.current = false;
-      setCompleteBusy(false);
       if (!result.ok) {
+        lock.current = false;
+        setCompleteBusy(false);
         if ("duplicate" in result && result.duplicate) {
           setDuplicateMeta(result.duplicate);
           setDuplicateOpen(true);
@@ -244,13 +280,47 @@ export function SchoolAdmissionFormPage({
         setSaveError(result.error);
         return;
       }
+      setCompleteBusy(false);
       setCompleted(true);
       setCompletion({
         admissionNumber: result.admissionNumber,
         studentNumber: result.studentNumber,
         studentId: result.studentId,
       });
-      if (result.id) window.history.replaceState(null, "", `/school/admissions/${result.id}`);
+      writeAdmissionFlash({
+        id: result.id,
+        admissionNumber: result.admissionNumber,
+        studentName,
+        studentNumber: result.studentNumber,
+        levelName,
+        className,
+        streamName,
+        admissionDate: form.admissionDate,
+        status: "completed",
+      });
+      if (result.enrollmentId && result.studentId) {
+        writeFeeFlash({
+          enrollmentId: result.enrollmentId,
+          studentId: result.studentId,
+          studentName,
+          studentNumber: result.studentNumber ?? "",
+          admissionNumber: result.admissionNumber,
+          levelId: form.levelId,
+          levelName,
+          classId: form.classId,
+          className,
+          streamName,
+          academicYearId: form.academicYearId,
+          academicYearName: yearName,
+          annualAmount: fee?.annualAmount ?? null,
+          currentTermName: fee?.currentTermName ?? null,
+          currentTermAmount: fee?.currentTermAmount ?? null,
+          paidAmount: 0,
+          outstandingAmount: fee?.annualAmount ?? null,
+          status: fee?.configured ? "outstanding" : "no_structure",
+          chargeId: null,
+        });
+      }
     });
   }
 
@@ -341,7 +411,8 @@ export function SchoolAdmissionFormPage({
                 disabled={busy}
                 confirmed={completed}
                 idleLabel="Complete Admission"
-                confirmedLabel="Admission completed ✓"
+                busyLabel="Completing…"
+                confirmedLabel="Completed ✓"
                 onClick={() => runComplete(false)}
               />
             </>

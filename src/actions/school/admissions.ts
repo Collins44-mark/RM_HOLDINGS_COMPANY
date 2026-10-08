@@ -1,6 +1,6 @@
 "use server";
 
-import { writeAuditEvent } from "@/lib/audit";
+import { writeAuditEvent, writeAuditEvents, type WriteAuditEventInput } from "@/lib/audit";
 import { requireAuth } from "@/lib/auth/session";
 import { hasPermission, isOwnerRole } from "@/lib/auth/rbac";
 import { matchPermission } from "@/lib/config/permissions";
@@ -188,7 +188,8 @@ async function assertPlacement(
   if (!yearId) throw new SchoolError("Academic year is required.", "VALIDATION");
   if (!levelId || !classId || !streamId) throw new SchoolError("Level, class, and stream are required.", "VALIDATION");
 
-  const [streamRes, classRes, yearRes] = await Promise.all([
+  const termId = str(input.termId);
+  const [streamRes, classRes, yearRes, termRes] = await Promise.all([
     supabase
       .from("sch_class_streams")
       .select("id, class_id, is_active")
@@ -207,6 +208,14 @@ async function assertPlacement(
       .eq("business_unit_id", businessUnitId)
       .eq("id", yearId)
       .maybeSingle(),
+    termId
+      ? supabase
+          .from("sch_terms")
+          .select("id, academic_year_id")
+          .eq("business_unit_id", businessUnitId)
+          .eq("id", termId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
   if (streamRes.error && !isSchoolUnconfiguredRead(streamRes.error)) mapSchoolDbError(streamRes.error, "save");
   if (classRes.error && !isSchoolUnconfiguredRead(classRes.error)) mapSchoolDbError(classRes.error, "save");
@@ -220,18 +229,8 @@ async function assertPlacement(
   if (String(classRes.data.level_id) !== levelId) {
     throw new SchoolError("The selected class does not belong to that level.", "VALIDATION");
   }
-
-  const termId = str(input.termId);
-  if (termId) {
-    const termRes = await supabase
-      .from("sch_terms")
-      .select("id, academic_year_id")
-      .eq("business_unit_id", businessUnitId)
-      .eq("id", termId)
-      .maybeSingle();
-    if (!termRes.data?.id || String(termRes.data.academic_year_id) !== yearId) {
-      throw new SchoolError("The selected term does not belong to that academic year.", "VALIDATION");
-    }
+  if (termId && (!termRes.data?.id || String(termRes.data.academic_year_id) !== yearId)) {
+    throw new SchoolError("The selected term does not belong to that academic year.", "VALIDATION");
   }
 }
 
@@ -345,7 +344,7 @@ export async function getAdmissionFormOptionsAction(mode: "view" | "manage" = "v
     const user = await requireAuth();
     const ctx = await requireSchoolPermission(mode === "manage" ? MANAGE : VIEW);
     const { supabase, businessUnitId } = ctx;
-    const scope = await loadSchoolStructureScope(ctx);
+    const scope = isOwnerRole(user.roleCode) ? null : await loadSchoolStructureScope(ctx);
     const [yearsRes, termsRes, levelsRes] = await Promise.all([
       supabase
         .from("sch_academic_years")
@@ -370,7 +369,7 @@ export async function getAdmissionFormOptionsAction(mode: "view" | "manage" = "v
     if (termsRes.error && !isSchoolUnconfiguredRead(termsRes.error)) mapSchoolDbError(termsRes.error, "load");
     if (levelsRes.error && !isSchoolUnconfiguredRead(levelsRes.error)) mapSchoolDbError(levelsRes.error, "load");
     const levels = (levelsRes.data ?? [])
-      .filter((row) => scope.schoolWide || scope.levelIds.has(String(row.id)))
+      .filter((row) => !scope || scope.schoolWide || scope.levelIds.has(String(row.id)))
       .map((row) => ({ id: String(row.id), name: String(row.name) }));
     return {
       ok: true as const,
@@ -592,62 +591,72 @@ export async function getSchoolAdmissionAction(id: string) {
   }
 }
 
+async function upsertDraftAdmission(
+  ctx: Awaited<ReturnType<typeof requireSchoolPermission>>,
+  input: AdmissionFormInput,
+  options?: { skipPlacementAssert?: boolean },
+) {
+  const { supabase, businessUnitId, userId } = ctx;
+  const payload = admissionPayload(input, businessUnitId);
+  if (payload.stream_id && !options?.skipPlacementAssert) {
+    await assertPlacement(supabase, businessUnitId, {
+      levelId: input.levelId,
+      classId: input.classId,
+      streamId: input.streamId,
+      academicYearId: input.academicYearId,
+      termId: input.termId,
+    });
+  }
+  const existingId = str(input.id);
+  if (existingId) {
+    const current = await supabase
+      .from("sch_admissions")
+      .select("id, status, admission_number")
+      .eq("business_unit_id", businessUnitId)
+      .eq("id", existingId)
+      .maybeSingle();
+    if (!current.data) throw new SchoolError("Admission was not found.", "NOT_FOUND");
+    if (String(current.data.status) === "completed") {
+      return { id: existingId, admissionNumber: String(current.data.admission_number), created: false, alreadyCompleted: true };
+    }
+    if (String(current.data.status) !== "draft") throw new SchoolError("Only a draft admission can be edited.", "VALIDATION");
+    const updated = await supabase.from("sch_admissions").update(payload).eq("id", existingId).select("id, admission_number").maybeSingle();
+    if (updated.error) mapSchoolDbError(updated.error, "save");
+    return { id: existingId, admissionNumber: String(current.data.admission_number), created: false, alreadyCompleted: false };
+  }
+
+  const { data: number, error: numError } = await supabase.rpc("sch_next_document_number", {
+    p_business_unit_id: businessUnitId,
+    p_doc_type: "admission",
+    p_prefix: "ADM",
+  });
+  if (numError || !number) throw new SchoolError("Couldn't allocate an admission number.", "DATABASE");
+  const inserted = await supabase
+    .from("sch_admissions")
+    .insert({ ...payload, admission_number: String(number), status: "draft", created_by: userId })
+    .select("id, admission_number")
+    .maybeSingle();
+  if (inserted.error || !inserted.data) mapSchoolDbError(inserted.error, "save");
+  return {
+    id: String(inserted.data!.id),
+    admissionNumber: String(inserted.data!.admission_number),
+    created: true,
+    alreadyCompleted: false,
+  };
+}
+
 export async function saveSchoolAdmissionAction(input: AdmissionFormInput) {
   try {
     const ctx = await requireSchoolPermission(MANAGE);
-    const { supabase, businessUnitId, userId } = ctx;
-    const payload = admissionPayload(input, businessUnitId);
-    if (payload.stream_id) {
-      await assertPlacement(supabase, businessUnitId, {
-        levelId: input.levelId,
-        classId: input.classId,
-        streamId: input.streamId,
-        academicYearId: input.academicYearId,
-        termId: input.termId,
-      });
-    }
-    const existingId = str(input.id);
-    if (existingId) {
-      const current = await supabase
-        .from("sch_admissions")
-        .select("id, status, admission_number")
-        .eq("business_unit_id", businessUnitId)
-        .eq("id", existingId)
-        .maybeSingle();
-      if (!current.data) throw new SchoolError("Admission was not found.", "NOT_FOUND");
-      if (String(current.data.status) !== "draft") throw new SchoolError("Only a draft admission can be edited.", "VALIDATION");
-      const updated = await supabase.from("sch_admissions").update(payload).eq("id", existingId).select("id, admission_number").maybeSingle();
-      if (updated.error) mapSchoolDbError(updated.error, "save");
-      await audit({
-        action: "school.admission_updated",
-        description: `Admission updated · ${String(current.data.admission_number)}`,
-        entityType: "sch_admissions",
-        entityId: existingId,
-        businessUnitId,
-      });
-      return { ok: true as const, id: existingId, admissionNumber: String(current.data.admission_number) };
-    }
-
-    const { data: number, error: numError } = await supabase.rpc("sch_next_document_number", {
-      p_business_unit_id: businessUnitId,
-      p_doc_type: "admission",
-      p_prefix: "ADM",
-    });
-    if (numError || !number) throw new SchoolError("Couldn't allocate an admission number.", "DATABASE");
-    const inserted = await supabase
-      .from("sch_admissions")
-      .insert({ ...payload, admission_number: String(number), status: "draft", created_by: userId })
-      .select("id, admission_number")
-      .maybeSingle();
-    if (inserted.error || !inserted.data) mapSchoolDbError(inserted.error, "save");
+    const saved = await upsertDraftAdmission(ctx, input);
     await audit({
-      action: "school.admission_created",
-      description: `Admission created · ${String(inserted.data!.admission_number)}`,
+      action: saved.created ? "school.admission_created" : "school.admission_updated",
+      description: `Admission ${saved.created ? "created" : "updated"} · ${saved.admissionNumber}`,
       entityType: "sch_admissions",
-      entityId: String(inserted.data!.id),
-      businessUnitId,
+      entityId: saved.id,
+      businessUnitId: ctx.businessUnitId,
     });
-    return { ok: true as const, id: String(inserted.data!.id), admissionNumber: String(inserted.data!.admission_number) };
+    return { ok: true as const, id: saved.id, admissionNumber: saved.admissionNumber };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
   }
@@ -655,10 +664,9 @@ export async function saveSchoolAdmissionAction(input: AdmissionFormInput) {
 
 export async function completeSchoolAdmissionAction(input: AdmissionFormInput & { acknowledgeDuplicate?: boolean }) {
   try {
+    const user = await requireAuth();
     const ctx = await requireSchoolPermission(MANAGE);
     const { supabase, businessUnitId } = ctx;
-    const saved = await saveSchoolAdmissionAction(input);
-    if (!saved.ok) return saved;
     const payload = admissionPayload(input, businessUnitId);
     if (!payload.stream_id || !payload.academic_year_id) {
       throw new SchoolError("Academic year, level, class, and stream are required to complete admission.", "VALIDATION");
@@ -666,6 +674,7 @@ export async function completeSchoolAdmissionAction(input: AdmissionFormInput & 
     if (!str(input.guardianFullName) || !str(input.guardianRelationship) || !str(input.guardianPhone)) {
       throw new SchoolError("Guardian name, relationship, and phone are required to complete admission.", "VALIDATION");
     }
+    const saved = await upsertDraftAdmission(ctx, input, { skipPlacementAssert: true });
     const { data, error } = await supabase.rpc("sch_complete_admission", {
       p_admission_id: saved.id,
       p_acknowledge_duplicate: Boolean(input.acknowledgeDuplicate),
@@ -684,37 +693,71 @@ export async function completeSchoolAdmissionAction(input: AdmissionFormInput & 
       throw new SchoolError(message || "Couldn't complete this admission.", "DATABASE");
     }
     const result = (data ?? {}) as Record<string, unknown>;
-    await audit({
-      action: "school.admission_completed",
-      description: `Admission completed · ${saved.admissionNumber}`,
-      entityType: "sch_admissions",
-      entityId: saved.id,
-      businessUnitId,
-    });
+    const alreadyCompleted = Boolean(result.already_completed);
+    let enrollmentId = result.enrollment_id ? String(result.enrollment_id) : null;
+    const studentId = result.student_id ? String(result.student_id) : null;
+    if (!enrollmentId && studentId) {
+      const enrollment = await supabase
+        .from("sch_student_enrollments")
+        .select("id")
+        .eq("business_unit_id", businessUnitId)
+        .eq("student_id", studentId)
+        .eq("status", "active")
+        .maybeSingle();
+      enrollmentId = enrollment.data?.id ? String(enrollment.data.id) : null;
+    }
+    const actor = { id: user.id, name: user.name, email: user.email };
+    const events: WriteAuditEventInput[] = [
+      {
+        action: "school.admission_completed",
+        description: `Admission completed · ${saved.admissionNumber}`,
+        entityType: "sch_admissions",
+        entityId: saved.id,
+        businessUnitId,
+        module: "school",
+        severity: "medium",
+        actor,
+      },
+    ];
     if (result.student_number) {
-      await audit({
+      events.push({
         action: "school.student_created",
         description: `Student created · ${String(result.student_number)}`,
         entityType: "sch_students",
-        entityId: result.student_id ? String(result.student_id) : null,
+        entityId: result.student_id ? String(result.student_id) : saved.id,
         businessUnitId,
+        module: "school",
+        severity: "medium",
+        actor,
       });
     }
     if (result.guardian_id) {
-      await audit({
+      events.push({
         action: "school.guardian_linked",
         description: `Guardian linked · ${saved.admissionNumber}`,
         entityType: "sch_student_guardians",
-        entityId: result.guardian_id ? String(result.guardian_id) : null,
+        entityId: result.guardian_id ? String(result.guardian_id) : saved.id,
         businessUnitId,
+        module: "school",
+        severity: "medium",
+        actor,
       });
     }
+    if (!alreadyCompleted) void writeAuditEvents(events);
     return {
       ok: true as const,
       id: saved.id,
       admissionNumber: saved.admissionNumber,
-      studentId: result.student_id ? String(result.student_id) : null,
+      studentId,
       studentNumber: result.student_number ? String(result.student_number) : null,
+      enrollmentId,
+      academicYearId: str(input.academicYearId),
+      levelId: str(input.levelId),
+      classId: str(input.classId),
+      streamId: str(input.streamId),
+      admissionDate: str(input.admissionDate),
+      status: "completed" as const,
+      studentName: studentName(str(input.firstName), str(input.middleName), str(input.lastName)),
     };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
