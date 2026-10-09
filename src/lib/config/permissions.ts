@@ -77,9 +77,10 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "classes", actions: ["view", "manage"] },
       { resource: "staff", actions: ["view", "manage"] },
       { resource: "teachers", actions: ["view", "manage"] },
-      { resource: "subjects", actions: [...CRUD] },
+      { resource: "subjects", actions: ["view", "manage"] },
       { resource: "attendance", actions: ["view", "create", "edit"] },
-      { resource: "exams", actions: [...CRUD] },
+      { resource: "exams", actions: ["view", "manage"] },
+      { resource: "results", actions: ["enter", "publish"] },
       { resource: "fees", actions: ["view", "create", "edit", "manage", "record", "verify", "receipt"] },
       { resource: "transport", actions: ["view"] },
       { resource: "buses", actions: [...CRUD] },
@@ -180,6 +181,12 @@ export function isOperablePermission(code: string) {
     code === "school.parents.manage" ||
     code === "school.staff.view" ||
     code === "school.staff.manage" ||
+    code === "school.subjects.view" ||
+    code === "school.subjects.manage" ||
+    code === "school.exams.view" ||
+    code === "school.exams.manage" ||
+    code === "school.results.enter" ||
+    code === "school.results.publish" ||
     code === "school.fees.view" ||
     code === "school.fees.manage" ||
     code === "school.fees.record" ||
@@ -263,6 +270,9 @@ const RESOURCE_LABELS: Record<string, string> = {
   students: "Students",
   parents: "Parents / Guardians",
   staff: "Staff",
+  subjects: "Subjects",
+  exams: "Exams",
+  results: "Results",
   fees: "Fees",
 };
 
@@ -389,6 +399,12 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.parents.manage",
       "school.staff.view",
       "school.staff.manage",
+      "school.subjects.view",
+      "school.subjects.manage",
+      "school.exams.view",
+      "school.exams.manage",
+      "school.results.enter",
+      "school.results.publish",
       "school.fees.view",
       "school.fees.manage",
       "school.fees.record",
@@ -427,6 +443,9 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.students.view",
       "school.parents.view",
       "school.staff.view",
+      "school.subjects.view",
+      "school.exams.view",
+      "school.results.publish",
       "school.fees.view",
       "school.fees.receipt",
       "school.transport.view",
@@ -469,7 +488,13 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
     name: "Teacher",
     description: "Manages assigned academic responsibilities.",
     modules: ["school"],
-    permissionMatchers: ["school.classes.view", "school.students.view"],
+    permissionMatchers: [
+      "school.classes.view",
+      "school.students.view",
+      "school.subjects.view",
+      "school.exams.view",
+      "school.results.enter",
+    ],
   },
   {
     code: ROLE_CODES.ADMISSIONS_OFFICER,

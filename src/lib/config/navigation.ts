@@ -62,7 +62,7 @@ export const SCHOOL_NAV: NavItem[] = [
   { href: "/school/staff", label: "Staff", icon: "users", alsoActive: ["/school/teachers"] },
   { href: "/school/subjects", label: "Subjects", icon: "book" },
   { href: "/school/attendance", label: "Attendance", icon: "clipboard" },
-  { href: "/school/exams", label: "Exams & Results", icon: "reports" },
+  { href: "/school/exams-results", label: "Exams & Results", icon: "reports", alsoActive: ["/school/exams"] },
   { href: "/school/fees", label: "Fees & Payments", icon: "money" },
   {
     href: "/school/transport",

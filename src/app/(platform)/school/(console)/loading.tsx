@@ -7,6 +7,8 @@ import { SchoolAdmissionsPage } from "@/components/school/SchoolAdmissionsPage";
 import { SchoolStaffFormPage } from "@/components/school/SchoolStaffFormPage";
 import { SchoolStudentProfilePage } from "@/components/school/SchoolStudentProfilePage";
 import { SchoolStudentsPage } from "@/components/school/SchoolStudentsPage";
+import { SchoolSubjectsPage } from "@/components/school/SchoolSubjectsPage";
+import { SchoolExamsPage } from "@/components/school/SchoolExamsPage";
 import { schoolPageMeta } from "@/lib/school/pagination";
 import { peekAdmissionView, peekAdmissionsListSnapshot } from "@/lib/school/admission-flash";
 
@@ -82,6 +84,12 @@ export default function SchoolConsoleLoading() {
   }
   if (pathname === "/school/staff/new") {
     return <SchoolStaffFormPage types={[]} roles={[]} staff={null} error={null} />;
+  }
+  if (pathname === "/school/subjects") {
+    return <SchoolSubjectsPage workspace={null} error={null} pending />;
+  }
+  if (pathname === "/school/exams-results" || pathname === "/school/exams") {
+    return <SchoolExamsPage workspace={null} error={null} pending />;
   }
   return <div className="min-w-0 max-w-full pb-10" />;
 }
