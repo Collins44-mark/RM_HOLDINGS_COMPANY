@@ -109,6 +109,7 @@ export function CompactActionsMenu({
                     prefetch
                     role="menuitem"
                     className="block w-full px-3 py-2 text-left text-[13px] font-medium text-navy hover:bg-[#f4f7fb]"
+                    onMouseEnter={() => item.onSelect?.()}
                     onClick={() => {
                       setOpen(false);
                       item.onSelect?.();

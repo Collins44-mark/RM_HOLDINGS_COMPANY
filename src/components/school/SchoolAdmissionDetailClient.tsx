@@ -3,29 +3,38 @@
 import { useEffect, useState } from "react";
 import { getSchoolAdmissionAction, type AdmissionDetail } from "@/actions/school/admissions";
 import { SchoolAdmissionDetailPage } from "@/components/school/SchoolAdmissionDetailPage";
-import { admissionPreviewFromList, peekAdmissionView } from "@/lib/school/admission-flash";
+import { peekAdmissionDetail, peekAdmissionView, writeAdmissionDetail } from "@/lib/school/admission-flash";
+import { pendingSchoolAdmission } from "@/lib/school/admission-prefetch";
 
 export function SchoolAdmissionDetailClient({ admissionId }: { admissionId: string }) {
-  const snapshot = peekAdmissionView(admissionId);
-  const [admission, setAdmission] = useState<AdmissionDetail | null>(
-    snapshot ? admissionPreviewFromList(snapshot) : null,
-  );
-  const [canManage, setCanManage] = useState(false);
+  const cached = peekAdmissionDetail(admissionId);
+  const heading = peekAdmissionView(admissionId);
+  const [admission, setAdmission] = useState<AdmissionDetail | null>(cached?.admission ?? null);
+  const [canManage, setCanManage] = useState(cached?.canManage ?? false);
   const [error, setError] = useState<string | null>(null);
-  const [complete, setComplete] = useState(false);
 
   useEffect(() => {
     let active = true;
-    void getSchoolAdmissionAction(admissionId).then((result) => {
+    void (async () => {
+      const pending = pendingSchoolAdmission(admissionId);
+      if (pending) await pending;
+      if (!active) return;
+      const ready = peekAdmissionDetail(admissionId);
+      if (ready) {
+        setAdmission(ready.admission);
+        setCanManage(ready.canManage);
+        return;
+      }
+      const result = await getSchoolAdmissionAction(admissionId);
       if (!active) return;
       if (!result.ok) {
         setError(result.error);
         return;
       }
+      writeAdmissionDetail(result.admission, result.capabilities.canManage);
       setAdmission(result.admission);
       setCanManage(result.capabilities.canManage);
-      setComplete(true);
-    });
+    })();
     return () => {
       active = false;
     };
@@ -37,7 +46,14 @@ export function SchoolAdmissionDetailClient({ admissionId }: { admissionId: stri
       canManage={canManage}
       error={error}
       pending={!admission && !error}
-      preview={Boolean(admission) && !complete}
+      heading={
+        heading
+          ? {
+              admissionNumber: heading.admissionNumber,
+              studentName: heading.studentName,
+            }
+          : null
+      }
     />
   );
 }

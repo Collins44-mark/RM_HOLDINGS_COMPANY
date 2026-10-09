@@ -16,7 +16,7 @@ import { allowsStream, loadSchoolStructureScope } from "@/lib/school/structure-s
 import { schoolPageMeta, schoolPageRange, parseSchoolPageSize } from "@/lib/school/pagination";
 import { findApplicableFeeStructure, type ApplicableFeeStructure } from "@/lib/school/fee-structure";
 import { loadPlacementByStreamIds } from "@/lib/school/placement-query";
-import { loadSchoolStructureCatalog } from "@/lib/school/structure-catalog";
+import { catalogLookup, loadSchoolStructureCatalog } from "@/lib/school/structure-catalog";
 
 const VIEW = "school.admissions.view";
 const MANAGE = "school.admissions.manage";
@@ -297,12 +297,14 @@ async function loadApplicableFees(
   classId: string,
   academicYearId: string,
   termId: string,
+  levelId?: string,
 ): Promise<ApplicableFeeRow> {
   const structure = await findApplicableFeeStructure({
     supabase,
     businessUnitId,
     academicYearId,
     classId,
+    levelId,
     termId,
   });
   return feeRowFromStructure(structure);
@@ -339,7 +341,10 @@ export async function listSchoolAdmissionsAction(input: { page?: number; pageSiz
     const user = await requireAuth();
     const ctx = await requireSchoolPermission(VIEW);
     const { supabase, businessUnitId } = ctx;
-    const scope = await loadSchoolStructureScope(ctx);
+    const [catalog, scope] = await Promise.all([
+      loadSchoolStructureCatalog(ctx),
+      isOwnerRole(user.roleCode) ? Promise.resolve(null) : loadSchoolStructureScope(ctx),
+    ]);
     const pageSize = parseSchoolPageSize(input.pageSize);
     const { page, from, to } = schoolPageRange(input.page ?? 1, pageSize);
     const q = searchNeedle(input.q);
@@ -354,7 +359,7 @@ export async function listSchoolAdmissionsAction(input: { page?: number; pageSiz
       .order("created_at", { ascending: false })
       .range(from, to);
     if (status === "draft" || status === "completed" || status === "cancelled") query = query.eq("status", status);
-    const streamScope = scopedIds(scope.streamIds, scope.schoolWide);
+    const streamScope = scope ? scopedIds(scope.streamIds, scope.schoolWide) : null;
     if (streamScope) query = query.in("stream_id", streamScope);
     if (q) {
       const students = await supabase
@@ -371,12 +376,16 @@ export async function listSchoolAdmissionsAction(input: { page?: number; pageSiz
     const result = await query;
     if (result.error && !isSchoolUnconfiguredRead(result.error)) mapSchoolDbError(result.error, "load");
     const raw = ((result.data ?? []) as Record<string, unknown>[]);
-    const placement = await loadPlacementByStreamIds(
-      ctx,
-      raw.map((row) => str(row.stream_id)),
-    );
+    const lookup = catalogLookup(catalog);
+    const missingStreamIds = raw
+      .map((row) => str(row.stream_id))
+      .filter((streamId) => streamId && !lookup.placement(streamId));
+    const fallbackPlacement = missingStreamIds.length
+      ? await loadPlacementByStreamIds(ctx, missingStreamIds)
+      : new Map();
     const rows = raw.map((row) => {
-      const place = placement.get(str(row.stream_id));
+      const streamId = str(row.stream_id);
+      const place = lookup.placement(streamId) ?? fallbackPlacement.get(streamId);
       return {
         id: String(row.id),
         admissionNumber: str(row.admission_number),
@@ -419,33 +428,34 @@ export async function getSchoolAdmissionAction(id: string) {
     const user = await requireAuth();
     const ctx = await requireSchoolPermission(VIEW);
     const { supabase, businessUnitId } = ctx;
-    const scope = await loadSchoolStructureScope(ctx);
     const admissionId = str(id);
     if (!admissionId) throw new SchoolError("Admission was not found.", "NOT_FOUND");
-    const result = await supabase
-      .from("sch_admissions")
-      .select(
-        "id, admission_number, status, admission_date, academic_year_id, term_id, stream_id, student_id, first_name, middle_name, last_name, date_of_birth, gender, nationality, address, guardian_full_name, guardian_relationship, guardian_phone, guardian_email, guardian_address, guardian_occupation",
-      )
-      .eq("business_unit_id", businessUnitId)
-      .eq("id", admissionId)
-      .maybeSingle();
+    const [catalog, result, scope] = await Promise.all([
+      loadSchoolStructureCatalog(ctx),
+      supabase
+        .from("sch_admissions")
+        .select(
+          "id, admission_number, status, admission_date, academic_year_id, term_id, stream_id, student_id, first_name, middle_name, last_name, date_of_birth, gender, nationality, address, phone, email, guardian_full_name, guardian_relationship, guardian_phone, guardian_email, guardian_address, guardian_occupation",
+        )
+        .eq("business_unit_id", businessUnitId)
+        .eq("id", admissionId)
+        .maybeSingle(),
+      isOwnerRole(user.roleCode) ? Promise.resolve(null) : loadSchoolStructureScope(ctx),
+    ]);
     if (result.error && !isSchoolUnconfiguredRead(result.error)) mapSchoolDbError(result.error, "load");
     if (!result.data) throw new SchoolError("Admission was not found.", "NOT_FOUND");
     const row = result.data as Record<string, unknown>;
     let streamId = str(row.stream_id);
-    if (streamId && !allowsStream(scope, streamId) && !scope.schoolWide) {
+    if (streamId && scope && !scope.schoolWide && !allowsStream(scope, streamId)) {
       throw new SchoolError("Admission was not found.", "NOT_FOUND");
     }
 
     const studentId = str(row.student_id);
-    const [yearRes, termRes, studentRes, enrollmentRes, initialPlacement] = await Promise.all([
-      row.academic_year_id
-        ? supabase.from("sch_academic_years").select("name").eq("id", String(row.academic_year_id)).maybeSingle()
-        : Promise.resolve({ data: null }),
-      row.term_id
-        ? supabase.from("sch_terms").select("name").eq("id", String(row.term_id)).maybeSingle()
-        : Promise.resolve({ data: null }),
+    const yearId = str(row.academic_year_id);
+    const termId = str(row.term_id);
+    const lookup = catalogLookup(catalog);
+    let placement = lookup.placement(streamId);
+    const [studentRes, enrollmentRes, fallbackPlacement, feesWhenReady, yearRes, termRes] = await Promise.all([
       studentId
         ? supabase.from("sch_students").select("id, student_number, status").eq("id", studentId).maybeSingle()
         : Promise.resolve({ data: null }),
@@ -458,10 +468,19 @@ export async function getSchoolAdmissionAction(id: string) {
             .eq("status", "active")
             .maybeSingle()
         : Promise.resolve({ data: null }),
-      streamId ? loadPlacementByStreamIds(ctx, [streamId]) : Promise.resolve(new Map()),
+      streamId && !placement ? loadPlacementByStreamIds(ctx, [streamId]) : Promise.resolve(new Map()),
+      placement?.classId && yearId
+        ? loadApplicableFees(supabase, businessUnitId, placement.classId, yearId, termId, placement.levelId)
+        : Promise.resolve(null),
+      yearId && !lookup.yearName(yearId)
+        ? supabase.from("sch_academic_years").select("name").eq("id", yearId).maybeSingle()
+        : Promise.resolve({ data: null }),
+      termId && !lookup.termName(termId)
+        ? supabase.from("sch_terms").select("name").eq("id", termId).maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
     if (!streamId) streamId = str(enrollmentRes.data?.stream_id);
-    let placement = streamId ? initialPlacement.get(streamId) : undefined;
+    if (!placement) placement = streamId ? lookup.placement(streamId) ?? fallbackPlacement.get(streamId) : undefined;
     if (!placement && streamId) {
       placement = (await loadPlacementByStreamIds(ctx, [streamId])).get(streamId);
     }
@@ -470,7 +489,11 @@ export async function getSchoolAdmissionAction(id: string) {
     const levelName = placement?.levelName ?? "";
     const className = placement?.className ?? "";
     const streamName = placement?.streamName ?? "";
-    const fees = await loadApplicableFees(supabase, businessUnitId, classId, str(row.academic_year_id), str(row.term_id));
+    const fees =
+      feesWhenReady ??
+      (classId && yearId
+        ? await loadApplicableFees(supabase, businessUnitId, classId, yearId, termId, levelId)
+        : feeRowFromStructure(null));
     const attendanceEligible = str(studentRes.data?.status) === "active" && Boolean(enrollmentRes.data?.id);
 
     const detail: AdmissionDetail = {
@@ -478,10 +501,10 @@ export async function getSchoolAdmissionAction(id: string) {
       admissionNumber: str(row.admission_number),
       status: asStatus(row.status),
       admissionDate: String(row.admission_date ?? ""),
-      academicYearId: str(row.academic_year_id),
-      academicYearName: str(yearRes.data?.name),
-      termId: str(row.term_id),
-      termName: str(termRes.data?.name),
+      academicYearId: yearId,
+      academicYearName: lookup.yearName(yearId) || str(yearRes.data?.name),
+      termId,
+      termName: lookup.termName(termId) || str(termRes.data?.name),
       levelId,
       levelName,
       classId,

@@ -43,25 +43,26 @@ export async function findApplicableFeeStructure(input: {
   const classId = String(input.classId ?? "").trim();
   if (!academicYearId || !classId) return null;
 
-  const classRes = await input.supabase
-    .from("sch_classes")
-    .select("id, name, level_id")
-    .eq("business_unit_id", input.businessUnitId)
-    .eq("id", classId)
-    .maybeSingle();
+  const [classRes, structureRes] = await Promise.all([
+    input.supabase
+      .from("sch_classes")
+      .select("id, name, level_id")
+      .eq("business_unit_id", input.businessUnitId)
+      .eq("id", classId)
+      .maybeSingle(),
+    input.supabase
+      .from("sch_fee_structures")
+      .select("id, academic_year_id, level_id, class_id, annual_amount, is_active")
+      .eq("business_unit_id", input.businessUnitId)
+      .eq("academic_year_id", academicYearId)
+      .eq("class_id", classId)
+      .eq("is_active", true)
+      .maybeSingle(),
+  ]);
   if (classRes.error && !isSchoolUnconfiguredRead(classRes.error)) return null;
   if (!classRes.data) return null;
   const levelId = String(classRes.data.level_id);
   if (input.levelId && String(input.levelId) !== levelId) return null;
-
-  const structureRes = await input.supabase
-    .from("sch_fee_structures")
-    .select("id, academic_year_id, level_id, class_id, annual_amount, is_active")
-    .eq("business_unit_id", input.businessUnitId)
-    .eq("academic_year_id", academicYearId)
-    .eq("class_id", classId)
-    .eq("is_active", true)
-    .maybeSingle();
   if (structureRes.error && !isSchoolUnconfiguredRead(structureRes.error)) return null;
   if (!structureRes.data) return null;
 

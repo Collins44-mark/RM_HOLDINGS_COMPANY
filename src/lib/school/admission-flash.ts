@@ -2,12 +2,23 @@ import type { AdmissionDetail, AdmissionListRow } from "@/actions/school/admissi
 import type { GuardianListRow } from "@/actions/school/parents";
 import type { StudentListRow } from "@/actions/school/students";
 import type { FeeAccountListRow } from "@/lib/school/fee-types";
+import type { SchoolPageMeta } from "@/lib/school/pagination";
 
 const ADMISSION_KEY = "school.admissions.latest";
 const ADMISSION_VIEW_KEY = "school.admissions.view";
+const ADMISSION_DETAIL_KEY = "school.admissions.detail";
+const ADMISSION_LIST_KEY = "school.admissions.list";
 const FEE_KEY = "school.fees.latest";
 const STUDENT_KEY = "school.students.latest";
 const GUARDIAN_KEY = "school.guardians.latest";
+
+export type AdmissionsListSnapshot = {
+  rows: AdmissionListRow[];
+  page: SchoolPageMeta;
+  pageSize: number;
+  filter: string;
+  q: string;
+};
 
 export type AdmissionFlash = AdmissionListRow;
 export type FeeFlash = FeeAccountListRow;
@@ -22,49 +33,44 @@ export function writeAdmissionView(row: AdmissionListRow) {
   sessionStorage.setItem(ADMISSION_VIEW_KEY, JSON.stringify(row));
 }
 
-export function admissionPreviewFromList(row: AdmissionListRow): AdmissionDetail {
-  return {
-    id: row.id,
-    admissionNumber: row.admissionNumber,
-    status: row.status,
-    admissionDate: row.admissionDate,
-    academicYearId: "",
-    academicYearName: "",
-    termId: "",
-    termName: "",
-    levelId: "",
-    levelName: row.levelName,
-    classId: "",
-    className: row.className,
-    streamId: "",
-    streamName: row.streamName,
-    firstName: row.firstName || row.studentName,
-    middleName: row.middleName || "",
-    lastName: row.lastName || "",
-    dateOfBirth: "",
-    gender: "",
-    nationality: "",
-    address: "",
-    phone: "",
-    email: "",
-    guardianFullName: "",
-    guardianRelationship: "",
-    guardianPhone: "",
-    guardianEmail: "",
-    guardianAddress: "",
-    guardianOccupation: "",
-    studentId: null,
-    studentNumber: row.studentNumber,
-    attendanceEligible: false,
-    fee: {
-      configured: false,
-      annualAmount: null,
-      currentTermName: null,
-      currentTermAmount: null,
-      termCount: 0,
-      message: "",
-    },
-  };
+export type AdmissionDetailCache = {
+  admission: AdmissionDetail;
+  canManage: boolean;
+};
+
+export function writeAdmissionDetail(admission: AdmissionDetail, canManage: boolean) {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(ADMISSION_DETAIL_KEY, JSON.stringify({ admission, canManage } satisfies AdmissionDetailCache));
+}
+
+export function peekAdmissionDetail(id?: string): AdmissionDetailCache | null {
+  if (typeof window === "undefined") return null;
+  const raw = sessionStorage.getItem(ADMISSION_DETAIL_KEY);
+  if (!raw) return null;
+  try {
+    const row = JSON.parse(raw) as AdmissionDetailCache;
+    if (!row?.admission?.id) return null;
+    if (id && row.admission.id !== id) return null;
+    return row;
+  } catch {
+    return null;
+  }
+}
+
+export function writeAdmissionsListSnapshot(snapshot: AdmissionsListSnapshot) {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(ADMISSION_LIST_KEY, JSON.stringify(snapshot));
+}
+
+export function peekAdmissionsListSnapshot(): AdmissionsListSnapshot | null {
+  if (typeof window === "undefined") return null;
+  const raw = sessionStorage.getItem(ADMISSION_LIST_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as AdmissionsListSnapshot;
+  } catch {
+    return null;
+  }
 }
 
 export function peekAdmissionView(id?: string): AdmissionListRow | null {

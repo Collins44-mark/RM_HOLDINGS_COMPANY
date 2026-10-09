@@ -157,3 +157,43 @@ export async function loadSchoolStructureCatalog(ctx: SchoolContext): Promise<Sc
 export function invalidateSchoolStructureCatalog() {
   updateTag(SCHOOL_STRUCTURE_TAG);
 }
+
+export type CatalogPlacement = {
+  levelId: string;
+  classId: string;
+  streamId: string;
+  levelName: string;
+  className: string;
+  streamName: string;
+};
+
+export function catalogLookup(catalog: SchoolStructureCatalog) {
+  const classMap = new Map(catalog.classes.map((row) => [row.id, row]));
+  const levelMap = new Map(catalog.levels.map((row) => [row.id, row.name]));
+  const yearMap = new Map(catalog.years.map((row) => [row.id, row.name]));
+  const termMap = new Map(catalog.terms.map((row) => [row.id, row.name]));
+  const streamMap = new Map(catalog.streams.map((row) => [row.id, row]));
+  return {
+    yearName(id: string) {
+      return yearMap.get(id) ?? "";
+    },
+    termName(id: string) {
+      return termMap.get(id) ?? "";
+    },
+    placement(streamId: string): CatalogPlacement | undefined {
+      if (!streamId) return undefined;
+      const stream = streamMap.get(streamId);
+      if (!stream) return undefined;
+      const classRow = classMap.get(stream.classId);
+      const levelId = classRow?.levelId ?? "";
+      return {
+        streamId,
+        classId: stream.classId,
+        levelId,
+        streamName: stream.name,
+        className: classRow?.name ?? "",
+        levelName: levelId ? levelMap.get(levelId) ?? "" : "",
+      };
+    },
+  };
+}

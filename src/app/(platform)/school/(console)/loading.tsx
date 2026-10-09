@@ -8,7 +8,7 @@ import { SchoolStaffFormPage } from "@/components/school/SchoolStaffFormPage";
 import { SchoolStudentProfilePage } from "@/components/school/SchoolStudentProfilePage";
 import { SchoolStudentsPage } from "@/components/school/SchoolStudentsPage";
 import { schoolPageMeta } from "@/lib/school/pagination";
-import { admissionPreviewFromList, peekAdmissionView } from "@/lib/school/admission-flash";
+import { peekAdmissionView, peekAdmissionsListSnapshot } from "@/lib/school/admission-flash";
 
 const EMPTY_OPTIONS = {
   years: [] as Array<{ id: string; name: string; isCurrent: boolean }>,
@@ -31,28 +31,33 @@ export default function SchoolConsoleLoading() {
     return <SchoolAdmissionFormPage options={EMPTY_OPTIONS} admission={null} error={null} />;
   }
   if (pathname === "/school/admissions") {
+    const snapshot = typeof window !== "undefined" ? peekAdmissionsListSnapshot() : null;
     return (
       <SchoolAdmissionsPage
-        admissions={[]}
-        page={schoolPageMeta(1, 0)}
+        admissions={snapshot?.rows ?? []}
+        page={snapshot?.page ?? schoolPageMeta(1, 0)}
         canManage
-        query=""
-        status="all"
+        query={snapshot?.q ?? ""}
+        status={snapshot?.filter ?? "all"}
         error={null}
-        pending
+        pending={!snapshot}
       />
     );
   }
   if (pathname.startsWith("/school/admissions/")) {
     const id = pathname.split("/")[3] ?? "";
-    const snapshot = typeof window !== "undefined" ? peekAdmissionView(id) : null;
+    const heading = typeof window !== "undefined" ? peekAdmissionView(id) : null;
     return (
       <SchoolAdmissionDetailPage
-        admission={snapshot ? admissionPreviewFromList(snapshot) : null}
+        admission={null}
         canManage={false}
         error={null}
-        pending={!snapshot}
-        preview={Boolean(snapshot)}
+        pending
+        heading={
+          heading
+            ? { admissionNumber: heading.admissionNumber, studentName: heading.studentName }
+            : { admissionNumber: "Admission" }
+        }
       />
     );
   }

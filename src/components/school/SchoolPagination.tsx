@@ -31,12 +31,14 @@ export function SchoolPagination({
   page,
   total,
   pageSize = SCHOOL_PAGE_SIZE,
+  pendingPageSize = null,
   onPage,
   onPageSize,
 }: {
   page: number;
   total: number;
   pageSize?: number;
+  pendingPageSize?: number | null;
   onPage: (page: number) => void;
   onPageSize?: (pageSize: number) => void;
 }) {
@@ -57,11 +59,13 @@ export function SchoolPagination({
                 key={size}
                 type="button"
                 onClick={() => onPageSize(size)}
+                aria-busy={pendingPageSize === size}
                 className={cn(
                   "h-8 min-w-8 rounded-full px-2.5 text-[12.5px] font-semibold transition duration-200",
                   size === meta.pageSize
                     ? "bg-navy text-white shadow-[0_4px_10px_rgba(11,34,68,0.16)]"
                     : "text-slate-500 hover:text-navy",
+                  pendingPageSize === size && size !== meta.pageSize ? "ring-1 ring-navy/20 text-navy" : null,
                 )}
               >
                 {size}

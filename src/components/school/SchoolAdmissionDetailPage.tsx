@@ -24,13 +24,13 @@ export function SchoolAdmissionDetailPage({
   canManage,
   error,
   pending = false,
-  preview = false,
+  heading = null,
 }: {
   admission: AdmissionDetail | null;
   canManage: boolean;
   error: string | null;
   pending?: boolean;
-  preview?: boolean;
+  heading?: { admissionNumber?: string; studentName?: string } | null;
 }) {
   const router = useRouter();
   if (!admission && pending) {
@@ -40,7 +40,8 @@ export function SchoolAdmissionDetailPage({
           <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
           Admissions
         </Link>
-        <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">Admission</h1>
+        <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">{heading?.admissionNumber || "Admission"}</h1>
+        {heading?.studentName ? <p className="text-[13.5px] text-slate-500">{heading.studentName}</p> : null}
       </div>
     );
   }
@@ -115,44 +116,40 @@ export function SchoolAdmissionDetailPage({
         </div>
       </section>
 
-      {preview ? null : (
-        <>
-          <section className={`${glassPanel} space-y-3`}>
-            <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Guardian</h2>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <Fact label="Name" value={admission.guardianFullName} />
-              <Fact label="Relationship" value={admission.guardianRelationship} />
-              <Fact label="Phone" value={admission.guardianPhone} />
-              <Fact label="Email" value={admission.guardianEmail} />
-              <Fact label="Occupation" value={admission.guardianOccupation} />
-              <Fact label="Address" value={admission.guardianAddress} />
-            </div>
-          </section>
+      <section className={`${glassPanel} space-y-3`}>
+        <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Guardian</h2>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <Fact label="Name" value={admission.guardianFullName} />
+          <Fact label="Relationship" value={admission.guardianRelationship} />
+          <Fact label="Phone" value={admission.guardianPhone} />
+          <Fact label="Email" value={admission.guardianEmail} />
+          <Fact label="Occupation" value={admission.guardianOccupation} />
+          <Fact label="Address" value={admission.guardianAddress} />
+        </div>
+      </section>
 
-          <section className={`${glassPanel} space-y-3`}>
-            <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Applicable fees</h2>
-            {admission.fee.configured ? (
-              <div className="space-y-1 text-[13.5px] text-navy">
-                <p>Applicable Annual Fee: {formatTzs(admission.fee.annualAmount ?? 0)}</p>
-                {admission.fee.currentTermAmount != null && admission.fee.currentTermName ? (
-                  <p>
-                    Current Term Fee · {admission.fee.currentTermName}: {formatTzs(admission.fee.currentTermAmount)}
-                  </p>
-                ) : (
-                  <p className="text-slate-500">Term fee not configured</p>
-                )}
-              </div>
+      <section className={`${glassPanel} space-y-3`}>
+        <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Applicable fees</h2>
+        {admission.fee.configured ? (
+          <div className="space-y-1 text-[13.5px] text-navy">
+            <p>Applicable Annual Fee: {formatTzs(admission.fee.annualAmount ?? 0)}</p>
+            {admission.fee.currentTermAmount != null && admission.fee.currentTermName ? (
+              <p>
+                Current Term Fee · {admission.fee.currentTermName}: {formatTzs(admission.fee.currentTermAmount)}
+              </p>
             ) : (
-              <p className="text-[13.5px] text-slate-500">Fee structure not configured for this class.</p>
+              <p className="text-slate-500">Term fee not configured</p>
             )}
-            <p className="text-[13px] text-slate-500">
-              {admission.attendanceEligible
-                ? "This student is eligible for attendance through the active enrollment."
-                : "Attendance eligibility starts after this admission is completed."}
-            </p>
-          </section>
-        </>
-      )}
+          </div>
+        ) : (
+          <p className="text-[13.5px] text-slate-500">Fee structure not configured for this class.</p>
+        )}
+        <p className="text-[13px] text-slate-500">
+          {admission.attendanceEligible
+            ? "This student is eligible for attendance through the active enrollment."
+            : "Attendance eligibility starts after this admission is completed."}
+        </p>
+      </section>
     </div>
   );
 }

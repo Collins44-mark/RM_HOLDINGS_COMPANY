@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { UserPlus } from "lucide-react";
@@ -23,7 +23,13 @@ import { SchoolConfirmDialog, SchoolIconWell } from "@/components/school/school-
 import { SchoolPagination, replaceSchoolPageParam } from "@/components/school/SchoolPagination";
 import { parseSchoolPage, parseSchoolPageSize, type SchoolPageMeta } from "@/lib/school/pagination";
 import { cn } from "@/lib/cn";
-import { consumeAdmissionFlash, writeAdmissionView } from "@/lib/school/admission-flash";
+import {
+  consumeAdmissionFlash,
+  peekAdmissionsListSnapshot,
+  writeAdmissionView,
+  writeAdmissionsListSnapshot,
+} from "@/lib/school/admission-flash";
+import { prefetchSchoolAdmission } from "@/lib/school/admission-prefetch";
 
 const STATUS_FILTERS: Array<{ id: "all" | AdmissionStatus; label: string }> = [
   { id: "all", label: "All" },
@@ -31,6 +37,16 @@ const STATUS_FILTERS: Array<{ id: "all" | AdmissionStatus; label: string }> = [
   { id: "completed", label: "Completed" },
   { id: "cancelled", label: "Cancelled" },
 ];
+
+function readListUrl() {
+  const url = new URL(window.location.href);
+  return {
+    status: url.searchParams.get("status") || "all",
+    q: url.searchParams.get("q") || "",
+    page: parseSchoolPage(url.searchParams.get("page")),
+    pageSize: parseSchoolPageSize(url.searchParams.get("pageSize")),
+  };
+}
 
 export function SchoolAdmissionsPage({
   admissions: initialRows,
@@ -55,6 +71,8 @@ export function SchoolAdmissionsPage({
   const [pageSize, setPageSize] = useState(initialPage.pageSize);
   const [q, setQ] = useState(query);
   const [filter, setFilter] = useState(status || "all");
+  const [requestedStatus, setRequestedStatus] = useState<string | null>(null);
+  const [requestedSize, setRequestedSize] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [paging, setPaging] = useState(false);
   const searchTimer = useRef<number | null>(null);
@@ -62,68 +80,122 @@ export function SchoolAdmissionsPage({
   const [completeId, setCompleteId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
+  const reqId = useRef(0);
+  const confirmed = useRef({ filter: status || "all", q: query, page: initialPage.page, pageSize: initialPage.pageSize });
 
-  useEffect(() => {
-    const flash = consumeAdmissionFlash();
-    if (!flash) return;
-    const activeFilter = filter || "all";
-    if (activeFilter !== "all" && activeFilter !== flash.status) return;
-    queueMicrotask(() => {
-      setRows((current) => {
-        if (current.some((row) => row.id === flash.id)) return current;
-        setPage((meta) => ({ ...meta, total: meta.total + 1 }));
-        return [flash, ...current];
-      });
+  function persist(nextRows: AdmissionListRow[], nextPage: SchoolPageMeta, nextFilter: string, nextQ: string, nextSize: number) {
+    confirmed.current = { filter: nextFilter, q: nextQ, page: nextPage.page, pageSize: nextSize };
+    writeAdmissionsListSnapshot({
+      rows: nextRows,
+      page: nextPage,
+      pageSize: nextSize,
+      filter: nextFilter,
+      q: nextQ,
     });
-  }, [filter]);
+  }
 
   function syncUrl(nextPage: number, nextQ: string, nextStatus: string, nextSize: number) {
     replaceSchoolPageParam(nextPage, nextSize, { status: nextStatus, q: nextQ });
   }
 
-  function load(nextPage: number, nextQ: string, nextStatus: string, nextSize = pageSize, skipUrl = false) {
-    setFilter(nextStatus);
-    setPageSize(nextSize);
-    setPaging(true);
-    if (!skipUrl) syncUrl(nextPage, nextQ, nextStatus, nextSize);
+  function load(
+    nextPage: number,
+    nextQ: string,
+    nextStatus: string,
+    nextSize = pageSize,
+    options: { skipUrl?: boolean; quiet?: boolean } = {},
+  ) {
+    const id = ++reqId.current;
+    if (!options.quiet) {
+      setRequestedStatus(nextStatus);
+      setRequestedSize(nextSize);
+      setPaging(true);
+    }
     void listSchoolAdmissionsAction({
       page: nextPage,
       pageSize: nextSize,
       q: nextQ,
       status: nextStatus === "all" ? "" : nextStatus,
     }).then((result) => {
+      if (id !== reqId.current) return;
       setPaging(false);
+      setRequestedStatus(null);
+      setRequestedSize(null);
       if (!result.ok) {
         setSaveError(result.error);
         return;
       }
       setSaveError(null);
+      setFilter(nextStatus);
+      setQ(nextQ);
       setRows(result.admissions);
       setPage(result.page);
       setPageSize(result.page.pageSize);
+      persist(result.admissions, result.page, nextStatus, nextQ, result.page.pageSize);
+      if (!options.skipUrl) syncUrl(result.page.page, nextQ, nextStatus, result.page.pageSize);
     });
   }
 
+  useLayoutEffect(() => {
+    const url = readListUrl();
+    const snapshot = peekAdmissionsListSnapshot();
+    const matchesSnapshot =
+      snapshot &&
+      snapshot.filter === url.status &&
+      snapshot.q === url.q &&
+      snapshot.page.page === url.page &&
+      snapshot.pageSize === url.pageSize;
+    queueMicrotask(() => {
+      if (matchesSnapshot && snapshot) {
+        setRows(snapshot.rows);
+        setPage(snapshot.page);
+        setPageSize(snapshot.pageSize);
+        setFilter(snapshot.filter);
+        setQ(snapshot.q);
+        confirmed.current = {
+          filter: snapshot.filter,
+          q: snapshot.q,
+          page: snapshot.page.page,
+          pageSize: snapshot.pageSize,
+        };
+        load(url.page, url.q, url.status, url.pageSize, { skipUrl: true, quiet: true });
+        return;
+      }
+      if (url.status !== "all" || url.q || url.page > 1 || url.pageSize !== initialPage.pageSize) {
+        load(url.page, url.q, url.status, url.pageSize, { skipUrl: true });
+        return;
+      }
+      persist(initialRows, initialPage, status || "all", query, initialPage.pageSize);
+    });
+    // Restore URL/list on mount only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
-    function applyUrl(skipUrl: boolean) {
-      const url = new URL(window.location.href);
-      const nextStatus = url.searchParams.get("status") || "all";
-      const nextQ = url.searchParams.get("q") || "";
-      const nextPage = parseSchoolPage(url.searchParams.get("page"));
-      const nextSize = parseSchoolPageSize(url.searchParams.get("pageSize"));
-      setQ(nextQ);
-      load(nextPage, nextQ, nextStatus, nextSize, skipUrl);
-    }
-    const url = new URL(window.location.href);
-    if (url.searchParams.get("status") || url.searchParams.get("q") || url.searchParams.get("page") || url.searchParams.get("pageSize")) {
-      queueMicrotask(() => applyUrl(true));
-    }
+    const flash = consumeAdmissionFlash();
+    if (!flash) return;
+    const activeFilter = confirmed.current.filter || "all";
+    if (activeFilter !== "all" && activeFilter !== flash.status) return;
+    queueMicrotask(() => {
+      setRows((current) => {
+        if (current.some((row) => row.id === flash.id)) return current;
+        setPage((meta) => {
+          const next = { ...meta, total: meta.total + 1 };
+          persist([flash, ...current.filter((row) => row.id !== flash.id)], next, confirmed.current.filter, confirmed.current.q, confirmed.current.pageSize);
+          return next;
+        });
+        return [flash, ...current];
+      });
+    });
+  }, []);
+
+  useEffect(() => {
     function onPop() {
-      applyUrl(true);
+      const url = readListUrl();
+      load(url.page, url.q, url.status, url.pageSize, { skipUrl: true });
     }
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-    // First URL hydrate + back/forward only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -139,11 +211,18 @@ export function SchoolAdmissionsPage({
         return;
       }
       setCancelId(null);
-      load(page.page, q, filter);
+      load(confirmed.current.page, confirmed.current.q, confirmed.current.filter, confirmed.current.pageSize);
     });
   }
 
   const completing = rows.find((row) => row.id === completeId) ?? null;
+  const waiting = pending || paging;
+  const showEmpty = rows.length === 0 && !waiting;
+
+  function openAdmission(row: AdmissionListRow) {
+    writeAdmissionView(row);
+    prefetchSchoolAdmission(row.id);
+  }
 
   return (
     <div className="min-w-0 max-w-full space-y-5 pb-10">
@@ -170,9 +249,12 @@ export function SchoolAdmissionsPage({
               type="button"
               onClick={() => load(1, q, item.id)}
               aria-pressed={filter === item.id}
+              aria-busy={requestedStatus === item.id && paging}
+              disabled={paging && requestedStatus === item.id}
               className={cn(
                 "h-8 rounded-full px-3.5 text-[12.5px] font-semibold transition duration-200",
                 filter === item.id ? "bg-white text-navy shadow-[0_4px_12px_rgba(15,35,64,0.08)]" : "text-slate-500 hover:text-navy",
+                requestedStatus === item.id && paging && filter !== item.id ? "text-navy ring-1 ring-navy/15" : null,
               )}
             >
               {item.label}
@@ -200,7 +282,7 @@ export function SchoolAdmissionsPage({
         </form>
       </div>
 
-      {rows.length === 0 && !pending && !paging ? (
+      {showEmpty ? (
         <section className={cn(glassPanel, "flex flex-col items-start gap-3 py-10")}>
           <SchoolIconWell icon={UserPlus} />
           <h2 className="text-[18px] font-semibold tracking-[-0.04em] text-navy">No admissions yet</h2>
@@ -230,7 +312,9 @@ export function SchoolAdmissionsPage({
                         href={`/school/admissions/${row.id}`}
                         prefetch
                         className="font-semibold hover:underline"
-                        onClick={() => writeAdmissionView(row)}
+                        onMouseEnter={() => openAdmission(row)}
+                        onFocus={() => openAdmission(row)}
+                        onClick={() => openAdmission(row)}
                       >
                         {row.admissionNumber}
                       </Link>
@@ -247,7 +331,11 @@ export function SchoolAdmissionsPage({
                       <CompactActionsMenu
                         ariaLabel={`${row.admissionNumber} actions`}
                         items={[
-                          { label: "View", href: `/school/admissions/${row.id}`, onSelect: () => writeAdmissionView(row) },
+                          {
+                            label: "View",
+                            href: `/school/admissions/${row.id}`,
+                            onSelect: () => openAdmission(row),
+                          },
                           ...(canManage && row.status === "draft"
                             ? [
                                 { label: "Edit", href: `/school/admissions/${row.id}/edit` },
@@ -267,6 +355,7 @@ export function SchoolAdmissionsPage({
             page={page.page}
             total={page.total}
             pageSize={pageSize}
+            pendingPageSize={requestedSize}
             onPage={(next) => load(next, q, filter)}
             onPageSize={(size) => load(1, q, filter, size)}
           />
