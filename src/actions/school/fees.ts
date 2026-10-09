@@ -13,7 +13,6 @@ import {
 } from "@/lib/school/access";
 import { getStudentFeeAccount } from "@/lib/school/fee-account";
 import { asFeeStatus, paymentMethodLabel, type FeeAccountListRow, type FeeListFilter, type FeeSummary } from "@/lib/school/fee-types";
-import { findApplicableFeeStructure } from "@/lib/school/fee-structure";
 import { schoolPageMeta, schoolPageRange } from "@/lib/school/pagination";
 import type { FeeReceiptPayload } from "@/lib/school/fee-receipt-pdf";
 
@@ -99,15 +98,27 @@ async function attachCurrentTerms(
   rows: FeeAccountListRow[],
 ) {
   const yearIds = [...new Set(rows.map((row) => row.academicYearId).filter(Boolean))];
+  const classIds = [...new Set(rows.map((row) => row.classId).filter(Boolean))];
   if (!yearIds.length) return rows;
-  const termsRes = await supabase
-    .from("sch_terms")
-    .select("id, name, academic_year_id, start_date, end_date")
-    .eq("business_unit_id", businessUnitId)
-    .in("academic_year_id", yearIds)
-    .eq("is_active", true)
-    .order("sort_order");
   const today = new Date().toISOString().slice(0, 10);
+  const [termsRes, structuresRes] = await Promise.all([
+    supabase
+      .from("sch_terms")
+      .select("id, name, academic_year_id, start_date, end_date")
+      .eq("business_unit_id", businessUnitId)
+      .in("academic_year_id", yearIds)
+      .eq("is_active", true)
+      .order("sort_order"),
+    classIds.length
+      ? supabase
+          .from("sch_fee_structures")
+          .select("id, academic_year_id, class_id")
+          .eq("business_unit_id", businessUnitId)
+          .eq("is_active", true)
+          .in("academic_year_id", yearIds)
+          .in("class_id", classIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; academic_year_id: string; class_id: string }>, error: null }),
+  ]);
   const currentByYear = new Map<string, { id: string; name: string }>();
   for (const term of termsRes.data ?? []) {
     const yearId = String(term.academic_year_id);
@@ -116,30 +127,53 @@ async function attachCurrentTerms(
     const end = String(term.end_date ?? "");
     if (start && end && start <= today && today <= end) currentByYear.set(yearId, { id: String(term.id), name: String(term.name) });
   }
-  const uniquePairs = rows.filter((row) => row.annualAmount != null);
-  const classYearIds = [...new Set(uniquePairs.map((row) => `${row.academicYearId}:${row.classId}`))];
-  await Promise.all(
-    classYearIds.map(async (key) => {
-      const [yearId, classId] = key.split(":");
-      const structure = await findApplicableFeeStructure({
-        supabase,
-        businessUnitId,
-        academicYearId: yearId,
-        classId,
-        termId: currentByYear.get(yearId)?.id,
-      });
-      if (structure) {
-        for (const row of uniquePairs) {
-          if (row.academicYearId === yearId && row.classId === classId) {
-            row.currentTermName = structure.currentTermName;
-            row.currentTermAmount = structure.currentTermAmount;
-          }
-        }
-      }
-    }),
-  );
+  const structures = structuresRes.data ?? [];
+  const structureIds = structures.map((row) => String(row.id));
+  const amountsRes = structureIds.length
+    ? await supabase
+        .from("sch_fee_structure_terms")
+        .select("fee_structure_id, term_id, amount")
+        .eq("business_unit_id", businessUnitId)
+        .in("fee_structure_id", structureIds)
+    : { data: [] as Array<{ fee_structure_id: string; term_id: string; amount: number }> };
+  const amountByStructureTerm = new Map<string, number>();
+  for (const row of amountsRes.data ?? []) {
+    amountByStructureTerm.set(`${row.fee_structure_id}:${row.term_id}`, num(row.amount));
+  }
+  const structureByClassYear = new Map(structures.map((row) => [`${row.academic_year_id}:${row.class_id}`, String(row.id)]));
   for (const row of rows) {
-    if (!row.currentTermName) row.currentTermName = currentByYear.get(row.academicYearId)?.name ?? null;
+    const current = currentByYear.get(row.academicYearId);
+    row.currentTermName = current?.name ?? null;
+    const structureId = structureByClassYear.get(`${row.academicYearId}:${row.classId}`);
+    if (structureId && current) {
+      const amount = amountByStructureTerm.get(`${structureId}:${current.id}`);
+      row.currentTermAmount = amount == null ? null : amount;
+    }
+  }
+  return rows;
+}
+
+async function attachLifetimeOutstanding(
+  supabase: Awaited<ReturnType<typeof requireAnySchoolPermission>>["supabase"],
+  businessUnitId: string,
+  rows: FeeAccountListRow[],
+) {
+  const studentIds = [...new Set(rows.map((row) => row.studentId).filter(Boolean))];
+  if (!studentIds.length) return rows;
+  const result = await supabase
+    .from("sch_v_fee_accounts")
+    .select("student_id, outstanding_amount")
+    .eq("business_unit_id", businessUnitId)
+    .in("student_id", studentIds);
+  if (result.error && !isSchoolUnconfiguredRead(result.error)) return rows;
+  const totals = new Map<string, number | null>();
+  for (const row of result.data ?? []) {
+    const studentId = String(row.student_id);
+    if (row.outstanding_amount == null) continue;
+    totals.set(studentId, (totals.get(studentId) ?? 0) + num(row.outstanding_amount));
+  }
+  for (const row of rows) {
+    row.totalOutstanding = totals.has(row.studentId) ? totals.get(row.studentId)! : row.outstandingAmount;
   }
   return rows;
 }
@@ -153,7 +187,7 @@ async function loadAccounts(
   let query = supabase
     .from("sch_v_fee_accounts")
     .select(
-      "enrollment_id, student_id, student_name, student_number, admission_number, level_id, level_name, class_id, class_name, stream_name, academic_year_id, academic_year_name, due_amount, paid_amount, outstanding_amount, fee_status, charge_id",
+      "enrollment_id, student_id, student_name, student_number, admission_number, level_id, level_name, class_id, class_name, class_code, stream_name, academic_year_id, academic_year_name, due_amount, paid_amount, outstanding_amount, fee_status, charge_id",
       { count: "exact" },
     )
     .order("student_name");
@@ -170,6 +204,7 @@ async function loadAccounts(
     levelName: String(row.level_name ?? ""),
     classId: String(row.class_id ?? ""),
     className: String(row.class_name ?? ""),
+    classCode: String(row.class_code ?? row.class_name ?? ""),
     streamName: String(row.stream_name ?? ""),
     academicYearId: String(row.academic_year_id ?? ""),
     academicYearName: String(row.academic_year_name ?? ""),
@@ -178,10 +213,14 @@ async function loadAccounts(
     currentTermAmount: null,
     paidAmount: num(row.paid_amount),
     outstandingAmount: row.outstanding_amount == null ? null : num(row.outstanding_amount),
+    totalOutstanding: row.outstanding_amount == null ? null : num(row.outstanding_amount),
     status: asFeeStatus(row.fee_status),
     chargeId: row.charge_id ? String(row.charge_id) : null,
   }));
-  await attachCurrentTerms(supabase, businessUnitId, rows);
+  await Promise.all([
+    attachCurrentTerms(supabase, businessUnitId, rows),
+    attachLifetimeOutstanding(supabase, businessUnitId, rows),
+  ]);
   return { rows, page: schoolPageMeta(page, result.count ?? 0, pageSize) };
 }
 
@@ -193,9 +232,7 @@ async function loadSummary(
   let query = supabase.from("sch_v_fee_accounts").select("due_amount, paid_amount, outstanding_amount");
   query = applyAccountFilters(query, businessUnitId, { ...input, page: undefined });
   const result = await query;
-  if (result.error && !isSchoolUnconfiguredRead(result.error)) {
-    return { totalFees: 0, collected: 0, outstanding: 0, studentsWithBalance: 0 };
-  }
+  if (result.error && !isSchoolUnconfiguredRead(result.error)) mapSchoolDbError(result.error, "load");
   let totalFees = 0;
   let collected = 0;
   let outstanding = 0;

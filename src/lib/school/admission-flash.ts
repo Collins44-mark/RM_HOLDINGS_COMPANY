@@ -9,6 +9,8 @@ const ADMISSION_VIEW_KEY = "school.admissions.view";
 const ADMISSION_DETAIL_KEY = "school.admissions.detail";
 const ADMISSION_LIST_KEY = "school.admissions.list";
 const FEE_KEY = "school.fees.latest";
+const FEE_VIEW_KEY = "school.fees.view";
+const FEE_LIST_KEY = "school.fees.list";
 const STUDENT_KEY = "school.students.latest";
 const GUARDIAN_KEY = "school.guardians.latest";
 
@@ -98,9 +100,60 @@ export function consumeAdmissionFlash(): AdmissionFlash | null {
   }
 }
 
+export type FeesListSnapshot = {
+  rows: FeeAccountListRow[];
+  page: SchoolPageMeta;
+  summary: { totalFees: number; collected: number; outstanding: number; studentsWithBalance: number };
+  yearId: string;
+  levelId: string;
+  classId: string;
+  status: string;
+  q: string;
+};
+
+export type FeeViewHeading = {
+  enrollmentId: string;
+  studentName: string;
+  studentNumber: string;
+};
+
 export function writeFeeFlash(row: FeeFlash) {
   if (typeof window === "undefined") return;
   sessionStorage.setItem(FEE_KEY, JSON.stringify(row));
+}
+
+export function writeFeeView(row: FeeViewHeading) {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(FEE_VIEW_KEY, JSON.stringify(row));
+}
+
+export function peekFeeView(enrollmentId?: string): FeeViewHeading | null {
+  if (typeof window === "undefined") return null;
+  const raw = sessionStorage.getItem(FEE_VIEW_KEY);
+  if (!raw) return null;
+  try {
+    const row = JSON.parse(raw) as FeeViewHeading;
+    if (enrollmentId && row.enrollmentId !== enrollmentId) return null;
+    return row;
+  } catch {
+    return null;
+  }
+}
+
+export function writeFeesListSnapshot(snapshot: FeesListSnapshot) {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(FEE_LIST_KEY, JSON.stringify(snapshot));
+}
+
+export function peekFeesListSnapshot(): FeesListSnapshot | null {
+  if (typeof window === "undefined") return null;
+  const raw = sessionStorage.getItem(FEE_LIST_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as FeesListSnapshot;
+  } catch {
+    return null;
+  }
 }
 
 export function consumeFeeFlash(): FeeFlash | null {

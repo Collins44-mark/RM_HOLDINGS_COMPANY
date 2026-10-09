@@ -9,8 +9,10 @@ import { SchoolStudentProfilePage } from "@/components/school/SchoolStudentProfi
 import { SchoolStudentsPage } from "@/components/school/SchoolStudentsPage";
 import { SchoolSubjectsPage } from "@/components/school/SchoolSubjectsPage";
 import { SchoolExamsPage } from "@/components/school/SchoolExamsPage";
+import { SchoolFeesPage } from "@/components/school/SchoolFeesPage";
+import { SchoolStudentFeeProfilePage } from "@/components/school/SchoolStudentFeeProfilePage";
 import { schoolPageMeta } from "@/lib/school/pagination";
-import { peekAdmissionView, peekAdmissionsListSnapshot } from "@/lib/school/admission-flash";
+import { peekAdmissionView, peekAdmissionsListSnapshot, peekFeeView, peekFeesListSnapshot } from "@/lib/school/admission-flash";
 
 const EMPTY_OPTIONS = {
   years: [] as Array<{ id: string; name: string; isCurrent: boolean }>,
@@ -90,6 +92,41 @@ export default function SchoolConsoleLoading() {
   }
   if (pathname === "/school/exams-results" || pathname === "/school/exams") {
     return <SchoolExamsPage workspace={null} error={null} pending />;
+  }
+  if (pathname === "/school/fees") {
+    const snapshot = typeof window !== "undefined" ? peekFeesListSnapshot() : null;
+    return (
+      <SchoolFeesPage
+        initial={
+          snapshot
+            ? {
+                ok: true,
+                accounts: snapshot.rows,
+                page: snapshot.page,
+                summary: snapshot.summary,
+                years: [],
+                levels: [],
+                academicYearId: snapshot.yearId,
+                capabilities: { canView: true, canRecord: false, canVerify: false, canReceipt: false, canManageStructures: false },
+              }
+            : null
+        }
+        pending
+      />
+    );
+  }
+  if (pathname.startsWith("/school/fees/")) {
+    const id = pathname.split("/")[3] ?? "";
+    const heading = typeof window !== "undefined" ? peekFeeView(id) : null;
+    return (
+      <SchoolStudentFeeProfilePage
+        account={null}
+        capabilities={null}
+        error={null}
+        pending
+        heading={heading ?? undefined}
+      />
+    );
   }
   return <div className="min-w-0 max-w-full pb-10" />;
 }

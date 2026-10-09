@@ -15,6 +15,7 @@ import { SchoolIconWell } from "@/components/school/school-ui";
 import { SchoolPagination, replaceSchoolPageParam } from "@/components/school/SchoolPagination";
 import { SchoolPlacementFilterBar, type PlacementChoice } from "@/components/school/SchoolPlacementFilterBar";
 import { consumeStudentFlash } from "@/lib/school/admission-flash";
+import { formatCompactStudentNumber } from "@/lib/school/student-number";
 import { SCHOOL_PAGE_SIZE, type SchoolPageMeta } from "@/lib/school/pagination";
 import { cn } from "@/lib/cn";
 
@@ -185,7 +186,7 @@ export function SchoolStudentsPage({
                         {row.name}
                       </Link>
                     </td>
-                    <td className="px-4 py-3">{row.studentNumber}</td>
+                    <td className="px-4 py-3">{formatCompactStudentNumber(row.studentNumber)}</td>
                     <td className="px-4 py-3">{row.admissionNumber || "—"}</td>
                     <td className="px-4 py-3">{row.levelName || "—"}</td>
                     <td className="px-4 py-3">{row.className || "—"}</td>

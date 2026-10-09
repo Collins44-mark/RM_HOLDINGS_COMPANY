@@ -17,6 +17,7 @@ import { SchoolConfirmDialog, SchoolField, SchoolWorkflowButton } from "@/compon
 import { glassPanel, inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
+import { formatCompactStudentNumber } from "@/lib/school/student-number";
 
 export type AdmissionFormOptions = {
   years: Array<{ id: string; name: string; isCurrent: boolean }>;
@@ -312,6 +313,7 @@ export function SchoolAdmissionFormPage({
           levelName,
           classId: form.classId,
           className,
+          classCode: "",
           streamName,
           academicYearId: form.academicYearId,
           academicYearName: yearName,
@@ -320,6 +322,7 @@ export function SchoolAdmissionFormPage({
           currentTermAmount: fee?.currentTermAmount ?? null,
           paidAmount: 0,
           outstandingAmount: fee?.annualAmount ?? null,
+          totalOutstanding: fee?.annualAmount ?? null,
           status: fee?.configured ? "outstanding" : "no_structure",
           chargeId: null,
         });
@@ -343,7 +346,9 @@ export function SchoolAdmissionFormPage({
             </div>
             <div>
               <dt className="text-slate-500">Student No</dt>
-              <dd className="font-medium text-navy">{completion.studentNumber || "—"}</dd>
+              <dd className="font-medium text-navy">
+                {completion.studentNumber ? formatCompactStudentNumber(completion.studentNumber) : "—"}
+              </dd>
             </div>
             <div>
               <dt className="text-slate-500">Student</dt>

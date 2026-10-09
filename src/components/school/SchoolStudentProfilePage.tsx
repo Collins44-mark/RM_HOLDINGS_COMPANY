@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { assignSchoolStudentStreamAction, type StudentProfile } from "@/actions/school/students";
 import { glassPanel, inputClass, primaryButton, StatusPill } from "@/components/supermarket/purchasing-ui";
+import { formatCompactStudentNumber } from "@/lib/school/student-number";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
 
 function Fact({ label, value }: { label: string; value: string }) {
@@ -62,7 +63,7 @@ export function SchoolStudentProfilePage({
             {[student.firstName, student.middleName, student.lastName].filter(Boolean).join(" ")}
           </h1>
           <p className="mt-1 text-[13.5px] text-slate-500">
-            {student.studentNumber}
+            {formatCompactStudentNumber(student.studentNumber)}
             {student.admissionNumber ? ` · ${student.admissionNumber}` : ""}
           </p>
         </div>
@@ -72,7 +73,7 @@ export function SchoolStudentProfilePage({
 
       <section className={`${glassPanel} grid grid-cols-1 gap-4 md:grid-cols-2`}>
         <Fact label="Admission no." value={student.admissionNumber} />
-        <Fact label="Student no." value={student.studentNumber} />
+        <Fact label="Student no." value={formatCompactStudentNumber(student.studentNumber)} />
         <Fact label="Date of birth" value={student.dateOfBirth} />
         <Fact label="Gender" value={student.gender} />
         <Fact label="Nationality" value={student.nationality} />

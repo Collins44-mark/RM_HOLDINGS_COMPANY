@@ -6,14 +6,29 @@ export type FeePaymentRow = {
   amount: number;
   method: "CASH" | "MOBILE_MONEY" | "BANK";
   paymentDate: string;
+  recordedAt: string;
   reference: string;
   notes: string;
   status: "pending" | "posted";
+  chargeId: string | null;
+  academicYearName: string;
   recordedByName: string;
   recordedById: string | null;
   verifiedByName: string;
   verifiedById: string | null;
   verifiedAt: string | null;
+};
+
+export type FeeObligationRow = {
+  enrollmentId: string;
+  chargeId: string | null;
+  description: string;
+  academicYearId: string;
+  academicYearName: string;
+  billed: number | null;
+  paid: number;
+  remaining: number | null;
+  status: FeeAccountStatus;
 };
 
 export type StudentFeeAccount = {
@@ -22,6 +37,7 @@ export type StudentFeeAccount = {
   studentNumber: string;
   studentName: string;
   admissionNumber: string;
+  studentStatus: string;
   academicYearId: string;
   academicYearName: string;
   termId: string | null;
@@ -31,6 +47,7 @@ export type StudentFeeAccount = {
   levelName: string;
   classId: string;
   className: string;
+  classCode: string;
   streamId: string;
   streamName: string;
   feeStructureId: string | null;
@@ -38,7 +55,11 @@ export type StudentFeeAccount = {
   annualAmount: number | null;
   paidAmount: number;
   outstandingAmount: number | null;
+  totalBilled: number | null;
+  totalPaid: number;
+  totalOutstanding: number | null;
   status: FeeAccountStatus;
+  obligations: FeeObligationRow[];
   payments: FeePaymentRow[];
 };
 
@@ -52,6 +73,7 @@ export type FeeAccountListRow = {
   levelName: string;
   classId: string;
   className: string;
+  classCode: string;
   streamName: string;
   academicYearId: string;
   academicYearName: string;
@@ -60,6 +82,7 @@ export type FeeAccountListRow = {
   currentTermAmount: number | null;
   paidAmount: number;
   outstandingAmount: number | null;
+  totalOutstanding: number | null;
   status: FeeAccountStatus;
   chargeId: string | null;
 };

@@ -10,6 +10,10 @@ export function formatTzs(amount: number) {
   return `${currency} ${formatter.format(Math.round(amount))}`;
 }
 
+export function formatAmount(amount: number) {
+  return formatter.format(Math.round(amount));
+}
+
 export function asNumber(value: { toString(): string } | number | string | null | undefined) {
   if (value == null) return 0;
   if (typeof value === "number") return value;

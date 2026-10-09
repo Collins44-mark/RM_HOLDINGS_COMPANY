@@ -9,6 +9,7 @@ import { glassPanel, primaryButton, StatusPill } from "@/components/supermarket/
 import { SchoolIconWell } from "@/components/school/school-ui";
 import { UserPlus } from "lucide-react";
 import { formatTzs } from "@/lib/format/currency";
+import { formatCompactStudentNumber } from "@/lib/school/student-number";
 
 function Fact({ label, value }: { label: string; value: string }) {
   return (
@@ -102,7 +103,7 @@ export function SchoolAdmissionDetailPage({
         <Fact label="Level" value={admission.levelName} />
         <Fact label="Class" value={admission.className} />
         <Fact label="Stream" value={admission.streamName} />
-        <Fact label="Student number" value={admission.studentNumber ?? ""} />
+        <Fact label="Student number" value={admission.studentNumber ? formatCompactStudentNumber(admission.studentNumber) : ""} />
       </section>
 
       <section className={`${glassPanel} space-y-3`}>
