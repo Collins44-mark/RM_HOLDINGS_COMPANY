@@ -3,9 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { assignSchoolStudentStreamAction, type StudentProfile } from "@/actions/school/students";
-import { glassPanel, inputClass, primaryButton, StatusPill } from "@/components/supermarket/purchasing-ui";
+import { assignSchoolStudentStreamAction, type StudentGuardianRow, type StudentProfile } from "@/actions/school/students";
+import { glassPanel, inputClass, primaryButton, secondaryButton, StatusPill } from "@/components/supermarket/purchasing-ui";
 import { formatCompactStudentNumber } from "@/lib/school/student-number";
+import { SchoolGuardianDrawer } from "@/components/school/SchoolGuardianDrawer";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
 
 function Fact({ label, value }: { label: string; value: string }) {
@@ -20,11 +21,13 @@ function Fact({ label, value }: { label: string; value: string }) {
 export function SchoolStudentProfilePage({
   student,
   canManage = false,
+  canEditGuardians = false,
   error,
   pending = false,
 }: {
   student: StudentProfile | null;
   canManage?: boolean;
+  canEditGuardians?: boolean;
   error: string | null;
   pending?: boolean;
 }) {
@@ -82,23 +85,82 @@ export function SchoolStudentProfilePage({
         <Fact label="Address" value={student.address} />
       </section>
 
-      <section className={`${glassPanel} space-y-3`}>
-        <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Guardians</h2>
-        {student.guardians.length ? (
-          <ul className="space-y-2">
-            {student.guardians.map((guardian) => (
-              <li key={guardian.id} className="text-[13.5px] text-navy">
+      <StudentGuardians studentId={student.id} guardians={student.guardians} canEdit={canEditGuardians} />
+    </div>
+  );
+}
+
+function StudentGuardians({
+  studentId,
+  guardians,
+  canEdit,
+}: {
+  studentId: string;
+  guardians: StudentGuardianRow[];
+  canEdit: boolean;
+}) {
+  const [rows, setRows] = useState(guardians);
+  const [editing, setEditing] = useState<StudentGuardianRow | null>(null);
+
+  return (
+    <section className={`${glassPanel} space-y-3`}>
+      <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Guardians</h2>
+      {rows.length ? (
+        <ul className="space-y-2">
+          {rows.map((guardian) => (
+            <li key={guardian.id} className="flex flex-wrap items-center justify-between gap-2 text-[13.5px] text-navy">
+              <span>
                 <span className="font-medium">{guardian.fullName}</span>
                 {guardian.relationship ? ` · ${guardian.relationship}` : ""}
                 {guardian.phone ? ` · ${guardian.phone}` : ""}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-[13.5px] text-slate-500">No guardian is linked to this student.</p>
-        )}
-      </section>
-    </div>
+              </span>
+              {canEdit ? (
+                <button type="button" className={secondaryButton} onClick={() => setEditing(guardian)}>
+                  Edit
+                </button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-[13.5px] text-slate-500">No guardian is linked to this student.</p>
+      )}
+      {editing ? (
+        <SchoolGuardianDrawer
+          guardian={{
+            id: editing.id,
+            fullName: editing.fullName,
+            phone: editing.phone,
+            email: editing.email,
+            address: editing.address,
+            occupation: editing.occupation,
+            relationship: editing.relationship,
+            studentId,
+          }}
+          mode="edit"
+          onClose={() => setEditing(null)}
+          onSaved={(next) => {
+            const link = next.students.find((item) => item.studentId === studentId);
+            setRows((current) =>
+              current.map((row) =>
+                row.id === next.id
+                  ? {
+                      ...row,
+                      fullName: next.fullName,
+                      phone: next.phone,
+                      email: next.email,
+                      address: next.address,
+                      occupation: next.occupation,
+                      relationship: link?.relationship ?? row.relationship,
+                    }
+                  : row,
+              ),
+            );
+            setEditing(null);
+          }}
+        />
+      ) : null}
+    </section>
   );
 }
 

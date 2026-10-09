@@ -69,7 +69,8 @@ export function SchoolPagination({
       </p>
       <div className="flex flex-wrap items-center gap-1">
         {onPageSize ? (
-          <div className="mr-2 flex flex-wrap gap-1">
+          <div className="mr-2 flex flex-wrap items-center gap-1">
+            <span className="mr-1 text-[11.5px] font-medium tracking-[-0.01em] text-slate-400">Rows per page</span>
             {SCHOOL_PAGE_SIZES.map((size) => (
               <button
                 key={size}

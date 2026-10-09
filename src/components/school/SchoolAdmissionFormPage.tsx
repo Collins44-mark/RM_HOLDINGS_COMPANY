@@ -290,6 +290,8 @@ export function SchoolAdmissionFormPage({
             fullName: form.guardianFullName,
             phone: form.guardianPhone,
             email: form.guardianEmail,
+            address: form.guardianAddress,
+            occupation: form.guardianOccupation,
             students: [
               {
                 studentId: result.studentId,
@@ -297,6 +299,7 @@ export function SchoolAdmissionFormPage({
                 levelName,
                 className,
                 streamName: streamName === "—" ? "" : streamName,
+                relationship: form.guardianRelationship,
               },
             ],
           });

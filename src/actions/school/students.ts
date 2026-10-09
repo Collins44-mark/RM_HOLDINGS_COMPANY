@@ -42,6 +42,8 @@ export type StudentGuardianRow = {
   relationship: string;
   phone: string;
   email: string;
+  address: string;
+  occupation: string;
   isPrimary: boolean;
 };
 
@@ -80,6 +82,11 @@ function str(value: unknown) {
 function canManage(user: Awaited<ReturnType<typeof requireAuth>>) {
   if (isOwnerRole(user.roleCode)) return true;
   return user.permissions.some((matcher) => matcher !== "*" && matchPermission(MANAGE, matcher));
+}
+
+function canEditGuardians(user: Awaited<ReturnType<typeof requireAuth>>) {
+  if (isOwnerRole(user.roleCode)) return true;
+  return user.permissions.some((matcher) => matcher !== "*" && matchPermission("school.parents.manage", matcher));
 }
 
 function searchNeedle(value: unknown) {
@@ -231,7 +238,7 @@ export async function getSchoolStudentAction(id: string) {
         .maybeSingle(),
       supabase
         .from("sch_student_guardians")
-        .select("relationship, is_primary, guardian_id, sch_guardians(id, full_name, phone, email)")
+        .select("relationship, is_primary, guardian_id, sch_guardians(id, full_name, phone, email, address, occupation)")
         .eq("business_unit_id", businessUnitId)
         .eq("student_id", studentId),
       loadSchoolStructureCatalog(ctx),
@@ -260,13 +267,22 @@ export async function getSchoolStudentAction(id: string) {
       : lookup.placementByClass(classId) ?? classFallback.get(classId);
     const streams = classId ? catalog.streams.filter((row) => row.classId === classId) : [];
     const guardians: StudentGuardianRow[] = (linksRes.data ?? []).map((link) => {
-      const guardian = link.sch_guardians as { id?: string; full_name?: string; phone?: string; email?: string } | null;
+      const guardian = link.sch_guardians as {
+        id?: string;
+        full_name?: string;
+        phone?: string;
+        email?: string;
+        address?: string;
+        occupation?: string;
+      } | null;
       return {
         id: str(guardian?.id ?? link.guardian_id),
         fullName: str(guardian?.full_name),
         relationship: str(link.relationship),
         phone: str(guardian?.phone),
         email: str(guardian?.email),
+        address: str(guardian?.address),
+        occupation: str(guardian?.occupation),
         isPrimary: Boolean(link.is_primary),
       };
     });
@@ -297,7 +313,11 @@ export async function getSchoolStudentAction(id: string) {
       attendanceEligible: str(row.status) === "active" && str(enrollment?.status) === "active",
       guardians,
     };
-    return { ok: true as const, student: profile, capabilities: { canView: true, canManage: canManage(user) } };
+    return {
+      ok: true as const,
+      student: profile,
+      capabilities: { canView: true, canManage: canManage(user), canEditGuardians: canEditGuardians(user) },
+    };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
   }

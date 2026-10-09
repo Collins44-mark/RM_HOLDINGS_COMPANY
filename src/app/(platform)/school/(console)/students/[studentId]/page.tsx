@@ -14,6 +14,7 @@ export default async function SchoolStudentProfileRoute({
     <SchoolStudentProfilePage
       student={result.ok ? result.student : null}
       canManage={result.ok ? result.capabilities.canManage : false}
+      canEditGuardians={result.ok ? result.capabilities.canEditGuardians : false}
       error={result.ok ? null : result.error}
     />
   );

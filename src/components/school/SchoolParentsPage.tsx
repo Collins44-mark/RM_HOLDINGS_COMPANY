@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { UsersRound } from "lucide-react";
 import { listSchoolGuardiansAction, type GuardianListRow } from "@/actions/school/parents";
+import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
 import { glassPanel, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { SchoolIconWell } from "@/components/school/school-ui";
+import { SchoolGuardianDrawer } from "@/components/school/SchoolGuardianDrawer";
 import { SchoolPagination, replaceSchoolPageParam } from "@/components/school/SchoolPagination";
 import { SchoolPlacementFilterBar, type PlacementChoice } from "@/components/school/SchoolPlacementFilterBar";
 import { consumeGuardianFlash } from "@/lib/school/admission-flash";
-import { parseSchoolPage, parseSchoolPageSize, SCHOOL_PAGE_SIZE, type SchoolPageMeta } from "@/lib/school/pagination";
+import { parseSchoolPage, parseSchoolPageSize, SCHOOL_PAGE_SIZE, schoolPageMeta, type SchoolPageMeta } from "@/lib/school/pagination";
 import { cn } from "@/lib/cn";
 
 function readParentsUrl() {
@@ -23,6 +26,12 @@ function readParentsUrl() {
   };
 }
 
+function stacked(values: string[]) {
+  const next = values.filter(Boolean);
+  if (!next.length) return "—";
+  return next.join("\n");
+}
+
 export function SchoolParentsPage({
   guardians: initialRows,
   page: initialPage,
@@ -34,6 +43,7 @@ export function SchoolParentsPage({
   classId: initialClassId,
   streamId: initialStreamId,
   pageSize: initialPageSize,
+  canManage = false,
   error,
   pending = false,
 }: {
@@ -47,6 +57,7 @@ export function SchoolParentsPage({
   classId: string;
   streamId: string;
   pageSize: number;
+  canManage?: boolean;
   error: string | null;
   pending?: boolean;
 }) {
@@ -60,12 +71,14 @@ export function SchoolParentsPage({
   const [levels] = useState(initialLevels);
   const [classes, setClasses] = useState<PlacementChoice[]>(initialClasses);
   const [streams, setStreams] = useState<PlacementChoice[]>(initialStreams);
+  const [manage, setManage] = useState(canManage);
   const [requestedLevelId, setRequestedLevelId] = useState<string | null>(null);
   const [requestedClassId, setRequestedClassId] = useState<string | null>(null);
   const [requestedStreamId, setRequestedStreamId] = useState<string | null>(null);
   const [requestedSize, setRequestedSize] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [paging, setPaging] = useState(false);
+  const [drawer, setDrawer] = useState<{ row: GuardianListRow; mode: "view" | "edit" } | null>(null);
   const reqId = useRef(0);
   const searchTimer = useRef<number | null>(null);
 
@@ -93,6 +106,8 @@ export function SchoolParentsPage({
     setRequestedClassId(nextClass);
     setRequestedStreamId(nextStream);
     setRequestedSize(nextSize);
+    setPageSize(nextSize);
+    setPage(schoolPageMeta(nextPage, page.total, nextSize));
     setPaging(true);
     void listSchoolGuardiansAction({
       page: nextPage,
@@ -122,6 +137,7 @@ export function SchoolParentsPage({
       setPageSize(result.page.pageSize);
       setClasses(result.classes);
       setStreams(result.streams);
+      setManage(result.capabilities.canManage);
       if (!options.skipUrl) syncUrl(result.page.page, nextQ, nextLevel, nextClass, nextStream, result.page.pageSize);
     });
   }
@@ -180,6 +196,7 @@ export function SchoolParentsPage({
   }, []);
 
   const waiting = pending || paging;
+  const filtered = Boolean(q || levelId || classId || streamId);
   const showEmpty = rows.length === 0 && !waiting && !error;
 
   return (
@@ -198,7 +215,7 @@ export function SchoolParentsPage({
         classId={classId}
         streamId={streamId}
         search={q}
-        searchPlaceholder="Search name, phone, or email"
+        searchPlaceholder="Search guardian, student, phone, email, or number"
         pendingLevelId={requestedLevelId}
         pendingClassId={requestedClassId}
         pendingStreamId={requestedStreamId}
@@ -209,18 +226,22 @@ export function SchoolParentsPage({
         onSearch={(value) => {
           setQ(value);
           if (searchTimer.current) window.clearTimeout(searchTimer.current);
-          searchTimer.current = window.setTimeout(() => load({ page: 1, q: value }), 280);
+          searchTimer.current = window.setTimeout(() => load({ page: 1, q: value }), 220);
         }}
         onSearchSubmit={() => load({ page: 1, q })}
       />
       {showEmpty ? (
         <section className={`${glassPanel} flex flex-col items-start gap-3 py-10`}>
           <SchoolIconWell icon={UsersRound} />
-          <h2 className="text-[18px] font-semibold tracking-[-0.04em] text-navy">No guardians yet</h2>
-          <p className="text-[13.5px] text-slate-500">Complete an admission to add a guardian.</p>
+          <h2 className="text-[18px] font-semibold tracking-[-0.04em] text-navy">
+            {filtered ? "No matching guardians" : "No guardians yet"}
+          </h2>
+          <p className="text-[13.5px] text-slate-500">
+            {filtered ? "No guardians match this search or placement filter." : "Complete an admission to add a guardian."}
+          </p>
         </section>
       ) : (
-        <section className={cn(glassPanel, paging && "opacity-80")}>
+        <section className={cn(glassPanel, paging && "opacity-80 transition-opacity duration-200")}>
           <div className={tableScrollClass}>
             <table className="w-full min-w-[860px] text-left">
               <thead>
@@ -232,23 +253,52 @@ export function SchoolParentsPage({
                   <th className="px-4 py-3 font-semibold">Level</th>
                   <th className="px-4 py-3 font-semibold">Class</th>
                   <th className="px-4 py-3 font-semibold">Stream</th>
+                  <th className="px-4 py-3 font-semibold" />
                 </tr>
               </thead>
               <tbody>
-                {rows.flatMap((row) => {
-                  const links = row.students.length ? row.students : [{ studentId: "", name: "", levelName: "", className: "", streamName: "" }];
-                  return links.map((student, index) => (
-                    <tr key={`${row.id}-${student.studentId || "none"}-${index}`} className="border-t border-navy/5 text-[13.5px] text-navy">
-                      <td className="px-4 py-3 font-medium">{row.fullName}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">{row.phone || "—"}</td>
-                      <td className="px-4 py-3">{row.email || "—"}</td>
-                      <td className="px-4 py-3">{student.name || "—"}</td>
-                      <td className="px-4 py-3">{student.levelName || "—"}</td>
-                      <td className="px-4 py-3">{student.className || "—"}</td>
-                      <td className="px-4 py-3">{student.streamName || "—"}</td>
-                    </tr>
-                  ));
-                })}
+                {rows.map((row) => (
+                  <tr key={row.id} className="border-t border-navy/5 text-[13.5px] text-navy align-top">
+                    <td className="px-4 py-3 font-medium">{row.fullName}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{row.phone || "—"}</td>
+                    <td className="px-4 py-3">{row.email || "—"}</td>
+                    <td className="px-4 py-3">
+                      {row.students.length ? (
+                        <div className="space-y-1">
+                          {row.students.map((student, index) =>
+                            student.studentId ? (
+                              <Link
+                                key={`${student.studentId}-${index}`}
+                                href={`/school/students/${student.studentId}`}
+                                className="block hover:underline"
+                              >
+                                {student.name || "Student"}
+                              </Link>
+                            ) : (
+                              <span key={`${student.name}-${index}`} className="block">
+                                {student.name || "—"}
+                              </span>
+                            ),
+                          )}
+                        </div>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="whitespace-pre-line px-4 py-3">{stacked(row.students.map((item) => item.levelName))}</td>
+                    <td className="whitespace-pre-line px-4 py-3">{stacked(row.students.map((item) => item.className))}</td>
+                    <td className="whitespace-pre-line px-4 py-3">{stacked(row.students.map((item) => item.streamName))}</td>
+                    <td className="px-4 py-3">
+                      <CompactActionsMenu
+                        ariaLabel={`Actions for ${row.fullName}`}
+                        items={[
+                          { label: "View", onSelect: () => setDrawer({ row, mode: "view" }) },
+                          ...(manage ? [{ label: "Edit", onSelect: () => setDrawer({ row, mode: "edit" }) }] : []),
+                        ]}
+                      />
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -257,11 +307,22 @@ export function SchoolParentsPage({
             total={page.total}
             pageSize={pageSize}
             pendingPageSize={requestedSize}
-            onPage={(next) => load({ page: next })}
+            onPage={(next) => load({ page: next, pageSize })}
             onPageSize={(size) => load({ page: 1, pageSize: size })}
           />
         </section>
       )}
+      {drawer ? (
+        <SchoolGuardianDrawer
+          guardian={drawer.row}
+          mode={drawer.mode}
+          onClose={() => setDrawer(null)}
+          onSaved={(next) => {
+            setRows((current) => current.map((row) => (row.id === next.id ? next : row)));
+            setDrawer(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

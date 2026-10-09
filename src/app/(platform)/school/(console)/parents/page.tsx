@@ -19,6 +19,7 @@ export default async function SchoolParentsRoute() {
       classId=""
       streamId=""
       pageSize={result.ok ? result.page.pageSize : 20}
+      canManage={result.ok ? result.capabilities.canManage : false}
       error={result.ok ? null : result.error}
     />
   );
