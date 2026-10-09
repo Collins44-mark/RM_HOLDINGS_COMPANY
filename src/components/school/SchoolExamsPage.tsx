@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   createSchoolExamAction,
@@ -16,6 +16,7 @@ import {
 } from "@/actions/school/exams";
 import { SCHOOL_EXAM_TYPES } from "@/lib/school/exam-types";
 import {
+  examGradeFromAverage,
   examMarkStatus,
   formatExamAverage,
   formatExamPosition,
@@ -24,6 +25,7 @@ import {
   studentExamAverage,
   type ExamResultSort,
 } from "@/lib/school/exam-ranking";
+import { writeExamsListSnapshot } from "@/lib/school/exam-flash";
 import { downloadExamResultsPdf } from "@/lib/school/exam-results-pdf";
 import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
 import {
@@ -89,6 +91,12 @@ export function SchoolExamsPage({
   const detailSeq = useRef(0);
   const lock = useRef(false);
   const debounce = useRef<number | null>(null);
+  const detailCache = useRef(new Map<string, SchoolExamDetail>());
+  const detailInflight = useRef(new Map<string, Promise<Awaited<ReturnType<typeof getSchoolExamDetailAction>>>>());
+
+  useEffect(() => {
+    if (workspace.exams.length) writeExamsListSnapshot(workspace);
+  }, [workspace]);
 
   function load(next: { page?: number; pageSize?: number; q?: string; classId?: string }) {
     const token = ++seq.current;
@@ -111,11 +119,32 @@ export function SchoolExamsPage({
     });
   }
 
+  function requestExamDetail(examId: string) {
+    const cached = detailCache.current.get(examId);
+    if (cached) return Promise.resolve({ ok: true as const, detail: cached });
+    const inflight = detailInflight.current.get(examId);
+    if (inflight) return inflight;
+    const request = getSchoolExamDetailAction(examId).then((result) => {
+      detailInflight.current.delete(examId);
+      if (result.ok) detailCache.current.set(examId, result.detail);
+      return result;
+    });
+    detailInflight.current.set(examId, request);
+    return request;
+  }
+
   function openExam(exam: SchoolExamRow) {
     const token = ++detailSeq.current;
+    const cached = detailCache.current.get(exam.id);
+    if (cached) {
+      setOpeningId(null);
+      setError(null);
+      setDetail(cached);
+      return;
+    }
     setOpeningId(exam.id);
     setError(null);
-    void getSchoolExamDetailAction(exam.id).then((result) => {
+    void requestExamDetail(exam.id).then((result) => {
       if (token !== detailSeq.current) return;
       setOpeningId(null);
       if (!result.ok) {
@@ -176,6 +205,7 @@ export function SchoolExamsPage({
                   setError(next.error);
                   return;
                 }
+                detailCache.current.set(examId, next.detail);
                 setDetail(next.detail);
               });
             });
@@ -195,7 +225,10 @@ export function SchoolExamsPage({
               }
               void getSchoolExamDetailAction(examId).then((next) => {
                 if (token !== detailSeq.current) return;
-                if (next.ok) setDetail(next.detail);
+                if (next.ok) {
+                  detailCache.current.set(examId, next.detail);
+                  setDetail(next.detail);
+                }
               });
               load({ page: workspace.page.page });
             });
@@ -238,7 +271,7 @@ export function SchoolExamsPage({
               <h2 className="mt-3 text-[18px] font-semibold tracking-[-0.04em] text-navy">No exams yet</h2>
               <p className="mt-1 text-[13.5px] text-slate-500">No exam records have been created.</p>
             </div>
-          ) : (
+          ) : workspace.exams.length === 0 ? null : (
             <div className={tableScrollClass}>
               <table className="min-w-full text-left">
                 <thead className={tableHead}>
@@ -266,10 +299,13 @@ export function SchoolExamsPage({
                       <td className="px-4 py-3 text-right">
                         <CompactActionsMenu
                           ariaLabel={`${exam.name} actions`}
+                          onOpen={() => {
+                            void requestExamDetail(exam.id);
+                          }}
                           items={[
                             {
                               label: openingId === exam.id ? "Opening…" : "Open results",
-                              disabled: Boolean(openingId),
+                              disabled: Boolean(openingId) && openingId !== exam.id,
                               onSelect: () => openExam(exam),
                             },
                           ]}
@@ -636,6 +672,7 @@ function ExamResultsPanel({
     return ordered.map((row) => ({
       studentName: row.studentName,
       marks: row.marks,
+      grade: examGradeFromAverage(row.average, detail.exam.maxMarks, detail.gradingBands ?? []),
       average: row.average,
       position: positions.get(row.studentId) ?? null,
     }));
@@ -727,19 +764,22 @@ function ExamResultsPanel({
             <table className="min-w-full text-left">
               <thead className={tableHead}>
                 <tr>
+                  <th className="px-3 py-2.5 text-right whitespace-nowrap">No.</th>
                   <th className="sticky left-0 z-[1] bg-[#eef3f8]/95 px-3 py-2.5">Student</th>
                   {detail.subjects.map((subject) => (
                     <th key={subject.id} className="px-2 py-2.5 text-right whitespace-nowrap">
                       {subject.name}
                     </th>
                   ))}
-                  <th className="px-2 py-2.5 text-right">Avg</th>
+                  <th className="px-2 py-2.5 text-right">Grade</th>
+                  <th className="px-2 py-2.5 text-right">Avg.</th>
                   <th className="px-2 py-2.5 text-right">Position</th>
                 </tr>
               </thead>
               <tbody>
-                {orderedPreview.map((row) => (
+                {orderedPreview.map((row, index) => (
                   <tr key={row.student.studentId} className="border-t border-black/[0.04] text-[13px] text-navy">
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">{index + 1}</td>
                     <td className="sticky left-0 z-[1] bg-white/92 px-3 py-2 font-medium whitespace-nowrap">
                       {row.student.name}
                     </td>
@@ -764,6 +804,9 @@ function ExamResultsPanel({
                         </td>
                       );
                     })}
+                    <td className="px-2 py-2 text-right tabular-nums text-slate-600">
+                      {examGradeFromAverage(row.average, detail.exam.maxMarks, detail.gradingBands ?? [])}
+                    </td>
                     <td className="px-2 py-2 text-right tabular-nums text-slate-600">{formatExamAverage(row.average)}</td>
                     <td className="px-2 py-2 text-right tabular-nums text-slate-600">
                       {formatExamPosition(previewPositions.get(row.student.studentId) ?? null)}

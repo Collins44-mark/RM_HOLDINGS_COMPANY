@@ -13,6 +13,7 @@ import { formatExamAverage, formatExamPosition, roundExamAverage } from "@/lib/s
 export type ExamResultsPdfRow = {
   studentName: string;
   marks: Array<number | null>;
+  grade: string;
   average: number | null;
   position: number | null;
 };
@@ -184,10 +185,11 @@ export function downloadExamResultsPdf(input: {
   const schoolName = pdfAscii(input.schoolName).trim() || "School Management";
   const subjectCount = detail.subjects.length;
   const noWidth = 28;
+  const gradeWidth = 36;
   const avgWidth = 38;
   const posWidth = 44;
-  const studentWidth = Math.min(168, Math.max(108, CONTENT_W * 0.2 - Math.min(subjectCount, 10) * 2));
-  const remaining = Math.max(80, CONTENT_W - noWidth - studentWidth - avgWidth - posWidth);
+  const studentWidth = Math.min(160, Math.max(102, CONTENT_W * 0.19 - Math.min(subjectCount, 10) * 2));
+  const remaining = Math.max(80, CONTENT_W - noWidth - studentWidth - gradeWidth - avgWidth - posWidth);
   const subjectWidth = subjectCount > 0 ? remaining / subjectCount : remaining;
   const headerSize = subjectWidth < 42 ? 6.5 : 7;
 
@@ -208,6 +210,7 @@ export function downloadExamResultsPdf(input: {
     { key: "no", label: "No.", width: noWidth, align: "center", headerLines: ["No."] },
     { key: "student", label: "Student", width: studentWidth, align: "left", headerLines: ["Student"] },
     ...subjectColumns,
+    { key: "grade", label: "Grade", width: gradeWidth, align: "center", headerLines: ["Grade"] },
     { key: "avg", label: "Avg.", width: avgWidth, align: "center", headerLines: ["Avg."] },
     { key: "position", label: "Position", width: posWidth, align: "center", headerLines: ["Position"] },
   ];
@@ -216,6 +219,7 @@ export function downloadExamResultsPdf(input: {
     const next: Record<string, string> = {
       no: String(index + 1),
       student: clipToWidth(row.studentName, studentWidth, 8),
+      grade: row.grade,
       avg: formatExamAverage(row.average),
       position: formatExamPosition(row.position),
     };
@@ -229,6 +233,7 @@ export function downloadExamResultsPdf(input: {
   const averageRow: Record<string, string> = {
     no: "",
     student: "Class Average",
+    grade: "",
     avg: formatExamAverage(averages.overall),
     position: "",
   };
@@ -349,7 +354,12 @@ export function downloadExamResultsPdf(input: {
       dividerX += columns[index].width;
       const currentKey = columns[index].key;
       const nextKey = columns[index + 1].key;
-      const strong = currentKey === "student" || currentKey === "avg" || nextKey === "avg";
+      const strong =
+        currentKey === "student" ||
+        currentKey === "grade" ||
+        currentKey === "avg" ||
+        nextKey === "grade" ||
+        nextKey === "avg";
       ops.push(`${STROKE} RG`);
       ops.push(pdfLine(dividerX, tableBottom, dividerX, tableTop, strong ? 0.55 : 0.32));
     }

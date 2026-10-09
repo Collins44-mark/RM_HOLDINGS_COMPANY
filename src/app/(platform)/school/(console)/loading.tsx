@@ -14,6 +14,7 @@ import { SchoolStudentFeeProfilePage } from "@/components/school/SchoolStudentFe
 import { SchoolExpensesPage } from "@/components/school/SchoolExpensesPage";
 import { schoolPageMeta } from "@/lib/school/pagination";
 import { peekAdmissionView, peekAdmissionsListSnapshot, peekFeeView, peekFeesListSnapshot } from "@/lib/school/admission-flash";
+import { peekExamsListSnapshot } from "@/lib/school/exam-flash";
 
 const EMPTY_OPTIONS = {
   years: [] as Array<{ id: string; name: string; isCurrent: boolean }>,
@@ -92,7 +93,8 @@ export default function SchoolConsoleLoading() {
     return <SchoolSubjectsPage workspace={null} error={null} pending />;
   }
   if (pathname === "/school/exams-results" || pathname === "/school/exams") {
-    return <SchoolExamsPage workspace={null} error={null} pending />;
+    const snapshot = typeof window !== "undefined" ? peekExamsListSnapshot() : null;
+    return <SchoolExamsPage workspace={snapshot} error={null} pending={!snapshot} />;
   }
   if (pathname === "/school/fees") {
     const snapshot = typeof window !== "undefined" ? peekFeesListSnapshot() : null;

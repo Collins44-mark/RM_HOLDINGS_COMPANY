@@ -62,3 +62,24 @@ export function rankExamAverages(rows: Array<{ id: string; average: number | nul
 export function formatExamPosition(position: number | null) {
   return position == null ? "Pending" : String(position);
 }
+
+export type ExamGradingBand = {
+  grade: string;
+  minMark: number;
+  maxMark: number;
+  sortOrder: number;
+};
+
+/** Match the exam average to the current scale’s saved bands (same 0–100% mapping as mark save). */
+export function examGradeFromAverage(
+  average: number | null,
+  maxMarks: number,
+  bands: ExamGradingBand[],
+) {
+  if (average == null || !bands.length || !(maxMarks > 0)) return "";
+  const percent = Math.round((average / maxMarks) * 10000) / 100;
+  const match = bands
+    .filter((band) => percent >= band.minMark && percent <= band.maxMark)
+    .sort((a, b) => a.sortOrder - b.sortOrder)[0];
+  return match?.grade ?? "";
+}

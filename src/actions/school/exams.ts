@@ -15,6 +15,7 @@ import {
 import { parseSchoolPage, parseSchoolPageSize, schoolPageMeta, schoolPageRange } from "@/lib/school/pagination";
 import { loadSchoolStructureCatalog, type SchoolStructureCatalog } from "@/lib/school/structure-catalog";
 import { SCHOOL_EXAM_TYPES, type SchoolExamStatus, type SchoolExamType } from "@/lib/school/exam-types";
+import type { ExamGradingBand } from "@/lib/school/exam-ranking";
 
 const VIEW = "school.exams.view";
 const MANAGE = "school.exams.manage";
@@ -65,6 +66,7 @@ export type SchoolExamDetail = {
   subjects: SchoolExamSubjectOption[];
   students: SchoolExamStudentRow[];
   marks: SchoolExamMark[];
+  gradingBands: ExamGradingBand[];
   gradingConfigured: boolean;
   gradingMessage: string | null;
 };
@@ -294,75 +296,82 @@ export async function getSchoolExamDetailAction(examId: string) {
     const capabilities = caps(user);
     const id = str(examId);
     if (!id) throw new SchoolError("Exam was not found.", "NOT_FOUND");
-    const catalog = await loadSchoolStructureCatalog({ supabase, businessUnitId, userId: user.id });
-    const { data: examRow, error: examError } = await supabase
-      .from("sch_exams")
-      .select("id, name, exam_type, exam_date, status, max_marks, class_id, academic_year_id, term_id")
-      .eq("id", id)
-      .eq("business_unit_id", businessUnitId)
-      .maybeSingle();
-    if (examError && !isSchoolEmptyRead(examError)) {
-      if (missingExamSchema(examError)) throw new SchoolError("Exams aren’t available on this database yet.", "NOT_CONFIGURED");
-      mapSchoolDbError(examError, "load");
-    }
-    if (!examRow) throw new SchoolError("Exam was not found.", "NOT_FOUND");
-    if (examRow.status !== "published" && !capabilities.canEnter && !capabilities.canManage && !capabilities.canPublish) {
-      throw new SchoolError("This exam has not been published.", "UNAUTHORIZED");
-    }
 
-    const [papersRes, enrollRes, scaleRes, profileRes, buRes] = await Promise.all([
-      supabase.from("sch_exam_papers").select("id, subject_id").eq("exam_id", id).eq("business_unit_id", businessUnitId),
+    type StudentEmbed = {
+      id: string;
+      admission_number: string | null;
+      first_name: string;
+      middle_name: string | null;
+      last_name: string;
+    };
+
+    const [examRes, catalog, papersRes, marksRes, scaleRes, bandsRes, profileRes, buRes] = await Promise.all([
       supabase
-        .from("sch_student_enrollments")
-        .select("id, student_id")
+        .from("sch_exams")
+        .select("id, name, exam_type, exam_date, status, max_marks, class_id, academic_year_id, term_id")
+        .eq("id", id)
         .eq("business_unit_id", businessUnitId)
-        .eq("class_id", String(examRow.class_id))
-        .eq("academic_year_id", String(examRow.academic_year_id))
-        .eq("status", "active"),
+        .maybeSingle(),
+      loadSchoolStructureCatalog({ supabase, businessUnitId, userId: user.id }),
+      supabase.from("sch_exam_papers").select("subject_id").eq("exam_id", id).eq("business_unit_id", businessUnitId),
+      supabase
+        .from("sch_exam_results")
+        .select("student_id, subject_id, enrollment_id, marks, grade")
+        .eq("exam_id", id)
+        .eq("business_unit_id", businessUnitId),
       supabase
         .from("sch_grading_scales")
         .select("id")
         .eq("business_unit_id", businessUnitId)
         .eq("is_current", true)
         .maybeSingle(),
+      supabase
+        .from("sch_grading_bands")
+        .select("scale_id, grade, min_mark, max_mark, sort_order")
+        .eq("business_unit_id", businessUnitId)
+        .order("sort_order"),
       supabase.from("sch_school_profiles").select("name").eq("business_unit_id", businessUnitId).maybeSingle(),
       supabase.from("business_units").select("name").eq("id", businessUnitId).maybeSingle(),
     ]);
+
+    const examError = examRes.error;
+    if (examError && !isSchoolEmptyRead(examError)) {
+      if (missingExamSchema(examError)) throw new SchoolError("Exams aren’t available on this database yet.", "NOT_CONFIGURED");
+      mapSchoolDbError(examError, "load");
+    }
+    const examRow = examRes.data;
+    if (!examRow) throw new SchoolError("Exam was not found.", "NOT_FOUND");
+    if (examRow.status !== "published" && !capabilities.canEnter && !capabilities.canManage && !capabilities.canPublish) {
+      throw new SchoolError("This exam has not been published.", "UNAUTHORIZED");
+    }
     if (papersRes.error && !isSchoolUnconfiguredRead(papersRes.error)) mapSchoolDbError(papersRes.error, "load");
-    if (enrollRes.error && !isSchoolUnconfiguredRead(enrollRes.error)) mapSchoolDbError(enrollRes.error, "load");
+    if (marksRes.error && !isSchoolUnconfiguredRead(marksRes.error)) mapSchoolDbError(marksRes.error, "load");
+    if (bandsRes.error && !isSchoolUnconfiguredRead(bandsRes.error)) mapSchoolDbError(bandsRes.error, "load");
 
     const paperSubjectIds = [...new Set((papersRes.data ?? []).map((row) => String(row.subject_id)))];
-    const studentIds = [...new Set((enrollRes.data ?? []).map((row) => String(row.student_id)))];
-    const [subjectRows, studentRows] = await Promise.all([
+    const [enrollRes, subjectRows] = await Promise.all([
+      supabase
+        .from("sch_student_enrollments")
+        .select("id, student_id, sch_students!inner(id, admission_number, first_name, middle_name, last_name)")
+        .eq("business_unit_id", businessUnitId)
+        .eq("class_id", String(examRow.class_id))
+        .eq("academic_year_id", String(examRow.academic_year_id))
+        .eq("status", "active"),
       paperSubjectIds.length
         ? supabase.from("sch_subjects").select("id, name").eq("business_unit_id", businessUnitId).in("id", paperSubjectIds)
         : Promise.resolve({ data: [] as Array<{ id: string; name: string }>, error: null }),
-      studentIds.length
-        ? supabase
-            .from("sch_students")
-            .select("id, admission_number, first_name, middle_name, last_name")
-            .eq("business_unit_id", businessUnitId)
-            .in("id", studentIds)
-        : Promise.resolve({
-            data: [] as Array<{
-              id: string;
-              admission_number: string | null;
-              first_name: string;
-              middle_name: string | null;
-              last_name: string;
-            }>,
-            error: null,
-          }),
     ]);
+    if (enrollRes.error && !isSchoolUnconfiguredRead(enrollRes.error)) mapSchoolDbError(enrollRes.error, "load");
+    if (subjectRows.error && !isSchoolUnconfiguredRead(subjectRows.error)) mapSchoolDbError(subjectRows.error, "load");
 
     const subjects: SchoolExamSubjectOption[] = (subjectRows.data ?? [])
       .map((row) => ({ id: String(row.id), name: String(row.name) }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    const studentById = new Map((studentRows.data ?? []).map((row) => [String(row.id), row]));
     const students: SchoolExamStudentRow[] = (enrollRes.data ?? [])
       .map((row) => {
-        const student = studentById.get(String(row.student_id));
+        const embedded = row.sch_students as StudentEmbed | StudentEmbed[] | null;
+        const student = Array.isArray(embedded) ? embedded[0] : embedded;
         if (!student) return null;
         return {
           studentId: String(student.id),
@@ -374,12 +383,6 @@ export async function getSchoolExamDetailAction(examId: string) {
       .filter((row): row is SchoolExamStudentRow => Boolean(row))
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    const marksRes = await supabase
-      .from("sch_exam_results")
-      .select("student_id, subject_id, enrollment_id, marks, grade")
-      .eq("exam_id", id)
-      .eq("business_unit_id", businessUnitId);
-    if (marksRes.error && !isSchoolUnconfiguredRead(marksRes.error)) mapSchoolDbError(marksRes.error, "load");
     const marks: SchoolExamMark[] = (marksRes.data ?? []).map((row) => ({
       studentId: String(row.student_id),
       subjectId: String(row.subject_id),
@@ -388,7 +391,19 @@ export async function getSchoolExamDetailAction(examId: string) {
       grade: row.grade ? String(row.grade) : null,
     }));
 
-    const gradingConfigured = Boolean(scaleRes.data?.id);
+    const scaleId = scaleRes.data?.id ? String(scaleRes.data.id) : "";
+    const gradingBands: ExamGradingBand[] = scaleId
+      ? (bandsRes.data ?? [])
+          .filter((row) => String(row.scale_id) === scaleId)
+          .map((row) => ({
+            grade: str(row.grade),
+            minMark: Number(row.min_mark),
+            maxMark: Number(row.max_mark),
+            sortOrder: Number(row.sort_order) || 0,
+          }))
+          .filter((row) => row.grade)
+      : [];
+    const gradingConfigured = Boolean(scaleId && gradingBands.length);
     const schoolName = str(profileRes.data?.name) || str(buRes.data?.name) || "School Management";
     return {
       ok: true as const,
@@ -398,6 +413,7 @@ export async function getSchoolExamDetailAction(examId: string) {
         subjects,
         students,
         marks,
+        gradingBands,
         gradingConfigured,
         gradingMessage: gradingConfigured
           ? null

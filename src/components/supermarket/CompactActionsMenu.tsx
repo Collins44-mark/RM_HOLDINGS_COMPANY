@@ -35,9 +35,11 @@ function coordsFromButton(button: HTMLButtonElement, count: number) {
 export function CompactActionsMenu({
   items,
   ariaLabel,
+  onOpen,
 }: {
   items: CompactMenuItem[];
   ariaLabel: string;
+  onOpen?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
@@ -85,7 +87,10 @@ export function CompactActionsMenu({
         onClick={() => {
           const button = buttonRef.current;
           if (!button) return;
-          if (!open) setCoords(coordsFromButton(button, items.length));
+          if (!open) {
+            setCoords(coordsFromButton(button, items.length));
+            onOpen?.();
+          }
           setOpen((value) => !value);
         }}
         className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-slate-500 transition hover:bg-[#f4f7fb] hover:text-navy"
