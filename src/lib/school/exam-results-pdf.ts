@@ -343,6 +343,17 @@ export function downloadExamResultsPdf(input: {
       paintRow(tableRows[index], {});
     }
     if (page.showAverage) paintRow(averageRow, { bold: true, fill: true });
+
+    let dividerX = x;
+    for (let index = 0; index < columns.length - 1; index += 1) {
+      dividerX += columns[index].width;
+      const currentKey = columns[index].key;
+      const nextKey = columns[index + 1].key;
+      const strong = currentKey === "student" || currentKey === "avg" || nextKey === "avg";
+      ops.push(`${STROKE} RG`);
+      ops.push(pdfLine(dividerX, tableBottom, dividerX, tableTop, strong ? 0.55 : 0.32));
+    }
+
     ops.push("Q");
     ops.push(`${STROKE} RG`);
     ops.push("0.45 w");
