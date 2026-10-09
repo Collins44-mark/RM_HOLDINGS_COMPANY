@@ -10,7 +10,15 @@ import {
   schoolActionError,
 } from "@/lib/school/access";
 import { schoolPageMeta, schoolPageRange, SCHOOL_PAGE_SIZE } from "@/lib/school/pagination";
-import { loadActiveLevels, loadPlacementByStreamIds, placementLabel, resolvePlacementStreamIds } from "@/lib/school/placement-query";
+import {
+  enrollmentPlacementOr,
+  loadPlacementByClassIds,
+  loadPlacementByStreamIds,
+  loadActiveLevels,
+  placementLabel,
+  resolveEnrollmentPlacementFilter,
+} from "@/lib/school/placement-query";
+import { catalogLookup, loadSchoolStructureCatalog } from "@/lib/school/structure-catalog";
 import { loadSchoolStructureScope } from "@/lib/school/structure-scope";
 
 const VIEW = "school.parents.view";
@@ -54,28 +62,20 @@ export async function listSchoolGuardiansAction(
     const pageSize = input.pageSize && input.pageSize > 0 ? input.pageSize : SCHOOL_PAGE_SIZE;
     const { page, from, to } = schoolPageRange(input.page ?? 1, pageSize);
     const q = searchNeedle(input.q);
-    const streamIds = await resolvePlacementStreamIds(
+    const placementFilter = await resolveEnrollmentPlacementFilter(
       ctx,
       input,
       input.levelId || input.classId || input.streamId ? scope : null,
     );
+    const placementOr = enrollmentPlacementOr(placementFilter);
     let allowedIds: string[] | null = null;
-    if (streamIds) {
-      if (!streamIds.length) {
-        return {
-          ok: true as const,
-          guardians: [] as GuardianListRow[],
-          page: schoolPageMeta(1, 0, pageSize),
-          levels: await loadActiveLevels(ctx),
-          capabilities: { canView: true, canManage: canManage(user) },
-        };
-      }
+    if (placementOr) {
       const enrollments = await supabase
         .from("sch_student_enrollments")
         .select("student_id")
         .eq("business_unit_id", businessUnitId)
         .eq("status", "active")
-        .in("stream_id", streamIds);
+        .or(placementOr);
       const studentIds = [...new Set((enrollments.data ?? []).map((row) => String(row.student_id)))];
       if (!studentIds.length) {
         return {
@@ -124,18 +124,31 @@ export async function listSchoolGuardiansAction(
       const studentIds = [...new Set((links.data ?? []).map((row) => String(row.student_id)))];
       const placements = new Map<string, string>();
       if (studentIds.length) {
-        const enrollments = await supabase
-          .from("sch_student_enrollments")
-          .select("student_id, stream_id")
-          .eq("business_unit_id", businessUnitId)
-          .eq("status", "active")
-          .in("student_id", studentIds);
-        const byStream = await loadPlacementByStreamIds(
-          ctx,
-          (enrollments.data ?? []).map((row) => str(row.stream_id)),
-        );
+        const [enrollments, catalog] = await Promise.all([
+          supabase
+            .from("sch_student_enrollments")
+            .select("student_id, stream_id, class_id")
+            .eq("business_unit_id", businessUnitId)
+            .eq("status", "active")
+            .in("student_id", studentIds),
+          loadSchoolStructureCatalog(ctx),
+        ]);
+        const lookup = catalogLookup(catalog);
+        const missingStreams = (enrollments.data ?? []).map((row) => str(row.stream_id)).filter((id) => id && !lookup.placement(id));
+        const missingClasses = (enrollments.data ?? [])
+          .filter((row) => !str(row.stream_id))
+          .map((row) => str(row.class_id))
+          .filter((id) => id && !lookup.placementByClass(id));
+        const [byStream, byClass] = await Promise.all([
+          missingStreams.length ? loadPlacementByStreamIds(ctx, missingStreams) : Promise.resolve(new Map()),
+          missingClasses.length ? loadPlacementByClassIds(ctx, missingClasses) : Promise.resolve(new Map()),
+        ]);
         for (const row of enrollments.data ?? []) {
-          const place = byStream.get(str(row.stream_id));
+          const streamId = str(row.stream_id);
+          const classId = str(row.class_id);
+          const place = streamId
+            ? lookup.placement(streamId) ?? byStream.get(streamId)
+            : lookup.placementByClass(classId) ?? byClass.get(classId);
           if (place) {
             placements.set(String(row.student_id), placementLabel(place.levelName, place.className, place.streamName));
           }

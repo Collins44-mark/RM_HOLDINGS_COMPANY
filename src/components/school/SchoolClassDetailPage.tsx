@@ -148,7 +148,9 @@ export function SchoolClassDetailPage({
         {streams.length === 0 ? (
           <div className="py-6">
             <p className="text-[13.5px] text-slate-500">
-              {filter === "archived" ? "No archived streams for this class." : "No streams configured for this class yet."}
+              {filter === "archived"
+                ? "No archived streams for this class."
+                : "Streams are optional. This class can be used without them."}
             </p>
           </div>
         ) : (

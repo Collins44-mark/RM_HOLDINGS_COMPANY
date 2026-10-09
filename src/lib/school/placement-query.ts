@@ -47,6 +47,66 @@ export async function loadActiveStreams(ctx: SchoolContext, classId: string): Pr
   return (result.data ?? []).map((row) => ({ id: String(row.id), name: String(row.name) }));
 }
 
+export type EnrollmentPlacementFilter =
+  | { kind: "none" }
+  | { kind: "empty" }
+  | { kind: "streams"; streamIds: string[] }
+  | { kind: "classes"; classIds: string[]; streamIds: string[] };
+
+export async function resolveEnrollmentPlacementFilter(
+  ctx: SchoolContext,
+  input: { levelId?: string; classId?: string; streamId?: string },
+  scope?: SchoolStructureScope | null,
+): Promise<EnrollmentPlacementFilter> {
+  const streamId = str(input.streamId);
+  const classId = str(input.classId);
+  const levelId = str(input.levelId);
+
+  if (streamId) {
+    if (scope && !scope.schoolWide && !scope.streamIds.has(streamId)) return { kind: "empty" };
+    return { kind: "streams", streamIds: [streamId] };
+  }
+
+  if (!classId && !levelId) {
+    if (!scope || scope.schoolWide) return { kind: "none" };
+    return { kind: "classes", classIds: [...scope.classIds], streamIds: [...scope.streamIds] };
+  }
+
+  let classIds: string[] = [];
+  if (classId) classIds = [classId];
+  else {
+    const classes = await loadActiveClasses(ctx, levelId);
+    classIds = classes.map((row) => row.id);
+  }
+  if (scope && !scope.schoolWide) classIds = classIds.filter((id) => scope.classIds.has(id));
+  if (!classIds.length) return { kind: "empty" };
+
+  const streams = await ctx.supabase
+    .from("sch_class_streams")
+    .select("id")
+    .eq("business_unit_id", ctx.businessUnitId)
+    .eq("is_active", true)
+    .in("class_id", classIds);
+  if (streams.error && !isSchoolUnconfiguredRead(streams.error)) return { kind: "empty" };
+  let streamIds = (streams.data ?? []).map((row) => String(row.id));
+  if (scope && !scope.schoolWide) streamIds = streamIds.filter((id) => scope.streamIds.has(id));
+  return { kind: "classes", classIds, streamIds };
+}
+
+export function enrollmentPlacementOr(filter: EnrollmentPlacementFilter): string | null {
+  if (filter.kind === "none") return null;
+  if (filter.kind === "empty") return "id.eq.00000000-0000-0000-0000-000000000000";
+  if (filter.kind === "streams") {
+    if (!filter.streamIds.length) return "id.eq.00000000-0000-0000-0000-000000000000";
+    return `stream_id.in.(${filter.streamIds.join(",")})`;
+  }
+  const parts: string[] = [];
+  if (filter.streamIds.length) parts.push(`stream_id.in.(${filter.streamIds.join(",")})`);
+  if (filter.classIds.length) parts.push(`and(stream_id.is.null,class_id.in.(${filter.classIds.join(",")}))`);
+  if (!parts.length) return "id.eq.00000000-0000-0000-0000-000000000000";
+  return parts.join(",");
+}
+
 export async function resolvePlacementStreamIds(
   ctx: SchoolContext,
   input: { levelId?: string; classId?: string; streamId?: string },
@@ -129,6 +189,35 @@ export async function loadPlacementByStreamIds(ctx: SchoolContext, streamIds: st
       levelId,
       streamName: str(stream.name),
       className: str(classRow?.name),
+      levelName: levelId ? levelMap.get(levelId) ?? "" : "",
+    });
+  }
+  return names;
+}
+
+export async function loadPlacementByClassIds(ctx: SchoolContext, classIds: string[]) {
+  const names = new Map<string, PlacementNames>();
+  const ids = [...new Set(classIds.filter(Boolean))];
+  if (!ids.length) return names;
+  const classes = await ctx.supabase
+    .from("sch_classes")
+    .select("id, name, level_id")
+    .eq("business_unit_id", ctx.businessUnitId)
+    .in("id", ids);
+  if (classes.error && !isSchoolUnconfiguredRead(classes.error)) return names;
+  const levelIds = [...new Set((classes.data ?? []).map((row) => str(row.level_id)).filter(Boolean))];
+  const levels = levelIds.length
+    ? await ctx.supabase.from("sch_class_levels").select("id, name").eq("business_unit_id", ctx.businessUnitId).in("id", levelIds)
+    : { data: [] as Array<{ id: string; name: string }>, error: null };
+  const levelMap = new Map((levels.data ?? []).map((row) => [String(row.id), str(row.name)]));
+  for (const classRow of classes.data ?? []) {
+    const levelId = str(classRow.level_id);
+    names.set(String(classRow.id), {
+      streamId: "",
+      classId: String(classRow.id),
+      levelId,
+      streamName: "",
+      className: str(classRow.name),
       levelName: levelId ? levelMap.get(levelId) ?? "" : "",
     });
   }

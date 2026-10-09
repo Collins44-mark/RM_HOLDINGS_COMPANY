@@ -10,5 +10,11 @@ export default async function SchoolStudentProfileRoute({
 }) {
   const { studentId } = await params;
   const result = await getSchoolStudentAction(studentId);
-  return <SchoolStudentProfilePage student={result.ok ? result.student : null} error={result.ok ? null : result.error} />;
+  return (
+    <SchoolStudentProfilePage
+      student={result.ok ? result.student : null}
+      canManage={result.ok ? result.capabilities.canManage : false}
+      error={result.ok ? null : result.error}
+    />
+  );
 }

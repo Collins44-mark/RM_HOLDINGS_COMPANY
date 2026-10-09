@@ -12,10 +12,10 @@ import {
   schoolActionError,
   SchoolError,
 } from "@/lib/school/access";
-import { allowsStream, loadSchoolStructureScope } from "@/lib/school/structure-scope";
+import { allowsClass, allowsStream, loadSchoolStructureScope } from "@/lib/school/structure-scope";
 import { schoolPageMeta, schoolPageRange, parseSchoolPageSize } from "@/lib/school/pagination";
 import { findApplicableFeeStructure, type ApplicableFeeStructure } from "@/lib/school/fee-structure";
-import { loadPlacementByStreamIds } from "@/lib/school/placement-query";
+import { loadPlacementByClassIds, loadPlacementByStreamIds } from "@/lib/school/placement-query";
 import { catalogLookup, loadSchoolStructureCatalog } from "@/lib/school/structure-catalog";
 
 const VIEW = "school.admissions.view";
@@ -155,11 +155,6 @@ async function audit(input: {
   });
 }
 
-function scopedIds(ids: Set<string>, schoolWide: boolean) {
-  if (schoolWide) return null;
-  return ids.size ? [...ids] : ["00000000-0000-0000-0000-000000000000"];
-}
-
 function searchNeedle(value: unknown) {
   return str(value).replace(/[%_,()]/g, " ").slice(0, 80);
 }
@@ -191,16 +186,18 @@ async function assertPlacement(
   const levelId = str(input.levelId);
   const yearId = str(input.academicYearId);
   if (!yearId) throw new SchoolError("Academic year is required.", "VALIDATION");
-  if (!levelId || !classId || !streamId) throw new SchoolError("Level, class, and stream are required.", "VALIDATION");
+  if (!levelId || !classId) throw new SchoolError("Level and class are required.", "VALIDATION");
 
   const termId = str(input.termId);
   const [streamRes, classRes, yearRes, termRes] = await Promise.all([
-    supabase
-      .from("sch_class_streams")
-      .select("id, class_id, is_active")
-      .eq("business_unit_id", businessUnitId)
-      .eq("id", streamId)
-      .maybeSingle(),
+    streamId
+      ? supabase
+          .from("sch_class_streams")
+          .select("id, class_id, is_active")
+          .eq("business_unit_id", businessUnitId)
+          .eq("id", streamId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
     supabase
       .from("sch_classes")
       .select("id, level_id, is_active")
@@ -225,11 +222,14 @@ async function assertPlacement(
   if (streamRes.error && !isSchoolUnconfiguredRead(streamRes.error)) mapSchoolDbError(streamRes.error, "save");
   if (classRes.error && !isSchoolUnconfiguredRead(classRes.error)) mapSchoolDbError(classRes.error, "save");
   if (!yearRes.data?.id) throw new SchoolError("Academic year was not found.", "VALIDATION");
-  if (!streamRes.data?.id || !classRes.data?.id) {
+  if (!classRes.data?.id) {
     throw new SchoolError("The selected academic placement is not valid.", "VALIDATION");
   }
-  if (String(streamRes.data.class_id) !== classId) {
-    throw new SchoolError("The selected stream does not belong to that class.", "VALIDATION");
+  if (streamId) {
+    if (!streamRes.data?.id) throw new SchoolError("The selected academic placement is not valid.", "VALIDATION");
+    if (String(streamRes.data.class_id) !== classId) {
+      throw new SchoolError("The selected stream does not belong to that class.", "VALIDATION");
+    }
   }
   if (String(classRes.data.level_id) !== levelId) {
     throw new SchoolError("The selected class does not belong to that level.", "VALIDATION");
@@ -259,6 +259,7 @@ function admissionPayload(input: AdmissionFormInput, businessUnitId: string) {
     email: "",
     academic_year_id: str(input.academicYearId) || null,
     term_id: str(input.termId) || null,
+    class_id: str(input.classId) || null,
     stream_id: str(input.streamId) || null,
     admission_date: dateValue(input.admissionDate, "Admission date", true),
     guardian_full_name: guardianFullName.slice(0, 160),
@@ -352,15 +353,21 @@ export async function listSchoolAdmissionsAction(input: { page?: number; pageSiz
     let query = supabase
       .from("sch_admissions")
       .select(
-        "id, admission_number, status, admission_date, first_name, middle_name, last_name, student_id, stream_id",
+        "id, admission_number, status, admission_date, first_name, middle_name, last_name, student_id, stream_id, class_id",
         { count: "exact" },
       )
       .eq("business_unit_id", businessUnitId)
       .order("created_at", { ascending: false })
       .range(from, to);
     if (status === "draft" || status === "completed" || status === "cancelled") query = query.eq("status", status);
-    const streamScope = scope ? scopedIds(scope.streamIds, scope.schoolWide) : null;
-    if (streamScope) query = query.in("stream_id", streamScope);
+    if (scope && !scope.schoolWide) {
+      const streamIds = [...scope.streamIds];
+      const classIds = [...scope.classIds];
+      const parts: string[] = [];
+      if (streamIds.length) parts.push(`stream_id.in.(${streamIds.join(",")})`);
+      if (classIds.length) parts.push(`and(stream_id.is.null,class_id.in.(${classIds.join(",")}))`);
+      query = query.or(parts.length ? parts.join(",") : "id.eq.00000000-0000-0000-0000-000000000000");
+    }
     if (q) {
       const students = await supabase
         .from("sch_students")
@@ -380,12 +387,20 @@ export async function listSchoolAdmissionsAction(input: { page?: number; pageSiz
     const missingStreamIds = raw
       .map((row) => str(row.stream_id))
       .filter((streamId) => streamId && !lookup.placement(streamId));
-    const fallbackPlacement = missingStreamIds.length
-      ? await loadPlacementByStreamIds(ctx, missingStreamIds)
-      : new Map();
+    const missingClassIds = raw
+      .filter((row) => !str(row.stream_id))
+      .map((row) => str(row.class_id))
+      .filter((classId) => classId && !lookup.placementByClass(classId));
+    const [fallbackPlacement, fallbackClasses] = await Promise.all([
+      missingStreamIds.length ? loadPlacementByStreamIds(ctx, missingStreamIds) : Promise.resolve(new Map()),
+      missingClassIds.length ? loadPlacementByClassIds(ctx, missingClassIds) : Promise.resolve(new Map()),
+    ]);
     const rows = raw.map((row) => {
       const streamId = str(row.stream_id);
-      const place = lookup.placement(streamId) ?? fallbackPlacement.get(streamId);
+      const classId = str(row.class_id);
+      const place = streamId
+        ? lookup.placement(streamId) ?? fallbackPlacement.get(streamId)
+        : lookup.placementByClass(classId) ?? fallbackClasses.get(classId);
       return {
         id: String(row.id),
         admissionNumber: str(row.admission_number),
@@ -435,7 +450,7 @@ export async function getSchoolAdmissionAction(id: string) {
       supabase
         .from("sch_admissions")
         .select(
-          "id, admission_number, status, admission_date, academic_year_id, term_id, stream_id, student_id, first_name, middle_name, last_name, date_of_birth, gender, nationality, address, phone, email, guardian_full_name, guardian_relationship, guardian_phone, guardian_email, guardian_address, guardian_occupation",
+          "id, admission_number, status, admission_date, academic_year_id, term_id, stream_id, class_id, student_id, first_name, middle_name, last_name, date_of_birth, gender, nationality, address, phone, email, guardian_full_name, guardian_relationship, guardian_phone, guardian_email, guardian_address, guardian_occupation",
         )
         .eq("business_unit_id", businessUnitId)
         .eq("id", admissionId)
@@ -446,7 +461,11 @@ export async function getSchoolAdmissionAction(id: string) {
     if (!result.data) throw new SchoolError("Admission was not found.", "NOT_FOUND");
     const row = result.data as Record<string, unknown>;
     let streamId = str(row.stream_id);
+    let classId = str(row.class_id);
     if (streamId && scope && !scope.schoolWide && !allowsStream(scope, streamId)) {
+      throw new SchoolError("Admission was not found.", "NOT_FOUND");
+    }
+    if (!streamId && classId && scope && !scope.schoolWide && !allowsClass(scope, classId)) {
       throw new SchoolError("Admission was not found.", "NOT_FOUND");
     }
 
@@ -454,7 +473,7 @@ export async function getSchoolAdmissionAction(id: string) {
     const yearId = str(row.academic_year_id);
     const termId = str(row.term_id);
     const lookup = catalogLookup(catalog);
-    let placement = lookup.placement(streamId);
+    let placement = lookup.placement(streamId) ?? lookup.placementByClass(classId);
     const [studentRes, enrollmentRes, fallbackPlacement, feesWhenReady, yearRes, termRes] = await Promise.all([
       studentId
         ? supabase.from("sch_students").select("id, student_number, status").eq("id", studentId).maybeSingle()
@@ -462,7 +481,7 @@ export async function getSchoolAdmissionAction(id: string) {
       studentId
         ? supabase
             .from("sch_student_enrollments")
-            .select("id, stream_id, status")
+            .select("id, stream_id, class_id, status")
             .eq("business_unit_id", businessUnitId)
             .eq("student_id", studentId)
             .eq("status", "active")
@@ -480,12 +499,20 @@ export async function getSchoolAdmissionAction(id: string) {
         : Promise.resolve({ data: null }),
     ]);
     if (!streamId) streamId = str(enrollmentRes.data?.stream_id);
-    if (!placement) placement = streamId ? lookup.placement(streamId) ?? fallbackPlacement.get(streamId) : undefined;
+    if (!classId) classId = str(enrollmentRes.data?.class_id);
+    if (!placement) {
+      placement = streamId
+        ? lookup.placement(streamId) ?? fallbackPlacement.get(streamId)
+        : lookup.placementByClass(classId);
+    }
     if (!placement && streamId) {
       placement = (await loadPlacementByStreamIds(ctx, [streamId])).get(streamId);
     }
+    if (!placement && classId) {
+      placement = (await loadPlacementByClassIds(ctx, [classId])).get(classId);
+    }
     const levelId = placement?.levelId ?? "";
-    const classId = placement?.classId ?? "";
+    classId = placement?.classId || classId;
     const levelName = placement?.levelName ?? "";
     const className = placement?.className ?? "";
     const streamName = placement?.streamName ?? "";
@@ -544,7 +571,7 @@ async function upsertDraftAdmission(
 ) {
   const { supabase, businessUnitId, userId } = ctx;
   const payload = admissionPayload(input, businessUnitId);
-  if (payload.stream_id && !options?.skipPlacementAssert) {
+  if (payload.class_id && !options?.skipPlacementAssert) {
     await assertPlacement(supabase, businessUnitId, {
       levelId: input.levelId,
       classId: input.classId,
@@ -614,13 +641,13 @@ export async function completeSchoolAdmissionAction(input: AdmissionFormInput & 
     const ctx = await requireSchoolPermission(MANAGE);
     const { supabase, businessUnitId } = ctx;
     const payload = admissionPayload(input, businessUnitId);
-    if (!payload.stream_id || !payload.academic_year_id) {
-      throw new SchoolError("Academic year, level, class, and stream are required to complete admission.", "VALIDATION");
+    if (!payload.academic_year_id || !payload.class_id || !str(input.levelId)) {
+      throw new SchoolError("Academic year, level, and class are required to complete admission.", "VALIDATION");
     }
     if (!str(input.guardianFullName) || !str(input.guardianRelationship) || !str(input.guardianPhone)) {
       throw new SchoolError("Guardian name, relationship, and phone are required to complete admission.", "VALIDATION");
     }
-    const saved = await upsertDraftAdmission(ctx, input, { skipPlacementAssert: true });
+    const saved = await upsertDraftAdmission(ctx, input);
     const { data, error } = await supabase.rpc("sch_complete_admission", {
       p_admission_id: saved.id,
       p_acknowledge_duplicate: Boolean(input.acknowledgeDuplicate),

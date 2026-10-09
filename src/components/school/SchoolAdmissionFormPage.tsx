@@ -546,7 +546,7 @@ export function SchoolAdmissionFormPage({
                 disabled={!form.classId}
                 onChange={(event) => patch({ streamId: event.target.value })}
               >
-                <option value="">Select stream</option>
+                <option value="">No stream — assign later</option>
                 {visibleStreams.map((row) => (
                   <option key={row.id} value={row.id}>
                     {row.name}
@@ -585,7 +585,9 @@ export function SchoolAdmissionFormPage({
             <p className="text-[13px] text-slate-500">Configure classes before placing a student.</p>
           ) : null}
           {form.classId && streamsReady && !visibleStreams.length ? (
-            <p className="text-[13px] text-slate-500">Configure streams before placing a student.</p>
+            <p className="text-[13px] text-slate-500">
+              This class has no streams. Admission can be completed now, and a stream can be assigned later if needed.
+            </p>
           ) : null}
           <FeeReadout fee={visibleFee} ready={Boolean(form.classId && form.academicYearId)} />
         </section>

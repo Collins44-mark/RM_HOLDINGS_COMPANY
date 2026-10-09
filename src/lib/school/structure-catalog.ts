@@ -195,5 +195,19 @@ export function catalogLookup(catalog: SchoolStructureCatalog) {
         levelName: levelId ? levelMap.get(levelId) ?? "" : "",
       };
     },
+    placementByClass(classId: string): CatalogPlacement | undefined {
+      if (!classId) return undefined;
+      const classRow = classMap.get(classId);
+      if (!classRow) return undefined;
+      const levelId = classRow.levelId;
+      return {
+        streamId: "",
+        classId,
+        levelId,
+        streamName: "",
+        className: classRow.name,
+        levelName: levelId ? levelMap.get(levelId) ?? "" : "",
+      };
+    },
   };
 }
