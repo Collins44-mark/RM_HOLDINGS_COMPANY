@@ -1,15 +1,13 @@
 import { ratioPercent } from "@/lib/format/percent";
 import {
-  loadSupermarketPeriodLedger,
+  getConsolidatedFinanceForReportPeriod,
   unitStatus,
   type PerformanceStatus,
-  type SupermarketPeriodLedger,
 } from "@/lib/data/finance";
 import {
   reportPeriodRange,
   type ReportPeriod,
 } from "@/lib/data/report-period";
-import { listBusinessUnits } from "@/lib/data/business-units";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type {
@@ -189,24 +187,26 @@ async function loadSupermarketCashSummary(from: Date, to: Date): Promise<ReportC
   }
 }
 
-async function buildUnitRows(ledger: SupermarketPeriodLedger): Promise<ReportUnitRow[]> {
-  const units = await listBusinessUnits();
-  return units.map((unit) => {
-    const revenue = unit.code === "supermarket" ? ledger.revenue : 0;
-    const expenses = unit.code === "supermarket" ? ledger.expenses : 0;
-    const operatingPosition = unit.code === "supermarket" ? ledger.netProfit : 0;
-    const margin = ratioPercent(operatingPosition, revenue);
-    const hasActivity = revenue !== 0 || expenses !== 0 || operatingPosition !== 0;
-    return {
-      code: unit.code,
-      name: unit.name,
-      revenue,
-      expenses,
-      operatingPosition,
-      margin,
-      status: unitStatus(margin, hasActivity),
-    };
-  });
+function reportUnitsFromFinance(
+  rows: Array<{
+    code: string;
+    name: string;
+    revenue: number;
+    expenses: number;
+    operatingPosition: number;
+    margin: number;
+    status: PerformanceStatus;
+  }>,
+): ReportUnitRow[] {
+  return rows.map((row) => ({
+    code: row.code,
+    name: row.name,
+    revenue: row.revenue,
+    expenses: row.expenses,
+    operatingPosition: row.operatingPosition,
+    margin: row.margin,
+    status: unitStatus(row.margin, row.revenue !== 0 || row.expenses !== 0 || row.operatingPosition !== 0),
+  }));
 }
 
 /**
@@ -225,37 +225,38 @@ export async function getConsolidatedReport(input: {
     to: input.to,
   });
 
-  const [ledger, cash] = await Promise.all([
-    loadSupermarketPeriodLedger(range.from, range.to),
+  const [finance, cash] = await Promise.all([
+    getConsolidatedFinanceForReportPeriod({ period: input.period, from: input.from, to: input.to, now }),
     loadSupermarketCashSummary(range.from, range.to),
   ]);
 
-  const businessUnits = await buildUnitRows(ledger);
-  const margin = ratioPercent(ledger.netProfit, ledger.revenue);
+  const supermarket = finance.supermarket;
+  const totals = finance.totals;
+  const margin = ratioPercent(totals.operatingPosition, totals.revenue);
 
   return {
     label: range.label,
     from: range.from,
     to: range.to,
     sales: {
-      totalRevenue: ledger.revenue,
-      salesCount: ledger.salesCount,
-      supermarketRevenue: ledger.revenue,
-      supermarketSalesCount: ledger.salesCount,
+      totalRevenue: totals.revenue,
+      salesCount: supermarket.salesCount + finance.school.collectionCount,
+      supermarketRevenue: supermarket.revenue,
+      supermarketSalesCount: supermarket.salesCount,
     },
     expenses: {
-      totalExpenses: ledger.expenses,
-      supermarketExpenses: ledger.expenses,
+      totalExpenses: totals.expenses,
+      supermarketExpenses: supermarket.expenses,
     },
     profitAndLoss: {
-      revenue: ledger.revenue,
-      cogs: ledger.cogs,
-      productProfit: ledger.productProfit,
-      operatingExpenses: ledger.expenses,
-      operatingPosition: ledger.netProfit,
+      revenue: totals.revenue,
+      cogs: supermarket.cogs,
+      productProfit: supermarket.productProfit,
+      operatingExpenses: totals.expenses,
+      operatingPosition: totals.operatingPosition,
       margin,
     },
-    businessUnits,
+    businessUnits: reportUnitsFromFinance(finance.rows),
     cash,
   };
 }

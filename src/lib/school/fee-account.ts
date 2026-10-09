@@ -1,6 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isSchoolUnconfiguredRead } from "@/lib/school/access";
-import { asFeeStatus, type FeeObligationRow, type FeePaymentRow, type StudentFeeAccount } from "@/lib/school/fee-types";
+import {
+  asFeeStatus,
+  feeStatusFromAmounts,
+  isAllocatedFeePayment,
+  type FeeObligationRow,
+  type FeePaymentRow,
+  type StudentFeeAccount,
+} from "@/lib/school/fee-types";
 
 export type { FeeAccountStatus, FeePaymentRow, StudentFeeAccount } from "@/lib/school/fee-types";
 export { asFeeStatus, feeStatusLabel } from "@/lib/school/fee-types";
@@ -14,9 +21,19 @@ function num(value: unknown) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function mapObligation(row: Record<string, unknown>): FeeObligationRow {
+export function allocatedPaymentTotal(payments: Array<{ amount: number; status: string; chargeId?: string | null }>, chargeId?: string | null) {
+  return payments.reduce((sum, payment) => {
+    if (!isAllocatedFeePayment(payment.status)) return sum;
+    if (chargeId && payment.chargeId && payment.chargeId !== chargeId) return sum;
+    if (chargeId && payment.chargeId == null) return sum;
+    return sum + payment.amount;
+  }, 0);
+}
+
+function mapObligation(row: Record<string, unknown>, allocated?: number): FeeObligationRow {
   const billed = row.due_amount == null ? null : num(row.due_amount);
-  const paid = num(row.paid_amount);
+  const paid = allocated ?? num(row.paid_amount);
+  const remaining = billed == null ? null : Math.max(0, billed - paid);
   return {
     enrollmentId: str(row.enrollment_id),
     chargeId: str(row.charge_id) || null,
@@ -25,8 +42,8 @@ function mapObligation(row: Record<string, unknown>): FeeObligationRow {
     academicYearName: str(row.academic_year_name),
     billed,
     paid,
-    remaining: row.outstanding_amount == null ? null : num(row.outstanding_amount),
-    status: asFeeStatus(row.fee_status),
+    remaining,
+    status: feeStatusFromAmounts(billed, paid, Boolean(str(row.fee_structure_id) || str(row.charge_id))),
   };
 }
 
@@ -55,7 +72,7 @@ export async function getStudentFeeAccount(input: {
     input.supabase
       .from("sch_v_fee_accounts")
       .select(
-        "enrollment_id, charge_id, academic_year_id, academic_year_name, due_amount, paid_amount, outstanding_amount, fee_status",
+        "enrollment_id, charge_id, fee_structure_id, academic_year_id, academic_year_name, due_amount, paid_amount, outstanding_amount, fee_status",
       )
       .eq("business_unit_id", input.businessUnitId)
       .eq("student_id", studentId),
@@ -77,7 +94,13 @@ export async function getStudentFeeAccount(input: {
   ]);
 
   const related = relatedRes.error && !isSchoolUnconfiguredRead(relatedRes.error) ? [] : (relatedRes.data ?? []);
-  const obligations = (related.length ? related : [row]).map((item) => mapObligation(item as Record<string, unknown>));
+  const sourceRows = related.length ? related : [row];
+  const obligations = sourceRows.map((item) => {
+    const record = item as Record<string, unknown>;
+    const chargeId = str(record.charge_id) || null;
+    const allocated = chargeId ? allocatedPaymentTotal(payments, chargeId) : num(record.paid_amount);
+    return mapObligation(record, allocated);
+  });
   const yearByCharge = new Map(obligations.filter((item) => item.chargeId).map((item) => [item.chargeId as string, item.academicYearName]));
   const currentTerm = (termsRes.data ?? []).find((term) => {
     const start = String(term.start_date ?? "");
@@ -101,8 +124,9 @@ export async function getStudentFeeAccount(input: {
     if (item.remaining != null) totalOutstanding = (totalOutstanding ?? 0) + item.remaining;
   }
 
-  const annual = row.due_amount == null ? null : num(row.due_amount);
-  const paid = num(row.paid_amount);
+  const current = obligations.find((item) => item.enrollmentId === str(row.enrollment_id)) ?? obligations[0];
+  const annual = current?.billed ?? (row.due_amount == null ? null : num(row.due_amount));
+  const paid = current?.paid ?? 0;
   return {
     enrollmentId: str(row.enrollment_id),
     studentId,
@@ -126,11 +150,11 @@ export async function getStudentFeeAccount(input: {
     chargeId: str(row.charge_id) || null,
     annualAmount: annual,
     paidAmount: paid,
-    outstandingAmount: row.outstanding_amount == null ? null : num(row.outstanding_amount),
+    outstandingAmount: current?.remaining ?? null,
     totalBilled,
     totalPaid,
     totalOutstanding,
-    status: asFeeStatus(row.fee_status),
+    status: current?.status ?? asFeeStatus(row.fee_status),
     obligations,
     payments: paymentsWithYear,
   };

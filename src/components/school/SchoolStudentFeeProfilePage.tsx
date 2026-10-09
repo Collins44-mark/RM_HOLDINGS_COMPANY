@@ -30,6 +30,7 @@ import {
   type StudentFeeAccount,
 } from "@/lib/school/fee-types";
 import { formatCompactStudentNumber } from "@/lib/school/student-number";
+import { patchFeesListSnapshotAccount } from "@/lib/school/admission-flash";
 
 type Caps = {
   canRecord: boolean;
@@ -139,6 +140,15 @@ export function SchoolStudentFeeProfilePage({
 
   function applyAccount(next: StudentFeeAccount) {
     setAccount(next);
+    patchFeesListSnapshotAccount({
+      enrollmentId: next.enrollmentId,
+      studentId: next.studentId,
+      annualAmount: next.annualAmount,
+      paidAmount: next.paidAmount,
+      outstandingAmount: next.outstandingAmount,
+      totalOutstanding: next.totalOutstanding,
+      status: next.status,
+    });
   }
 
   function runRecord() {
@@ -254,7 +264,7 @@ export function SchoolStudentFeeProfilePage({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           ["Total billed", money(account.totalBilled)],
-          ["Payments posted", formatTzs(account.totalPaid)],
+          ["Payments collected", formatTzs(account.totalPaid)],
           ["Total outstanding", money(account.totalOutstanding)],
           ["This year outstanding", money(account.outstandingAmount)],
         ].map(([label, value]) => (

@@ -144,21 +144,47 @@ export async function getSchoolOverviewAction(): Promise<
 
     let feesCollected: OverviewMetric<number> = { status: "ok", value: 0 };
     let outstandingFees: OverviewMetric<number> = { status: "ok", value: 0 };
-    let feeQuery = supabase.from("sch_v_fee_accounts").select("paid_amount, outstanding_amount").eq("business_unit_id", businessUnitId);
+    let feeQuery = supabase
+      .from("sch_v_fee_accounts")
+      .select("charge_id, due_amount, paid_amount, outstanding_amount")
+      .eq("business_unit_id", businessUnitId);
     if (yearId) feeQuery = feeQuery.eq("academic_year_id", yearId);
     const feeRes = await feeQuery;
     if (feeRes.error && !isSchoolUnconfiguredRead(feeRes.error)) {
       feesCollected = { status: "error" };
       outstandingFees = { status: "error" };
     } else {
-      let collected = 0;
-      let outstanding = 0;
-      for (const row of feeRes.data ?? []) {
-        collected += Number(row.paid_amount ?? 0) || 0;
-        outstanding += Number(row.outstanding_amount ?? 0) || 0;
+      const chargeIds = [...new Set((feeRes.data ?? []).map((row) => String(row.charge_id ?? "")).filter(Boolean))];
+      const payRes = chargeIds.length
+        ? await supabase
+            .from("sch_fee_payments")
+            .select("charge_id, amount, status")
+            .eq("business_unit_id", businessUnitId)
+            .in("charge_id", chargeIds)
+        : { data: [] as Array<{ charge_id: string; amount: number; status: string }>, error: null };
+      if (payRes.error && !isSchoolUnconfiguredRead(payRes.error)) {
+        feesCollected = { status: "error" };
+        outstandingFees = { status: "error" };
+      } else {
+        const allocated = new Map<string, number>();
+        for (const payment of payRes.data ?? []) {
+          const status = String(payment.status ?? "");
+          if (status !== "posted" && status !== "pending") continue;
+          const chargeId = String(payment.charge_id ?? "");
+          allocated.set(chargeId, (allocated.get(chargeId) ?? 0) + (Number(payment.amount) || 0));
+        }
+        let collected = 0;
+        let outstanding = 0;
+        for (const row of feeRes.data ?? []) {
+          const billed = row.due_amount == null ? null : Number(row.due_amount) || 0;
+          const chargeId = row.charge_id ? String(row.charge_id) : "";
+          const paid = chargeId ? allocated.get(chargeId) ?? 0 : Number(row.paid_amount ?? 0) || 0;
+          collected += paid;
+          if (billed != null) outstanding += Math.max(0, billed - paid);
+        }
+        feesCollected = { status: "ok", value: collected };
+        outstandingFees = { status: "ok", value: outstanding };
       }
-      feesCollected = { status: "ok", value: collected };
-      outstandingFees = { status: "ok", value: outstanding };
     }
 
     const classLevels: OverviewMetric<number> =

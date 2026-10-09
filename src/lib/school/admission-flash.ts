@@ -156,6 +156,52 @@ export function peekFeesListSnapshot(): FeesListSnapshot | null {
   }
 }
 
+export function clearFeesListSnapshot() {
+  if (typeof window === "undefined") return;
+  sessionStorage.removeItem(FEE_LIST_KEY);
+}
+
+export function patchFeesListSnapshotAccount(account: {
+  enrollmentId: string;
+  studentId: string;
+  annualAmount: number | null;
+  paidAmount: number;
+  outstandingAmount: number | null;
+  totalOutstanding: number | null;
+  status: FeeAccountListRow["status"];
+}) {
+  const snapshot = peekFeesListSnapshot();
+  if (!snapshot) return;
+  const previous = snapshot.rows.find((row) => row.enrollmentId === account.enrollmentId);
+  snapshot.rows = snapshot.rows.map((row) =>
+    row.enrollmentId === account.enrollmentId
+      ? {
+          ...row,
+          annualAmount: account.annualAmount,
+          paidAmount: account.paidAmount,
+          outstandingAmount: account.outstandingAmount,
+          totalOutstanding: account.totalOutstanding,
+          status: account.status,
+        }
+      : row.studentId === account.studentId
+        ? { ...row, totalOutstanding: account.totalOutstanding }
+        : row,
+  );
+  if (previous) {
+    const paidDelta = account.paidAmount - previous.paidAmount;
+    const outDelta = (account.outstandingAmount ?? 0) - (previous.outstandingAmount ?? 0);
+    const hadBalance = (previous.outstandingAmount ?? 0) > 0;
+    const hasBalance = (account.outstandingAmount ?? 0) > 0;
+    snapshot.summary = {
+      ...snapshot.summary,
+      collected: snapshot.summary.collected + paidDelta,
+      outstanding: snapshot.summary.outstanding + outDelta,
+      studentsWithBalance: snapshot.summary.studentsWithBalance + (hasBalance && !hadBalance ? 1 : !hasBalance && hadBalance ? -1 : 0),
+    };
+  }
+  writeFeesListSnapshot(snapshot);
+}
+
 export function consumeFeeFlash(): FeeFlash | null {
   if (typeof window === "undefined") return null;
   const raw = sessionStorage.getItem(FEE_KEY);

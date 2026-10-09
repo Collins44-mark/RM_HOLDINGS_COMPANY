@@ -11,8 +11,16 @@ import {
   schoolActionError,
   SchoolError,
 } from "@/lib/school/access";
-import { getStudentFeeAccount } from "@/lib/school/fee-account";
-import { asFeeStatus, paymentMethodLabel, type FeeAccountListRow, type FeeListFilter, type FeeSummary } from "@/lib/school/fee-types";
+import { revalidatePath } from "next/cache";
+import { allocatedPaymentTotal, getStudentFeeAccount } from "@/lib/school/fee-account";
+import {
+  asFeeStatus,
+  feeStatusFromAmounts,
+  paymentMethodLabel,
+  type FeeAccountListRow,
+  type FeeListFilter,
+  type FeeSummary,
+} from "@/lib/school/fee-types";
 import { schoolPageMeta, schoolPageRange } from "@/lib/school/pagination";
 import type { FeeReceiptPayload } from "@/lib/school/fee-receipt-pdf";
 
@@ -153,6 +161,42 @@ async function attachCurrentTerms(
   return rows;
 }
 
+async function loadAllocatedByCharge(
+  supabase: Awaited<ReturnType<typeof requireAnySchoolPermission>>["supabase"],
+  businessUnitId: string,
+  chargeIds: string[],
+) {
+  const allocated = new Map<string, number>();
+  const ids = [...new Set(chargeIds.filter(Boolean))];
+  if (!ids.length) return allocated;
+  const result = await supabase
+    .from("sch_fee_payments")
+    .select("charge_id, amount, status")
+    .eq("business_unit_id", businessUnitId)
+    .in("charge_id", ids);
+  if (result.error && !isSchoolUnconfiguredRead(result.error)) return allocated;
+  for (const row of result.data ?? []) {
+    const chargeId = String(row.charge_id ?? "");
+    if (!chargeId) continue;
+    allocated.set(
+      chargeId,
+      allocatedPaymentTotal(
+        [{ amount: num(row.amount), status: String(row.status ?? ""), chargeId }],
+        chargeId,
+      ) + (allocated.get(chargeId) ?? 0),
+    );
+  }
+  return allocated;
+}
+
+function applyRowAllocation(row: FeeAccountListRow, allocated: number) {
+  row.paidAmount = allocated;
+  if (row.annualAmount != null) {
+    row.outstandingAmount = Math.max(0, row.annualAmount - allocated);
+    row.status = feeStatusFromAmounts(row.annualAmount, allocated, true);
+  }
+}
+
 async function attachLifetimeOutstanding(
   supabase: Awaited<ReturnType<typeof requireAnySchoolPermission>>["supabase"],
   businessUnitId: string,
@@ -162,15 +206,24 @@ async function attachLifetimeOutstanding(
   if (!studentIds.length) return rows;
   const result = await supabase
     .from("sch_v_fee_accounts")
-    .select("student_id, outstanding_amount")
+    .select("student_id, charge_id, due_amount")
     .eq("business_unit_id", businessUnitId)
     .in("student_id", studentIds);
   if (result.error && !isSchoolUnconfiguredRead(result.error)) return rows;
+  const related = result.data ?? [];
+  const allocated = await loadAllocatedByCharge(
+    supabase,
+    businessUnitId,
+    related.map((row) => (row.charge_id ? String(row.charge_id) : "")),
+  );
   const totals = new Map<string, number | null>();
-  for (const row of result.data ?? []) {
+  for (const row of related) {
     const studentId = String(row.student_id);
-    if (row.outstanding_amount == null) continue;
-    totals.set(studentId, (totals.get(studentId) ?? 0) + num(row.outstanding_amount));
+    const billed = row.due_amount == null ? null : num(row.due_amount);
+    if (billed == null) continue;
+    const chargeId = row.charge_id ? String(row.charge_id) : "";
+    const remaining = Math.max(0, billed - (chargeId ? allocated.get(chargeId) ?? 0 : 0));
+    totals.set(studentId, (totals.get(studentId) ?? 0) + remaining);
   }
   for (const row of rows) {
     row.totalOutstanding = totals.has(row.studentId) ? totals.get(row.studentId)! : row.outstandingAmount;
@@ -187,7 +240,7 @@ async function loadAccounts(
   let query = supabase
     .from("sch_v_fee_accounts")
     .select(
-      "enrollment_id, student_id, student_name, student_number, admission_number, level_id, level_name, class_id, class_name, class_code, stream_name, academic_year_id, academic_year_name, due_amount, paid_amount, outstanding_amount, fee_status, charge_id",
+      "enrollment_id, student_id, student_name, student_number, admission_number, level_id, level_name, class_id, class_name, class_code, stream_name, academic_year_id, academic_year_name, due_amount, paid_amount, outstanding_amount, fee_status, charge_id, fee_structure_id",
       { count: "exact" },
     )
     .order("student_name");
@@ -217,6 +270,15 @@ async function loadAccounts(
     status: asFeeStatus(row.fee_status),
     chargeId: row.charge_id ? String(row.charge_id) : null,
   }));
+  const allocated = await loadAllocatedByCharge(
+    supabase,
+    businessUnitId,
+    rows.map((row) => row.chargeId ?? ""),
+  );
+  for (const row of rows) {
+    if (!row.chargeId) continue;
+    applyRowAllocation(row, allocated.get(row.chargeId) ?? 0);
+  }
   await Promise.all([
     attachCurrentTerms(supabase, businessUnitId, rows),
     attachLifetimeOutstanding(supabase, businessUnitId, rows),
@@ -229,20 +291,30 @@ async function loadSummary(
   businessUnitId: string,
   input: FeeListFilter,
 ): Promise<FeeSummary> {
-  let query = supabase.from("sch_v_fee_accounts").select("due_amount, paid_amount, outstanding_amount");
+  let query = supabase.from("sch_v_fee_accounts").select("student_id, charge_id, due_amount, paid_amount, outstanding_amount");
   query = applyAccountFilters(query, businessUnitId, { ...input, page: undefined });
   const result = await query;
   if (result.error && !isSchoolUnconfiguredRead(result.error)) mapSchoolDbError(result.error, "load");
+  const rows = result.data ?? [];
+  const allocated = await loadAllocatedByCharge(
+    supabase,
+    businessUnitId,
+    rows.map((row) => (row.charge_id ? String(row.charge_id) : "")),
+  );
   let totalFees = 0;
   let collected = 0;
   let outstanding = 0;
   let studentsWithBalance = 0;
-  for (const row of result.data ?? []) {
-    if (row.due_amount != null) totalFees += num(row.due_amount);
-    collected += num(row.paid_amount);
-    if (row.outstanding_amount != null) {
-      outstanding += num(row.outstanding_amount);
-      if (num(row.outstanding_amount) > 0) studentsWithBalance += 1;
+  for (const row of rows) {
+    const billed = row.due_amount == null ? null : num(row.due_amount);
+    const chargeId = row.charge_id ? String(row.charge_id) : "";
+    const paid = chargeId ? allocated.get(chargeId) ?? 0 : num(row.paid_amount);
+    const remaining = billed == null ? null : Math.max(0, billed - paid);
+    if (billed != null) totalFees += billed;
+    collected += paid;
+    if (remaining != null) {
+      outstanding += remaining;
+      if (remaining > 0) studentsWithBalance += 1;
     }
   }
   return { totalFees, collected, outstanding, studentsWithBalance };
@@ -380,6 +452,11 @@ export async function recordSchoolFeePaymentAction(input: {
       });
     }
     const next = await getStudentFeeAccount({ supabase, businessUnitId, enrollmentId: account.enrollmentId });
+    revalidatePath("/school/fees");
+    revalidatePath("/school");
+    revalidatePath("/owner");
+    revalidatePath("/owner/finance");
+    revalidatePath("/owner/reports");
     return { ok: true as const, account: next, paymentId: payload.id ?? null, capabilities: caps(user) };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
@@ -421,6 +498,11 @@ export async function verifySchoolFeePaymentAction(paymentId: string) {
       businessUnitId,
       enrollmentId: String(existing.data.enrollment_id),
     });
+    revalidatePath("/school/fees");
+    revalidatePath("/school");
+    revalidatePath("/owner");
+    revalidatePath("/owner/finance");
+    revalidatePath("/owner/reports");
     return { ok: true as const, account, capabilities: caps(user) };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };

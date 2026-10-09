@@ -116,6 +116,18 @@ export function asFeeStatus(value: unknown): FeeAccountStatus {
   return "outstanding";
 }
 
+export function isAllocatedFeePayment(status: string) {
+  return status === "posted" || status === "pending";
+}
+
+export function feeStatusFromAmounts(billed: number | null, paid: number, hasStructure: boolean): FeeAccountStatus {
+  if (!hasStructure && billed == null) return "no_structure";
+  if (billed == null) return "no_structure";
+  if (billed - paid <= 0) return "paid";
+  if (paid > 0) return "partial";
+  return "outstanding";
+}
+
 export function paymentMethodLabel(method: string) {
   if (method === "MOBILE_MONEY") return "Mobile Money";
   if (method === "BANK") return "Bank";

@@ -82,14 +82,18 @@ export function SchoolFeesPage({
     const snapshot = peekFeesListSnapshot();
     if (snapshot) {
       queueMicrotask(() => {
-        setAccounts(snapshot.rows);
-        setPage(snapshot.page);
-        setSummary(snapshot.summary);
         setYearId(snapshot.yearId);
         setLevelId(snapshot.levelId);
         setClassId(snapshot.classId);
         setStatus(snapshot.status);
         setQ(snapshot.q);
+        load(snapshot.page.page, {
+          yearId: snapshot.yearId,
+          levelId: snapshot.levelId,
+          classId: snapshot.classId,
+          status: snapshot.status,
+          q: snapshot.q,
+        });
       });
     } else if (initial?.ok) {
       writeFeesListSnapshot({
