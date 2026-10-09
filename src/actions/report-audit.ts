@@ -5,12 +5,31 @@ import { getVerifiedAuthUser } from "@/lib/auth/session";
 import { writeAuditEvent } from "@/lib/audit";
 
 const schema = z.object({
-  kind: z.enum(["sales", "inventory", "purchases", "profit-loss"]),
+  kind: z.enum([
+    "sales",
+    "inventory",
+    "purchases",
+    "profit-loss",
+    "school-finance",
+    "school-admissions",
+    "school-students",
+    "school-parents",
+    "school-transport",
+  ]),
   period: z.string().max(80).optional(),
 });
 
 export async function recordReportExportAction(input: {
-  kind: "sales" | "inventory" | "purchases" | "profit-loss";
+  kind:
+    | "sales"
+    | "inventory"
+    | "purchases"
+    | "profit-loss"
+    | "school-finance"
+    | "school-admissions"
+    | "school-students"
+    | "school-parents"
+    | "school-transport";
   period?: string;
 }) {
   const user = await getVerifiedAuthUser();

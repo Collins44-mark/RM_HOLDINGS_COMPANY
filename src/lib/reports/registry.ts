@@ -70,6 +70,41 @@ export const REPORT_DEFINITIONS: ReportDefinition[] = [
     description: "Revenue, COGS, expenses and net result for the selected period.",
     exports: ["pdf"],
   },
+  {
+    id: "school-finance",
+    module: "school",
+    label: "Finance Report",
+    description: "Fees billed, posted collections, outstanding balances and operating expenses.",
+    exports: ["pdf"],
+  },
+  {
+    id: "school-admissions",
+    module: "school",
+    label: "Admissions Report",
+    description: "Admission records by status, date and placement.",
+    exports: ["pdf"],
+  },
+  {
+    id: "school-students",
+    module: "school",
+    label: "Students Report",
+    description: "Enrolled students from completed admissions.",
+    exports: ["pdf"],
+  },
+  {
+    id: "school-parents",
+    module: "school",
+    label: "Parents / Guardians Report",
+    description: "Guardians and their linked students.",
+    exports: ["pdf"],
+  },
+  {
+    id: "school-transport",
+    module: "school",
+    label: "Transport Report",
+    description: "Posted fuel and maintenance expenses by bus.",
+    exports: ["pdf"],
+  },
 ];
 
 export type ReportModuleOption = {

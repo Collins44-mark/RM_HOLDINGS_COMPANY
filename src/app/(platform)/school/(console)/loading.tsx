@@ -13,6 +13,7 @@ import { SchoolFeesPage } from "@/components/school/SchoolFeesPage";
 import { SchoolStudentFeeProfilePage } from "@/components/school/SchoolStudentFeeProfilePage";
 import { SchoolExpensesPage } from "@/components/school/SchoolExpensesPage";
 import { SchoolParentsPage } from "@/components/school/SchoolParentsPage";
+import { SchoolReportsPage } from "@/components/school/SchoolReportsPage";
 import { schoolPageMeta } from "@/lib/school/pagination";
 import { peekAdmissionView, peekAdmissionsListSnapshot, peekFeeView, peekFeesListSnapshot } from "@/lib/school/admission-flash";
 import { peekExamsListSnapshot } from "@/lib/school/exam-flash";
@@ -121,6 +122,9 @@ export default function SchoolConsoleLoading() {
   }
   if (pathname === "/school/expenses") {
     return <SchoolExpensesPage initial={null} pending />;
+  }
+  if (pathname === "/school/reports") {
+    return <SchoolReportsPage initial={null} pending />;
   }
   if (pathname === "/school/parents") {
     return (

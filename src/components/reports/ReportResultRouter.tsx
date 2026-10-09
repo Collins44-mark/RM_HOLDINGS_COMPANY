@@ -5,6 +5,7 @@ import {
   GroupPerformanceReport,
 } from "@/components/reports/group/GroupReportPanels";
 import { EmbeddedSupermarketReport } from "@/components/reports/EmbeddedSupermarketReport";
+import { EmbeddedSchoolReport } from "@/components/reports/EmbeddedSchoolReport";
 import { ReportEmptyState } from "@/components/reports/report-ui";
 import { ReportMountFallback } from "@/components/supermarket/report-shell";
 import type { ConsolidatedReport } from "@/lib/data/reports";
@@ -89,6 +90,14 @@ export function ReportResultRouter({
           from={from}
           to={to}
         />
+      </Suspense>
+    );
+  }
+
+  if (moduleId === "school") {
+    return (
+      <Suspense fallback={<ReportMountFallback />}>
+        <EmbeddedSchoolReport reportId={reportId} period={period} from={from} to={to} />
       </Suspense>
     );
   }
