@@ -47,7 +47,13 @@ export function filterNavForUser(items: NavItem[], user: AuthUser): NavItem[] {
       : undefined;
     const selfVisible = canAccessPath(identity, item.href);
     if (children && children.length > 0) {
-      return [{ ...item, children }];
+      return [
+        {
+          ...item,
+          href: selfVisible ? item.href : children[0].href,
+          children,
+        },
+      ];
     }
     if (selfVisible) {
       return [{ ...item, ...(item.children ? { children: [] } : {}) }];

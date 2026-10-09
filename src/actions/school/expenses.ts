@@ -15,6 +15,8 @@ import {
 } from "@/lib/school/access";
 import {
   expenseCategoryCode,
+  isSchoolSystemExpenseType,
+  sortSchoolExpenseTypes,
   type SchoolExpenseBusOption,
   type SchoolExpenseCaps,
   type SchoolExpenseRow,
@@ -111,31 +113,228 @@ function periodBounds(input: { period?: string; from?: string; to?: string }) {
   };
 }
 
-export async function loadSchoolExpensesWorkspaceAction(
-  input: {
-    page?: number;
-    pageSize?: number;
-    q?: string;
-    period?: string;
-    from?: string;
-    to?: string;
-    categoryId?: string;
-  } = {},
+type ExpenseLoadInput = {
+  page?: number;
+  pageSize?: number;
+  q?: string;
+  period?: string;
+  from?: string;
+  to?: string;
+  categoryId?: string;
+};
+
+type ExpenseListContext = Awaited<ReturnType<typeof requireAnySchoolPermission>>;
+
+function mapExpenseType(
+  row: { id: unknown; code?: unknown; name: unknown; description?: unknown; is_active: unknown; created_at?: unknown; updated_at?: unknown },
+  posted: { amount: number; count: number },
+): SchoolExpenseTypeRow {
+  const code = str(row.code);
+  return {
+    id: String(row.id),
+    code,
+    name: String(row.name),
+    description: String(row.description ?? ""),
+    isActive: Boolean(row.is_active),
+    isSystem: isSchoolSystemExpenseType(code),
+    createdAt: String(row.created_at ?? ""),
+    updatedAt: String(row.updated_at ?? ""),
+    postedAmount: posted.amount,
+    postedCount: posted.count,
+  };
+}
+
+async function ensureOtherExpenseType(ctx: ExpenseListContext) {
+  const { supabase, businessUnitId } = ctx;
+  const rpc = await supabase.rpc("sch_ensure_other_expense_type", { p_bu: businessUnitId });
+  if (!rpc.error) return;
+
+  const existing = await supabase
+    .from("sch_expense_categories")
+    .select("id, code, name, is_active, description")
+    .eq("business_unit_id", businessUnitId)
+    .or("code.eq.OTHER,name.ilike.other");
+  if (existing.error) return;
+  const row =
+    (existing.data ?? []).find((item) => isSchoolSystemExpenseType(str(item.code))) ??
+    (existing.data ?? []).find((item) => str(item.name).toLowerCase() === "other") ??
+    null;
+  if (row) {
+    const needsRepair =
+      !row.is_active || str(row.code).toUpperCase() !== "OTHER" || str(row.name) !== "Other";
+    if (!needsRepair) return;
+    const updated = await supabase
+      .from("sch_expense_categories")
+      .update({
+        code: "OTHER",
+        name: "Other",
+        is_active: true,
+        description: str(row.description) || "Uncategorized operating expenses.",
+      })
+      .eq("business_unit_id", businessUnitId)
+      .eq("id", row.id);
+    if (updated.error && updated.error.code !== "23505") return;
+    return;
+  }
+
+  await supabase.from("sch_expense_categories").insert({
+    business_unit_id: businessUnitId,
+    code: "OTHER",
+    name: "Other",
+    description: "Uncategorized operating expenses.",
+    is_active: true,
+  });
+}
+
+async function fetchExpensePage(
+  ctx: ExpenseListContext,
+  input: ExpenseLoadInput,
+  typeNameSeed: Map<string, string>,
+  knownTypeIds?: string[],
 ) {
+  const { supabase, businessUnitId } = ctx;
+  const bounds = periodBounds(input);
+  const pageSize = parseSchoolPageSize(input.pageSize);
+  const { page, from, to } = schoolPageRange(input.page ?? 1, pageSize);
+  const q = searchNeedle(input.q);
+  const categoryId = str(input.categoryId);
+  const typeName = new Map(typeNameSeed);
+
+  let matchingTypeIds = knownTypeIds ?? [];
+  if (q && knownTypeIds == null) {
+    const typeMatch = await supabase
+      .from("sch_expense_categories")
+      .select("id, name")
+      .eq("business_unit_id", businessUnitId)
+      .ilike("name", `%${q}%`);
+    if (typeMatch.error && !isSchoolUnconfiguredRead(typeMatch.error)) mapSchoolDbError(typeMatch.error, "load");
+    matchingTypeIds = (typeMatch.data ?? []).map((row) => String(row.id));
+    for (const row of typeMatch.data ?? []) typeName.set(String(row.id), String(row.name));
+  }
+
+  let query = supabase
+    .from("sch_expenses")
+    .select(
+      "id, expense_number, expense_date, amount, description, reference, method, payee, source_type, source_id, category_id, bus_id, is_active",
+      { count: "exact" },
+    )
+    .eq("business_unit_id", businessUnitId)
+    .gte("expense_date", bounds.from)
+    .lte("expense_date", bounds.to)
+    .order("expense_date", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (categoryId) query = query.eq("category_id", categoryId);
+  if (q) {
+    const typeClause = matchingTypeIds.length ? `,category_id.in.(${matchingTypeIds.join(",")})` : "";
+    query = query.or(
+      `expense_number.ilike.%${q}%,description.ilike.%${q}%,reference.ilike.%${q}%,payee.ilike.%${q}%${typeClause}`,
+    );
+  }
+  const listRes = await query.range(from, to);
+  if (listRes.error && !isSchoolUnconfiguredRead(listRes.error)) mapSchoolDbError(listRes.error, "load");
+
+  const rows = listRes.data ?? [];
+  const missingNames = [...new Set(rows.map((row) => String(row.category_id)).filter((id) => id && !typeName.has(id)))];
+  const fuelIds = rows.filter((row) => row.source_type === "TRANSPORT_FUEL" && row.source_id).map((row) => String(row.source_id));
+  const maintIds = rows
+    .filter((row) => row.source_type === "TRANSPORT_MAINTENANCE" && row.source_id)
+    .map((row) => String(row.source_id));
+  const extraBusIds = rows.map((row) => String(row.bus_id ?? "")).filter(Boolean);
+
+  const [namesRes, fuelRes, maintRes, extraBusesRes] = await Promise.all([
+    missingNames.length
+      ? supabase.from("sch_expense_categories").select("id, name").eq("business_unit_id", businessUnitId).in("id", missingNames)
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string }>, error: null }),
+    fuelIds.length
+      ? supabase.from("sch_fuel_records").select("id, bus_id, station").eq("business_unit_id", businessUnitId).in("id", fuelIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; bus_id: string; station: string | null }>, error: null }),
+    maintIds.length
+      ? supabase
+          .from("sch_maintenance_records")
+          .select("id, bus_id, provider")
+          .eq("business_unit_id", businessUnitId)
+          .in("id", maintIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; bus_id: string; provider: string | null }>, error: null }),
+    extraBusIds.length
+      ? supabase
+          .from("sch_buses")
+          .select("id, registration_number, name, is_active")
+          .eq("business_unit_id", businessUnitId)
+          .in("id", extraBusIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; registration_number: string; name: string | null; is_active: boolean }>, error: null }),
+  ]);
+
+  for (const row of namesRes.data ?? []) typeName.set(String(row.id), String(row.name));
+  const busMap = new Map<string, SchoolExpenseBusOption>();
+  for (const row of extraBusesRes.data ?? []) {
+    busMap.set(String(row.id), {
+      id: String(row.id),
+      registrationNumber: String(row.registration_number),
+      name: String(row.name ?? ""),
+      isActive: Boolean(row.is_active),
+    });
+  }
+  const fuelMap = new Map((fuelRes.data ?? []).map((row) => [String(row.id), row]));
+  const maintMap = new Map((maintRes.data ?? []).map((row) => [String(row.id), row]));
+
+  const expenses: SchoolExpenseRow[] = rows.map((row) => {
+    const sourceType = asSource(row.source_type);
+    const sourceId = row.source_id ? String(row.source_id) : null;
+    let busId = row.bus_id ? String(row.bus_id) : null;
+    let payee = String(row.payee ?? "");
+    if (sourceType === "TRANSPORT_FUEL" && sourceId) {
+      const fuel = fuelMap.get(sourceId);
+      if (fuel?.bus_id) busId = String(fuel.bus_id);
+      if (!payee) payee = String(fuel?.station ?? "");
+    }
+    if (sourceType === "TRANSPORT_MAINTENANCE" && sourceId) {
+      const maint = maintMap.get(sourceId);
+      if (maint?.bus_id) busId = String(maint.bus_id);
+      if (!payee) payee = String(maint?.provider ?? "");
+    }
+    const bus = busId ? busMap.get(busId) : undefined;
+    return {
+      id: String(row.id),
+      expenseNumber: String(row.expense_number),
+      expenseDate: String(row.expense_date),
+      amount: num(row.amount),
+      description: String(row.description ?? ""),
+      reference: String(row.reference ?? ""),
+      method: String(row.method ?? ""),
+      payee,
+      sourceType,
+      sourceId,
+      categoryId: String(row.category_id),
+      categoryName: typeName.get(String(row.category_id)) ?? "",
+      busId,
+      busLabel: bus ? [bus.registrationNumber, bus.name].filter(Boolean).join(" · ") : "",
+      isActive: Boolean(row.is_active),
+    };
+  });
+
+  return {
+    expenses,
+    page: schoolPageMeta(page, listRes.count ?? 0, pageSize),
+    bounds,
+    categoryId,
+    q: str(input.q),
+  };
+}
+
+export async function loadSchoolExpensesWorkspaceAction(input: ExpenseLoadInput = {}) {
   try {
     const user = await requireAuth();
-    const { supabase, businessUnitId } = await requireAnySchoolPermission(VIEW_ANY);
+    const ctx = await requireAnySchoolPermission(VIEW_ANY);
+    const { supabase, businessUnitId } = ctx;
     const bounds = periodBounds(input);
-    const pageSize = parseSchoolPageSize(input.pageSize);
-    const { page, from, to } = schoolPageRange(input.page ?? 1, pageSize);
-    const q = searchNeedle(input.q);
-    const categoryId = str(input.categoryId);
     const capabilities = caps(user);
+
+    await ensureOtherExpenseType(ctx);
 
     const [typesRes, busesRes, postedRes] = await Promise.all([
       supabase
         .from("sch_expense_categories")
-        .select("id, name, description, is_active, created_at, updated_at")
+        .select("id, code, name, description, is_active, created_at, updated_at")
         .eq("business_unit_id", businessUnitId)
         .order("name"),
       supabase
@@ -170,21 +369,11 @@ export async function loadSchoolExpensesWorkspaceAction(
       postedByType.set(id, current);
     }
 
-    const types: SchoolExpenseTypeRow[] = (typesRes.data ?? [])
-      .map((row) => {
-        const posted = postedByType.get(String(row.id)) ?? { amount: 0, count: 0 };
-        return {
-          id: String(row.id),
-          name: String(row.name),
-          description: String(row.description ?? ""),
-          isActive: Boolean(row.is_active),
-          createdAt: String(row.created_at ?? ""),
-          updatedAt: String(row.updated_at ?? ""),
-          postedAmount: posted.amount,
-          postedCount: posted.count,
-        };
-      })
-      .filter((row) => row.isActive || row.postedCount > 0);
+    const types = sortSchoolExpenseTypes(
+      (typesRes.data ?? [])
+        .map((row) => mapExpenseType(row, postedByType.get(String(row.id)) ?? { amount: 0, count: 0 }))
+        .filter((row) => row.isActive || row.postedCount > 0),
+    );
 
     const summary: SchoolExpenseSummary = {
       totalPosted: [...postedByType.values()].reduce((sum, row) => sum + row.amount, 0),
@@ -198,129 +387,51 @@ export async function loadSchoolExpensesWorkspaceAction(
       name: String(row.name ?? ""),
       isActive: Boolean(row.is_active),
     }));
-    const busMap = new Map(buses.map((row) => [row.id, row]));
 
-    let matchingTypeIds: string[] = [];
-    if (q) {
-      matchingTypeIds = types.filter((row) => row.name.toLowerCase().includes(q.toLowerCase())).map((row) => row.id);
-    }
-
-    let query = supabase
-      .from("sch_expenses")
-      .select(
-        "id, expense_number, expense_date, amount, description, reference, method, payee, source_type, source_id, category_id, bus_id, is_active",
-        { count: "exact" },
-      )
-      .eq("business_unit_id", businessUnitId)
-      .gte("expense_date", bounds.from)
-      .lte("expense_date", bounds.to)
-      .order("expense_date", { ascending: false })
-      .order("created_at", { ascending: false });
-    if (categoryId) query = query.eq("category_id", categoryId);
-    if (q) {
-      const typeClause = matchingTypeIds.length ? `,category_id.in.(${matchingTypeIds.join(",")})` : "";
-      query = query.or(
-        `expense_number.ilike.%${q}%,description.ilike.%${q}%,reference.ilike.%${q}%,payee.ilike.%${q}%${typeClause}`,
-      );
-    }
-    const listRes = await query.range(from, to);
-    if (listRes.error && !isSchoolUnconfiguredRead(listRes.error)) mapSchoolDbError(listRes.error, "load");
-
-    const rows = listRes.data ?? [];
-    const fuelIds = rows.filter((row) => row.source_type === "TRANSPORT_FUEL" && row.source_id).map((row) => String(row.source_id));
-    const maintIds = rows
-      .filter((row) => row.source_type === "TRANSPORT_MAINTENANCE" && row.source_id)
-      .map((row) => String(row.source_id));
-    const extraBusIds = rows.map((row) => String(row.bus_id ?? "")).filter(Boolean);
-
-    const [fuelRes, maintRes, extraBusesRes] = await Promise.all([
-      fuelIds.length
-        ? supabase
-            .from("sch_fuel_records")
-            .select("id, bus_id, station")
-            .eq("business_unit_id", businessUnitId)
-            .in("id", fuelIds)
-        : Promise.resolve({ data: [] as Array<{ id: string; bus_id: string; station: string | null }>, error: null }),
-      maintIds.length
-        ? supabase
-            .from("sch_maintenance_records")
-            .select("id, bus_id, provider")
-            .eq("business_unit_id", businessUnitId)
-            .in("id", maintIds)
-        : Promise.resolve({ data: [] as Array<{ id: string; bus_id: string; provider: string | null }>, error: null }),
-      extraBusIds.length
-        ? supabase
-            .from("sch_buses")
-            .select("id, registration_number, name, is_active")
-            .eq("business_unit_id", businessUnitId)
-            .in("id", extraBusIds)
-        : Promise.resolve({ data: [] as typeof busesRes.data, error: null }),
-    ]);
-
-    for (const row of extraBusesRes.data ?? []) {
-      busMap.set(String(row.id), {
-        id: String(row.id),
-        registrationNumber: String(row.registration_number),
-        name: String(row.name ?? ""),
-        isActive: Boolean(row.is_active),
-      });
-    }
-    const fuelMap = new Map((fuelRes.data ?? []).map((row) => [String(row.id), row]));
-    const maintMap = new Map((maintRes.data ?? []).map((row) => [String(row.id), row]));
+    const q = searchNeedle(input.q);
+    const knownTypeIds = q
+      ? types.filter((row) => row.name.toLowerCase().includes(q.toLowerCase())).map((row) => row.id)
+      : [];
     const typeName = new Map(types.map((row) => [row.id, row.name]));
     for (const row of typesRes.data ?? []) {
       if (!typeName.has(String(row.id))) typeName.set(String(row.id), String(row.name));
     }
 
-    const expenses: SchoolExpenseRow[] = rows.map((row) => {
-      const sourceType = asSource(row.source_type);
-      const sourceId = row.source_id ? String(row.source_id) : null;
-      let busId = row.bus_id ? String(row.bus_id) : null;
-      let payee = String(row.payee ?? "");
-      if (sourceType === "TRANSPORT_FUEL" && sourceId) {
-        const fuel = fuelMap.get(sourceId);
-        if (fuel?.bus_id) busId = String(fuel.bus_id);
-        if (!payee) payee = String(fuel?.station ?? "");
-      }
-      if (sourceType === "TRANSPORT_MAINTENANCE" && sourceId) {
-        const maint = maintMap.get(sourceId);
-        if (maint?.bus_id) busId = String(maint.bus_id);
-        if (!payee) payee = String(maint?.provider ?? "");
-      }
-      const bus = busId ? busMap.get(busId) : undefined;
-      return {
-        id: String(row.id),
-        expenseNumber: String(row.expense_number),
-        expenseDate: String(row.expense_date),
-        amount: num(row.amount),
-        description: String(row.description ?? ""),
-        reference: String(row.reference ?? ""),
-        method: String(row.method ?? ""),
-        payee,
-        sourceType,
-        sourceId,
-        categoryId: String(row.category_id),
-        categoryName: typeName.get(String(row.category_id)) ?? "",
-        busId,
-        busLabel: bus ? [bus.registrationNumber, bus.name].filter(Boolean).join(" · ") : "",
-        isActive: Boolean(row.is_active),
-      };
-    });
+    const list = await fetchExpensePage(ctx, input, typeName, q ? knownTypeIds : []);
 
     const workspace: SchoolExpenseWorkspace = {
-      expenses,
+      expenses: list.expenses,
       types,
       buses,
       summary,
-      page: schoolPageMeta(page, listRes.count ?? 0, pageSize),
-      period: bounds.period,
-      from: bounds.from,
-      to: bounds.to,
-      categoryId,
-      q: str(input.q),
+      page: list.page,
+      period: list.bounds.period,
+      from: list.bounds.from,
+      to: list.bounds.to,
+      categoryId: list.categoryId,
+      q: list.q,
       capabilities,
     };
     return { ok: true as const, workspace };
+  } catch (error) {
+    return { ok: false as const, error: schoolActionError(error) };
+  }
+}
+
+export async function loadSchoolExpenseListAction(input: ExpenseLoadInput = {}) {
+  try {
+    const ctx = await requireAnySchoolPermission(VIEW_ANY);
+    const list = await fetchExpensePage(ctx, input, new Map());
+    return {
+      ok: true as const,
+      expenses: list.expenses,
+      page: list.page,
+      period: list.bounds.period,
+      from: list.bounds.from,
+      to: list.bounds.to,
+      categoryId: list.categoryId,
+      q: list.q,
+    };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
   }
@@ -353,16 +464,23 @@ export async function saveSchoolExpenseTypeAction(input: {
     if (existingId) {
       const current = await supabase
         .from("sch_expense_categories")
-        .select("id, name, is_active")
+        .select("id, code, name, is_active")
         .eq("business_unit_id", businessUnitId)
         .eq("id", existingId)
         .maybeSingle();
       if (current.error && !isSchoolUnconfiguredRead(current.error)) mapSchoolDbError(current.error, "save");
       if (!current.data) throw new SchoolError("Expense type was not found.", "NOT_FOUND");
+      const systemType = isSchoolSystemExpenseType(str(current.data.code));
+      if (systemType && input.isActive === false) {
+        throw new SchoolError("Other is the default expense type and cannot be archived.", "VALIDATION");
+      }
+      if (systemType && name.toLowerCase() !== "other") {
+        throw new SchoolError("Other is a system type and cannot be renamed.", "VALIDATION");
+      }
       const nextActive = input.isActive == null ? Boolean(current.data.is_active) : Boolean(input.isActive);
       const result = await supabase
         .from("sch_expense_categories")
-        .update({ name, description, is_active: nextActive })
+        .update({ name: systemType ? "Other" : name, description, is_active: nextActive })
         .eq("business_unit_id", businessUnitId)
         .eq("id", existingId)
         .select("id")

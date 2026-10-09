@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { Plus, Wallet } from "lucide-react";
 import {
+  loadSchoolExpenseListAction,
   loadSchoolExpensesWorkspaceAction,
   recordSchoolExpenseAction,
   reverseSchoolExpenseAction,
@@ -44,6 +45,17 @@ import {
   type SchoolExpenseTypeRow,
   type SchoolExpenseWorkspace,
 } from "@/lib/school/expense-types";
+
+type ExpenseListWindow = {
+  key: string;
+  offset: number;
+  rows: SchoolExpenseRow[];
+  total: number;
+};
+
+function expenseFilterKey(period: ReportPeriod, fromDate: string, toDate: string, query: string, typeId: string) {
+  return `${period}|${fromDate}|${toDate}|${query}|${typeId}`;
+}
 import { schoolPageMeta, type SchoolPageMeta } from "@/lib/school/pagination";
 import { transportInputClass } from "@/lib/school/transport-ui";
 
@@ -82,13 +94,46 @@ export function SchoolExpensesPage({
   const [to, setTo] = useState(first?.to ?? "");
   const [categoryId, setCategoryId] = useState(first?.categoryId ?? "");
   const [q, setQ] = useState(first?.q ?? "");
-  const [refreshing, setRefreshing] = useState(false);
+  const [listBusy, setListBusy] = useState(false);
+  const [pendingPageSize, setPendingPageSize] = useState<number | null>(null);
   const [recordOpen, setRecordOpen] = useState(false);
   const [typesOpen, setTypesOpen] = useState(false);
   const [detail, setDetail] = useState<SchoolExpenseRow | null>(null);
   const [reverseRow, setReverseRow] = useState<SchoolExpenseRow | null>(null);
   const [reverseBusy, setReverseBusy] = useState(false);
   const requestSeq = useRef(0);
+  const listWindow = useRef<ExpenseListWindow | null>(
+    first
+      ? {
+          key: expenseFilterKey(first.period, first.from, first.to, first.q, first.categoryId),
+          offset: Math.max(0, (first.page.page - 1) * first.page.pageSize),
+          rows: first.expenses,
+          total: first.page.total,
+        }
+      : null,
+  );
+
+  function rememberWindow(key: string, nextPage: SchoolPageMeta, nextRows: SchoolExpenseRow[]) {
+    listWindow.current = {
+      key,
+      offset: Math.max(0, (nextPage.page - 1) * nextPage.pageSize),
+      rows: nextRows,
+      total: nextPage.total,
+    };
+  }
+
+  function sliceWindow(nextPage: number, nextSize: number, key: string) {
+    const window = listWindow.current;
+    if (!window || window.key !== key) return null;
+    const start = (nextPage - 1) * nextSize;
+    const meta = schoolPageMeta(nextPage, window.total, nextSize);
+    const neededEnd = meta.total === 0 ? 0 : Math.min(start + nextSize, window.total);
+    if (neededEnd > start && (start < window.offset || neededEnd > window.offset + window.rows.length)) return null;
+    return {
+      rows: neededEnd > start ? window.rows.slice(start - window.offset, neededEnd - window.offset) : [],
+      page: meta,
+    };
+  }
 
   function applyWorkspace(workspace: SchoolExpenseWorkspace) {
     setRows(workspace.expenses);
@@ -102,6 +147,11 @@ export function SchoolExpensesPage({
     setTo(workspace.to);
     setCategoryId(workspace.categoryId);
     setError(null);
+    rememberWindow(
+      expenseFilterKey(workspace.period, workspace.from, workspace.to, workspace.q, workspace.categoryId),
+      workspace.page,
+      workspace.expenses,
+    );
   }
 
   function load(next: {
@@ -114,7 +164,7 @@ export function SchoolExpensesPage({
     categoryId?: string;
   } = {}) {
     const seq = ++requestSeq.current;
-    setRefreshing(true);
+    setListBusy(true);
     void loadSchoolExpensesWorkspaceAction({
       page: next.page ?? page.page,
       pageSize: next.pageSize ?? page.pageSize,
@@ -125,12 +175,49 @@ export function SchoolExpensesPage({
       categoryId: next.categoryId === undefined ? categoryId : next.categoryId,
     }).then((result) => {
       if (seq !== requestSeq.current) return;
-      setRefreshing(false);
+      setListBusy(false);
+      setPendingPageSize(null);
       if (!result.ok) {
         setError(result.error);
         return;
       }
       applyWorkspace(result.workspace);
+    });
+  }
+
+  function loadList(nextPage: number, nextSize: number) {
+    const key = expenseFilterKey(period, from, to, q, categoryId);
+    const local = sliceWindow(nextPage, nextSize, key);
+    setPage(schoolPageMeta(nextPage, page.total, nextSize));
+    setPendingPageSize(nextSize === page.pageSize ? null : nextSize);
+    if (local) {
+      setRows(local.rows);
+      setPage(local.page);
+      setPendingPageSize(null);
+      return;
+    }
+    const seq = ++requestSeq.current;
+    setListBusy(true);
+    void loadSchoolExpenseListAction({
+      page: nextPage,
+      pageSize: nextSize,
+      q,
+      period,
+      from,
+      to,
+      categoryId,
+    }).then((result) => {
+      if (seq !== requestSeq.current) return;
+      setListBusy(false);
+      setPendingPageSize(null);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setRows(result.expenses);
+      setPage(result.page);
+      setError(null);
+      rememberWindow(expenseFilterKey(result.period, result.from, result.to, result.q, result.categoryId), result.page, result.expenses);
     });
   }
 
@@ -218,7 +305,6 @@ export function SchoolExpensesPage({
             />
           </>
         ) : null}
-        {refreshing ? <span className="text-[12px] text-slate-400">Updating…</span> : null}
       </form>
 
       {types.length === 0 && !pending ? (
@@ -273,7 +359,7 @@ export function SchoolExpensesPage({
         </section>
       ) : rows.length > 0 ? (
         <section className={glassPanel}>
-          <div className={tableScrollClass}>
+          <div className={cn(tableScrollClass, listBusy && "opacity-60 transition-opacity duration-200")}>
             <table className="w-full min-w-[980px] text-left">
               <thead>
                 <tr className={tableHead}>
@@ -334,8 +420,9 @@ export function SchoolExpensesPage({
             page={page.page}
             total={page.total}
             pageSize={page.pageSize}
-            onPage={(next) => load({ page: next })}
-            onPageSize={(size) => load({ page: 1, pageSize: size })}
+            pendingPageSize={pendingPageSize}
+            onPage={(next) => loadList(next, page.pageSize)}
+            onPageSize={(size) => loadList(1, size)}
           />
         </section>
       ) : pending ? (
@@ -478,7 +565,7 @@ function RecordExpenseDrawer({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [categoryId, setCategoryId] = useState(types[0]?.id ?? "");
+  const [categoryId, setCategoryId] = useState(types.find((type) => type.isSystem)?.id ?? types[0]?.id ?? "");
   const [amount, setAmount] = useState("");
   const [expenseDate, setExpenseDate] = useState(todayIso());
   const [description, setDescription] = useState("");
@@ -555,7 +642,7 @@ function RecordExpenseDrawer({
             <input className={inputClass} value={newTypeName} onChange={(event) => setNewTypeName(event.target.value)} placeholder="e.g. Electricity" />
           </SchoolField>
         ) : (
-          <p className="text-[13px] text-[#c45b66]">Create an expense type before recording expenses.</p>
+          <p className="text-[13px] text-[#c45b66]">Other should be available as the default expense type. Refresh this page if it is missing.</p>
         )}
         <SchoolField label="Amount (TZS)">
           <input className={inputClass} inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} />
@@ -642,7 +729,12 @@ function ExpenseTypesDrawer({
         {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
         <div className="space-y-3 rounded-[16px] border border-navy/5 bg-white/70 p-3">
           <SchoolField label={editing ? `Edit ${editing.name}` : "New expense type"}>
-            <input className={inputClass} value={name} onChange={(event) => setName(event.target.value)} />
+            <input
+              className={inputClass}
+              value={name}
+              disabled={Boolean(editing?.isSystem)}
+              onChange={(event) => setName(event.target.value)}
+            />
           </SchoolField>
           <SchoolField label="Description (optional)">
             <input className={inputClass} value={description} onChange={(event) => setDescription(event.target.value)} />
@@ -682,6 +774,7 @@ function ExpenseTypesDrawer({
               <div className="min-w-0">
                 <p className="truncate text-[13.5px] font-medium text-navy">
                   {type.name}
+                  {type.isSystem ? <span className="ml-1 text-[11px] text-slate-400">Default</span> : null}
                   {!type.isActive ? <span className="ml-1 text-[11px] text-slate-400">Archived</span> : null}
                 </p>
                 {type.description ? <p className="truncate text-[12.5px] text-slate-400">{type.description}</p> : null}
@@ -698,7 +791,7 @@ function ExpenseTypesDrawer({
                 >
                   Edit
                 </button>
-                {type.isActive ? (
+                {type.isActive && !type.isSystem ? (
                   <button
                     type="button"
                     className="h-8 rounded-full px-3 text-[12.5px] font-semibold text-[#c45b66]"
@@ -706,7 +799,7 @@ function ExpenseTypesDrawer({
                   >
                     Archive
                   </button>
-                ) : (
+                ) : type.isActive ? null : (
                   <button
                     type="button"
                     className="h-8 rounded-full px-3 text-[12.5px] font-semibold text-navy"

@@ -41,6 +41,13 @@ function NavLink({
     isActive(pathname, child.href, child.exact, child.alsoActive),
   );
   const [open, setOpen] = useState(Boolean(childActive));
+  const [openedFor, setOpenedFor] = useState(childActive ? pathname : "");
+  if (childActive && openedFor !== pathname) {
+    setOpenedFor(pathname);
+    if (!open) setOpen(true);
+  } else if (!childActive && openedFor) {
+    setOpenedFor("");
+  }
 
   if (item.children?.length && !collapsed) {
     return (
@@ -70,7 +77,7 @@ function NavLink({
           <div className="mt-1 space-y-0.5 pl-3">
             {item.children.map((child) => (
               <NavLink
-                key={child.href}
+                key={`${child.label}:${child.href}`}
                 item={child}
                 pathname={pathname}
                 nested
@@ -154,7 +161,7 @@ export function Sidebar({
         <div className="space-y-1">
           {items.map((item) => (
             <NavLink
-              key={item.href}
+              key={`${item.label}:${item.href}`}
               item={item}
               pathname={pathname}
               collapsed={collapsed}
@@ -174,7 +181,7 @@ export function Sidebar({
             <div className="space-y-1">
               {workspace.items.map((item) => (
                 <NavLink
-                  key={item.href}
+                  key={`${item.label}:${item.href}`}
                   item={item}
                   pathname={pathname}
                   collapsed={collapsed}

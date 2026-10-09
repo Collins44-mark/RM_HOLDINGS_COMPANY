@@ -12,16 +12,31 @@ export type SchoolExpenseCaps = {
   canReverse: boolean;
 };
 
+export const SCHOOL_OTHER_EXPENSE_CODE = "OTHER";
+
 export type SchoolExpenseTypeRow = {
   id: string;
+  code: string;
   name: string;
   description: string;
   isActive: boolean;
+  isSystem: boolean;
   createdAt: string;
   updatedAt: string;
   postedAmount: number;
   postedCount: number;
 };
+
+export function isSchoolSystemExpenseType(code: string) {
+  return code.trim().toUpperCase() === SCHOOL_OTHER_EXPENSE_CODE;
+}
+
+export function sortSchoolExpenseTypes<T extends { isSystem: boolean; name: string }>(types: T[]) {
+  return [...types].sort((a, b) => {
+    if (a.isSystem !== b.isSystem) return a.isSystem ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+}
 
 export type SchoolExpenseBusOption = {
   id: string;

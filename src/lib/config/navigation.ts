@@ -63,7 +63,16 @@ export const SCHOOL_NAV: NavItem[] = [
   { href: "/school/subjects", label: "Subjects", icon: "book" },
   { href: "/school/attendance", label: "Attendance", icon: "clipboard" },
   { href: "/school/exams-results", label: "Exams & Results", icon: "reports", alsoActive: ["/school/exams"] },
-  { href: "/school/fees", label: "Fees & Payments", icon: "money" },
+  {
+    href: "/school/fees",
+    label: "Finance",
+    icon: "finance",
+    alsoActive: ["/school/expenses"],
+    children: [
+      { href: "/school/fees", label: "Fees & Payments", icon: "money" },
+      { href: "/school/expenses", label: "Expenses", icon: "wallet" },
+    ],
+  },
   {
     href: "/school/transport",
     label: "Transport",
@@ -75,7 +84,6 @@ export const SCHOOL_NAV: NavItem[] = [
       { href: "/school/transport/service", label: "Service", icon: "wrench", alsoActive: ["/school/transport/fuel", "/school/transport/maintenance"] },
     ],
   },
-  { href: "/school/expenses", label: "Expenses", icon: "wallet" },
   { href: "/school/reports", label: "Reports", icon: "reports" },
   { href: "/school/settings", label: "Settings", icon: "settings" },
 ];
