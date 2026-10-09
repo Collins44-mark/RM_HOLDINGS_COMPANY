@@ -38,11 +38,81 @@ export type TransportDriverRow = {
   startedOn: string;
 };
 
+export const TRANSPORT_BILLING_FREQUENCIES = ["MONTH", "TERM", "YEAR", "ONCE"] as const;
+export type TransportBillingFrequency = (typeof TRANSPORT_BILLING_FREQUENCIES)[number];
+
+export function parseTransportBillingFrequency(value: unknown): TransportBillingFrequency | null {
+  const next = String(value ?? "").trim();
+  return TRANSPORT_BILLING_FREQUENCIES.includes(next as TransportBillingFrequency)
+    ? (next as TransportBillingFrequency)
+    : null;
+}
+
+export function transportBillingFrequencyLabel(value: string | null | undefined) {
+  if (value === "MONTH") return "Per month";
+  if (value === "TERM") return "Per term";
+  if (value === "YEAR") return "Per academic year";
+  if (value === "ONCE") return "One time";
+  return "Not configured";
+}
+
+export function isBillableTransportRoute(row: { isActive: boolean; price: number; billingFrequency: string | null }) {
+  return row.isActive && row.price > 0 && Boolean(parseTransportBillingFrequency(row.billingFrequency));
+}
+
+export type TransportRouteOption = {
+  id: string;
+  name: string;
+  price: number;
+  billingFrequency: TransportBillingFrequency | null;
+  isActive: boolean;
+  billable: boolean;
+};
+
+export type StudentTransportAssignment = {
+  id: string;
+  routeId: string;
+  routeName: string;
+  fare: number;
+  billingFrequency: string;
+  status: "active" | "inactive";
+  startedOn: string;
+  endedOn: string;
+  billingPeriod: string;
+};
+
+export type StudentTransportCharge = {
+  id: string;
+  routeName: string;
+  amount: number;
+  paid: number;
+  outstanding: number;
+  status: string;
+  billingFrequency: string;
+  billingPeriod: string;
+  isActive: boolean;
+};
+
+export type StudentTransportWorkspace = {
+  status: "not_enrolled" | "active" | "inactive";
+  assignment: StudentTransportAssignment | null;
+  history: StudentTransportAssignment[];
+  charges: StudentTransportCharge[];
+  payments: Array<{ id: string; amount: number; paymentDate: string; status: string; method: string; reference: string }>;
+  outstanding: number;
+  billed: number;
+  collected: number;
+  currentPeriod: string;
+  routes: TransportRouteOption[];
+  canManage: boolean;
+};
+
 export type TransportRouteRow = {
   id: string;
   name: string;
   details: string;
   price: number;
+  billingFrequency: TransportBillingFrequency | null;
   busId: string | null;
   busRegistration: string;
   driverName: string;

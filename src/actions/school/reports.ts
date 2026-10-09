@@ -240,7 +240,7 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
       };
     });
     if (slice === "fees" || slice === "all") {
-      let summaryQuery = supabase.from("sch_v_fee_accounts").select("charge_id, due_amount, paid_amount");
+      let summaryQuery = supabase.from("sch_v_fee_accounts").select("enrollment_id, due_amount, paid_amount, outstanding_amount");
       summaryQuery = summaryQuery.eq("business_unit_id", businessUnitId);
       if (yearId) summaryQuery = summaryQuery.eq("academic_year_id", yearId);
       if (levelId) summaryQuery = summaryQuery.eq("level_id", levelId);
@@ -254,20 +254,9 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
       outstanding = 0;
       withBalance = 0;
       const allRows = allAccounts.data ?? [];
-      const allChargeIds = [...new Set(allRows.map((row) => str(row.charge_id)).filter(Boolean))];
-      const allAllocated = new Map<string, number>();
-      for (let i = 0; i < allChargeIds.length; i += 100) {
-        const chunk = allChargeIds.slice(i, i + 100);
-        const pay = await supabase
-          .from("sch_fee_payments")
-          .select("charge_id, amount")
-          .eq("business_unit_id", businessUnitId)
-          .eq("status", "posted")
-          .in("charge_id", chunk);
-        for (const row of pay.data ?? []) {
-          const id = str(row.charge_id);
-          allAllocated.set(id, num(row.amount) + (allAllocated.get(id) ?? 0));
-        }
+      const enrollmentIds = [...new Set(allRows.map((row) => str(row.enrollment_id)).filter(Boolean))];
+      for (let i = 0; i < enrollmentIds.length; i += 100) {
+        const chunk = enrollmentIds.slice(i, i + 100);
         const periodPay = await supabase
           .from("sch_fee_payments")
           .select("amount")
@@ -275,14 +264,12 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
           .eq("status", "posted")
           .gte("payment_date", base.from)
           .lte("payment_date", base.to)
-          .in("charge_id", chunk);
+          .in("enrollment_id", chunk);
         collected += (periodPay.data ?? []).reduce((sum, row) => sum + num(row.amount), 0);
       }
       for (const row of allRows) {
         const billedAmt = row.due_amount == null ? null : num(row.due_amount);
-        const chargeId = str(row.charge_id);
-        const paid = chargeId ? allAllocated.get(chargeId) ?? 0 : 0;
-        const remaining = billedAmt == null ? null : Math.max(0, billedAmt - paid);
+        const remaining = row.outstanding_amount == null ? null : num(row.outstanding_amount);
         if (billedAmt != null) billed += billedAmt;
         if (remaining != null) {
           outstanding += remaining;

@@ -29,6 +29,9 @@ export type FeeObligationRow = {
   paid: number;
   remaining: number | null;
   status: FeeAccountStatus;
+  chargeKind: "TUITION" | "TRANSPORT";
+  billingFrequency?: string;
+  billingPeriod?: string;
 };
 
 export type StudentFeeAccount = {

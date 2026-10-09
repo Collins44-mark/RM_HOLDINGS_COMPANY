@@ -30,6 +30,7 @@ import {
   type StudentFeeAccount,
 } from "@/lib/school/fee-types";
 import { formatCompactStudentNumber } from "@/lib/school/student-number";
+import { SchoolStudentTransportPanel } from "@/components/school/SchoolStudentTransportPanel";
 import { patchFeesListSnapshotAccount } from "@/lib/school/admission-flash";
 
 type Caps = {
@@ -59,8 +60,10 @@ function formatWhen(iso: string, date: string) {
   return next.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
 }
 
-function remainingOf(account: StudentFeeAccount, enrollmentId: string) {
-  const obligation = account.obligations.find((row) => row.enrollmentId === enrollmentId);
+function remainingOf(account: StudentFeeAccount, chargeId: string, enrollmentId: string) {
+  const obligation =
+    account.obligations.find((row) => row.chargeId && row.chargeId === chargeId) ??
+    account.obligations.find((row) => row.enrollmentId === enrollmentId);
   return obligation?.remaining ?? account.outstandingAmount;
 }
 
@@ -86,6 +89,7 @@ export function SchoolStudentFeeProfilePage({
   const [error, setError] = useState(initialError);
   const [payOpen, setPayOpen] = useState(openPay && Boolean(initialAccount));
   const [payEnrollmentId, setPayEnrollmentId] = useState(initialAccount?.enrollmentId ?? "");
+  const [payChargeId, setPayChargeId] = useState(initialAccount?.chargeId ?? "");
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState<"CASH" | "MOBILE_MONEY" | "BANK">("CASH");
   const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -128,6 +132,7 @@ export function SchoolStudentFeeProfilePage({
 
   function startPay(target?: FeeObligationRow) {
     setPayEnrollmentId(target?.enrollmentId || viewEnrollmentId);
+    setPayChargeId(target?.chargeId || account?.obligations.find((row) => row.enrollmentId === viewEnrollmentId)?.chargeId || "");
     setPayOpen(true);
     setSaved(false);
     setPayAmount("");
@@ -158,6 +163,7 @@ export function SchoolStudentFeeProfilePage({
     const enrollmentId = payEnrollmentId || viewEnrollmentId;
     void recordSchoolFeePaymentAction({
       enrollmentId,
+      chargeId: payChargeId,
       amount: payAmount,
       method: payMethod,
       paymentDate: payDate,
@@ -220,7 +226,7 @@ export function SchoolStudentFeeProfilePage({
   }
 
   const studentNo = formatCompactStudentNumber(account.studentNumber);
-  const remaining = remainingOf(account, payEnrollmentId || account.enrollmentId);
+  const remaining = remainingOf(account, payChargeId, payEnrollmentId || account.enrollmentId);
   const payable = account.obligations.filter((row) => row.status !== "no_structure");
 
   return (
@@ -281,10 +287,12 @@ export function SchoolStudentFeeProfilePage({
         <Fact label="This year balance" value={money(account.outstandingAmount)} />
       </section>
 
+      <SchoolStudentTransportPanel studentId={account.studentId} enrollmentId={account.enrollmentId} initial={null} />
+
       <section className={glassPanel}>
         <h2 className="px-4 pt-4 text-[15px] font-semibold text-navy">Fee breakdown</h2>
         <p className="px-4 pb-2 text-[12.5px] text-slate-500">
-          One annual school-fee charge per enrollment. Term amounts are structure breakdown, not a second bill.
+          Tuition and school transport charges share this account. Term amounts on tuition are structure breakdown, not a second bill.
         </p>
         {account.obligations.length === 0 ? (
           <p className="px-4 pb-4 text-[13.5px] text-slate-500">No billed obligations for this student.</p>
@@ -302,7 +310,7 @@ export function SchoolStudentFeeProfilePage({
               </thead>
               <tbody>
                 {account.obligations.map((row) => (
-                  <tr key={row.enrollmentId} className="border-t border-navy/5 text-[13.5px] text-navy">
+                  <tr key={row.chargeId || `${row.enrollmentId}-${row.description}`} className="border-t border-navy/5 text-[13.5px] text-navy">
                     <td className="px-4 py-3">{row.description}</td>
                     <td className="px-4 py-3">{row.academicYearName}</td>
                     <td className="px-4 py-3 tabular-nums">{money(row.billed)}</td>
@@ -349,7 +357,11 @@ export function SchoolStudentFeeProfilePage({
                     <td className="px-4 py-3 tabular-nums">{formatTzs(payment.amount)}</td>
                     <td className="px-4 py-3">{paymentMethodLabel(payment.method)}</td>
                     <td className="px-4 py-3">{payment.reference || "—"}</td>
-                    <td className="px-4 py-3">{payment.academicYearName || "Annual school fees"}</td>
+                    <td className="px-4 py-3">
+                      {account.obligations.find((row) => row.chargeId === payment.chargeId)?.description ||
+                        payment.academicYearName ||
+                        "Annual school fees"}
+                    </td>
                     <td className="px-4 py-3">{payment.recordedByName || "—"}</td>
                     <td className="px-4 py-3">
                       <StatusPill value={payment.status === "posted" ? "Posted" : "Pending"} />
@@ -409,22 +421,27 @@ export function SchoolStudentFeeProfilePage({
           <div className="space-y-3 pb-4">
             {payable.length > 1 ? (
               <label className="block">
-                <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Obligation</span>
+                <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Charge</span>
                 <select
                   className={inputClass}
-                  value={payEnrollmentId}
-                  onChange={(event) => setPayEnrollmentId(event.target.value)}
+                  value={payChargeId || payEnrollmentId}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    const match = payable.find((row) => row.chargeId === next) ?? payable.find((row) => row.enrollmentId === next);
+                    setPayChargeId(match?.chargeId ?? next);
+                    setPayEnrollmentId(match?.enrollmentId || payEnrollmentId);
+                  }}
                 >
                   {payable.map((row) => (
-                    <option key={row.enrollmentId} value={row.enrollmentId}>
-                      {row.academicYearName} · remaining {row.remaining == null ? "—" : formatAmount(row.remaining)}
+                    <option key={row.chargeId || row.enrollmentId} value={row.chargeId || row.enrollmentId}>
+                      {row.description} · {row.academicYearName} · remaining {row.remaining == null ? "—" : formatAmount(row.remaining)}
                     </option>
                   ))}
                 </select>
               </label>
             ) : (
               <p className="text-[13px] text-slate-500">
-                Annual school fees
+                {payable[0]?.description || "Annual school fees"}
                 {remaining != null ? ` · Outstanding ${formatTzs(remaining)}` : ""}
               </p>
             )}

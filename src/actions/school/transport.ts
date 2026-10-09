@@ -14,6 +14,7 @@ import {
 } from "@/lib/school/access";
 import { schoolPageMeta, schoolPageRange } from "@/lib/school/pagination";
 import {
+  parseTransportBillingFrequency,
   staffDisplayName,
   transportPeriodBounds,
   type TransportBusOption,
@@ -267,7 +268,7 @@ export async function getTransportOverviewAction(input: { period?: TransportPeri
         .limit(40),
       supabase
         .from("sch_transport_routes")
-        .select("id, name, details, price, bus_id, is_active")
+        .select("id, name, details, price, billing_frequency, bus_id, is_active")
         .eq("business_unit_id", businessUnitId)
         .order("name")
         .limit(40),
@@ -349,6 +350,7 @@ export async function getTransportOverviewAction(input: { period?: TransportPeri
       name: String(row.name),
       details: String(row.details ?? ""),
       price: num(row.price),
+      billingFrequency: parseTransportBillingFrequency(row.billing_frequency),
       busId: row.bus_id ? String(row.bus_id) : null,
       busRegistration: row.bus_id ? (busReg.get(String(row.bus_id)) ?? "") : "",
       driverName: row.bus_id ? (driverByBus.get(String(row.bus_id)) ?? "") : "",
@@ -683,7 +685,7 @@ export async function getTransportRoutesWorkspaceAction() {
     const [routesRes, buses] = await Promise.all([
       supabase
         .from("sch_transport_routes")
-        .select("id, name, details, price, bus_id, is_active", { count: "exact" })
+        .select("id, name, details, price, billing_frequency, bus_id, is_active", { count: "exact" })
         .eq("business_unit_id", businessUnitId)
         .order("name")
         .range(from, to),
@@ -698,6 +700,7 @@ export async function getTransportRoutesWorkspaceAction() {
       name: String(row.name),
       details: String(row.details ?? ""),
       price: num(row.price),
+      billingFrequency: parseTransportBillingFrequency(row.billing_frequency),
       busId: row.bus_id ? String(row.bus_id) : null,
       busRegistration: row.bus_id ? (busMap.get(String(row.bus_id)) ?? "") : "",
       driverName: row.bus_id ? (drivers.get(String(row.bus_id))?.name ?? "") : "",
@@ -716,6 +719,7 @@ export async function saveTransportRouteAction(input: {
   name: string;
   details: string;
   price: string;
+  billingFrequency: string;
   busId: string;
   isActive: boolean;
 }) {
@@ -725,6 +729,7 @@ export async function saveTransportRouteAction(input: {
     if (name.length < 2) throw new SchoolError("Enter a route name.", "VALIDATION");
     const price = num(input.price);
     if (price < 0) throw new SchoolError("Route price cannot be negative.", "VALIDATION");
+    const billingFrequency = parseTransportBillingFrequency(input.billingFrequency);
     const busId = str(input.busId) || null;
     if (busId) {
       const bus = await supabase
@@ -741,6 +746,7 @@ export async function saveTransportRouteAction(input: {
       name,
       details: str(input.details),
       price,
+      billing_frequency: billingFrequency,
       bus_id: busId,
       is_active: Boolean(input.isActive),
     };

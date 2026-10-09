@@ -18,6 +18,7 @@ import { glassPanel, inputClass, primaryButton, secondaryButton } from "@/compon
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import { formatCompactStudentNumber } from "@/lib/school/student-number";
+import { transportBillingFrequencyLabel, type TransportRouteOption } from "@/lib/school/transport-types";
 
 export type AdmissionFormOptions = {
   years: Array<{ id: string; name: string; isCurrent: boolean }>;
@@ -25,6 +26,7 @@ export type AdmissionFormOptions = {
   levels: Array<{ id: string; name: string }>;
   classes?: Array<{ id: string; name: string; levelId: string }>;
   streams?: Array<{ id: string; name: string; classId: string }>;
+  routes?: TransportRouteOption[];
   today?: string;
   capabilities?: { canView: boolean; canManage: boolean; canConfigureAcademic: boolean };
 };
@@ -60,6 +62,8 @@ function emptyForm(options: AdmissionFormOptions): AdmissionFormInput {
     guardianEmail: "",
     guardianAddress: "",
     guardianOccupation: "",
+    transportEnabled: false,
+    transportRouteId: "",
   };
 }
 
@@ -87,6 +91,8 @@ function fromDetail(admission: AdmissionDetail): AdmissionFormInput {
     guardianEmail: admission.guardianEmail,
     guardianAddress: admission.guardianAddress,
     guardianOccupation: admission.guardianOccupation,
+    transportEnabled: admission.transportEnabled,
+    transportRouteId: admission.transportRouteId,
   };
 }
 
@@ -164,6 +170,7 @@ export function SchoolAdmissionFormPage({
         levels: result.levels,
         classes: result.classes,
         streams: result.streams,
+        routes: result.routes,
         today: result.today,
         capabilities: result.capabilities,
       });
@@ -212,6 +219,8 @@ export function SchoolAdmissionFormPage({
   const levelName = levels.find((row) => row.id === form.levelId)?.name ?? "—";
   const className = visibleClasses.find((row) => row.id === form.classId)?.name ?? "—";
   const streamName = visibleStreams.find((row) => row.id === form.streamId)?.name ?? "—";
+  const routes = options?.routes ?? [];
+  const selectedRoute = routes.find((row) => row.id === form.transportRouteId);
   const studentName = [form.firstName, form.middleName, form.lastName].filter(Boolean).join(" ");
   const canManage = options?.capabilities?.canManage !== false;
   const busy = saveBusy || completeBusy;
@@ -600,6 +609,56 @@ export function SchoolAdmissionFormPage({
             </p>
           ) : null}
           <FeeReadout fee={visibleFee} ready={Boolean(form.classId && form.academicYearId)} />
+          <div className="space-y-3 border-t border-navy/8 pt-4">
+            <h3 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">School Transport</h3>
+            <label className="flex items-center gap-2 text-[13.5px] text-navy">
+              <input
+                type="checkbox"
+                checked={Boolean(form.transportEnabled)}
+                onChange={(event) =>
+                  patch({
+                    transportEnabled: event.target.checked,
+                    transportRouteId: event.target.checked ? form.transportRouteId : "",
+                  })
+                }
+              />
+              Enable School Transport
+            </label>
+            {form.transportEnabled ? (
+              <>
+                <SchoolField label="Route">
+                  <select
+                    className={inputClass}
+                    value={form.transportRouteId ?? ""}
+                    onChange={(event) => patch({ transportRouteId: event.target.value })}
+                  >
+                    <option value="">Select route</option>
+                    {routes.map((row) => (
+                      <option key={row.id} value={row.id} disabled={!row.billable}>
+                        {row.name}
+                        {row.billable
+                          ? ` · ${formatTzs(row.price)} · ${transportBillingFrequencyLabel(row.billingFrequency)}`
+                          : " · fare or billing frequency not configured"}
+                      </option>
+                    ))}
+                  </select>
+                </SchoolField>
+                {selectedRoute?.billable ? (
+                  <p className="text-[13px] text-slate-500">
+                    Applicable transport charge: {formatTzs(selectedRoute.price)} {transportBillingFrequencyLabel(selectedRoute.billingFrequency).toLowerCase()}. This is billed only when admission is completed.
+                  </p>
+                ) : selectedRoute ? (
+                  <p className="text-[13px] text-[#c45b66]">This route cannot be billed until a fare and billing frequency are configured.</p>
+                ) : routes.length ? (
+                  <p className="text-[13px] text-slate-500">Select a configured route to see the fare and billing frequency.</p>
+                ) : (
+                  <p className="text-[13px] text-slate-500">No active transport routes are configured yet.</p>
+                )}
+              </>
+            ) : (
+              <p className="text-[13px] text-slate-500">Transport is optional. Leave this off if the student will not use school buses.</p>
+            )}
+          </div>
         </section>
       ) : null}
 
@@ -653,6 +712,16 @@ export function SchoolAdmissionFormPage({
             <div>
               <dt className="text-slate-500">Admission date</dt>
               <dd className="font-medium text-navy">{form.admissionDate || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Transport</dt>
+              <dd className="font-medium text-navy">
+                {form.transportEnabled
+                  ? selectedRoute
+                    ? `${selectedRoute.name} · ${formatTzs(selectedRoute.price)} · ${transportBillingFrequencyLabel(selectedRoute.billingFrequency)}`
+                    : "Enabled — select a route"
+                  : "Not enrolled"}
+              </dd>
             </div>
           </dl>
           <FeeReadout fee={visibleFee} ready={Boolean(form.classId && form.academicYearId)} />

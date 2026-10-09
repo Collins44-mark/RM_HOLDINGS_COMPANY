@@ -20,6 +20,8 @@ import {
 } from "@/lib/school/placement-query";
 import { catalogLookup, loadSchoolStructureCatalog } from "@/lib/school/structure-catalog";
 import { writeAuditEvent } from "@/lib/audit";
+import { getStudentTransportWorkspaceAction } from "@/actions/school/transport-billing";
+import type { StudentTransportWorkspace } from "@/lib/school/transport-types";
 
 const VIEW = "school.students.view";
 const MANAGE = "school.students.manage";
@@ -73,6 +75,7 @@ export type StudentProfile = {
   enrollmentStatus: string;
   attendanceEligible: boolean;
   guardians: StudentGuardianRow[];
+  transport: StudentTransportWorkspace | null;
 };
 
 function str(value: unknown) {
@@ -286,6 +289,9 @@ export async function getSchoolStudentAction(id: string) {
         isPrimary: Boolean(link.is_primary),
       };
     });
+    const transport = enrollment?.id
+      ? await getStudentTransportWorkspaceAction({ studentId: String(row.id), enrollmentId: String(enrollment.id) })
+      : { ok: false as const, error: "" };
     const profile: StudentProfile = {
       id: String(row.id),
       studentNumber: str(row.student_number),
@@ -312,11 +318,17 @@ export async function getSchoolStudentAction(id: string) {
       enrollmentStatus: str(enrollment?.status),
       attendanceEligible: str(row.status) === "active" && str(enrollment?.status) === "active",
       guardians,
+      transport: transport.ok ? transport.workspace : null,
     };
     return {
       ok: true as const,
       student: profile,
-      capabilities: { canView: true, canManage: canManage(user), canEditGuardians: canEditGuardians(user) },
+      capabilities: {
+        canView: true,
+        canManage: canManage(user),
+        canEditGuardians: canEditGuardians(user),
+        canManageTransport: transport.ok ? transport.workspace.canManage : false,
+      },
     };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };

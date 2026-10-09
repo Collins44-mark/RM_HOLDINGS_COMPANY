@@ -81,6 +81,8 @@ export type AdmissionDetail = {
   studentNumber: string | null;
   attendanceEligible: boolean;
   fee: ApplicableFeeRow;
+  transportEnabled: boolean;
+  transportRouteId: string;
 };
 
 export type AdmissionFormInput = {
@@ -106,6 +108,8 @@ export type AdmissionFormInput = {
   guardianEmail: string;
   guardianAddress: string;
   guardianOccupation: string;
+  transportEnabled?: boolean;
+  transportRouteId?: string;
 };
 
 function str(value: unknown) {
@@ -268,6 +272,8 @@ function admissionPayload(input: AdmissionFormInput, businessUnitId: string) {
     guardian_email: str(input.guardianEmail).slice(0, 160),
     guardian_address: str(input.guardianAddress).slice(0, 240),
     guardian_occupation: str(input.guardianOccupation).slice(0, 80),
+    transport_enabled: Boolean(input.transportEnabled),
+    transport_route_id: Boolean(input.transportEnabled) ? str(input.transportRouteId) || null : null,
   };
 }
 
@@ -315,13 +321,32 @@ export async function getAdmissionFormOptionsAction(mode: "view" | "manage" = "v
   try {
     const user = await requireAuth();
     const ctx = await requireSchoolPermission(mode === "manage" ? MANAGE : VIEW);
-    const [catalog, scope] = await Promise.all([
+    const [catalog, scope, routesRes] = await Promise.all([
       loadSchoolStructureCatalog(ctx),
       isOwnerRole(user.roleCode) ? Promise.resolve(null) : loadSchoolStructureScope(ctx),
+      ctx.supabase
+        .from("sch_transport_routes")
+        .select("id, name, price, billing_frequency, is_active")
+        .eq("business_unit_id", ctx.businessUnitId)
+        .order("name"),
     ]);
     const levels = catalog.levels.filter((row) => !scope || scope.schoolWide || scope.levelIds.has(row.id));
     const classes = catalog.classes.filter((row) => !scope || scope.schoolWide || scope.classIds.has(row.id));
     const streams = catalog.streams.filter((row) => !scope || scope.schoolWide || scope.streamIds.has(row.id));
+    const routes = (routesRes.error ? [] : routesRes.data ?? []).map((row) => ({
+      id: String(row.id),
+      name: String(row.name),
+      price: Number(row.price) || 0,
+      billingFrequency:
+        row.billing_frequency === "MONTH" || row.billing_frequency === "TERM" || row.billing_frequency === "YEAR" || row.billing_frequency === "ONCE"
+          ? row.billing_frequency
+          : null,
+      isActive: Boolean(row.is_active),
+      billable:
+        Boolean(row.is_active) &&
+        Number(row.price) > 0 &&
+        ["MONTH", "TERM", "YEAR", "ONCE"].includes(String(row.billing_frequency ?? "")),
+    }));
     return {
       ok: true as const,
       years: catalog.years,
@@ -329,6 +354,7 @@ export async function getAdmissionFormOptionsAction(mode: "view" | "manage" = "v
       levels,
       classes,
       streams,
+      routes,
       today: new Date().toISOString().slice(0, 10),
       capabilities: caps(user),
     };
@@ -450,7 +476,7 @@ export async function getSchoolAdmissionAction(id: string) {
       supabase
         .from("sch_admissions")
         .select(
-          "id, admission_number, status, admission_date, academic_year_id, term_id, stream_id, class_id, student_id, first_name, middle_name, last_name, date_of_birth, gender, nationality, address, phone, email, guardian_full_name, guardian_relationship, guardian_phone, guardian_email, guardian_address, guardian_occupation",
+          "id, admission_number, status, admission_date, academic_year_id, term_id, stream_id, class_id, student_id, first_name, middle_name, last_name, date_of_birth, gender, nationality, address, phone, email, guardian_full_name, guardian_relationship, guardian_phone, guardian_email, guardian_address, guardian_occupation, transport_enabled, transport_route_id",
         )
         .eq("business_unit_id", businessUnitId)
         .eq("id", admissionId)
@@ -557,6 +583,8 @@ export async function getSchoolAdmissionAction(id: string) {
       studentNumber: studentRes.data?.student_number ? String(studentRes.data.student_number) : null,
       attendanceEligible,
       fee: fees,
+      transportEnabled: Boolean(row.transport_enabled),
+      transportRouteId: str(row.transport_route_id),
     };
     return { ok: true as const, admission: detail, capabilities: caps(user) };
   } catch (error) {
@@ -571,6 +599,21 @@ async function upsertDraftAdmission(
 ) {
   const { supabase, businessUnitId, userId } = ctx;
   const payload = admissionPayload(input, businessUnitId);
+  if (payload.transport_enabled) {
+    const routeId = str(input.transportRouteId);
+    if (!routeId) throw new SchoolError("Select a school transport route.", "VALIDATION");
+    const route = await ctx.supabase
+      .from("sch_transport_routes")
+      .select("id, price, billing_frequency, is_active")
+      .eq("business_unit_id", businessUnitId)
+      .eq("id", routeId)
+      .maybeSingle();
+    if (!route.data?.id || !route.data.is_active) throw new SchoolError("Select an active school transport route.", "VALIDATION");
+    if (Number(route.data.price) <= 0) throw new SchoolError("This route has no fare configured.", "VALIDATION");
+    if (!["MONTH", "TERM", "YEAR", "ONCE"].includes(String(route.data.billing_frequency ?? ""))) {
+      throw new SchoolError("Set a billing frequency on this route before assigning students.", "VALIDATION");
+    }
+  }
   if (payload.class_id && !options?.skipPlacementAssert) {
     await assertPlacement(supabase, businessUnitId, {
       levelId: input.levelId,
@@ -646,6 +689,9 @@ export async function completeSchoolAdmissionAction(input: AdmissionFormInput & 
     }
     if (!str(input.guardianFullName) || !str(input.guardianRelationship) || !str(input.guardianPhone)) {
       throw new SchoolError("Guardian name, relationship, and phone are required to complete admission.", "VALIDATION");
+    }
+    if (input.transportEnabled && !str(input.transportRouteId)) {
+      throw new SchoolError("Select a school transport route.", "VALIDATION");
     }
     const saved = await upsertDraftAdmission(ctx, input);
     const { data, error } = await supabase.rpc("sch_complete_admission", {

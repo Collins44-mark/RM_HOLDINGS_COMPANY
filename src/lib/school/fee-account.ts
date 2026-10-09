@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isSchoolUnconfiguredRead } from "@/lib/school/access";
 import {
-  asFeeStatus,
   feeStatusFromAmounts,
   isAllocatedFeePayment,
   type FeeObligationRow,
@@ -34,16 +33,20 @@ function mapObligation(row: Record<string, unknown>, allocated?: number): FeeObl
   const billed = row.due_amount == null ? null : num(row.due_amount);
   const paid = allocated ?? num(row.paid_amount);
   const remaining = billed == null ? null : Math.max(0, billed - paid);
+  const kind = str(row.charge_kind) === "TRANSPORT" ? "TRANSPORT" : "TUITION";
   return {
     enrollmentId: str(row.enrollment_id),
     chargeId: str(row.charge_id) || null,
-    description: "Annual school fees",
+    description: kind === "TRANSPORT" ? str(row.description) || "School transport" : "Annual school fees",
     academicYearId: str(row.academic_year_id),
     academicYearName: str(row.academic_year_name),
     billed,
     paid,
     remaining,
     status: feeStatusFromAmounts(billed, paid, Boolean(str(row.fee_structure_id) || str(row.charge_id))),
+    chargeKind: kind,
+    billingFrequency: str(row.billing_frequency) || undefined,
+    billingPeriod: str(row.billing_period) || undefined,
   };
 }
 
@@ -68,7 +71,7 @@ export async function getStudentFeeAccount(input: {
 
   const yearId = str(row.academic_year_id);
   const today = new Date().toISOString().slice(0, 10);
-  const [relatedRes, payments, termsRes, structureRes] = await Promise.all([
+  const [relatedRes, chargesRes, payments, termsRes, structureRes] = await Promise.all([
     input.supabase
       .from("sch_v_fee_accounts")
       .select(
@@ -76,6 +79,12 @@ export async function getStudentFeeAccount(input: {
       )
       .eq("business_unit_id", input.businessUnitId)
       .eq("student_id", studentId),
+    input.supabase
+      .from("sch_fee_charges")
+      .select("id, enrollment_id, annual_amount, charge_kind, route_id, billing_frequency, billing_period, academic_year_id, fee_structure_id, is_active")
+      .eq("business_unit_id", input.businessUnitId)
+      .eq("student_id", studentId)
+      .eq("is_active", true),
     loadPayments(input.supabase, input.businessUnitId, studentId),
     input.supabase
       .from("sch_terms")
@@ -94,13 +103,48 @@ export async function getStudentFeeAccount(input: {
   ]);
 
   const related = relatedRes.error && !isSchoolUnconfiguredRead(relatedRes.error) ? [] : (relatedRes.data ?? []);
-  const sourceRows = related.length ? related : [row];
-  const obligations = sourceRows.map((item) => {
-    const record = item as Record<string, unknown>;
-    const chargeId = str(record.charge_id) || null;
-    const allocated = chargeId ? allocatedPaymentTotal(payments, chargeId) : num(record.paid_amount);
-    return mapObligation(record, allocated);
+  const yearNameById = new Map(related.map((item) => [str((item as Record<string, unknown>).academic_year_id) || yearId, str((item as Record<string, unknown>).academic_year_name) || str(row.academic_year_name)]));
+  const charges = chargesRes.error && !isSchoolUnconfiguredRead(chargesRes.error) ? [] : (chargesRes.data ?? []);
+  const routeIds = [...new Set(charges.map((item) => str(item.route_id)).filter(Boolean))];
+  const routes = routeIds.length
+    ? await input.supabase.from("sch_transport_routes").select("id, name").eq("business_unit_id", input.businessUnitId).in("id", routeIds)
+    : { data: [] as Array<{ id: string; name: string }> };
+  const routeName = new Map((routes.data ?? []).map((item) => [String(item.id), str(item.name)]));
+  const obligationsFromCharges = charges.map((charge) => {
+    const chargeId = str(charge.id);
+    const billed = num(charge.annual_amount);
+    const paid = allocatedPaymentTotal(payments, chargeId);
+    const kind = str(charge.charge_kind) === "TRANSPORT" ? "TRANSPORT" : "TUITION";
+    return mapObligation(
+      {
+        enrollment_id: str(charge.enrollment_id),
+        charge_id: chargeId,
+        due_amount: billed,
+        paid_amount: paid,
+        fee_structure_id: charge.fee_structure_id,
+        academic_year_id: str(charge.academic_year_id),
+        academic_year_name: yearNameById.get(str(charge.academic_year_id)) || str(row.academic_year_name),
+        charge_kind: kind,
+        billing_frequency: charge.billing_frequency,
+        billing_period: charge.billing_period,
+        description: kind === "TRANSPORT" ? `Transport · ${routeName.get(str(charge.route_id)) || "Route"}` : "Annual school fees",
+      },
+      paid,
+    );
   });
+  const sourceRows = related.length ? related : [row];
+  const tuitionPlaceholders = sourceRows
+    .filter((item) => {
+      const record = item as Record<string, unknown>;
+      return !obligationsFromCharges.some((row) => row.enrollmentId === str(record.enrollment_id) && row.chargeKind === "TUITION");
+    })
+    .map((item) => {
+      const record = item as Record<string, unknown>;
+      const chargeId = str(record.charge_id) || null;
+      const allocated = chargeId ? allocatedPaymentTotal(payments, chargeId) : num(record.paid_amount);
+      return mapObligation(record, allocated);
+    });
+  const obligations = [...obligationsFromCharges, ...tuitionPlaceholders];
   const yearByCharge = new Map(obligations.filter((item) => item.chargeId).map((item) => [item.chargeId as string, item.academicYearName]));
   const currentTerm = (termsRes.data ?? []).find((term) => {
     const start = String(term.start_date ?? "");
@@ -124,9 +168,17 @@ export async function getStudentFeeAccount(input: {
     if (item.remaining != null) totalOutstanding = (totalOutstanding ?? 0) + item.remaining;
   }
 
-  const current = obligations.find((item) => item.enrollmentId === str(row.enrollment_id)) ?? obligations[0];
-  const annual = current?.billed ?? (row.due_amount == null ? null : num(row.due_amount));
-  const paid = current?.paid ?? 0;
+  const currentRows = obligations.filter((item) => item.enrollmentId === str(row.enrollment_id));
+  const current = currentRows[0] ?? obligations[0];
+  const annual = currentRows.length
+    ? currentRows.reduce((sum, item) => sum + (item.billed ?? 0), 0)
+    : row.due_amount == null
+      ? null
+      : num(row.due_amount);
+  const paid = currentRows.length ? currentRows.reduce((sum, item) => sum + item.paid, 0) : 0;
+  const remaining = currentRows.length
+    ? currentRows.reduce((sum, item) => sum + (item.remaining ?? 0), 0)
+    : null;
   return {
     enrollmentId: str(row.enrollment_id),
     studentId,
@@ -147,14 +199,14 @@ export async function getStudentFeeAccount(input: {
     streamId: str(row.stream_id),
     streamName: str(row.stream_name),
     feeStructureId: str(row.fee_structure_id) || null,
-    chargeId: str(row.charge_id) || null,
+    chargeId: current?.chargeId || str(row.charge_id) || null,
     annualAmount: annual,
     paidAmount: paid,
-    outstandingAmount: current?.remaining ?? null,
+    outstandingAmount: remaining,
     totalBilled,
     totalPaid,
     totalOutstanding,
-    status: current?.status ?? asFeeStatus(row.fee_status),
+    status: feeStatusFromAmounts(annual, paid, Boolean(str(row.fee_structure_id) || current?.chargeId || remaining != null)),
     obligations,
     payments: paymentsWithYear,
   };

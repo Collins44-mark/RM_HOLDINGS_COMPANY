@@ -7,6 +7,7 @@ import { assignSchoolStudentStreamAction, type StudentGuardianRow, type StudentP
 import { glassPanel, inputClass, primaryButton, secondaryButton, StatusPill } from "@/components/supermarket/purchasing-ui";
 import { formatCompactStudentNumber } from "@/lib/school/student-number";
 import { SchoolGuardianDrawer } from "@/components/school/SchoolGuardianDrawer";
+import { SchoolStudentTransportPanel } from "@/components/school/SchoolStudentTransportPanel";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
 
 function Fact({ label, value }: { label: string; value: string }) {
@@ -84,6 +85,8 @@ export function SchoolStudentProfilePage({
         <Fact label="Email" value={student.email} />
         <Fact label="Address" value={student.address} />
       </section>
+
+      <SchoolStudentTransportPanel studentId={student.id} enrollmentId={student.enrollmentId} initial={student.transport} />
 
       <StudentGuardians studentId={student.id} guardians={student.guardians} canEdit={canEditGuardians} />
     </div>

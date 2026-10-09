@@ -22,10 +22,14 @@ import { SchoolPagination } from "@/components/school/SchoolPagination";
 import { ContainedDrawer, DrawerCancel } from "@/components/ui/ContainedDrawer";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
-import type { TransportCaps, TransportRouteRow } from "@/lib/school/transport-types";
+import {
+  transportBillingFrequencyLabel,
+  type TransportCaps,
+  type TransportRouteRow,
+} from "@/lib/school/transport-types";
 import { schoolPageMeta, type SchoolPageMeta } from "@/lib/school/pagination";
 
-const empty = { id: "", name: "", details: "", price: "", busId: "", isActive: true };
+const empty = { id: "", name: "", details: "", price: "", billingFrequency: "", busId: "", isActive: true };
 
 export function SchoolTransportRoutesPage({ initial }: { initial: TransportRoutesWorkspace }) {
   const ready = initial.ok;
@@ -102,7 +106,7 @@ export function SchoolTransportRoutesPage({ initial }: { initial: TransportRoute
             <table className="w-full min-w-[760px] text-left">
               <thead>
                 <tr className={tableHead}>
-                  {["Route", "Price", "Bus", "Driver", "Status", ""].map((heading) => (
+                  {["Route", "Fare", "Billing", "Bus", "Driver", "Status", ""].map((heading) => (
                     <th key={heading || "actions"} className="px-4 py-3 font-semibold">
                       {heading}
                     </th>
@@ -117,6 +121,7 @@ export function SchoolTransportRoutesPage({ initial }: { initial: TransportRoute
                       {row.details ? <span className="block text-[12px] font-normal text-slate-500">{row.details}</span> : null}
                     </td>
                     <td className="px-4 py-3">{formatTzs(row.price)}</td>
+                    <td className="px-4 py-3">{transportBillingFrequencyLabel(row.billingFrequency)}</td>
                     <td className="px-4 py-3">{row.busRegistration || "—"}</td>
                     <td className="px-4 py-3">{row.driverName || "—"}</td>
                     <td className="px-4 py-3">
@@ -135,6 +140,7 @@ export function SchoolTransportRoutesPage({ initial }: { initial: TransportRoute
                                   name: row.name,
                                   details: row.details,
                                   price: String(row.price),
+                                  billingFrequency: row.billingFrequency ?? "",
                                   busId: row.busId ?? "",
                                   isActive: row.isActive,
                                 });
@@ -185,8 +191,18 @@ export function SchoolTransportRoutesPage({ initial }: { initial: TransportRoute
               <input className={inputClass} value={form.details} onChange={(event) => setForm((p) => ({ ...p, details: event.target.value }))} />
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Price</span>
+              <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Fare</span>
               <input className={inputClass} inputMode="decimal" value={form.price} onChange={(event) => setForm((p) => ({ ...p, price: event.target.value }))} />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Billing frequency</span>
+              <select className={inputClass} value={form.billingFrequency} onChange={(event) => setForm((p) => ({ ...p, billingFrequency: event.target.value }))}>
+                <option value="">Select frequency</option>
+                <option value="MONTH">Per month</option>
+                <option value="TERM">Per term</option>
+                <option value="YEAR">Per academic year</option>
+                <option value="ONCE">One time</option>
+              </select>
             </label>
             <label className="block">
               <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Assigned bus</span>
