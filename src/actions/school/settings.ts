@@ -112,21 +112,6 @@ export type FeeStructureRow = {
 
 export type SchoolOption = { id: string; name: string };
 
-export type AttendanceStatusRow = {
-  id: string;
-  code: string;
-  name: string;
-  countsAsPresent: boolean;
-  sortOrder: number;
-  isActive: boolean;
-};
-
-export type AttendanceSettings = {
-  schoolStart: string;
-  schoolEnd: string;
-  lateThresholdMinutes: number;
-};
-
 export type TransportSettings = {
   enabled: boolean;
   pickupDropoffEnabled: boolean;
@@ -151,12 +136,6 @@ function dateOnly(value: unknown, label: string) {
 
 function assertStartBeforeEnd(start: string, end: string) {
   if (start >= end) throw new SchoolError("Start must be before end.", "VALIDATION");
-}
-
-function timeValue(value: unknown, label: string) {
-  const next = str(value);
-  if (!/^\d{2}:\d{2}(:\d{2})?$/.test(next)) throw new SchoolError(`${label} is invalid.`, "VALIDATION");
-  return next.length === 5 ? `${next}:00` : next;
 }
 
 function markValue(value: unknown, label: string) {
@@ -348,8 +327,6 @@ export async function getSchoolSettingsWorkspaceAction() {
       scalesRes,
       bandsRes,
       structuresRes,
-      attendanceRes,
-      statusesRes,
       transportRes,
       levelOptionsRes,
       yearOptionsRes,
@@ -385,17 +362,6 @@ export async function getSchoolSettingsWorkspaceAction() {
         .select("id, academic_year_id, level_id, class_id, annual_amount, is_active", { count: "exact" })
         .eq("business_unit_id", businessUnitId)
         .order("created_at", { ascending: false })
-        .range(0, 19),
-      supabase
-        .from("sch_attendance_settings")
-        .select("school_start, school_end, late_threshold_minutes")
-        .eq("business_unit_id", businessUnitId)
-        .maybeSingle(),
-      supabase
-        .from("sch_attendance_statuses")
-        .select("id, code, name, counts_as_present, sort_order, is_active", { count: "exact" })
-        .eq("business_unit_id", businessUnitId)
-        .order("sort_order")
         .range(0, 19),
       supabase
         .from("sch_transport_settings")
@@ -435,14 +401,6 @@ export async function getSchoolSettingsWorkspaceAction() {
       structuresRes.error && !isSchoolUnconfiguredRead(structuresRes.error)
         ? mapSchoolDbError(structuresRes.error, "load")
         : (structuresRes.data ?? []);
-    const attendanceRow =
-      attendanceRes.error && !isSchoolUnconfiguredRead(attendanceRes.error)
-        ? mapSchoolDbError(attendanceRes.error, "load")
-        : attendanceRes.data;
-    const statusRows =
-      statusesRes.error && !isSchoolUnconfiguredRead(statusesRes.error)
-        ? mapSchoolDbError(statusesRes.error, "load")
-        : (statusesRes.data ?? []);
     const transportRow =
       transportRes.error && !isSchoolUnconfiguredRead(transportRes.error)
         ? mapSchoolDbError(transportRes.error, "load")
@@ -511,22 +469,6 @@ export async function getSchoolSettingsWorkspaceAction() {
         isActive: Boolean(row.is_active),
       })),
       fees: [] as FeeCategoryRow[],
-      attendance: attendanceRow
-        ? {
-            schoolStart: String(attendanceRow.school_start).slice(0, 5),
-            schoolEnd: String(attendanceRow.school_end).slice(0, 5),
-            lateThresholdMinutes: Number(attendanceRow.late_threshold_minutes),
-          }
-        : { schoolStart: "", schoolEnd: "", lateThresholdMinutes: 0 },
-      attendanceSaved: Boolean(attendanceRow),
-      attendanceStatuses: statusRows.map((row) => ({
-        id: String(row.id),
-        code: String(row.code),
-        name: String(row.name),
-        countsAsPresent: Boolean(row.counts_as_present),
-        sortOrder: Number(row.sort_order),
-        isActive: Boolean(row.is_active),
-      })),
       transport: transportRow
         ? {
             enabled: Boolean(transportRow.enabled),
@@ -542,7 +484,6 @@ export async function getSchoolSettingsWorkspaceAction() {
         terms: schoolPageMeta(1, termsRes.count ?? termsRows.length),
         bands: schoolPageMeta(1, bandsRes.count ?? bandRows.length),
         fees: schoolPageMeta(1, 0),
-        statuses: schoolPageMeta(1, statusesRes.count ?? statusRows.length),
         structures: schoolPageMeta(1, structuresRes.count ?? structureRows.length),
       },
       capabilities: {
@@ -813,73 +754,6 @@ export async function saveFeeCategoryAction(input: {
   }
 }
 
-export async function saveAttendanceSettingsAction(input: AttendanceSettings) {
-  try {
-    const { supabase, businessUnitId } = await requireSchoolPermission(MANAGE);
-    const schoolStart = timeValue(input.schoolStart, "School start time");
-    const schoolEnd = timeValue(input.schoolEnd, "School end time");
-    if (schoolStart >= schoolEnd) throw new SchoolError("School start must be before end.", "VALIDATION");
-    const late = Number(input.lateThresholdMinutes);
-    if (!Number.isInteger(late) || late < 0 || late > 180) {
-      throw new SchoolError("Late threshold must be between 0 and 180 minutes.", "VALIDATION");
-    }
-    const { error } = await supabase.from("sch_attendance_settings").upsert({
-      business_unit_id: businessUnitId,
-      school_start: schoolStart,
-      school_end: schoolEnd,
-      late_threshold_minutes: late,
-    });
-    if (error) mapSchoolDbError(error);
-    await audit({
-      action: "school.attendance_settings_updated",
-      description: "Attendance settings updated",
-      entityType: "sch_attendance_settings",
-      entityId: businessUnitId,
-      businessUnitId,
-    });
-    return { ok: true as const };
-  } catch (error) {
-    return { ok: false as const, error: schoolActionError(error) };
-  }
-}
-
-export async function saveAttendanceStatusAction(input: {
-  id?: string;
-  code: string;
-  name: string;
-  countsAsPresent: boolean;
-  sortOrder: number;
-  isActive: boolean;
-}) {
-  try {
-    const { supabase, businessUnitId } = await requireSchoolPermission(MANAGE);
-    const code = requiredName(input.code, "Code", 40).toUpperCase();
-    const name = requiredName(input.name, "Status");
-    const row = {
-      business_unit_id: businessUnitId,
-      code,
-      name,
-      counts_as_present: Boolean(input.countsAsPresent),
-      sort_order: sortValue(input.sortOrder),
-      is_active: Boolean(input.isActive),
-    };
-    const result = input.id
-      ? await supabase.from("sch_attendance_statuses").update(row).eq("id", input.id).eq("business_unit_id", businessUnitId)
-      : await supabase.from("sch_attendance_statuses").insert(row);
-    if (result.error) mapSchoolDbError(result.error);
-    await audit({
-      action: input.id ? "school.attendance_status_updated" : "school.attendance_status_created",
-      description: input.id ? `Attendance status updated · ${name}` : `Attendance status created · ${name}`,
-      entityType: "sch_attendance_statuses",
-      entityId: input.id ?? null,
-      businessUnitId,
-    });
-    return { ok: true as const };
-  } catch (error) {
-    return { ok: false as const, error: schoolActionError(error) };
-  }
-}
-
 export async function saveTransportSettingsAction(input: TransportSettings) {
   try {
     const { supabase, businessUnitId } = await requireSchoolPermission(MANAGE);
@@ -903,7 +777,7 @@ export async function saveTransportSettingsAction(input: TransportSettings) {
 }
 
 export async function listSchoolSettingsAction(input: {
-  kind: "years" | "terms" | "bands" | "fees" | "statuses" | "structures";
+  kind: "years" | "terms" | "bands" | "fees" | "structures";
   page?: number;
   status?: SchoolListFilter;
   academicYearId?: string;
@@ -1024,26 +898,7 @@ export async function listSchoolSettingsAction(input: {
         page: schoolPageMeta(page, result.count ?? 0, pageSize),
       };
     }
-    let query = supabase
-      .from("sch_attendance_statuses")
-      .select("id, code, name, counts_as_present, sort_order, is_active", { count: "exact" })
-      .eq("business_unit_id", businessUnitId)
-      .order("sort_order");
-    query = applyActiveFilter(query, status);
-    const result = await query.range(from, to);
-    if (result.error && !isSchoolUnconfiguredRead(result.error)) mapSchoolDbError(result.error, "load");
-    return {
-      ok: true as const,
-      attendanceStatuses: (result.data ?? []).map((row) => ({
-        id: String(row.id),
-        code: String(row.code),
-        name: String(row.name),
-        countsAsPresent: Boolean(row.counts_as_present),
-        sortOrder: Number(row.sort_order),
-        isActive: Boolean(row.is_active),
-      })),
-      page: schoolPageMeta(page, result.count ?? 0, pageSize),
-    };
+    throw new SchoolError("Unknown settings list.", "VALIDATION");
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
   }

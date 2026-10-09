@@ -145,11 +145,6 @@ export function SchoolAdmissionDetailPage({
         ) : (
           <p className="text-[13.5px] text-slate-500">Fee structure not configured for this class.</p>
         )}
-        <p className="text-[13px] text-slate-500">
-          {admission.attendanceEligible
-            ? "This student is eligible for attendance through the active enrollment."
-            : "Attendance eligibility starts after this admission is completed."}
-        </p>
       </section>
     </div>
   );

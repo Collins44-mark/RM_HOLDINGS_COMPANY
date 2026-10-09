@@ -78,7 +78,6 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "staff", actions: ["view", "manage"] },
       { resource: "teachers", actions: ["view", "manage"] },
       { resource: "subjects", actions: ["view", "manage"] },
-      { resource: "attendance", actions: ["view", "create", "edit"] },
       { resource: "exams", actions: ["view", "manage"] },
       { resource: "results", actions: ["enter", "publish"] },
       { resource: "fees", actions: ["view", "create", "edit", "manage", "record", "verify", "receipt"] },

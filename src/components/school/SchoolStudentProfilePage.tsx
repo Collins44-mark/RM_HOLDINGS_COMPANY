@@ -218,9 +218,6 @@ function EnrollmentFacts({ student, canManage }: { student: StudentProfile; canM
       {canManage && student.classId && !student.streams.length ? (
         <p className="text-[13px] text-slate-500">This class has no streams configured.</p>
       ) : null}
-      <p className="text-[13px] text-slate-500">
-        {student.attendanceEligible ? "Eligible for attendance in this class." : "Not currently eligible for attendance."}
-      </p>
     </section>
   );
 }

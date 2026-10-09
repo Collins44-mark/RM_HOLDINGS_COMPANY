@@ -4,7 +4,6 @@ import {
   Building2,
   Bus,
   CalendarDays,
-  ClipboardCheck,
   Clock3,
   GraduationCap,
   Layers,
@@ -125,7 +124,6 @@ export function SchoolOverviewPage({
       ? { value: String(overview.students.value), hint: "Active enrollments" }
       : metricDisplay(overview.students)
     : { value: "—", hint: "Not available" };
-  const attendance = overview ? metricDisplay(overview.attendance) : { value: "—", hint: "Not available" };
   const collected = overview
     ? overview.feesCollected.status === "ok"
       ? { value: formatTzs(overview.feesCollected.value), hint: "Posted payments" }
@@ -167,7 +165,6 @@ export function SchoolOverviewPage({
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <KpiCard label="Total Students" value={students.value} hint={students.hint} icon={Users} />
-        <KpiCard label="Attendance" value={attendance.value} hint={attendance.hint} icon={ClipboardCheck} />
         <KpiCard label="Fees Collected" value={collected.value} hint={collected.hint} icon={Wallet} />
         <KpiCard label="Outstanding Fees" value={outstanding.value} hint={outstanding.hint} icon={Clock3} />
         <KpiCard label="Operating Expenses" value={expenses.value} hint={expenses.hint} icon={Receipt} />
@@ -205,10 +202,9 @@ export function SchoolOverviewPage({
 
           <section className={glassPanel}>
             <SectionHeading icon={Settings2} title="Configuration Status" />
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {(
                 [
-                  ["Attendance", overview.attendanceRules, ClipboardCheck],
                   ["Fee Structure", overview.feeStructure, Wallet],
                   ["Transport", overview.transport, Bus],
                   ["Grading", overview.grading, Award],

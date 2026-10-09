@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { loadSchoolExpensesWorkspaceAction } from "@/actions/school/expenses";
 import { writeAuditEvent } from "@/lib/audit";
 import { requireAuth } from "@/lib/auth/session";
@@ -939,6 +940,10 @@ export async function recordTransportFuelAction(input: {
         businessUnitId,
       });
     }
+    revalidatePath("/school/expenses");
+    revalidatePath("/school");
+    revalidatePath("/owner/finance");
+    revalidatePath("/owner/reports");
     return { ok: true as const };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
@@ -992,6 +997,10 @@ export async function recordTransportMaintenanceAction(input: {
         businessUnitId,
       });
     }
+    revalidatePath("/school/expenses");
+    revalidatePath("/school");
+    revalidatePath("/owner/finance");
+    revalidatePath("/owner/reports");
     return { ok: true as const };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };

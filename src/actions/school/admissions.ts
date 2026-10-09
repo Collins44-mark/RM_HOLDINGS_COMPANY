@@ -79,7 +79,6 @@ export type AdmissionDetail = {
   guardianOccupation: string;
   studentId: string | null;
   studentNumber: string | null;
-  attendanceEligible: boolean;
   fee: ApplicableFeeRow;
   transportEnabled: boolean;
   transportRouteId: string;
@@ -547,8 +546,6 @@ export async function getSchoolAdmissionAction(id: string) {
       (classId && yearId
         ? await loadApplicableFees(supabase, businessUnitId, classId, yearId, termId, levelId)
         : feeRowFromStructure(null));
-    const attendanceEligible = str(studentRes.data?.status) === "active" && Boolean(enrollmentRes.data?.id);
-
     const detail: AdmissionDetail = {
       id: String(row.id),
       admissionNumber: str(row.admission_number),
@@ -581,7 +578,6 @@ export async function getSchoolAdmissionAction(id: string) {
       guardianOccupation: str(row.guardian_occupation),
       studentId: row.student_id ? String(row.student_id) : null,
       studentNumber: studentRes.data?.student_number ? String(studentRes.data.student_number) : null,
-      attendanceEligible,
       fee: fees,
       transportEnabled: Boolean(row.transport_enabled),
       transportRouteId: str(row.transport_route_id),

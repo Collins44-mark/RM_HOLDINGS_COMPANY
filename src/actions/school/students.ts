@@ -73,7 +73,6 @@ export type StudentProfile = {
   enrollmentId: string | null;
   streams: Array<{ id: string; name: string }>;
   enrollmentStatus: string;
-  attendanceEligible: boolean;
   guardians: StudentGuardianRow[];
   transport: StudentTransportWorkspace | null;
 };
@@ -316,7 +315,6 @@ export async function getSchoolStudentAction(id: string) {
       enrollmentId: enrollment?.id ? String(enrollment.id) : null,
       streams: streams.map((row) => ({ id: row.id, name: row.name })),
       enrollmentStatus: str(enrollment?.status),
-      attendanceEligible: str(row.status) === "active" && str(enrollment?.status) === "active",
       guardians,
       transport: transport.ok ? transport.workspace : null,
     };

@@ -9,8 +9,6 @@ import {
   listSchoolSettingsAction,
   listSchoolTermsForYearAction,
   saveAcademicYearAction,
-  saveAttendanceSettingsAction,
-  saveAttendanceStatusAction,
   saveFeeCategoryAction,
   saveFeeStructureAction,
   saveGradingBandAction,
@@ -19,8 +17,6 @@ import {
   saveTransportSettingsAction,
   setFeeStructureActiveAction,
   type AcademicYearRow,
-  type AttendanceSettings,
-  type AttendanceStatusRow,
   type FeeCategoryRow,
   type FeeStructureRow,
   type GradingBandRow,
@@ -47,15 +43,14 @@ import {
   tableScrollClass,
 } from "@/components/supermarket/purchasing-ui";
 
-type Tab = "general" | "academic" | "fees" | "attendance" | "transport";
+type Tab = "general" | "academic" | "fees" | "transport";
 type LoadPhase = "loading" | "ready" | "error";
-type DrawerKind = "year" | "term" | "grade" | "fee" | "status" | "structure" | "structure-view" | null;
+type DrawerKind = "year" | "term" | "grade" | "fee" | "structure" | "structure-view" | null;
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "general", label: "General" },
   { id: "academic", label: "Academic" },
   { id: "fees", label: "Fees" },
-  { id: "attendance", label: "Attendance" },
   { id: "transport", label: "Transport" },
 ];
 
@@ -121,7 +116,7 @@ const EMPTY_PROFILE: SchoolProfile = {
 
 function asTab(value: string | undefined, canViewSettings: boolean, canViewFees: boolean): Tab {
   if (value === "fees" && canViewFees) return "fees";
-  if (value === "academic" || value === "attendance" || value === "transport" || value === "general") {
+  if (value === "academic" || value === "transport" || value === "general") {
     return canViewSettings ? value : canViewFees ? "fees" : "general";
   }
   if (canViewSettings) return "general";
@@ -167,16 +162,11 @@ export function SchoolSettingsPage({
           terms: schoolPageMeta(1, 0),
           bands: schoolPageMeta(1, 0),
           fees: schoolPageMeta(1, 0),
-          statuses: schoolPageMeta(1, 0),
           structures: schoolPageMeta(1, 0),
         },
   );
   const [feeFilter, setFeeFilter] = useState({ yearId: "", levelId: "", classId: "", status: "all" });
   const [deactivateId, setDeactivateId] = useState<string | null>(null);
-  const [attendance, setAttendance] = useState<AttendanceSettings>(
-    initial.ok ? initial.attendance : { schoolStart: "", schoolEnd: "", lateThresholdMinutes: 0 },
-  );
-  const [statuses, setStatuses] = useState<AttendanceStatusRow[]>(initial.ok ? initial.attendanceStatuses : []);
   const [transport, setTransport] = useState<TransportSettings>(
     initial.ok ? initial.transport : { enabled: false, pickupDropoffEnabled: false },
   );
@@ -184,14 +174,11 @@ export function SchoolSettingsPage({
   const [editId, setEditId] = useState<string | null>(null);
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
-  const [attendanceBusy, setAttendanceBusy] = useState(false);
-  const [attendanceSaved, setAttendanceSaved] = useState(false);
   const [transportBusy, setTransportBusy] = useState(false);
   const [transportSaved, setTransportSaved] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileDraft, setProfileDraft] = useState<SchoolProfile>(initial.ok ? initial.profile : EMPTY_PROFILE);
   const profileLock = useRef(false);
-  const attendanceLock = useRef(false);
   const transportLock = useRef(false);
 
   useEffect(() => {
@@ -223,8 +210,6 @@ export function SchoolSettingsPage({
         setLevelOptions(result.levelOptions);
         setYearOptions(result.yearOptions);
         setPages(result.pages);
-        setAttendance(result.attendance);
-        setStatuses(result.attendanceStatuses);
         setTransport(result.transport);
       })
       .catch(() => {
@@ -237,7 +222,7 @@ export function SchoolSettingsPage({
     };
   }, [tick]);
 
-  function loadList(kind: "years" | "terms" | "bands" | "fees" | "statuses" | "structures", page: number) {
+  function loadList(kind: "years" | "terms" | "bands" | "fees" | "structures", page: number) {
     void listSchoolSettingsAction({
       kind,
       page,
@@ -258,7 +243,6 @@ export function SchoolSettingsPage({
       if (kind === "terms" && "terms" in result) setTerms(result.terms ?? []);
       if (kind === "bands" && "gradingBands" in result) setBands(result.gradingBands ?? []);
       if (kind === "fees" && "fees" in result) setFees(result.fees ?? []);
-      if (kind === "statuses" && "attendanceStatuses" in result) setStatuses(result.attendanceStatuses ?? []);
       if (kind === "structures" && "structures" in result) setStructures(result.structures ?? []);
       setPages((current) => ({ ...current, [kind]: result.page }));
     });
@@ -516,66 +500,6 @@ export function SchoolSettingsPage({
         />
       ) : null}
 
-      {tab === "attendance" ? (
-        <div className="space-y-4">
-          <section className={`${glassPanel} space-y-4`}>
-            <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Attendance Rules</h2>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              <Field label="School start time">
-                <input type="time" className={inputClass} value={attendance.schoolStart} onChange={(e) => setAttendance((p) => ({ ...p, schoolStart: e.target.value }))} />
-              </Field>
-              <Field label="School end time">
-                <input type="time" className={inputClass} value={attendance.schoolEnd} onChange={(e) => setAttendance((p) => ({ ...p, schoolEnd: e.target.value }))} />
-              </Field>
-              <Field label="Late threshold (minutes)">
-                <input
-                  inputMode="numeric"
-                  className={inputClass}
-                  value={String(attendance.lateThresholdMinutes)}
-                  onChange={(e) => setAttendance((p) => ({ ...p, lateThresholdMinutes: Number(e.target.value) || 0 }))}
-                />
-              </Field>
-            </div>
-            {canManage ? (
-              <WorkflowAction
-                className={primaryButton}
-                busy={attendanceBusy}
-                confirmed={attendanceSaved}
-                idleLabel="Save Changes"
-                onClick={() => {
-                  if (attendanceLock.current) return;
-                  attendanceLock.current = true;
-                  setAttendanceBusy(true);
-                  setAttendanceSaved(false);
-                  void saveAttendanceSettingsAction(attendance).then((result) => {
-                    attendanceLock.current = false;
-                    setAttendanceBusy(false);
-                    if (!result.ok) setSaveError(asSaveError(result.error));
-                    else {
-                      setSaveError(null);
-                      setAttendanceSaved(true);
-                      setTick((n) => n + 1);
-                    }
-                  });
-                }}
-              />
-            ) : null}
-          </section>
-          <ConfigList
-            title="Attendance statuses"
-            empty={phase === "ready" ? "No attendance statuses configured yet." : ""}
-            action={canManage ? { label: "+ Add status", onClick: () => openDrawer("status") } : null}
-            page={pages.statuses}
-            onPage={(next) => loadList("statuses", next)}
-            rows={statuses.map((row) => ({
-              id: row.id,
-              cells: [row.name, row.code, row.countsAsPresent ? "Present" : "Absent", row.isActive ? "Active" : "Inactive"],
-              onEdit: canManage ? () => openDrawer("status", row.id) : undefined,
-            }))}
-          />
-        </div>
-      ) : null}
-
       {tab === "transport" ? (
         <section className={`${glassPanel} space-y-4`}>
           <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Transport Settings</h2>
@@ -633,7 +557,6 @@ export function SchoolSettingsPage({
           terms={terms}
           bands={bands}
           fees={fees}
-          statuses={statuses}
           onClose={() => setDrawer(null)}
           onSaved={() => {
             setDrawer(null);
@@ -979,7 +902,6 @@ function SettingsRecordDrawer({
   terms,
   bands,
   fees,
-  statuses,
   onClose,
   onSaved,
   onError,
@@ -990,7 +912,6 @@ function SettingsRecordDrawer({
   terms: TermRow[];
   bands: GradingBandRow[];
   fees: FeeCategoryRow[];
-  statuses: AttendanceStatusRow[];
   onClose: () => void;
   onSaved: () => void;
   onError: (error: string) => void;
@@ -1002,29 +923,26 @@ function SettingsRecordDrawer({
   const term = terms.find((row) => row.id === editId);
   const band = bands.find((row) => row.id === editId);
   const fee = fees.find((row) => row.id === editId);
-  const status = statuses.find((row) => row.id === editId);
 
-  const [name, setName] = useState(year?.name ?? term?.name ?? fee?.name ?? status?.name ?? band?.grade ?? "");
-  const [code, setCode] = useState(fee?.code ?? status?.code ?? "");
+  const [name, setName] = useState(year?.name ?? term?.name ?? fee?.name ?? band?.grade ?? "");
+  const [code, setCode] = useState(fee?.code ?? "");
   const [startDate, setStartDate] = useState(year?.startDate ?? term?.startDate ?? "");
   const [endDate, setEndDate] = useState(year?.endDate ?? term?.endDate ?? "");
-  const [sortOrder, setSortOrder] = useState(String(term?.sortOrder ?? band?.sortOrder ?? status?.sortOrder ?? 1));
+  const [sortOrder, setSortOrder] = useState(String(term?.sortOrder ?? band?.sortOrder ?? 1));
   const [isCurrent, setIsCurrent] = useState(year?.isCurrent ?? false);
-  const [isActive, setIsActive] = useState(year?.isActive ?? term?.isActive ?? band?.isActive ?? fee?.isActive ?? status?.isActive ?? true);
+  const [isActive, setIsActive] = useState(year?.isActive ?? term?.isActive ?? band?.isActive ?? fee?.isActive ?? true);
   const [academicYearId, setAcademicYearId] = useState(term?.academicYearId ?? years.find((row) => row.isCurrent)?.id ?? years[0]?.id ?? "");
   const [minMark, setMinMark] = useState(band ? String(band.minMark) : "");
   const [maxMark, setMaxMark] = useState(band ? String(band.maxMark) : "");
   const [remark, setRemark] = useState(band?.remark ?? "");
   const [amount, setAmount] = useState(fee?.amount ?? "");
   const [frequency, setFrequency] = useState<FeeCategoryRow["frequency"]>(fee?.frequency ?? "TERM");
-  const [countsAsPresent, setCountsAsPresent] = useState(status?.countsAsPresent ?? false);
 
   const titles: Record<Exclude<DrawerKind, null | "structure" | "structure-view">, string> = {
     year: editId ? "Edit academic year" : "Add academic year",
     term: editId ? "Edit term" : "Add term",
     grade: editId ? "Edit grade" : "Add grade",
     fee: editId ? "Edit fee category" : "Add fee category",
-    status: editId ? "Edit attendance status" : "Add attendance status",
   };
 
   async function persist() {
@@ -1061,22 +979,13 @@ function SettingsRecordDrawer({
         sortOrder: Number(sortOrder),
         isActive,
       });
-    } else if (kind === "fee") {
+    } else {
       result = await saveFeeCategoryAction({
         id: editId ?? undefined,
         name,
         code,
         amount: amount || null,
         frequency,
-        isActive,
-      });
-    } else {
-      result = await saveAttendanceStatusAction({
-        id: editId ?? undefined,
-        code,
-        name,
-        countsAsPresent,
-        sortOrder: Number(sortOrder),
         isActive,
       });
     }
@@ -1115,10 +1024,10 @@ function SettingsRecordDrawer({
             </select>
           </Field>
         ) : null}
-        <Field label={kind === "grade" ? "Grade" : kind === "status" ? "Status name" : "Name"}>
+        <Field label={kind === "grade" ? "Grade" : "Name"}>
           <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        {kind === "fee" || kind === "status" ? (
+        {kind === "fee" ? (
           <Field label="Code">
             <input className={inputClass} value={code} onChange={(e) => setCode(e.target.value)} />
           </Field>
@@ -1164,7 +1073,7 @@ function SettingsRecordDrawer({
             </Field>
           </>
         ) : null}
-        {kind === "term" || kind === "grade" || kind === "status" ? (
+        {kind === "term" || kind === "grade" ? (
           <Field label="Order">
             <input className={inputClass} value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
           </Field>
@@ -1173,12 +1082,6 @@ function SettingsRecordDrawer({
           <label className="flex items-center gap-3 text-[14px] text-navy">
             <input type="checkbox" checked={isCurrent} onChange={(e) => setIsCurrent(e.target.checked)} />
             Current academic year
-          </label>
-        ) : null}
-        {kind === "status" ? (
-          <label className="flex items-center gap-3 text-[14px] text-navy">
-            <input type="checkbox" checked={countsAsPresent} onChange={(e) => setCountsAsPresent(e.target.checked)} />
-            Counts as present
           </label>
         ) : null}
         <label className="flex items-center gap-3 text-[14px] text-navy">

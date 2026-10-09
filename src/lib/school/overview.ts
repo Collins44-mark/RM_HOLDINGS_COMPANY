@@ -14,12 +14,10 @@ export type SchoolOverviewView = {
   classLevels: OverviewMetric<number>;
   students: OverviewMetric<number>;
   teachers: OverviewMetric<number>;
-  attendance: OverviewMetric<number>;
   feesCollected: OverviewMetric<number>;
   outstandingFees: OverviewMetric<number>;
   operatingExpenses: OverviewMetric<number>;
   grading: ConfigStatus;
-  attendanceRules: ConfigStatus;
   feeStructure: ConfigStatus;
   transport: ConfigStatus;
   capabilities: {

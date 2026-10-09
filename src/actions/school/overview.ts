@@ -5,10 +5,6 @@ import { requireAuth, identityFromUser } from "@/lib/auth/session";
 import { isSchoolUnconfiguredRead, requireSchoolContext, schoolActionError, SchoolError } from "@/lib/school/access";
 import type { ConfigStatus, OverviewMetric, SchoolOverviewView } from "@/lib/school/overview";
 
-function unavailable(): OverviewMetric<number> {
-  return { status: "unavailable", reason: "not_implemented" };
-}
-
 function configFromRow(exists: boolean, kind: "flag" | "presence", enabled?: boolean): ConfigStatus {
   if (kind === "flag") {
     if (!exists) return "not_configured";
@@ -33,7 +29,6 @@ export async function getSchoolOverviewAction(): Promise<
       enrollmentCountRes,
       teacherCountRes,
       gradingRes,
-      attendanceRes,
       feeCountRes,
       transportRes,
       expensesRes,
@@ -73,11 +68,6 @@ export async function getSchoolOverviewAction(): Promise<
         .eq("business_unit_id", businessUnitId)
         .eq("is_current", true)
         .eq("is_active", true)
-        .maybeSingle(),
-      supabase
-        .from("sch_attendance_settings")
-        .select("business_unit_id")
-        .eq("business_unit_id", businessUnitId)
         .maybeSingle(),
       supabase
         .from("sch_fee_structures")
@@ -191,10 +181,6 @@ export async function getSchoolOverviewAction(): Promise<
       gradingRes.error && !isSchoolUnconfiguredRead(gradingRes.error)
         ? "error"
         : configFromRow(Boolean(gradingRes.data?.id), "presence");
-    const attendanceRules: ConfigStatus =
-      attendanceRes.error && !isSchoolUnconfiguredRead(attendanceRes.error)
-        ? "error"
-        : configFromRow(Boolean(attendanceRes.data), "presence");
     const feeStructure: ConfigStatus =
       feeCountRes.error && !isSchoolUnconfiguredRead(feeCountRes.error)
         ? "error"
@@ -212,7 +198,6 @@ export async function getSchoolOverviewAction(): Promise<
     if (academicYear.status === "ok" && currentTerm.status === "none") attention.push("No active term");
     if (currentTerm.status === "multiple") attention.push("More than one active term");
     if (grading === "not_configured") attention.push("No grading scale configured");
-    if (attendanceRules === "not_configured") attention.push("Attendance rules not configured");
 
     return {
       ok: true,
@@ -235,12 +220,10 @@ export async function getSchoolOverviewAction(): Promise<
             : typeof teacherCountRes.count === "number"
               ? { status: "ok" as const, value: teacherCountRes.count }
               : { status: "ok" as const, value: 0 },
-        attendance: unavailable(),
         feesCollected,
         outstandingFees,
         operatingExpenses,
         grading,
-        attendanceRules,
         feeStructure,
         transport,
         capabilities: {
