@@ -14,6 +14,10 @@ export function SchoolPlacementFilterBar({
   streamId,
   search,
   searchPlaceholder,
+  pendingLevelId = null,
+  pendingClassId = null,
+  pendingStreamId = null,
+  paging = false,
   onLevel,
   onClass,
   onStream,
@@ -28,12 +32,17 @@ export function SchoolPlacementFilterBar({
   streamId: string;
   search: string;
   searchPlaceholder: string;
+  pendingLevelId?: string | null;
+  pendingClassId?: string | null;
+  pendingStreamId?: string | null;
+  paging?: boolean;
   onLevel: (id: string) => void;
   onClass: (id: string) => void;
   onStream: (id: string) => void;
   onSearch: (value: string) => void;
   onSearchSubmit: () => void;
 }) {
+  const control = "h-10 w-[9.75rem] shrink-0 sm:w-[11rem]";
   return (
     <form
       className="flex flex-wrap items-center gap-2"
@@ -42,7 +51,12 @@ export function SchoolPlacementFilterBar({
         onSearchSubmit();
       }}
     >
-      <select className={cn(filterClass, "w-[min(100%,11rem)]")} value={levelId} onChange={(event) => onLevel(event.target.value)}>
+      <select
+        className={cn(filterClass, control, pendingLevelId != null && paging ? "ring-1 ring-navy/20" : null)}
+        value={levelId}
+        aria-busy={pendingLevelId != null && paging}
+        onChange={(event) => onLevel(event.target.value)}
+      >
         <option value="">All Levels</option>
         {levels.map((row) => (
           <option key={row.id} value={row.id}>
@@ -51,9 +65,10 @@ export function SchoolPlacementFilterBar({
         ))}
       </select>
       <select
-        className={cn(filterClass, "w-[min(100%,11rem)]")}
+        className={cn(filterClass, control, pendingClassId != null && paging ? "ring-1 ring-navy/20" : null)}
         value={classId}
         disabled={!levelId}
+        aria-busy={pendingClassId != null && paging}
         onChange={(event) => onClass(event.target.value)}
       >
         <option value="">All Classes</option>
@@ -64,9 +79,10 @@ export function SchoolPlacementFilterBar({
         ))}
       </select>
       <select
-        className={cn(filterClass, "w-[min(100%,11rem)]")}
+        className={cn(filterClass, control, pendingStreamId != null && paging ? "ring-1 ring-navy/20" : null)}
         value={streamId}
         disabled={!classId}
+        aria-busy={pendingStreamId != null && paging}
         onChange={(event) => onStream(event.target.value)}
       >
         <option value="">All Streams</option>
@@ -77,7 +93,7 @@ export function SchoolPlacementFilterBar({
         ))}
       </select>
       <input
-        className={cn(inputClass, "h-10 min-w-[200px] flex-1 rounded-full")}
+        className={cn(inputClass, "h-10 min-w-[12rem] flex-1 rounded-full")}
         value={search}
         placeholder={searchPlaceholder}
         onChange={(event) => onSearch(event.target.value)}

@@ -293,7 +293,9 @@ export function SchoolAdmissionFormPage({
               {
                 studentId: result.studentId,
                 name: studentName,
-                placement: [levelName, className, streamName].filter(Boolean).join(" · "),
+                levelName,
+                className,
+                streamName: streamName === "—" ? "" : streamName,
               },
             ],
           });

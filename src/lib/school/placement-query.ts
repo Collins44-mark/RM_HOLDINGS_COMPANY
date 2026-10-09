@@ -1,5 +1,6 @@
 import type { SchoolContext } from "@/lib/school/access";
 import { isSchoolUnconfiguredRead } from "@/lib/school/access";
+import type { SchoolStructureCatalog } from "@/lib/school/structure-catalog";
 import type { SchoolStructureScope } from "@/lib/school/structure-scope";
 
 export type PlacementOption = { id: string; name: string };
@@ -89,6 +90,37 @@ export async function resolveEnrollmentPlacementFilter(
     .in("class_id", classIds);
   if (streams.error && !isSchoolUnconfiguredRead(streams.error)) return { kind: "empty" };
   let streamIds = (streams.data ?? []).map((row) => String(row.id));
+  if (scope && !scope.schoolWide) streamIds = streamIds.filter((id) => scope.streamIds.has(id));
+  return { kind: "classes", classIds, streamIds };
+}
+
+export function resolveEnrollmentPlacementFilterFromCatalog(
+  catalog: SchoolStructureCatalog,
+  input: { levelId?: string; classId?: string; streamId?: string },
+  scope?: SchoolStructureScope | null,
+): EnrollmentPlacementFilter {
+  const streamId = str(input.streamId);
+  const classId = str(input.classId);
+  const levelId = str(input.levelId);
+
+  if (streamId) {
+    if (scope && !scope.schoolWide && !scope.streamIds.has(streamId)) return { kind: "empty" };
+    return { kind: "streams", streamIds: [streamId] };
+  }
+
+  if (!classId && !levelId) {
+    if (!scope || scope.schoolWide) return { kind: "none" };
+    return { kind: "classes", classIds: [...scope.classIds], streamIds: [...scope.streamIds] };
+  }
+
+  let classIds = classId
+    ? [classId]
+    : catalog.classes.filter((row) => row.levelId === levelId).map((row) => row.id);
+  if (scope && !scope.schoolWide) classIds = classIds.filter((id) => scope.classIds.has(id));
+  if (!classIds.length) return { kind: "empty" };
+
+  const classSet = new Set(classIds);
+  let streamIds = catalog.streams.filter((row) => classSet.has(row.classId)).map((row) => row.id);
   if (scope && !scope.schoolWide) streamIds = streamIds.filter((id) => scope.streamIds.has(id));
   return { kind: "classes", classIds, streamIds };
 }
