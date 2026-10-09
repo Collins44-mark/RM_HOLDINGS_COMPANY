@@ -11,6 +11,7 @@ import { SchoolSubjectsPage } from "@/components/school/SchoolSubjectsPage";
 import { SchoolExamsPage } from "@/components/school/SchoolExamsPage";
 import { SchoolFeesPage } from "@/components/school/SchoolFeesPage";
 import { SchoolStudentFeeProfilePage } from "@/components/school/SchoolStudentFeeProfilePage";
+import { SchoolExpensesPage } from "@/components/school/SchoolExpensesPage";
 import { schoolPageMeta } from "@/lib/school/pagination";
 import { peekAdmissionView, peekAdmissionsListSnapshot, peekFeeView, peekFeesListSnapshot } from "@/lib/school/admission-flash";
 
@@ -114,6 +115,9 @@ export default function SchoolConsoleLoading() {
         pending
       />
     );
+  }
+  if (pathname === "/school/expenses") {
+    return <SchoolExpensesPage initial={null} pending />;
   }
   if (pathname.startsWith("/school/fees/")) {
     const id = pathname.split("/")[3] ?? "";

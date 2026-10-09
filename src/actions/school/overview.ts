@@ -36,6 +36,7 @@ export async function getSchoolOverviewAction(): Promise<
       attendanceRes,
       feeCountRes,
       transportRes,
+      expensesRes,
     ] = await Promise.all([
       supabase.from("business_units").select("name, location").eq("id", businessUnitId).maybeSingle(),
       supabase
@@ -88,6 +89,13 @@ export async function getSchoolOverviewAction(): Promise<
         .select("enabled")
         .eq("business_unit_id", businessUnitId)
         .maybeSingle(),
+      supabase
+        .from("sch_expenses")
+        .select("amount")
+        .eq("business_unit_id", businessUnitId)
+        .eq("is_active", true)
+        .gte("expense_date", `${new Date().getFullYear()}-01-01`)
+        .lte("expense_date", `${new Date().getFullYear()}-12-31`),
     ]);
 
     if (buRes.error && !isSchoolUnconfiguredRead(buRes.error) && profileRes.error && !isSchoolUnconfiguredRead(profileRes.error)) {
@@ -187,6 +195,14 @@ export async function getSchoolOverviewAction(): Promise<
       }
     }
 
+    const operatingExpenses: OverviewMetric<number> =
+      expensesRes.error && !isSchoolUnconfiguredRead(expensesRes.error)
+        ? { status: "error" }
+        : {
+            status: "ok",
+            value: (expensesRes.data ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
+          };
+
     const classLevels: OverviewMetric<number> =
       classCountRes.error && !isSchoolUnconfiguredRead(classCountRes.error)
         ? { status: "error" }
@@ -245,6 +261,7 @@ export async function getSchoolOverviewAction(): Promise<
         attendance: unavailable(),
         feesCollected,
         outstandingFees,
+        operatingExpenses,
         grading,
         attendanceRules,
         feeStructure,

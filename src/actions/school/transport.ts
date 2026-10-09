@@ -1,5 +1,6 @@
 "use server";
 
+import { loadSchoolExpensesWorkspaceAction } from "@/actions/school/expenses";
 import { writeAuditEvent } from "@/lib/audit";
 import { requireAuth } from "@/lib/auth/session";
 import { isOwnerRole } from "@/lib/auth/rbac";
@@ -992,43 +993,27 @@ export async function recordTransportMaintenanceAction(input: {
 }
 
 export async function listSchoolExpensesAction(input: { page?: number; q?: string } = {}) {
-  try {
-    const user = await requireAuth();
-    const { supabase, businessUnitId } = await requireAnySchoolPermission([EXP_VIEW, VIEW]);
-    const { page, from, to, pageSize } = schoolPageRange(input.page ?? 1);
-    const q = searchNeedle(input.q);
-    let query = supabase
-      .from("sch_expenses")
-      .select("id, expense_number, expense_date, amount, description, reference, source_type, category_id", { count: "exact" })
-      .eq("business_unit_id", businessUnitId)
-      .eq("is_active", true)
-      .order("expense_date", { ascending: false });
-    if (q) query = query.or(`expense_number.ilike.%${q}%,description.ilike.%${q}%,reference.ilike.%${q}%`);
-    const result = await query.range(from, to);
-    if (result.error && !isSchoolUnconfiguredRead(result.error)) mapSchoolDbError(result.error, "load");
-    const catIds = [...new Set((result.data ?? []).map((row) => String(row.category_id)))];
-    const cats = catIds.length
-      ? await supabase.from("sch_expense_categories").select("id, name").eq("business_unit_id", businessUnitId).in("id", catIds)
-      : { data: [] as Array<{ id: string; name: string }> };
-    const catMap = new Map((cats.data ?? []).map((row) => [String(row.id), String(row.name)]));
-    return {
-      ok: true as const,
-      expenses: (result.data ?? []).map((row) => ({
-        id: String(row.id),
-        expenseNumber: String(row.expense_number),
-        expenseDate: String(row.expense_date),
-        amount: num(row.amount),
-        description: String(row.description ?? ""),
-        reference: String(row.reference ?? ""),
-        sourceType: String(row.source_type),
-        categoryName: catMap.get(String(row.category_id)) ?? "",
-      })),
-      page: schoolPageMeta(page, result.count ?? 0, pageSize),
-      capabilities: caps(user),
-    };
-  } catch (error) {
-    return { ok: false as const, error: schoolActionError(error) };
-  }
+  const result = await loadSchoolExpensesWorkspaceAction({
+    page: input.page,
+    q: input.q,
+    period: "this-year",
+  });
+  if (!result.ok) return result;
+  return {
+    ok: true as const,
+    expenses: result.workspace.expenses.map((row) => ({
+      id: row.id,
+      expenseNumber: row.expenseNumber,
+      expenseDate: row.expenseDate,
+      amount: row.amount,
+      description: row.description,
+      reference: row.reference,
+      sourceType: row.sourceType,
+      categoryName: row.categoryName,
+    })),
+    page: result.workspace.page,
+    capabilities: caps(await requireAuth()),
+  };
 }
 
 export type SchoolExpensesResult = Awaited<ReturnType<typeof listSchoolExpensesAction>>;

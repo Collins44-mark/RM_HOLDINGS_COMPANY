@@ -30,13 +30,13 @@ export function StatusPill({
   value: PurchaseOrderStatus | PurchasePaymentStatus | SupplierStatus | string;
 }) {
   const tone =
-        value === "Received" || value === "Paid" || value === "Active" || value === "Completed" || value === "Verified" || value === "Approved"
+        value === "Received" || value === "Paid" || value === "Active" || value === "Completed" || value === "Verified" || value === "Approved" || value === "Posted"
       ? "bg-[#e7f4ea] text-[#3f8a5a]"
       : value === "Sent" || value === "Approved" || value === "Submitted" || value === "Partial" || value === "Partially Paid" || value === "Partially Received"
         ? "bg-[#eef4ff] text-[#3d6db5]"
         : value === "Draft" || value === "Unpaid"
           ? "bg-[#f3f6fa] text-slate-500"
-          : value === "Cancelled" || value === "Inactive" || value === "Rejected"
+          : value === "Cancelled" || value === "Inactive" || value === "Rejected" || value === "Reversed"
             ? "bg-[#fff2f3] text-[#c45b66]"
             : "bg-[#fff8eb] text-[#b5812a]";
   return (

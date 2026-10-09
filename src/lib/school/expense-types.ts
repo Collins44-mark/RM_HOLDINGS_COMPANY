@@ -1,0 +1,103 @@
+import type { ReportPeriod } from "@/lib/data/report-period";
+import type { SchoolPageMeta } from "@/lib/school/pagination";
+
+export type SchoolExpenseMethod = "CASH" | "MOBILE_MONEY" | "BANK";
+
+export type SchoolExpenseSource = "MANUAL" | "TRANSPORT_FUEL" | "TRANSPORT_MAINTENANCE";
+
+export type SchoolExpenseCaps = {
+  canView: boolean;
+  canRecord: boolean;
+  canManageTypes: boolean;
+  canReverse: boolean;
+};
+
+export type SchoolExpenseTypeRow = {
+  id: string;
+  name: string;
+  description: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  postedAmount: number;
+  postedCount: number;
+};
+
+export type SchoolExpenseBusOption = {
+  id: string;
+  registrationNumber: string;
+  name: string;
+  isActive: boolean;
+};
+
+export type SchoolExpenseRow = {
+  id: string;
+  expenseNumber: string;
+  expenseDate: string;
+  amount: number;
+  description: string;
+  reference: string;
+  method: string;
+  payee: string;
+  sourceType: SchoolExpenseSource;
+  sourceId: string | null;
+  categoryId: string;
+  categoryName: string;
+  busId: string | null;
+  busLabel: string;
+  isActive: boolean;
+};
+
+export type SchoolExpenseSummary = {
+  totalPosted: number;
+  postedCount: number;
+  typesUsed: number;
+};
+
+export type SchoolExpenseWorkspace = {
+  expenses: SchoolExpenseRow[];
+  types: SchoolExpenseTypeRow[];
+  buses: SchoolExpenseBusOption[];
+  summary: SchoolExpenseSummary;
+  page: SchoolPageMeta;
+  period: ReportPeriod;
+  from: string;
+  to: string;
+  categoryId: string;
+  q: string;
+  capabilities: SchoolExpenseCaps;
+};
+
+export const SCHOOL_EXPENSE_METHODS: Array<{ value: SchoolExpenseMethod; label: string }> = [
+  { value: "CASH", label: "Cash" },
+  { value: "MOBILE_MONEY", label: "Mobile Money" },
+  { value: "BANK", label: "Bank" },
+];
+
+export function schoolExpenseMethodLabel(method: string) {
+  if (method === "MOBILE_MONEY") return "Mobile Money";
+  if (method === "BANK") return "Bank";
+  if (method === "CASH") return "Cash";
+  return "—";
+}
+
+export function schoolExpenseSourceLabel(source: string) {
+  if (source === "TRANSPORT_FUEL") return "Transport / Fuel";
+  if (source === "TRANSPORT_MAINTENANCE") return "Transport / Maintenance";
+  return "School expense";
+}
+
+export function schoolExpenseSourceHref(source: string) {
+  if (source === "TRANSPORT_FUEL") return "/school/transport/fuel";
+  if (source === "TRANSPORT_MAINTENANCE") return "/school/transport/maintenance";
+  return null;
+}
+
+export function expenseCategoryCode(name: string) {
+  const slug = name
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_|_$/g, "")
+    .slice(0, 32);
+  return slug.length >= 2 ? slug : `TYPE_${slug || "CAT"}`;
+}

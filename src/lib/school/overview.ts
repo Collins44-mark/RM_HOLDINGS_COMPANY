@@ -17,6 +17,7 @@ export type SchoolOverviewView = {
   attendance: OverviewMetric<number>;
   feesCollected: OverviewMetric<number>;
   outstandingFees: OverviewMetric<number>;
+  operatingExpenses: OverviewMetric<number>;
   grading: ConfigStatus;
   attendanceRules: ConfigStatus;
   feeStructure: ConfigStatus;

@@ -274,6 +274,7 @@ const RESOURCE_LABELS: Record<string, string> = {
   exams: "Exams",
   results: "Results",
   fees: "Fees",
+  expenses: "Expenses",
 };
 
 export function permissionModuleLabel(module: string) {

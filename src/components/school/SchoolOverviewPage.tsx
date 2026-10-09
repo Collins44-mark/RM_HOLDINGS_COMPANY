@@ -8,6 +8,7 @@ import {
   Clock3,
   GraduationCap,
   Layers,
+  Receipt,
   Settings2,
   Users,
   Wallet,
@@ -135,6 +136,11 @@ export function SchoolOverviewPage({
       ? { value: formatTzs(overview.outstandingFees.value), hint: "Due minus posted payments" }
       : metricDisplay(overview.outstandingFees)
     : { value: "—", hint: "Not available" };
+  const expenses = overview
+    ? overview.operatingExpenses.status === "ok"
+      ? { value: formatTzs(overview.operatingExpenses.value), hint: "Posted this year" }
+      : metricDisplay(overview.operatingExpenses)
+    : { value: "—", hint: "Not available" };
   const teachers = overview
     ? overview.teachers.status === "ok"
       ? { value: String(overview.teachers.value), hint: "Active academic staff" }
@@ -164,6 +170,7 @@ export function SchoolOverviewPage({
         <KpiCard label="Attendance" value={attendance.value} hint={attendance.hint} icon={ClipboardCheck} />
         <KpiCard label="Fees Collected" value={collected.value} hint={collected.hint} icon={Wallet} />
         <KpiCard label="Outstanding Fees" value={outstanding.value} hint={outstanding.hint} icon={Clock3} />
+        <KpiCard label="Operating Expenses" value={expenses.value} hint={expenses.hint} icon={Receipt} />
         <KpiCard label="Teachers" value={teachers.value} hint={teachers.hint} icon={GraduationCap} />
         <KpiCard label="Class Levels" value={classes.value} hint={classes.hint} icon={Layers} />
       </section>
