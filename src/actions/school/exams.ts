@@ -61,6 +61,7 @@ export type SchoolExamMark = {
 
 export type SchoolExamDetail = {
   exam: SchoolExamRow;
+  schoolName: string;
   subjects: SchoolExamSubjectOption[];
   students: SchoolExamStudentRow[];
   marks: SchoolExamMark[];
@@ -309,7 +310,7 @@ export async function getSchoolExamDetailAction(examId: string) {
       throw new SchoolError("This exam has not been published.", "UNAUTHORIZED");
     }
 
-    const [papersRes, enrollRes, scaleRes] = await Promise.all([
+    const [papersRes, enrollRes, scaleRes, profileRes, buRes] = await Promise.all([
       supabase.from("sch_exam_papers").select("id, subject_id").eq("exam_id", id).eq("business_unit_id", businessUnitId),
       supabase
         .from("sch_student_enrollments")
@@ -324,6 +325,8 @@ export async function getSchoolExamDetailAction(examId: string) {
         .eq("business_unit_id", businessUnitId)
         .eq("is_current", true)
         .maybeSingle(),
+      supabase.from("sch_school_profiles").select("name").eq("business_unit_id", businessUnitId).maybeSingle(),
+      supabase.from("business_units").select("name").eq("id", businessUnitId).maybeSingle(),
     ]);
     if (papersRes.error && !isSchoolUnconfiguredRead(papersRes.error)) mapSchoolDbError(papersRes.error, "load");
     if (enrollRes.error && !isSchoolUnconfiguredRead(enrollRes.error)) mapSchoolDbError(enrollRes.error, "load");
@@ -386,10 +389,12 @@ export async function getSchoolExamDetailAction(examId: string) {
     }));
 
     const gradingConfigured = Boolean(scaleRes.data?.id);
+    const schoolName = str(profileRes.data?.name) || str(buRes.data?.name) || "School Management";
     return {
       ok: true as const,
       detail: {
         exam: mapExam(examRow as Record<string, unknown>, catalog, subjects.length),
+        schoolName,
         subjects,
         students,
         marks,

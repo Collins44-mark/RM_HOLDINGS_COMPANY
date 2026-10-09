@@ -15,6 +15,16 @@ import {
   type SchoolExamsWorkspace,
 } from "@/actions/school/exams";
 import { SCHOOL_EXAM_TYPES } from "@/lib/school/exam-types";
+import {
+  examMarkStatus,
+  formatExamAverage,
+  formatExamPosition,
+  parseEnteredMark,
+  rankExamAverages,
+  studentExamAverage,
+  type ExamResultSort,
+} from "@/lib/school/exam-ranking";
+import { downloadExamResultsPdf } from "@/lib/school/exam-results-pdf";
 import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
 import {
   filterClass,
@@ -26,11 +36,17 @@ import {
   tableScrollClass,
 } from "@/components/supermarket/purchasing-ui";
 import { ContainedDrawer, DrawerCancel } from "@/components/ui/ContainedDrawer";
-import { SchoolField, SchoolIconWell, SchoolWorkflowButton } from "@/components/school/school-ui";
+import { SchoolConfirmDialog, SchoolField, SchoolIconWell, SchoolWorkflowButton } from "@/components/school/school-ui";
 import { SchoolPagination, replaceSchoolPageParam } from "@/components/school/SchoolPagination";
 import { schoolPageMeta } from "@/lib/school/pagination";
 import { cn } from "@/lib/cn";
-import { ClipboardList } from "lucide-react";
+import { ChevronLeft, ClipboardList } from "lucide-react";
+
+const markInputClass =
+  "h-8 w-[3.4rem] rounded-[10px] border border-[#dbe4ef] bg-white px-1.5 text-center text-[13px] tabular-nums text-navy shadow-[0_1px_2px_rgba(15,35,64,0.03)] outline-none transition placeholder:text-slate-400 focus:border-[#9bb6e0] focus:ring-4 focus:ring-[#5b82c4]/10";
+
+const backButtonClass =
+  "inline-flex h-8 items-center gap-1.5 rounded-full border border-white/80 bg-white/72 px-3 text-[12.5px] font-semibold text-navy shadow-[0_4px_12px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-xl transition duration-200 hover:bg-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#5b82c4]/15 active:translate-y-px";
 
 const EXAM_TYPE_LABEL: Record<(typeof SCHOOL_EXAM_TYPES)[number], string> = {
   midterm: "Midterm",
@@ -67,8 +83,10 @@ export function SchoolExamsPage({
   const [classId, setClassId] = useState(workspace.classId);
   const [createOpen, setCreateOpen] = useState(false);
   const [detail, setDetail] = useState<SchoolExamDetail | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const seq = useRef(0);
+  const detailSeq = useRef(0);
   const lock = useRef(false);
   const debounce = useRef<number | null>(null);
 
@@ -93,6 +111,21 @@ export function SchoolExamsPage({
     });
   }
 
+  function openExam(exam: SchoolExamRow) {
+    const token = ++detailSeq.current;
+    setOpeningId(exam.id);
+    setError(null);
+    void getSchoolExamDetailAction(exam.id).then((result) => {
+      if (token !== detailSeq.current) return;
+      setOpeningId(null);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setDetail(result.detail);
+    });
+  }
+
   return (
     <div className="min-w-0 max-w-full space-y-5 pb-10">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -113,35 +146,37 @@ export function SchoolExamsPage({
 
       {detail ? (
         <ExamResultsPanel
-          key={`${detail.exam.id}-${detail.exam.status}-${detail.marks.length}`}
+          key={detail.exam.id}
           detail={detail}
           canEnter={workspace.capabilities.canEnter}
           canPublish={workspace.capabilities.canPublish}
           busy={busy}
-          onBack={() => setDetail(null)}
-          onReload={() => {
-            void getSchoolExamDetailAction(detail.exam.id).then((result) => {
-              if (!result.ok) {
-                setError(result.error);
-                return;
-              }
-              setDetail(result.detail);
-            });
+          onBack={() => {
+            detailSeq.current += 1;
+            setOpeningId(null);
+            setDetail(null);
           }}
           onSave={(marks) => {
             if (lock.current) return;
             lock.current = true;
             setBusy(true);
             setError(null);
-            void saveSchoolExamResultsAction({ examId: detail.exam.id, marks }).then((result) => {
+            const examId = detail.exam.id;
+            const token = ++detailSeq.current;
+            void saveSchoolExamResultsAction({ examId, marks }).then((result) => {
               lock.current = false;
               setBusy(false);
               if (!result.ok) {
                 setError(result.error);
                 return;
               }
-              void getSchoolExamDetailAction(detail.exam.id).then((next) => {
-                if (next.ok) setDetail(next.detail);
+              void getSchoolExamDetailAction(examId).then((next) => {
+                if (token !== detailSeq.current) return;
+                if (!next.ok) {
+                  setError(next.error);
+                  return;
+                }
+                setDetail(next.detail);
               });
             });
           }}
@@ -149,14 +184,17 @@ export function SchoolExamsPage({
             if (lock.current) return;
             lock.current = true;
             setBusy(true);
-            void publishSchoolExamAction(detail.exam.id).then((result) => {
+            const examId = detail.exam.id;
+            const token = ++detailSeq.current;
+            void publishSchoolExamAction(examId).then((result) => {
               lock.current = false;
               setBusy(false);
               if (!result.ok) {
                 setError(result.error);
                 return;
               }
-              void getSchoolExamDetailAction(detail.exam.id).then((next) => {
+              void getSchoolExamDetailAction(examId).then((next) => {
+                if (token !== detailSeq.current) return;
                 if (next.ok) setDetail(next.detail);
               });
               load({ page: workspace.page.page });
@@ -228,7 +266,13 @@ export function SchoolExamsPage({
                       <td className="px-4 py-3 text-right">
                         <CompactActionsMenu
                           ariaLabel={`${exam.name} actions`}
-                          items={[{ label: "Open results", onSelect: () => openDetail(exam, setDetail, setError) }]}
+                          items={[
+                            {
+                              label: openingId === exam.id ? "Opening…" : "Open results",
+                              disabled: Boolean(openingId),
+                              onSelect: () => openExam(exam),
+                            },
+                          ]}
                         />
                       </td>
                     </tr>
@@ -278,20 +322,6 @@ export function SchoolExamsPage({
       ) : null}
     </div>
   );
-}
-
-function openDetail(
-  exam: SchoolExamRow,
-  setDetail: (detail: SchoolExamDetail | null) => void,
-  setError: (error: string | null) => void,
-) {
-  void getSchoolExamDetailAction(exam.id).then((result) => {
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-    setDetail(result.detail);
-  });
 }
 
 function CreateExamDrawer({
@@ -484,13 +514,53 @@ function CreateExamDrawer({
   );
 }
 
+function savedMarkMap(detail: SchoolExamDetail) {
+  const next = new Map<string, number>();
+  for (const mark of detail.marks) {
+    next.set(`${mark.studentId}:${mark.subjectId}`, mark.marks);
+  }
+  return next;
+}
+
+function hasUnsavedExamMarks(detail: SchoolExamDetail, values: Record<string, string>) {
+  const saved = savedMarkMap(detail);
+  for (const student of detail.students) {
+    for (const subject of detail.subjects) {
+      const key = `${student.studentId}:${subject.id}`;
+      const live = parseEnteredMark(values[key]);
+      const stored = saved.get(key) ?? null;
+      if (live !== stored) return true;
+    }
+  }
+  return false;
+}
+
+function collectEnteredMarks(detail: SchoolExamDetail, values: Record<string, string>) {
+  const marks: Array<{ studentId: string; subjectId: string; enrollmentId: string; marks: number }> = [];
+  for (const student of detail.students) {
+    for (const subject of detail.subjects) {
+      const status = examMarkStatus(values[`${student.studentId}:${subject.id}`], detail.exam.maxMarks);
+      if (status.invalid) {
+        throw new Error(`Marks must be between 0 and ${detail.exam.maxMarks}.`);
+      }
+      if (status.value == null) continue;
+      marks.push({
+        studentId: student.studentId,
+        subjectId: subject.id,
+        enrollmentId: student.enrollmentId,
+        marks: status.value,
+      });
+    }
+  }
+  return marks;
+}
+
 function ExamResultsPanel({
   detail,
   canEnter,
   canPublish,
   busy,
   onBack,
-  onReload,
   onSave,
   onPublish,
 }: {
@@ -499,7 +569,6 @@ function ExamResultsPanel({
   canPublish: boolean;
   busy: boolean;
   onBack: () => void;
-  onReload: () => void;
   onSave: (marks: Array<{ studentId: string; subjectId: string; enrollmentId: string; marks: number }>) => void;
   onPublish: () => void;
 }) {
@@ -510,56 +579,120 @@ function ExamResultsPanel({
     }
     return next;
   });
+  const [sort, setSort] = useState<ExamResultSort>("alpha");
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [confirmExport, setConfirmExport] = useState(false);
 
-  function gradeFor(studentId: string, subjectId: string) {
-    return detail.marks.find((row) => row.studentId === studentId && row.subjectId === subjectId)?.grade ?? "—";
+  const previewRows = detail.students.map((student) => {
+    const statuses = detail.subjects.map((subject) =>
+      examMarkStatus(values[`${student.studentId}:${subject.id}`], detail.exam.maxMarks),
+    );
+    const subjectMarks = statuses.map((status) => status.value);
+    const stats = studentExamAverage(subjectMarks);
+    return {
+      student,
+      subjectMarks,
+      invalid: statuses.map((status) => status.invalid),
+      average: stats.average,
+      complete: stats.complete && statuses.every((status) => !status.invalid),
+    };
+  });
+  const previewPositions = rankExamAverages(
+    previewRows.map((row) => ({ id: row.student.studentId, average: row.average, complete: row.complete })),
+  );
+  const orderedPreview = [...previewRows].sort((a, b) => {
+    if (sort === "alpha") return a.student.name.localeCompare(b.student.name);
+    const posA = previewPositions.get(a.student.studentId);
+    const posB = previewPositions.get(b.student.studentId);
+    if (posA != null && posB != null) return posA - posB || a.student.name.localeCompare(b.student.name);
+    if (posA != null) return -1;
+    if (posB != null) return 1;
+    return a.student.name.localeCompare(b.student.name);
+  });
+
+  function confirmedPdfRows() {
+    const saved = savedMarkMap(detail);
+    const rows = detail.students.map((student) => {
+      const subjectMarks = detail.subjects.map((subject) => saved.get(`${student.studentId}:${subject.id}`) ?? null);
+      const stats = studentExamAverage(subjectMarks);
+      return {
+        studentName: student.name,
+        marks: subjectMarks,
+        average: stats.average,
+        complete: stats.complete,
+        studentId: student.studentId,
+      };
+    });
+    const positions = rankExamAverages(rows.map((row) => ({ id: row.studentId, average: row.average, complete: row.complete })));
+    const ordered = [...rows].sort((a, b) => {
+      if (sort === "alpha") return a.studentName.localeCompare(b.studentName);
+      const posA = positions.get(a.studentId);
+      const posB = positions.get(b.studentId);
+      if (posA != null && posB != null) return posA - posB || a.studentName.localeCompare(b.studentName);
+      if (posA != null) return -1;
+      if (posB != null) return 1;
+      return a.studentName.localeCompare(b.studentName);
+    });
+    return ordered.map((row) => ({
+      studentName: row.studentName,
+      marks: row.marks,
+      average: row.average,
+      position: positions.get(row.studentId) ?? null,
+    }));
+  }
+
+  function exportPdf() {
+    setExportError(null);
+    if (hasUnsavedExamMarks(detail, values)) {
+      setConfirmExport(true);
+      return;
+    }
+    downloadExamResultsPdf({
+      detail,
+      schoolName: detail.schoolName,
+      rows: confirmedPdfRows(),
+      sortLabel: sort === "alpha" ? "Sorted alphabetically (A-Z)" : "Sorted by position (highest average first)",
+    });
   }
 
   return (
     <section className={cn(glassPanel, "p-0 overflow-hidden")}>
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-black/[0.04] px-5 py-4">
-        <div>
-          <button type="button" className="text-[12.5px] font-semibold text-slate-500 hover:text-navy" onClick={onBack}>
-            ← All exams
+        <div className="min-w-0">
+          <button type="button" className={backButtonClass} onClick={onBack} aria-label="Back to all exams">
+            <ChevronLeft className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
+            All exams
           </button>
-          <h2 className="mt-1 text-[18px] font-semibold tracking-[-0.03em] text-navy">{detail.exam.name}</h2>
+          <h2 className="mt-3 text-[18px] font-semibold tracking-[-0.03em] text-navy">{detail.exam.name}</h2>
           <p className="mt-1 text-[13px] text-slate-500">
             {detail.exam.levelName} · {detail.exam.className} · {detail.exam.examDate} · Max {detail.exam.maxMarks}
+            {detail.exam.status !== "published" ? " · Draft" : ""}
           </p>
           {detail.gradingMessage ? <p className="mt-2 text-[13px] text-amber-700">{detail.gradingMessage}</p> : null}
+          {exportError ? <p className="mt-2 text-[13px] text-[#c45b66]">{exportError}</p> : null}
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {canEnter ? (
             <SchoolWorkflowButton
               className={primaryButton}
               busy={busy}
               idleLabel="Save marks"
               onClick={() => {
-                const marks = [];
-                for (const student of detail.students) {
-                  for (const subject of detail.subjects) {
-                    const raw = values[`${student.studentId}:${subject.id}`];
-                    if (raw === undefined || raw === "") continue;
-                    const amount = Number(raw);
-                    if (!Number.isFinite(amount)) continue;
-                    marks.push({
-                      studentId: student.studentId,
-                      subjectId: subject.id,
-                      enrollmentId: student.enrollmentId,
-                      marks: amount,
-                    });
-                  }
+                try {
+                  setExportError(null);
+                  onSave(collectEnteredMarks(detail, values));
+                } catch (error) {
+                  setExportError(error instanceof Error ? error.message : "Check the marks entered.");
                 }
-                onSave(marks);
               }}
             />
           ) : null}
+          <button type="button" className={secondaryButton} disabled={busy} onClick={exportPdf}>
+            Export Results
+          </button>
           {canPublish && detail.exam.status !== "published" ? (
             <SchoolWorkflowButton className={secondaryButton} busy={busy} idleLabel="Publish" onClick={onPublish} />
           ) : null}
-          <button type="button" className={secondaryButton} onClick={onReload}>
-            Refresh
-          </button>
         </div>
       </div>
       {detail.students.length === 0 ? (
@@ -567,50 +700,90 @@ function ExamResultsPanel({
           <p className="text-[13.5px] text-slate-500">No students are enrolled in this class for the exam’s academic year.</p>
         </div>
       ) : (
-        <div className={tableScrollClass}>
-          <table className="min-w-full text-left">
-            <thead className={tableHead}>
-              <tr>
-                <th className="px-4 py-3">Admission</th>
-                <th className="px-4 py-3">Student</th>
-                {detail.subjects.map((subject) => (
-                  <th key={subject.id} className="px-4 py-3">
-                    {subject.name}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {detail.students.map((student) => (
-                <tr key={student.studentId} className="border-t border-black/[0.04] text-[13.5px] text-navy">
-                  <td className="px-4 py-3 text-slate-500">{student.admissionNumber || "—"}</td>
-                  <td className="px-4 py-3 font-medium">{student.name}</td>
-                  {detail.subjects.map((subject) => {
-                    const key = `${student.studentId}:${subject.id}`;
-                    return (
-                      <td key={subject.id} className="px-4 py-3">
-                        {canEnter ? (
-                          <input
-                            className={cn(inputClass, "h-10 w-24")}
-                            value={values[key] ?? ""}
-                            inputMode="decimal"
-                            onChange={(event) => setValues((current) => ({ ...current, [key]: event.target.value }))}
-                          />
-                        ) : (
-                          <span>
-                            {values[key] || "—"}
-                            {detail.gradingConfigured ? ` · ${gradeFor(student.studentId, subject.id)}` : ""}
-                          </span>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
+        <>
+          <div className="flex flex-wrap items-center gap-2 border-b border-black/[0.04] px-5 py-3">
+            <div className="flex flex-wrap gap-1 rounded-full bg-[#eef3f8] p-1 w-fit">
+              {(
+                [
+                  ["alpha", "Alphabetical (A–Z)"],
+                  ["position", "Position (Highest average first)"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setSort(id)}
+                  className={cn(
+                    "h-8 rounded-full px-3.5 text-[12.5px] font-semibold transition duration-200",
+                    sort === id ? "bg-white text-navy shadow-[0_4px_12px_rgba(15,35,64,0.08)]" : "text-slate-500 hover:text-navy",
+                  )}
+                >
+                  {label}
+                </button>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          </div>
+          <div className={tableScrollClass}>
+            <table className="min-w-full text-left">
+              <thead className={tableHead}>
+                <tr>
+                  <th className="sticky left-0 z-[1] bg-[#eef3f8]/95 px-3 py-2.5">Student</th>
+                  {detail.subjects.map((subject) => (
+                    <th key={subject.id} className="px-2 py-2.5 text-right whitespace-nowrap">
+                      {subject.name}
+                    </th>
+                  ))}
+                  <th className="px-2 py-2.5 text-right">Avg</th>
+                  <th className="px-2 py-2.5 text-right">Position</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orderedPreview.map((row) => (
+                  <tr key={row.student.studentId} className="border-t border-black/[0.04] text-[13px] text-navy">
+                    <td className="sticky left-0 z-[1] bg-white/92 px-3 py-2 font-medium whitespace-nowrap">
+                      {row.student.name}
+                    </td>
+                    {detail.subjects.map((subject, index) => {
+                      const key = `${row.student.studentId}:${subject.id}`;
+                      return (
+                        <td key={subject.id} className="px-2 py-2 text-right">
+                          {canEnter ? (
+                            <input
+                              className={cn(markInputClass, row.invalid[index] && "border-[#c45b66] focus:border-[#c45b66] focus:ring-[#c45b66]/15")}
+                              value={values[key] ?? ""}
+                              inputMode="decimal"
+                              aria-invalid={row.invalid[index]}
+                              aria-label={`${row.student.name} ${subject.name}`}
+                              onChange={(event) => setValues((current) => ({ ...current, [key]: event.target.value }))}
+                            />
+                          ) : (
+                            <span className="inline-block min-w-[3.4rem] tabular-nums">
+                              {row.subjectMarks[index] == null ? "—" : String(row.subjectMarks[index])}
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })}
+                    <td className="px-2 py-2 text-right tabular-nums text-slate-600">{formatExamAverage(row.average)}</td>
+                    <td className="px-2 py-2 text-right tabular-nums text-slate-600">
+                      {formatExamPosition(previewPositions.get(row.student.studentId) ?? null)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
+      <SchoolConfirmDialog
+        open={confirmExport}
+        title="Save marks before exporting?"
+        message="There are unsaved mark edits. Export uses confirmed saved results only. Save first, or discard the export request and keep editing."
+        confirmLabel="OK"
+        busy={busy}
+        onCancel={() => setConfirmExport(false)}
+        onConfirm={() => setConfirmExport(false)}
+      />
     </section>
   );
 }
