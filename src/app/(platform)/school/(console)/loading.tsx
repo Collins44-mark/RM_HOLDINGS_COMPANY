@@ -18,6 +18,8 @@ import { SchoolReportsPage } from "@/components/school/SchoolReportsPage";
 import { schoolPageMeta } from "@/lib/school/pagination";
 import { peekAdmissionView, peekAdmissionsListSnapshot, peekFeeView, peekFeesListSnapshot } from "@/lib/school/admission-flash";
 import { peekExamsListSnapshot } from "@/lib/school/exam-flash";
+import { peekSchoolReportSnapshot } from "@/lib/school/report-flash";
+import { parseSchoolReportKind } from "@/lib/school/report-types";
 
 const EMPTY_OPTIONS = {
   years: [] as Array<{ id: string; name: string; isCurrent: boolean }>,
@@ -128,7 +130,16 @@ export default function SchoolConsoleLoading() {
     return <SchoolExpensesPage initial={null} pending />;
   }
   if (pathname === "/school/reports") {
-    return <SchoolReportsPage initial={null} pending />;
+    const kind =
+      typeof window !== "undefined" ? parseSchoolReportKind(new URL(window.location.href).searchParams.get("kind")) : null;
+    const snapshot = peekSchoolReportSnapshot(kind);
+    return (
+      <SchoolReportsPage
+        initial={snapshot ? { ok: true, workspace: snapshot } : null}
+        initialKind={snapshot ? kind : null}
+        pending={!snapshot}
+      />
+    );
   }
   if (pathname === "/school/parents") {
     return (

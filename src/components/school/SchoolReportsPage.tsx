@@ -37,6 +37,7 @@ import {
 } from "@/lib/school/report-types";
 import { exportSchoolReportPdf } from "@/lib/school/school-reports-pdf";
 import { schoolPageMeta } from "@/lib/school/pagination";
+import { peekSchoolReportSnapshot, writeSchoolReportSnapshot } from "@/lib/school/report-flash";
 
 const REPORT_CARDS: Array<{ id: SchoolReportKind; icon: LucideIcon; blurb: string }> = [
   { id: "finance", icon: Wallet, blurb: "Fees, collections, expenses and salaries for the selected period." },
@@ -83,9 +84,50 @@ const RESET_FILTERS = {
   page: 1,
 };
 
+type ReportLoadInput = {
+  kind?: SchoolReportKind;
+  slice?: SchoolFinanceSlice;
+  period?: ReportPeriod;
+  from?: string;
+  to?: string;
+  q?: string;
+  levelId?: string;
+  classId?: string;
+  streamId?: string;
+  status?: string;
+  academicYearId?: string;
+  categoryId?: string;
+  busId?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+const defaultLoads = new Map<SchoolReportKind, Promise<SchoolReportsWorkspaceResult>>();
+
+function defaultLoad(kind: SchoolReportKind) {
+  const existing = defaultLoads.get(kind);
+  if (existing) return existing;
+  const request = loadSchoolReportsWorkspaceAction({ kind, period: "this-month", ...RESET_FILTERS });
+  defaultLoads.set(kind, request);
+  void request.then((result) => {
+    if (result.ok) writeSchoolReportSnapshot(result.workspace);
+    else defaultLoads.delete(kind);
+  });
+  window.setTimeout(() => defaultLoads.delete(kind), 45_000);
+  return request;
+}
+
+function syncReportKind(kind: SchoolReportKind | null) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (kind) url.searchParams.set("kind", kind);
+  else url.searchParams.delete("kind");
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
+}
+
 export function SchoolReportsPage({
   initial,
-  pending = false,
+  initialKind = null,
   embedded = false,
   controlledKind,
   controlledPeriod,
@@ -93,6 +135,7 @@ export function SchoolReportsPage({
   controlledTo,
 }: {
   initial: SchoolReportsWorkspaceResult | null;
+  initialKind?: SchoolReportKind | null;
   pending?: boolean;
   embedded?: boolean;
   controlledKind?: SchoolReportKind;
@@ -100,11 +143,15 @@ export function SchoolReportsPage({
   controlledFrom?: string;
   controlledTo?: string;
 }) {
-  const first = initial?.ok ? initial.workspace : emptyWorkspace(controlledKind ?? "finance");
-  const [selected, setSelected] = useState<SchoolReportKind | null>(controlledKind ?? null);
+  const bootKind = controlledKind ?? (initial?.ok ? initialKind ?? initial.workspace.kind : initialKind);
+  const first = initial?.ok ? initial.workspace : emptyWorkspace(bootKind ?? "finance");
+  const [selected, setSelected] = useState<SchoolReportKind | null>(
+    controlledKind ?? (initial != null && bootKind ? bootKind : null),
+  );
+  const [opening, setOpening] = useState<SchoolReportKind | null>(null);
   const [workspace, setWorkspace] = useState<SchoolReportWorkspace>(first);
   const [error, setError] = useState<string | null>(initial?.ok === false ? initial.error : null);
-  const [kind, setKind] = useState<SchoolReportKind>(controlledKind ?? first.kind);
+  const [kind, setKind] = useState<SchoolReportKind>(bootKind ?? first.kind);
   const [slice, setSlice] = useState<SchoolFinanceSlice>("all");
   const [period, setPeriod] = useState<ReportPeriod>(controlledPeriod ?? "this-month");
   const [from, setFrom] = useState(first.from);
@@ -117,33 +164,47 @@ export function SchoolReportsPage({
   const [academicYearId, setAcademicYearId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [busId, setBusId] = useState("");
+  const [requested, setRequested] = useState<ReportLoadInput | null>(null);
   const [busy, setBusy] = useState(Boolean(controlledKind) && !initial?.ok);
   const [exporting, setExporting] = useState(false);
-  const [ready, setReady] = useState(initial != null && Boolean(controlledKind || initial?.ok));
   const reqId = useRef(0);
   const searchTimer = useRef<number | null>(null);
   const started = useRef(false);
-  const selectedRef = useRef<SchoolReportKind | null>(controlledKind ?? null);
+  const selectedRef = useRef<SchoolReportKind | null>(controlledKind ?? (initial != null && bootKind ? bootKind : null));
 
-  function load(next: {
-    kind?: SchoolReportKind;
-    slice?: SchoolFinanceSlice;
-    period?: ReportPeriod;
-    from?: string;
-    to?: string;
-    q?: string;
-    levelId?: string;
-    classId?: string;
-    streamId?: string;
-    status?: string;
-    academicYearId?: string;
-    categoryId?: string;
-    busId?: string;
-    page?: number;
-    pageSize?: number;
-  } = {}) {
+  function commitFilters(payload: ReportLoadInput) {
+    if (payload.kind) setKind(payload.kind);
+    if (payload.slice) setSlice(payload.slice);
+    if (payload.period) setPeriod(payload.period);
+    if (payload.from != null) setFrom(payload.from);
+    if (payload.to != null) setTo(payload.to);
+    if (payload.levelId != null) setLevelId(payload.levelId);
+    if (payload.classId != null) setClassId(payload.classId);
+    if (payload.streamId != null) setStreamId(payload.streamId);
+    if (payload.status != null) setStatus(payload.status);
+    if (payload.academicYearId != null) setAcademicYearId(payload.academicYearId);
+    if (payload.categoryId != null) setCategoryId(payload.categoryId);
+    if (payload.busId != null) setBusId(payload.busId);
+  }
+
+  function reveal(result: SchoolReportsWorkspaceResult, payload: ReportLoadInput) {
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setOpening(null);
+    selectedRef.current = result.workspace.kind;
+    setSelected(result.workspace.kind);
+    setOpening(null);
+    setError(null);
+    commitFilters(payload);
+    setWorkspace(result.workspace);
+    if (!embedded && !controlledKind) syncReportKind(result.workspace.kind);
+  }
+
+  function load(next: ReportLoadInput = {}, cached?: Promise<SchoolReportsWorkspaceResult>) {
     const id = ++reqId.current;
-    const payload = {
+    const payload: ReportLoadInput = {
       kind: next.kind ?? kind,
       slice: next.slice ?? slice,
       period: next.period ?? period,
@@ -160,49 +221,44 @@ export function SchoolReportsPage({
       page: next.page ?? 1,
       pageSize: next.pageSize ?? workspace.page.pageSize,
     };
+    setRequested(payload);
     setBusy(true);
-    void loadSchoolReportsWorkspaceAction(payload).then((result) => {
+    const request = cached ?? loadSchoolReportsWorkspaceAction(payload);
+    void request.then((result) => {
       if (id !== reqId.current) return;
       setBusy(false);
+      setRequested(null);
       if (!controlledKind && selectedRef.current === null) return;
       if (selectedRef.current && result.ok && result.workspace.kind !== selectedRef.current) return;
-      setReady(true);
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-      setError(null);
-      setWorkspace(result.workspace);
+      reveal(result, payload);
     });
   }
 
   function openReport(next: SchoolReportKind) {
     selectedRef.current = next;
-    setSelected(next);
-    setKind(next);
-    setSlice("all");
+    setOpening(next);
     setQ("");
-    setLevelId("");
-    setClassId("");
-    setStreamId("");
-    setStatus("");
-    setAcademicYearId("");
-    setCategoryId("");
-    setBusId("");
     setError(null);
-    setReady(false);
-    setWorkspace(emptyWorkspace(next));
-    load({ kind: next, ...RESET_FILTERS });
+    const snapshot = peekSchoolReportSnapshot(next);
+    if (snapshot) {
+      reveal({ ok: true, workspace: snapshot }, { kind: next, period: "this-month", ...RESET_FILTERS });
+      setBusy(false);
+      setRequested(null);
+      return;
+    }
+    load({ kind: next, period: "this-month", ...RESET_FILTERS }, defaultLoad(next));
   }
 
   function backToReports() {
     reqId.current += 1;
     selectedRef.current = null;
     setSelected(null);
+    setOpening(null);
     setBusy(false);
+    setRequested(null);
     setExporting(false);
     setError(null);
-    setReady(false);
+    if (!embedded && !controlledKind) syncReportKind(null);
   }
 
   function exportCurrent() {
@@ -235,9 +291,16 @@ export function SchoolReportsPage({
   }
 
   useEffect(() => {
+    if (initial?.ok) {
+      writeSchoolReportSnapshot(initial.workspace);
+      if (!defaultLoads.has(initial.workspace.kind)) {
+        defaultLoads.set(initial.workspace.kind, Promise.resolve(initial));
+      }
+    }
     if (started.current) return;
     started.current = true;
     if (!controlledKind) return;
+    if (initial?.ok && initial.workspace.kind === controlledKind) return;
     queueMicrotask(() => {
       load({
         kind: controlledKind,
@@ -259,8 +322,9 @@ export function SchoolReportsPage({
   const showYear = kind === "admissions" || kind === "students" || financeFees;
   const showPlacement = kind === "admissions" || kind === "students" || kind === "parents" || financeFees;
   const currentView = Boolean(selected || controlledKind) && workspace.kind === (selected ?? kind);
-  const waiting = ((pending && Boolean(controlledKind) && !ready) || busy) && currentView;
-  const showEmpty = currentView && ready && !busy && workspace.rows.length === 0 && !error;
+  const showEmpty = currentView && !busy && workspace.rows.length === 0 && !error;
+  const pendingRing = (key: keyof ReportLoadInput, value: string) =>
+    requested?.[key] != null && String(requested[key]) !== value ? "ring-1 ring-navy/20" : null;
 
   if (showSelection) {
     return (
@@ -271,6 +335,16 @@ export function SchoolReportsPage({
             Choose a report to open live School records. Nothing is loaded until you select one.
           </p>
         </header>
+        {error ? (
+          <p className="text-[13px] text-[#c45b66]">
+            {error}{" "}
+            {opening ? (
+              <button type="button" className="font-semibold underline" onClick={() => openReport(opening)}>
+                Retry
+              </button>
+            ) : null}
+          </p>
+        ) : null}
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {REPORT_CARDS.map((card) => {
             const meta = SCHOOL_REPORT_DEFS.find((item) => item.id === card.id);
@@ -279,10 +353,18 @@ export function SchoolReportsPage({
               <button
                 key={card.id}
                 type="button"
+                onPointerEnter={() => {
+                  void defaultLoad(card.id);
+                }}
+                onFocus={() => {
+                  void defaultLoad(card.id);
+                }}
                 onClick={() => openReport(card.id)}
+                aria-busy={opening === card.id}
                 className={cn(
                   glassCard,
                   "group relative flex min-h-[168px] flex-col items-start px-5 py-5 text-left transition duration-200 hover:-translate-y-px hover:shadow-[0_14px_32px_rgba(15,35,64,0.08)]",
+                  opening === card.id && "ring-1 ring-navy/15",
                 )}
               >
                 <SchoolIconWell icon={Icon} />
@@ -312,7 +394,14 @@ export function SchoolReportsPage({
           <SchoolWorkflowButton className={primaryButton} busy={exporting} idleLabel="Export PDF" onClick={exportCurrent} />
         </header>
       )}
-      {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
+      {error ? (
+        <p className="text-[13px] text-[#c45b66]">
+          {error}{" "}
+          <button type="button" className="font-semibold underline" onClick={() => load({ page: workspace.page.page })}>
+            Retry
+          </button>
+        </p>
+      ) : null}
 
       <form
         className="flex flex-wrap items-center gap-2"
@@ -323,15 +412,10 @@ export function SchoolReportsPage({
       >
         {kind === "finance" ? (
           <select
-            className={cn(filterClass, "w-auto min-w-[9rem]")}
+            className={cn(filterClass, "w-auto min-w-[9rem]", pendingRing("slice", slice))}
             value={slice}
             onChange={(event) => {
               const next = event.target.value as SchoolFinanceSlice;
-              setSlice(next);
-              setStatus("");
-              setCategoryId("");
-              setBusId("");
-              setWorkspace((current) => ({ ...emptyWorkspace(kind), years: current.years, levels: current.levels, buses: current.buses, expenseTypes: current.expenseTypes }));
               load({ slice: next, status: "", categoryId: "", busId: "", page: 1 });
             }}
           >
@@ -343,11 +427,10 @@ export function SchoolReportsPage({
         ) : null}
         {showPeriod ? (
           <select
-            className={cn(filterClass, "w-auto min-w-[9rem]")}
+            className={cn(filterClass, "w-auto min-w-[9rem]", pendingRing("period", period))}
             value={period}
             onChange={(event) => {
               const next = event.target.value as ReportPeriod;
-              setPeriod(next);
               load({ period: next, page: 1 });
             }}
           >
@@ -384,12 +467,10 @@ export function SchoolReportsPage({
         ) : null}
         {showYear && workspace.years.length ? (
           <select
-            className={cn(filterClass, "w-auto min-w-[9rem]")}
+            className={cn(filterClass, "w-auto min-w-[9rem]", pendingRing("academicYearId", academicYearId))}
             value={academicYearId}
             onChange={(event) => {
-              const next = event.target.value;
-              setAcademicYearId(next);
-              load({ academicYearId: next, page: 1 });
+              load({ academicYearId: event.target.value, page: 1 });
             }}
           >
             <option value="">All years</option>
@@ -403,14 +484,10 @@ export function SchoolReportsPage({
         {showPlacement ? (
           <>
             <select
-              className={cn(filterClass, "w-auto min-w-[8rem]")}
+              className={cn(filterClass, "w-auto min-w-[8rem]", pendingRing("levelId", levelId))}
               value={levelId}
               onChange={(event) => {
-                const next = event.target.value;
-                setLevelId(next);
-                setClassId("");
-                setStreamId("");
-                load({ levelId: next, classId: "", streamId: "", page: 1 });
+                load({ levelId: event.target.value, classId: "", streamId: "", page: 1 });
               }}
             >
               <option value="">All Levels</option>
@@ -421,14 +498,11 @@ export function SchoolReportsPage({
               ))}
             </select>
             <select
-              className={cn(filterClass, "w-auto min-w-[8rem]")}
+              className={cn(filterClass, "w-auto min-w-[8rem]", pendingRing("classId", classId))}
               value={classId}
               disabled={!levelId}
               onChange={(event) => {
-                const next = event.target.value;
-                setClassId(next);
-                setStreamId("");
-                load({ classId: next, streamId: "", page: 1 });
+                load({ classId: event.target.value, streamId: "", page: 1 });
               }}
             >
               <option value="">All Classes</option>
@@ -439,13 +513,11 @@ export function SchoolReportsPage({
               ))}
             </select>
             <select
-              className={cn(filterClass, "w-auto min-w-[8rem]")}
+              className={cn(filterClass, "w-auto min-w-[8rem]", pendingRing("streamId", streamId))}
               value={streamId}
               disabled={!classId}
               onChange={(event) => {
-                const next = event.target.value;
-                setStreamId(next);
-                load({ streamId: next, page: 1 });
+                load({ streamId: event.target.value, page: 1 });
               }}
             >
               <option value="">All Streams</option>
@@ -459,12 +531,10 @@ export function SchoolReportsPage({
         ) : null}
         {kind === "admissions" ? (
           <select
-            className={cn(filterClass, "w-auto min-w-[8rem]")}
+            className={cn(filterClass, "w-auto min-w-[8rem]", pendingRing("status", status))}
             value={status}
             onChange={(event) => {
-              const next = event.target.value;
-              setStatus(next);
-              load({ status: next, page: 1 });
+              load({ status: event.target.value, page: 1 });
             }}
           >
             <option value="">All statuses</option>
@@ -475,12 +545,10 @@ export function SchoolReportsPage({
         ) : null}
         {kind === "students" || financeFees ? (
           <select
-            className={cn(filterClass, "w-auto min-w-[8rem]")}
+            className={cn(filterClass, "w-auto min-w-[8rem]", pendingRing("status", status))}
             value={status}
             onChange={(event) => {
-              const next = event.target.value;
-              setStatus(next);
-              load({ status: next, page: 1 });
+              load({ status: event.target.value, page: 1 });
             }}
           >
             <option value="">All statuses</option>
@@ -501,12 +569,10 @@ export function SchoolReportsPage({
         ) : null}
         {financeExpenses || kind === "transport" ? (
           <select
-            className={cn(filterClass, "w-auto min-w-[8rem]")}
+            className={cn(filterClass, "w-auto min-w-[8rem]", pendingRing("status", status))}
             value={status}
             onChange={(event) => {
-              const next = event.target.value;
-              setStatus(next);
-              load({ status: next, page: 1 });
+              load({ status: event.target.value, page: 1 });
             }}
           >
             <option value="">Posted & reversed</option>
@@ -516,12 +582,10 @@ export function SchoolReportsPage({
         ) : null}
         {financeExpenses ? (
           <select
-            className={cn(filterClass, "w-auto min-w-[8rem]")}
+            className={cn(filterClass, "w-auto min-w-[8rem]", pendingRing("categoryId", categoryId))}
             value={categoryId}
             onChange={(event) => {
-              const next = event.target.value;
-              setCategoryId(next);
-              load({ categoryId: next, page: 1 });
+              load({ categoryId: event.target.value, page: 1 });
             }}
           >
             <option value="">All types</option>
@@ -534,12 +598,10 @@ export function SchoolReportsPage({
         ) : null}
         {financeExpenses || kind === "transport" ? (
           <select
-            className={cn(filterClass, "w-auto min-w-[8rem]")}
+            className={cn(filterClass, "w-auto min-w-[8rem]", pendingRing("busId", busId))}
             value={busId}
             onChange={(event) => {
-              const next = event.target.value;
-              setBusId(next);
-              load({ busId: next, page: 1 });
+              load({ busId: event.target.value, page: 1 });
             }}
           >
             <option value="">{kind === "transport" ? "All Buses" : "All buses"}</option>
@@ -584,13 +646,13 @@ export function SchoolReportsPage({
           <h2 className="text-[18px] font-semibold tracking-[-0.04em] text-navy">No matching records</h2>
           <p className="text-[13.5px] text-slate-500">No live School records match the selected report filters.</p>
         </section>
-      ) : currentView && (workspace.rows.length || waiting) ? (
+      ) : currentView && workspace.rows.length ? (
         <section className={cn(glassPanel, busy && "opacity-80 transition-opacity duration-200")}>
           <div className={tableScrollClass}>
             <table className="w-full min-w-[720px] text-left">
               <thead>
                 <tr className={tableHead}>
-                  {(workspace.columns.length ? workspace.columns : [{ key: "loading", label: "Records" }]).map((col) => (
+                  {workspace.columns.map((col) => (
                     <th key={col.key} className={cn("px-4 py-3 font-semibold", col.align === "right" && "text-right")}>
                       {col.label}
                     </th>
@@ -598,39 +660,26 @@ export function SchoolReportsPage({
                 </tr>
               </thead>
               <tbody>
-                {workspace.rows.length ? (
-                  workspace.rows.map((row, index) => (
-                    <tr key={`${workspace.kind}-${index}`} className="border-t border-navy/5 text-[13.5px] text-navy">
-                      {workspace.columns.map((col) => (
-                        <td key={col.key} className={cn("px-4 py-3", col.align === "right" && "text-right")}>
-                          {row[col.key] || "—"}
-                        </td>
-                      ))}
-                    </tr>
-                  ))
-                ) : (
-                  <tr className="border-t border-navy/5">
-                    <td className="px-4 py-6 text-[13px] text-slate-500" colSpan={Math.max(workspace.columns.length, 1)}>
-                      Loading report…
-                    </td>
+                {workspace.rows.map((row, index) => (
+                  <tr key={`${workspace.kind}-${index}`} className="border-t border-navy/5 text-[13.5px] text-navy">
+                    {workspace.columns.map((col) => (
+                      <td key={col.key} className={cn("px-4 py-3", col.align === "right" && "text-right")}>
+                        {row[col.key] || "—"}
+                      </td>
+                    ))}
                   </tr>
-                )}
+                ))}
               </tbody>
             </table>
           </div>
-          {workspace.rows.length ? (
-            <SchoolPagination
-              page={workspace.page.page}
-              total={workspace.page.total}
-              pageSize={workspace.page.pageSize}
-              onPage={(next) => load({ page: next, pageSize: workspace.page.pageSize })}
-              onPageSize={(size) => load({ page: 1, pageSize: size })}
-            />
-          ) : null}
-          {busy && workspace.rows.length ? <p className="px-4 pb-3 text-[12.5px] text-slate-500">Updating…</p> : null}
+          <SchoolPagination
+            page={workspace.page.page}
+            total={workspace.page.total}
+            pageSize={workspace.page.pageSize}
+            onPage={(next) => load({ page: next, pageSize: workspace.page.pageSize })}
+            onPageSize={(size) => load({ page: 1, pageSize: size })}
+          />
         </section>
-      ) : waiting ? (
-        <p className="text-[12.5px] text-slate-500">Loading report…</p>
       ) : null}
     </div>
   );
