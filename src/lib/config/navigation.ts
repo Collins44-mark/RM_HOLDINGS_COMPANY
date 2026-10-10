@@ -91,15 +91,15 @@ export const SCHOOL_NAV: NavItem[] = [
 ];
 
 export const RICE_NAV: NavItem[] = [
-  { href: "/rice", label: "Rice Dashboard", icon: "dashboard", exact: true },
-  { href: "/rice/farmers", label: "Farmers", icon: "users" },
-  { href: "/rice/warehouse", label: "Warehouse", icon: "warehouse" },
-  { href: "/rice/stock", label: "Stock", icon: "package" },
-  { href: "/rice/milling", label: "Milling", icon: "wheat" },
-  { href: "/rice/grading", label: "Grading", icon: "clipboard" },
-  { href: "/rice/sales", label: "Sales", icon: "money" },
-  { href: "/rice/payments", label: "Payments", icon: "wallet" },
+  { href: "/rice", label: "Overview", icon: "dashboard", exact: true },
+  { href: "/rice/purchases", label: "Purchases", icon: "wallet", alsoActive: ["/rice/farmers"] },
+  { href: "/rice/milling", label: "Milling & Production", icon: "wheat", alsoActive: ["/rice/grading"] },
+  { href: "/rice/warehouse", label: "Warehouse", icon: "warehouse", alsoActive: ["/rice/stock"] },
+  { href: "/rice/customer-storage", label: "Customer Storage", icon: "package" },
+  { href: "/rice/sales", label: "Sales & Dispatch", icon: "money", alsoActive: ["/rice/payments"] },
+  { href: "/rice/finance", label: "Finance", icon: "finance" },
   { href: "/rice/reports", label: "Reports", icon: "reports" },
+  { href: "/rice/settings", label: "Settings", icon: "settings" },
 ];
 
 export const FARM_NAV: NavItem[] = [
