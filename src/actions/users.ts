@@ -34,12 +34,14 @@ import {
 import { writeAuditEvent } from "@/lib/audit";
 import { syncUserAccessClaims } from "@/lib/auth/effective-access";
 import {
+  ensureTeacherStaffForProfile,
   insertStaffForProfile,
   schoolBusinessUnitId,
   setStaffProfileId,
   type LinkedStaffInfo,
   type StaffLinkStaffOption,
 } from "@/lib/school/staff-profile-link";
+import { isSchoolTeacherRole, schoolRoleCodeForAssignment } from "@/lib/school/teacher-staff";
 
 export type CredentialsPayload = {
   name: string;
@@ -77,6 +79,7 @@ function revalidateUsersWorkspace() {
   updateTag(ACCESS_CATALOG_CACHE_TAG);
   revalidatePath("/owner/users");
   revalidatePath("/school/staff");
+  revalidatePath("/school");
 }
 
 function parseModuleRoles(formData: FormData, modules: string[], fallback: string) {
@@ -352,33 +355,13 @@ export async function createUserAction(
 
   const createAsStaff = String(formData.get("createAsStaff") ?? "") === "1";
   const linkStaffId = String(formData.get("linkStaffId") ?? "").trim();
+  const schoolAccessRole = schoolRoleCodeForAssignment({
+    assignedModules: metadataModules.map(String),
+    roleCode: parsed.data.roleCode,
+    moduleRoles,
+  });
   let warning: string | undefined;
-  if (createAsStaff && !linkStaffId) {
-    const staffResult = await insertStaffForProfile(admin, {
-      profileId: createdUser.id,
-      fullName: parsed.data.name,
-      phone: phoneValue ?? "",
-      email: emailValue,
-      staffTypeId: String(formData.get("staffTypeId") ?? "").trim(),
-      staffPositionId: String(formData.get("staffPositionId") ?? "").trim(),
-      jobTitle: String(formData.get("jobTitle") ?? "").trim(),
-      roleId: String(role.id),
-    });
-    if ("error" in staffResult && staffResult.error) {
-      warning = `User created. Staff profile was not created: ${staffResult.error}`;
-    } else if ("staff" in staffResult) {
-      createdUser.staff = staffResult.staff;
-      await writeAuditEvent({
-        action: "school.staff_created",
-        module: "school",
-        description: `Staff created · ${staffResult.staff.name}`,
-        severity: "medium",
-        entityType: "sch_staff",
-        entityId: staffResult.staff.id,
-        businessUnitId: staffResult.businessUnitId,
-      });
-    }
-  } else if (linkStaffId) {
+  if (linkStaffId) {
     const businessUnitId = await schoolBusinessUnitId(admin);
     if (!businessUnitId) {
       warning = "User created. School business unit was not found for the staff link.";
@@ -402,6 +385,53 @@ export async function createUserAction(
           businessUnitId,
         });
       }
+    }
+  } else if (isSchoolTeacherRole(schoolAccessRole)) {
+    const teacherStaff = await ensureTeacherStaffForProfile(admin, {
+      profileId: createdUser.id,
+      fullName: parsed.data.name,
+      phone: phoneValue ?? "",
+      email: emailValue,
+      roleId: String(role.id),
+    });
+    if ("error" in teacherStaff && teacherStaff.error) {
+      warning = `User created. School staff was not linked: ${teacherStaff.error}`;
+    } else if ("staff" in teacherStaff && teacherStaff.staff) {
+      createdUser.staff = teacherStaff.staff;
+      await writeAuditEvent({
+        action: "created" in teacherStaff && teacherStaff.created === false ? "school.staff_linked_user" : "school.staff_created",
+        module: "school",
+        description: `Staff linked to teacher account · ${teacherStaff.staff.name}`,
+        severity: "medium",
+        entityType: "sch_staff",
+        entityId: teacherStaff.staff.id,
+        businessUnitId: "businessUnitId" in teacherStaff ? teacherStaff.businessUnitId : undefined,
+      });
+    }
+  } else if (createAsStaff) {
+    const staffResult = await insertStaffForProfile(admin, {
+      profileId: createdUser.id,
+      fullName: parsed.data.name,
+      phone: phoneValue ?? "",
+      email: emailValue,
+      staffTypeId: String(formData.get("staffTypeId") ?? "").trim(),
+      staffPositionId: String(formData.get("staffPositionId") ?? "").trim(),
+      jobTitle: String(formData.get("jobTitle") ?? "").trim(),
+      roleId: String(role.id),
+    });
+    if ("error" in staffResult && staffResult.error) {
+      warning = `User created. Staff profile was not created: ${staffResult.error}`;
+    } else if ("staff" in staffResult) {
+      createdUser.staff = staffResult.staff;
+      await writeAuditEvent({
+        action: "school.staff_created",
+        module: "school",
+        description: `Staff created · ${staffResult.staff.name}`,
+        severity: "medium",
+        entityType: "sch_staff",
+        entityId: staffResult.staff.id,
+        businessUnitId: staffResult.businessUnitId,
+      });
     }
   }
 
@@ -605,6 +635,31 @@ export async function updateUserAction(
     moduleRoles,
   });
   if ("error" in result) return { error: result.error };
+
+  const schoolAccessRole = schoolRoleCodeForAssignment({
+    assignedModules: parsed.data.modules,
+    roleCode: parsed.data.roleCode,
+    moduleRoles,
+  });
+  if (isSchoolTeacherRole(schoolAccessRole)) {
+    const teacherStaff = await ensureTeacherStaffForProfile(readyForRoles.admin, {
+      profileId: userId,
+      fullName: parsed.data.name,
+      phone: (parsed.data.phone ? normalizePhone(parsed.data.phone) : target.phone) || undefined,
+      email: target.email ?? "",
+    });
+    if ("staff" in teacherStaff && teacherStaff.staff) {
+      await writeAuditEvent({
+        action: "created" in teacherStaff && teacherStaff.created === false ? "school.staff_linked_user" : "school.staff_created",
+        module: "school",
+        description: `Staff linked to teacher account · ${teacherStaff.staff.name}`,
+        severity: "medium",
+        entityType: "sch_staff",
+        entityId: teacherStaff.staff.id,
+        businessUnitId: "businessUnitId" in teacherStaff ? teacherStaff.businessUnitId || null : null,
+      });
+    }
+  }
 
   const previousModules = [...target.modules].sort().join(",");
   const nextModules = [...parsed.data.modules].sort().join(",");

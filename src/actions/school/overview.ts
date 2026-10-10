@@ -4,6 +4,38 @@ import { hasPermission } from "@/lib/auth/rbac";
 import { requireAuth, identityFromUser } from "@/lib/auth/session";
 import { isSchoolUnconfiguredRead, requireSchoolContext, schoolActionError, SchoolError } from "@/lib/school/access";
 import type { ConfigStatus, OverviewMetric, SchoolOverviewView } from "@/lib/school/overview";
+import { countDistinctTeachers } from "@/lib/school/teacher-staff";
+
+async function teacherMetric(
+  supabase: Awaited<ReturnType<typeof requireSchoolContext>>["supabase"],
+  teacherCountRes: {
+    data: Array<{ id?: unknown; role_id?: unknown; sch_staff_types?: { kind?: string } | { kind?: string }[] | null }> | null;
+    error: { message?: string; code?: string } | null;
+  },
+): Promise<OverviewMetric<number>> {
+  if (teacherCountRes.error && !isSchoolUnconfiguredRead(teacherCountRes.error)) return { status: "error" };
+  const rows = teacherCountRes.data ?? [];
+  const roleIds = [...new Set(rows.map((row) => String(row.role_id ?? "")).filter(Boolean))];
+  const roleCodes = new Map<string, string>();
+  if (roleIds.length) {
+    const rolesRes = await supabase.from("roles").select("id, code").in("id", roleIds);
+    for (const role of rolesRes.data ?? []) roleCodes.set(String(role.id), String(role.code ?? ""));
+  }
+  return {
+    status: "ok",
+    value: countDistinctTeachers(
+      rows.map((row) => {
+        const type = row.sch_staff_types as { kind?: string } | { kind?: string }[] | null;
+        const typeKind = Array.isArray(type) ? type[0]?.kind : type?.kind;
+        return {
+          id: String(row.id ?? ""),
+          typeKind: typeKind ?? null,
+          roleCode: roleCodes.get(String(row.role_id ?? "")) ?? null,
+        };
+      }),
+    ),
+  };
+}
 
 function configFromRow(exists: boolean, kind: "flag" | "presence", enabled?: boolean): ConfigStatus {
   if (kind === "flag") {
@@ -58,10 +90,9 @@ export async function getSchoolOverviewAction(): Promise<
         .eq("sch_students.status", "active"),
       supabase
         .from("sch_staff")
-        .select("id, sch_staff_types!inner(kind)", { count: "exact", head: true })
+        .select("id, role_id, sch_staff_types(kind)")
         .eq("business_unit_id", businessUnitId)
-        .eq("employment_status", "active")
-        .eq("sch_staff_types.kind", "academic"),
+        .eq("employment_status", "active"),
       supabase
         .from("sch_grading_scales")
         .select("id")
@@ -214,12 +245,7 @@ export async function getSchoolOverviewAction(): Promise<
             : typeof enrollmentCount.count === "number"
               ? { status: "ok" as const, value: enrollmentCount.count }
               : { status: "ok" as const, value: 0 },
-        teachers:
-          teacherCountRes.error && !isSchoolUnconfiguredRead(teacherCountRes.error)
-            ? { status: "error" as const }
-            : typeof teacherCountRes.count === "number"
-              ? { status: "ok" as const, value: teacherCountRes.count }
-              : { status: "ok" as const, value: 0 },
+        teachers: await teacherMetric(supabase, teacherCountRes),
         feesCollected,
         outstandingFees,
         operatingExpenses,

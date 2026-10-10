@@ -1265,6 +1265,7 @@ export async function archiveSchoolStaffAction(id: string) {
 function revalidateStaffIdentity(staffId: string) {
   revalidatePath("/school/staff");
   revalidatePath(`/school/staff/${staffId}`);
+  revalidatePath("/school");
   revalidatePath("/owner/users");
 }
 
@@ -1411,6 +1412,7 @@ export async function grantStaffSystemAccessAction(input: {
     formData.set("phone", str(input.phone) || str(staffRes.data.phone));
     formData.set("roleCode", storedRoleCode);
     formData.append("modules", "school");
+    formData.set("linkStaffId", staffId);
     const created = await createUserAction(null, formData);
     if (created?.error || !created?.createdUser) {
       throw new SchoolError(created?.error || "Unable to create the user account.", "DATABASE");

@@ -129,6 +129,59 @@ export async function setStaffProfileId(
   };
 }
 
+async function allocateStaffNumber(admin: SupabaseClient, businessUnitId: string) {
+  const rpc = await admin.rpc("sch_next_document_number", {
+    p_business_unit_id: businessUnitId,
+    p_doc_type: "staff",
+    p_prefix: "STF",
+  });
+  if (!rpc.error && rpc.data) return String(rpc.data);
+
+  const current = await admin
+    .from("sch_document_counters")
+    .select("next_value")
+    .eq("business_unit_id", businessUnitId)
+    .eq("doc_type", "staff")
+    .maybeSingle();
+  if (current.error) return null;
+
+  if (!current.data) {
+    const inserted = await admin
+      .from("sch_document_counters")
+      .insert({
+        business_unit_id: businessUnitId,
+        doc_type: "staff",
+        prefix: "STF",
+        next_value: 2,
+      })
+      .select("next_value")
+      .maybeSingle();
+    if (inserted.data?.next_value != null) {
+      return `STF-${String(Number(inserted.data.next_value) - 1).padStart(6, "0")}`;
+    }
+    if (inserted.error?.code !== "23505") return null;
+  }
+
+  const latest = await admin
+    .from("sch_document_counters")
+    .select("next_value")
+    .eq("business_unit_id", businessUnitId)
+    .eq("doc_type", "staff")
+    .maybeSingle();
+  const n = Number(latest.data?.next_value);
+  if (!Number.isFinite(n) || n < 1) return null;
+  const updated = await admin
+    .from("sch_document_counters")
+    .update({ next_value: n + 1 })
+    .eq("business_unit_id", businessUnitId)
+    .eq("doc_type", "staff")
+    .eq("next_value", n)
+    .select("next_value")
+    .maybeSingle();
+  const issued = updated.data?.next_value != null ? Number(updated.data.next_value) - 1 : n;
+  return `STF-${String(issued).padStart(6, "0")}`;
+}
+
 export async function insertStaffForProfile(
   admin: SupabaseClient,
   input: {
@@ -145,9 +198,24 @@ export async function insertStaffForProfile(
   const businessUnitId = await schoolBusinessUnitId(admin);
   if (!businessUnitId) return { error: "School business unit was not found." };
 
-  const already = await admin.from("sch_staff").select("id, staff_number").eq("profile_id", input.profileId).maybeSingle();
+  const already = await admin
+    .from("sch_staff")
+    .select("id, staff_number, first_name, middle_name, last_name, job_title, sch_staff_positions(name)")
+    .eq("profile_id", input.profileId)
+    .maybeSingle();
   if (already.data) {
-    return { error: `This account is already linked to ${str(already.data.staff_number)}.` };
+    const position = already.data.sch_staff_positions as { name?: string } | { name?: string }[] | null;
+    const positionName =
+      str(already.data.job_title) || (Array.isArray(position) ? str(position[0]?.name) : str(position?.name));
+    return {
+      staff: {
+        id: String(already.data.id),
+        staffNumber: str(already.data.staff_number),
+        name: personName(str(already.data.first_name), str(already.data.middle_name), str(already.data.last_name)),
+        positionName,
+      } satisfies LinkedStaffInfo,
+      businessUnitId,
+    };
   }
 
   const staffTypeId = str(input.staffTypeId);
@@ -175,12 +243,8 @@ export async function insertStaffForProfile(
     if (!type.data) return { error: "Choose a valid staff type." };
   }
 
-  const { data: number, error: numError } = await admin.rpc("sch_next_document_number", {
-    p_business_unit_id: businessUnitId,
-    p_doc_type: "staff",
-    p_prefix: "STF",
-  });
-  if (numError || !number) return { error: "Couldn't allocate a staff number." };
+  const number = await allocateStaffNumber(admin, businessUnitId);
+  if (!number) return { error: "Couldn't allocate a staff number." };
 
   const names = splitFullName(input.fullName);
   const inserted = await admin
@@ -204,6 +268,24 @@ export async function insertStaffForProfile(
     .maybeSingle();
   if (inserted.error || !inserted.data) {
     if (inserted.error?.code === "23505") {
+      const linked = await admin
+        .from("sch_staff")
+        .select("id, staff_number, first_name, middle_name, last_name, job_title, sch_staff_positions(name)")
+        .eq("profile_id", input.profileId)
+        .maybeSingle();
+      if (linked.data) {
+        const position = linked.data.sch_staff_positions as { name?: string } | { name?: string }[] | null;
+        return {
+          staff: {
+            id: String(linked.data.id),
+            staffNumber: str(linked.data.staff_number),
+            name: personName(str(linked.data.first_name), str(linked.data.middle_name), str(linked.data.last_name)),
+            positionName:
+              str(linked.data.job_title) || (Array.isArray(position) ? str(position[0]?.name) : str(position?.name)),
+          } satisfies LinkedStaffInfo,
+          businessUnitId,
+        };
+      }
       return { error: "That account is already linked to a staff member." };
     }
     return { error: "Unable to create the staff profile." };
@@ -218,5 +300,91 @@ export async function insertStaffForProfile(
       positionName: insertedPosition,
     } satisfies LinkedStaffInfo,
     businessUnitId,
+  };
+}
+
+async function academicStaffTypeId(admin: SupabaseClient, businessUnitId: string) {
+  const existing = await admin
+    .from("sch_staff_types")
+    .select("id")
+    .eq("business_unit_id", businessUnitId)
+    .eq("kind", "academic")
+    .eq("is_active", true)
+    .order("name")
+    .limit(1)
+    .maybeSingle();
+  if (existing.data?.id) return String(existing.data.id);
+  const inserted = await admin
+    .from("sch_staff_types")
+    .insert({
+      business_unit_id: businessUnitId,
+      name: "Academic",
+      code: "ACADEMIC",
+      kind: "academic",
+      is_active: true,
+    })
+    .select("id")
+    .maybeSingle();
+  if (inserted.data?.id) return String(inserted.data.id);
+  const again = await admin
+    .from("sch_staff_types")
+    .select("id")
+    .eq("business_unit_id", businessUnitId)
+    .eq("kind", "academic")
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+  return again.data?.id ? String(again.data.id) : undefined;
+}
+
+export async function ensureTeacherStaffForProfile(
+  admin: SupabaseClient,
+  input: { profileId: string; fullName: string; phone?: string; email?: string; roleId?: string },
+) {
+  const { data, error } = await admin.rpc("sch_ensure_teacher_staff", { p_profile_id: input.profileId });
+  if (error) {
+    const missing = /could not find|does not exist|schema cache/i.test(error.message ?? "");
+    if (!missing) return { error: error.message || "Unable to link the teacher to School Staff." };
+    const businessUnitId = await schoolBusinessUnitId(admin);
+    const staffTypeId = businessUnitId ? await academicStaffTypeId(admin, businessUnitId) : undefined;
+    return insertStaffForProfile(admin, {
+      profileId: input.profileId,
+      fullName: input.fullName,
+      phone: input.phone ?? "",
+      email: input.email ?? "",
+      jobTitle: "Teacher",
+      roleId: input.roleId,
+      staffTypeId,
+    });
+  }
+  const payload = (data ?? {}) as { ok?: boolean; id?: string; staff_number?: string; reason?: string; created?: boolean };
+  if (!payload.ok) return { skipped: true as const, reason: String(payload.reason ?? "") };
+  const linked = await admin
+    .from("sch_staff")
+    .select("id, staff_number, first_name, middle_name, last_name, job_title, sch_staff_positions(name)")
+    .eq("id", String(payload.id ?? ""))
+    .maybeSingle();
+  if (!linked.data) {
+    return {
+      staff: {
+        id: String(payload.id ?? ""),
+        staffNumber: str(payload.staff_number),
+        name: "",
+        positionName: "Teacher",
+      } satisfies LinkedStaffInfo,
+      created: Boolean(payload.created),
+    };
+  }
+  const position = linked.data.sch_staff_positions as { name?: string } | { name?: string }[] | null;
+  const businessUnitId = await schoolBusinessUnitId(admin);
+  return {
+    staff: {
+      id: String(linked.data.id),
+      staffNumber: str(linked.data.staff_number),
+      name: personName(str(linked.data.first_name), str(linked.data.middle_name), str(linked.data.last_name)),
+      positionName: str(linked.data.job_title) || (Array.isArray(position) ? str(position[0]?.name) : str(position?.name)),
+    } satisfies LinkedStaffInfo,
+    created: Boolean(payload.created),
+    businessUnitId: businessUnitId ?? "",
   };
 }
