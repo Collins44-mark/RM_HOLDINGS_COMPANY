@@ -143,14 +143,25 @@ export async function getStudentTransportWorkspaceAction(input: { studentId?: st
     });
     const routeName = new Map(routes.map((row) => [row.id, row.name]));
     const chargeIds = (chargesRes.data ?? []).map((row) => String(row.id));
-    const paymentsRes = chargeIds.length
-      ? await supabase
-          .from("sch_fee_payments")
-          .select("id, charge_id, amount, status, payment_date, method, reference")
-          .eq("business_unit_id", businessUnitId)
-          .in("charge_id", chargeIds)
-          .order("payment_date", { ascending: false })
-      : { data: [] as Array<{ id: string; charge_id: string; amount: number; status: string; payment_date: string; method: string; reference: string }> };
+    const [paymentsRes, balancesRes] = await Promise.all([
+      chargeIds.length
+        ? supabase
+            .from("sch_fee_payments")
+            .select("id, charge_id, amount, status, payment_date, method, reference")
+            .eq("business_unit_id", businessUnitId)
+            .in("charge_id", chargeIds)
+            .order("payment_date", { ascending: false })
+        : Promise.resolve({
+            data: [] as Array<{ id: string; charge_id: string; amount: number; status: string; payment_date: string; method: string; reference: string }>,
+            error: null,
+          }),
+      supabase
+        .from("sch_v_fee_charge_balances")
+        .select("charge_id, billed_amount, paid_amount, outstanding_amount")
+        .eq("business_unit_id", businessUnitId)
+        .eq("student_id", resolvedStudentId)
+        .eq("charge_kind", "TRANSPORT"),
+    ]);
 
     const payments = (paymentsRes.data ?? []).map((row) => ({
       id: String(row.id),
@@ -174,10 +185,22 @@ export async function getStudentTransportWorkspaceAction(input: { studentId?: st
       billingPeriod: "",
     }));
     const assignment = history.find((row) => row.status === "active") ?? null;
+    const balanceByCharge = new Map<string, { billed: number; paid: number; outstanding: number }>();
+    if (!balancesRes.error) {
+      for (const row of balancesRes.data ?? []) {
+        balanceByCharge.set(String(row.charge_id), {
+          billed: num(row.billed_amount),
+          paid: num(row.paid_amount),
+          outstanding: num(row.outstanding_amount),
+        });
+      }
+    }
     const charges = (chargesRes.data ?? []).map((row) => {
-      const paid = allocatedPaymentTotal(payments, String(row.id));
-      const amount = num(row.annual_amount);
-      const outstanding = Math.max(0, amount - paid);
+      const id = String(row.id);
+      const balance = balanceByCharge.get(id);
+      const paid = balance ? balance.paid : allocatedPaymentTotal(payments, id);
+      const amount = balance ? balance.billed : num(row.annual_amount);
+      const outstanding = balance ? balance.outstanding : Math.max(0, amount - paid);
       return {
         id: String(row.id),
         routeName: routeName.get(str(row.route_id)) || "Route",

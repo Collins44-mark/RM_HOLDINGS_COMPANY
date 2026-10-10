@@ -60,11 +60,19 @@ function formatWhen(iso: string, date: string) {
   return next.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
 }
 
-function remainingOf(account: StudentFeeAccount, chargeId: string, enrollmentId: string) {
-  const obligation =
-    account.obligations.find((row) => row.chargeId && row.chargeId === chargeId) ??
-    account.obligations.find((row) => row.enrollmentId === enrollmentId);
-  return obligation?.remaining ?? account.outstandingAmount;
+function remainingOf(account: StudentFeeAccount, chargeId: string) {
+  const obligation = account.obligations.find((row) => row.chargeId && row.chargeId === chargeId);
+  return obligation?.remaining ?? null;
+}
+
+function obligationLabel(row: FeeObligationRow) {
+  const period = row.billingPeriod || row.academicYearName;
+  const remaining = row.remaining == null ? "—" : formatAmount(row.remaining);
+  return `${row.description} · ${period} · remaining ${remaining}`;
+}
+
+function payableObligations(account: StudentFeeAccount) {
+  return account.obligations.filter((row) => row.status !== "no_structure" && (row.remaining == null || row.remaining > 0));
 }
 
 export function SchoolStudentFeeProfilePage({
@@ -131,8 +139,15 @@ export function SchoolStudentFeeProfilePage({
   const viewEnrollmentId = account.enrollmentId;
 
   function startPay(target?: FeeObligationRow) {
-    setPayEnrollmentId(target?.enrollmentId || viewEnrollmentId);
-    setPayChargeId(target?.chargeId || account?.obligations.find((row) => row.enrollmentId === viewEnrollmentId)?.chargeId || "");
+    const current = account;
+    if (!current) return;
+    const open = payableObligations(current);
+    const next =
+      target && (target.remaining == null || target.remaining > 0)
+        ? target
+        : open.find((row) => row.enrollmentId === viewEnrollmentId) ?? open[0];
+    setPayEnrollmentId(next?.enrollmentId || viewEnrollmentId);
+    setPayChargeId(next?.chargeId || "");
     setPayOpen(true);
     setSaved(false);
     setPayAmount("");
@@ -226,8 +241,8 @@ export function SchoolStudentFeeProfilePage({
   }
 
   const studentNo = formatCompactStudentNumber(account.studentNumber);
-  const remaining = remainingOf(account, payChargeId, payEnrollmentId || account.enrollmentId);
-  const payable = account.obligations.filter((row) => row.status !== "no_structure");
+  const remaining = remainingOf(account, payChargeId);
+  const payable = payableObligations(account);
 
   return (
     <div className="min-w-0 max-w-full space-y-5 pb-10">
@@ -301,7 +316,7 @@ export function SchoolStudentFeeProfilePage({
             <table className="w-full min-w-[720px] text-left">
               <thead>
                 <tr className={tableHead}>
-                  {["Charge", "Academic year", "Billed", "Paid", "Remaining", "Status", ""].map((heading) => (
+                  {["Charge", "Period", "Billed", "Paid", "Remaining", "Status", ""].map((heading) => (
                     <th key={heading || "act"} className="px-4 py-3 font-semibold">
                       {heading}
                     </th>
@@ -312,7 +327,7 @@ export function SchoolStudentFeeProfilePage({
                 {account.obligations.map((row) => (
                   <tr key={row.chargeId || `${row.enrollmentId}-${row.description}`} className="border-t border-navy/5 text-[13.5px] text-navy">
                     <td className="px-4 py-3">{row.description}</td>
-                    <td className="px-4 py-3">{row.academicYearName}</td>
+                    <td className="px-4 py-3">{row.billingPeriod || row.academicYearName}</td>
                     <td className="px-4 py-3 tabular-nums">{money(row.billed)}</td>
                     <td className="px-4 py-3 tabular-nums">{formatTzs(row.paid)}</td>
                     <td className="px-4 py-3 tabular-nums">{money(row.remaining)}</td>
@@ -358,13 +373,19 @@ export function SchoolStudentFeeProfilePage({
                     <td className="px-4 py-3">{paymentMethodLabel(payment.method)}</td>
                     <td className="px-4 py-3">{payment.reference || "—"}</td>
                     <td className="px-4 py-3">
-                      {account.obligations.find((row) => row.chargeId === payment.chargeId)?.description ||
-                        payment.academicYearName ||
-                        "Annual school fees"}
+                      {(() => {
+                        const allocated = account.obligations.find((row) => row.chargeId === payment.chargeId);
+                        if (!allocated) return payment.academicYearName || "Unallocated";
+                        return [allocated.description, allocated.billingPeriod || allocated.academicYearName].filter(Boolean).join(" · ");
+                      })()}
                     </td>
                     <td className="px-4 py-3">{payment.recordedByName || "—"}</td>
                     <td className="px-4 py-3">
-                      <StatusPill value={payment.status === "posted" ? "Posted" : "Pending"} />
+                      <StatusPill
+                        value={
+                          payment.status === "posted" ? "Posted" : payment.status === "pending" ? "Pending" : payment.status
+                        }
+                      />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
@@ -424,30 +445,39 @@ export function SchoolStudentFeeProfilePage({
                 <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Charge</span>
                 <select
                   className={inputClass}
-                  value={payChargeId || payEnrollmentId}
+                  value={payChargeId}
                   onChange={(event) => {
                     const next = event.target.value;
-                    const match = payable.find((row) => row.chargeId === next) ?? payable.find((row) => row.enrollmentId === next);
+                    const match = payable.find((row) => row.chargeId === next);
                     setPayChargeId(match?.chargeId ?? next);
                     setPayEnrollmentId(match?.enrollmentId || payEnrollmentId);
+                    setPayAmount("");
                   }}
                 >
                   {payable.map((row) => (
-                    <option key={row.chargeId || row.enrollmentId} value={row.chargeId || row.enrollmentId}>
-                      {row.description} · {row.academicYearName} · remaining {row.remaining == null ? "—" : formatAmount(row.remaining)}
+                    <option key={row.chargeId || `${row.enrollmentId}-${row.description}-${row.billingPeriod ?? ""}`} value={row.chargeId || ""}>
+                      {obligationLabel(row)}
                     </option>
                   ))}
                 </select>
               </label>
+            ) : payable.length === 1 ? (
+              <p className="text-[13px] text-slate-500">{obligationLabel(payable[0])}</p>
             ) : (
-              <p className="text-[13px] text-slate-500">
-                {payable[0]?.description || "Annual school fees"}
-                {remaining != null ? ` · Outstanding ${formatTzs(remaining)}` : ""}
-              </p>
+              <p className="text-[13px] text-slate-500">There is no outstanding charge to receive a payment.</p>
             )}
+            {remaining != null ? (
+              <p className="text-[12.5px] text-slate-500">Outstanding on this charge: {formatTzs(remaining)}. Partial payments are allowed.</p>
+            ) : null}
             <label className="block">
               <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Amount</span>
-              <input className={inputClass} inputMode="decimal" value={payAmount} onChange={(event) => setPayAmount(event.target.value)} />
+              <input
+                className={inputClass}
+                inputMode="decimal"
+                value={payAmount}
+                placeholder={remaining != null ? formatAmount(remaining) : undefined}
+                onChange={(event) => setPayAmount(event.target.value)}
+              />
             </label>
             <label className="block">
               <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Payment method</span>

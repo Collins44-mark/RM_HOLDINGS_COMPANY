@@ -9,7 +9,7 @@ export type FeePaymentRow = {
   recordedAt: string;
   reference: string;
   notes: string;
-  status: "pending" | "posted";
+  status: "pending" | "posted" | string;
   chargeId: string | null;
   academicYearName: string;
   recordedByName: string;
@@ -119,9 +119,7 @@ export function asFeeStatus(value: unknown): FeeAccountStatus {
   return "outstanding";
 }
 
-export function isAllocatedFeePayment(status: string) {
-  return status === "posted" || status === "pending";
-}
+export { isAllocatedFeePayment } from "@/lib/school/fee-allocation";
 
 export function feeStatusFromAmounts(billed: number | null, paid: number, hasStructure: boolean): FeeAccountStatus {
   if (!hasStructure && billed == null) return "no_structure";

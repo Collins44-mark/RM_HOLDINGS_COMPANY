@@ -369,9 +369,20 @@ export async function recordSchoolFeePaymentAction(input: {
     });
     if (!account) throw new SchoolError("Fee account was not found.", "NOT_FOUND");
     const chargeId = str(input.chargeId);
-    const target = chargeId ? account.obligations.find((row) => row.chargeId === chargeId) : account.obligations.find((row) => row.chargeKind === "TUITION") ?? account.obligations[0];
+    const target = chargeId
+      ? account.obligations.find((row) => row.chargeId === chargeId)
+      : account.obligations.find((row) => row.chargeKind === "TUITION" && (row.remaining == null || row.remaining > 0)) ??
+        account.obligations.find((row) => row.remaining == null || row.remaining > 0) ??
+        account.obligations.find((row) => row.chargeKind === "TUITION") ??
+        account.obligations[0];
     if (!target && !account.feeStructureId && !account.chargeId) {
       throw new SchoolError("Fee structure not configured for this class.", "VALIDATION");
+    }
+    if (target?.remaining != null && amount > target.remaining) {
+      throw new SchoolError("Amount cannot exceed the outstanding balance.", "VALIDATION");
+    }
+    if (target && target.remaining === 0) {
+      throw new SchoolError("This charge has no remaining balance.", "VALIDATION");
     }
     const { data, error } = await supabase.rpc("sch_record_fee_payment", {
       p_enrollment_id: target?.enrollmentId || account.enrollmentId,

@@ -202,26 +202,11 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
     const list = await accounts.range(from, to);
     if (list.error && !isSchoolUnconfiguredRead(list.error)) mapSchoolDbError(list.error, "load");
     const rows = list.data ?? [];
-    const allocated = new Map<string, number>();
-    const chargeIds = rows.map((row) => str(row.charge_id)).filter(Boolean);
-    if (chargeIds.length) {
-      const pay = await supabase
-        .from("sch_fee_payments")
-        .select("charge_id, amount")
-        .eq("business_unit_id", businessUnitId)
-        .eq("status", "posted")
-        .in("charge_id", chargeIds);
-      for (const row of pay.data ?? []) {
-        const id = str(row.charge_id);
-        allocated.set(id, num(row.amount) + (allocated.get(id) ?? 0));
-      }
-    }
     feeTotal = list.count ?? rows.length;
     feeRows = rows.map((row) => {
       const billedAmt = row.due_amount == null ? null : num(row.due_amount);
-      const chargeId = str(row.charge_id);
-        const paid = chargeId ? allocated.get(chargeId) ?? 0 : 0;
-      const remaining = billedAmt == null ? null : Math.max(0, billedAmt - paid);
+      const paid = num(row.paid_amount);
+      const remaining = row.outstanding_amount == null ? (billedAmt == null ? null : Math.max(0, billedAmt - paid)) : num(row.outstanding_amount);
       if (billedAmt != null) billed += billedAmt;
       if (remaining != null) {
         outstanding += remaining;
@@ -234,7 +219,7 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
         className: str(row.class_name),
         year: str(row.academic_year_name),
         billed: billedAmt == null ? "—" : formatTzs(billedAmt),
-        paid: formatTzs(chargeId ? allocated.get(chargeId) ?? 0 : 0),
+        paid: formatTzs(paid),
         outstanding: remaining == null ? "—" : formatTzs(remaining),
         status: feeStatusLabel(asFeeStatus(row.fee_status)),
       };
