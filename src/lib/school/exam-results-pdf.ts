@@ -210,8 +210,8 @@ export function downloadExamResultsPdf(input: {
     { key: "no", label: "No.", width: noWidth, align: "center", headerLines: ["No."] },
     { key: "student", label: "Student", width: studentWidth, align: "left", headerLines: ["Student"] },
     ...subjectColumns,
-    { key: "grade", label: "Grade", width: gradeWidth, align: "center", headerLines: ["Grade"] },
     { key: "avg", label: "Avg.", width: avgWidth, align: "center", headerLines: ["Avg."] },
+    { key: "grade", label: "Grade", width: gradeWidth, align: "center", headerLines: ["Grade"] },
     { key: "position", label: "Position", width: posWidth, align: "center", headerLines: ["Position"] },
   ];
 
