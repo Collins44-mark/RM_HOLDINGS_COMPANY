@@ -11,6 +11,7 @@ const ADMISSION_LIST_KEY = "school.admissions.list";
 const FEE_KEY = "school.fees.latest";
 const FEE_VIEW_KEY = "school.fees.view";
 const FEE_LIST_KEY = "school.fees.list";
+const FEE_RESTORE_KEY = "school.fees.restoreList";
 const STUDENT_KEY = "school.students.latest";
 const GUARDIAN_KEY = "school.guardians.latest";
 
@@ -125,6 +126,14 @@ export function writeFeeFlash(row: FeeFlash) {
 export function writeFeeView(row: FeeViewHeading) {
   if (typeof window === "undefined") return;
   sessionStorage.setItem(FEE_VIEW_KEY, JSON.stringify(row));
+  sessionStorage.setItem(FEE_RESTORE_KEY, "1");
+}
+
+export function consumeFeesListRestore() {
+  if (typeof window === "undefined") return false;
+  const raw = sessionStorage.getItem(FEE_RESTORE_KEY);
+  sessionStorage.removeItem(FEE_RESTORE_KEY);
+  return raw === "1";
 }
 
 export function peekFeeView(enrollmentId?: string): FeeViewHeading | null {

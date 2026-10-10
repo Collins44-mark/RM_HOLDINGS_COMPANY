@@ -23,6 +23,7 @@ import {
 } from "@/lib/school/fee-types";
 import {
   consumeFeeFlash,
+  consumeFeesListRestore,
   peekFeesListSnapshot,
   writeFeeView,
   writeFeesListSnapshot,
@@ -79,7 +80,8 @@ export function SchoolFeesPage({
   const requestSeq = useRef(0);
 
   useEffect(() => {
-    const snapshot = peekFeesListSnapshot();
+    const restore = consumeFeesListRestore();
+    const snapshot = restore ? peekFeesListSnapshot() : null;
     if (snapshot) {
       queueMicrotask(() => {
         setYearId(snapshot.yearId);
@@ -275,8 +277,12 @@ export function SchoolFeesPage({
           <input
             className={cn(inputClass, "!h-9 !rounded-full")}
             value={q}
-            placeholder="Search student name / student no."
-            onChange={(event) => setQ(event.target.value)}
+            placeholder="Search student name / student no. / admission no."
+            onChange={(event) => {
+              const next = event.target.value;
+              setQ(next);
+              if (!next.trim()) load(1, { q: "" });
+            }}
           />
         </form>
       </div>

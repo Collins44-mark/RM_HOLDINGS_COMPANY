@@ -13,6 +13,7 @@ import {
 } from "@/lib/school/access";
 import { revalidatePath } from "next/cache";
 import { getStudentFeeAccount } from "@/lib/school/fee-account";
+import { isPayableObligation, parsePayableSelectorId } from "@/lib/school/fee-allocation";
 import {
   asFeeStatus,
   paymentMethodLabel,
@@ -245,7 +246,7 @@ async function loadSummary(
   let totalFees = 0;
   let collected = 0;
   let outstanding = 0;
-  let studentsWithBalance = 0;
+  const withBalance = new Set<string>();
   for (const row of rows) {
     const billed = row.due_amount == null ? null : num(row.due_amount);
     const paid = num(row.paid_amount);
@@ -254,10 +255,10 @@ async function loadSummary(
     collected += paid;
     if (remaining != null) {
       outstanding += remaining;
-      if (remaining > 0) studentsWithBalance += 1;
+      if (remaining > 0 && row.student_id) withBalance.add(String(row.student_id));
     }
   }
-  return { totalFees, collected, outstanding, studentsWithBalance };
+  return { totalFees, collected, outstanding, studentsWithBalance: withBalance.size };
 }
 
 export async function getSchoolFeesWorkspaceAction() {
@@ -341,6 +342,7 @@ export async function getSchoolFeeAccountAction(enrollmentId: string) {
 
 export async function recordSchoolFeePaymentAction(input: {
   enrollmentId: string;
+  studentId?: string;
   chargeId?: string;
   amount: string;
   method: string;
@@ -362,30 +364,55 @@ export async function recordSchoolFeePaymentAction(input: {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDate)) throw new SchoolError("Payment date is required.", "VALIDATION");
     const requestId = str(input.requestId);
     if (!requestId) throw new SchoolError("Payment request is invalid.", "VALIDATION");
+    const enrollmentId = str(input.enrollmentId);
     const account = await getStudentFeeAccount({
       supabase,
       businessUnitId,
-      enrollmentId: str(input.enrollmentId),
+      enrollmentId,
     });
     if (!account) throw new SchoolError("Fee account was not found.", "NOT_FOUND");
-    const chargeId = str(input.chargeId);
-    const target = chargeId
-      ? account.obligations.find((row) => row.chargeId === chargeId)
-      : account.obligations.find((row) => row.chargeKind === "TUITION" && (row.remaining == null || row.remaining > 0)) ??
-        account.obligations.find((row) => row.remaining == null || row.remaining > 0) ??
-        account.obligations.find((row) => row.chargeKind === "TUITION") ??
-        account.obligations[0];
-    if (!target && !account.feeStructureId && !account.chargeId) {
+    const studentId = str(input.studentId);
+    if (studentId && studentId !== account.studentId) {
+      throw new SchoolError("This payment does not belong to the selected student.", "VALIDATION");
+    }
+    const selected = parsePayableSelectorId(str(input.chargeId));
+    const targetEnrollmentId = selected.enrollmentId || enrollmentId;
+    if (targetEnrollmentId !== account.enrollmentId) {
+      const sameStudent = account.obligations.some((row) => row.enrollmentId === targetEnrollmentId);
+      if (!sameStudent) throw new SchoolError("This charge does not belong to the selected student.", "VALIDATION");
+    }
+    const target = selected.chargeId
+      ? account.obligations.find((row) => row.chargeId === selected.chargeId && row.enrollmentId === (selected.enrollmentId || row.enrollmentId))
+      : account.obligations.find(
+          (row) =>
+            row.enrollmentId === targetEnrollmentId &&
+            row.chargeKind === "TUITION" &&
+            isPayableObligation(row) &&
+            !row.chargeId,
+        ) ?? account.obligations.find((row) => row.enrollmentId === targetEnrollmentId && row.chargeKind === "TUITION" && isPayableObligation(row));
+    if (selected.chargeId) {
+      const owned = await supabase
+        .from("sch_fee_charges")
+        .select("id, student_id, enrollment_id, is_active")
+        .eq("business_unit_id", businessUnitId)
+        .eq("id", selected.chargeId)
+        .eq("student_id", account.studentId)
+        .maybeSingle();
+      if (!owned.data || !owned.data.is_active) {
+        throw new SchoolError("This charge does not belong to the selected student.", "VALIDATION");
+      }
+    }
+    if (!target && !account.feeStructureId && !selected.pendingTuition) {
       throw new SchoolError("Fee structure not configured for this class.", "VALIDATION");
     }
-    if (target?.remaining != null && amount > target.remaining) {
+    if (!target || !isPayableObligation(target)) {
+      throw new SchoolError("This student has no outstanding charge.", "VALIDATION");
+    }
+    if (target.remaining != null && amount > target.remaining) {
       throw new SchoolError("Amount cannot exceed the outstanding balance.", "VALIDATION");
     }
-    if (target && target.remaining === 0) {
-      throw new SchoolError("This charge has no remaining balance.", "VALIDATION");
-    }
     const { data, error } = await supabase.rpc("sch_record_fee_payment", {
-      p_enrollment_id: target?.enrollmentId || account.enrollmentId,
+      p_enrollment_id: target.enrollmentId,
       p_amount: amount,
       p_method: method,
       p_payment_date: paymentDate,
@@ -393,7 +420,7 @@ export async function recordSchoolFeePaymentAction(input: {
       p_notes: str(input.notes).slice(0, 240),
       p_request_id: requestId,
       p_actor_id: userId,
-      p_charge_id: target?.chargeId || chargeId || null,
+      p_charge_id: target.chargeId || null,
     });
     if (error) throw new SchoolError(error.message || "Couldn't save this payment.", "DATABASE");
     const payload = (data ?? {}) as { id?: string; payment_number?: string; duplicate?: boolean };

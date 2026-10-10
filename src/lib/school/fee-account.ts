@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isSchoolUnconfiguredRead } from "@/lib/school/access";
-import { allocatedPaymentTotal, chargeRemaining, normalizeFeePaymentStatus } from "@/lib/school/fee-allocation";
+import {
+  allocatedPaymentTotal,
+  chargeRemaining,
+  normalizeFeePaymentStatus,
+  tuitionBilledFromRollup,
+} from "@/lib/school/fee-allocation";
 import { feeStatusFromAmounts, type FeeObligationRow, type FeePaymentRow, type StudentFeeAccount } from "@/lib/school/fee-types";
 
 export type { FeeAccountStatus, FeePaymentRow, StudentFeeAccount } from "@/lib/school/fee-types";
@@ -51,11 +56,12 @@ export async function getStudentFeeAccount(input: {
     query = query.eq("student_id", str(input.studentId));
     if (str(input.academicYearId)) query = query.eq("academic_year_id", str(input.academicYearId));
   } else return null;
-  const result = await query.maybeSingle();
+  const result = await query.limit(1);
   if (result.error && !isSchoolUnconfiguredRead(result.error)) return null;
-  if (!result.data) return null;
-  const row = result.data as Record<string, unknown>;
+  const row = ((Array.isArray(result.data) ? result.data[0] : result.data) ?? null) as Record<string, unknown> | null;
+  if (!row) return null;
   const studentId = str(row.student_id);
+  if (!studentId) return null;
 
   const yearId = str(row.academic_year_id);
   const today = new Date().toISOString().slice(0, 10);
@@ -63,7 +69,7 @@ export async function getStudentFeeAccount(input: {
     input.supabase
       .from("sch_v_fee_accounts")
       .select(
-        "enrollment_id, charge_id, fee_structure_id, academic_year_id, academic_year_name, due_amount, paid_amount, outstanding_amount, fee_status",
+        "enrollment_id, student_id, charge_id, fee_structure_id, academic_year_id, academic_year_name, due_amount, paid_amount, outstanding_amount, fee_status, tuition_due_amount, transport_due_amount",
       )
       .eq("business_unit_id", input.businessUnitId)
       .eq("student_id", studentId),
@@ -98,7 +104,18 @@ export async function getStudentFeeAccount(input: {
       : Promise.resolve({ data: [] as Array<{ term_id: string; amount: number }> }),
   ]);
 
-  const related = relatedRes.error && !isSchoolUnconfiguredRead(relatedRes.error) ? [] : (relatedRes.data ?? []);
+  let related =
+    relatedRes.error && !isSchoolUnconfiguredRead(relatedRes.error) ? [] : ((relatedRes.data ?? []) as Record<string, unknown>[]);
+  if (relatedRes.error && /tuition_due_amount|transport_due_amount/i.test(relatedRes.error.message ?? "")) {
+    const retry = await input.supabase
+      .from("sch_v_fee_accounts")
+      .select(
+        "enrollment_id, student_id, charge_id, fee_structure_id, academic_year_id, academic_year_name, due_amount, paid_amount, outstanding_amount, fee_status",
+      )
+      .eq("business_unit_id", input.businessUnitId)
+      .eq("student_id", studentId);
+    related = retry.error ? [] : ((retry.data ?? []) as Record<string, unknown>[]);
+  }
   const yearNameById = new Map(related.map((item) => [str((item as Record<string, unknown>).academic_year_id) || yearId, str((item as Record<string, unknown>).academic_year_name) || str(row.academic_year_name)]));
   const balances =
     balancesRes.error && !isSchoolUnconfiguredRead(balancesRes.error) ? [] : ((balancesRes.data ?? []) as Record<string, unknown>[]);
@@ -163,27 +180,27 @@ export async function getStudentFeeAccount(input: {
     .map((item) => {
       const record = item as Record<string, unknown>;
       const enrollmentId = str(record.enrollment_id);
-      const hasTransport = obligationsFromCharges.some((row) => row.enrollmentId === enrollmentId && row.chargeKind === "TRANSPORT");
-      const tuitionDue = record.tuition_due_amount;
-      const billed =
-        tuitionDue != null && tuitionDue !== ""
-          ? num(tuitionDue)
-          : hasTransport
-            ? null
-            : record.due_amount == null
-              ? null
-              : num(record.due_amount);
+      const transportBilled = obligationsFromCharges
+        .filter((row) => row.enrollmentId === enrollmentId && row.chargeKind === "TRANSPORT")
+        .reduce((sum, row) => sum + (row.billed ?? 0), 0);
+      const billed = tuitionBilledFromRollup({
+        tuitionDueAmount: record.tuition_due_amount,
+        dueAmount: record.due_amount,
+        transportDueAmount: record.transport_due_amount,
+        transportBilledFromCharges: transportBilled,
+      });
+      const chargeId = str(record.charge_id) || null;
       return mapObligation(
         {
           enrollment_id: enrollmentId,
-          charge_id: str(record.charge_id) || null,
+          charge_id: chargeId,
           due_amount: billed,
           fee_structure_id: record.fee_structure_id,
           academic_year_id: str(record.academic_year_id),
           academic_year_name: str(record.academic_year_name),
           charge_kind: "TUITION",
         },
-        str(record.charge_id) ? allocatedPaymentTotal(payments, str(record.charge_id)) : 0,
+        chargeId ? allocatedPaymentTotal(payments, chargeId) : 0,
       );
     })
     .filter((item) => item.billed != null);
@@ -212,7 +229,12 @@ export async function getStudentFeeAccount(input: {
   }
 
   const currentRows = obligations.filter((item) => item.enrollmentId === str(row.enrollment_id));
-  const current = currentRows[0] ?? obligations[0];
+  const current =
+    currentRows.find((item) => item.chargeKind === "TUITION" && (item.remaining == null || item.remaining > 0)) ??
+    currentRows.find((item) => item.remaining == null || item.remaining > 0) ??
+    currentRows.find((item) => item.chargeKind === "TUITION") ??
+    currentRows[0] ??
+    obligations[0];
   const annual = currentRows.length
     ? currentRows.reduce((sum, item) => sum + (item.billed ?? 0), 0)
     : row.due_amount == null

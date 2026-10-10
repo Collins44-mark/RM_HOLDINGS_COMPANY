@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import {
@@ -23,6 +23,7 @@ import {
 import { cn } from "@/lib/cn";
 import { formatAmount, formatTzs } from "@/lib/format/currency";
 import { downloadFeeReceiptPdf, type FeeReceiptPayload } from "@/lib/school/fee-receipt-pdf";
+import { isPayableObligation, payableSelectorId } from "@/lib/school/fee-allocation";
 import {
   feeStatusLabel,
   paymentMethodLabel,
@@ -60,19 +61,21 @@ function formatWhen(iso: string, date: string) {
   return next.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
 }
 
-function remainingOf(account: StudentFeeAccount, chargeId: string) {
-  const obligation = account.obligations.find((row) => row.chargeId && row.chargeId === chargeId);
+function remainingOf(account: StudentFeeAccount, selectorId: string) {
+  const obligation = account.obligations.find((row) => payableSelectorId(row) === selectorId);
   return obligation?.remaining ?? null;
 }
 
 function obligationLabel(row: FeeObligationRow) {
   const period = row.billingPeriod || row.academicYearName;
+  const billed = row.billed == null ? "—" : formatAmount(row.billed);
+  const paid = formatAmount(row.paid);
   const remaining = row.remaining == null ? "—" : formatAmount(row.remaining);
-  return `${row.description} · ${period} · remaining ${remaining}`;
+  return `${row.description} · ${period} · billed ${billed} · paid ${paid} · remaining ${remaining}`;
 }
 
 function payableObligations(account: StudentFeeAccount) {
-  return account.obligations.filter((row) => row.status !== "no_structure" && (row.remaining == null || row.remaining > 0));
+  return account.obligations.filter((row) => isPayableObligation(row));
 }
 
 export function SchoolStudentFeeProfilePage({
@@ -95,9 +98,9 @@ export function SchoolStudentFeeProfilePage({
     initialCaps ?? { canRecord: false, canVerify: false, canReceipt: false },
   );
   const [error, setError] = useState(initialError);
-  const [payOpen, setPayOpen] = useState(openPay && Boolean(initialAccount));
+  const [payOpen, setPayOpen] = useState(false);
   const [payEnrollmentId, setPayEnrollmentId] = useState(initialAccount?.enrollmentId ?? "");
-  const [payChargeId, setPayChargeId] = useState(initialAccount?.chargeId ?? "");
+  const [payChargeId, setPayChargeId] = useState("");
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState<"CASH" | "MOBILE_MONEY" | "BANK">("CASH");
   const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -105,11 +108,24 @@ export function SchoolStudentFeeProfilePage({
   const [payNotes, setPayNotes] = useState("");
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const [saveBusy, setSaveBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [verifyBusy, setVerifyBusy] = useState<string | null>(null);
   const [verifiedId, setVerifiedId] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<FeeReceiptPayload | null>(null);
   const lock = useRef(false);
+  const openedPay = useRef(false);
+
+  useEffect(() => {
+    if (!openPay || !initialAccount || openedPay.current) return;
+    openedPay.current = true;
+    const open = payableObligations(initialAccount);
+    const next =
+      open.find((row) => row.enrollmentId === initialAccount.enrollmentId && row.chargeKind === "TUITION") ??
+      open.find((row) => row.enrollmentId === initialAccount.enrollmentId) ??
+      open[0];
+    setPayEnrollmentId(next?.enrollmentId || initialAccount.enrollmentId);
+    setPayChargeId(next ? payableSelectorId(next) : "");
+    setPayOpen(true);
+  }, [openPay, initialAccount]);
 
   if (!account && pending) {
     return (
@@ -137,25 +153,36 @@ export function SchoolStudentFeeProfilePage({
   }
 
   const viewEnrollmentId = account.enrollmentId;
+  const viewStudentId = account.studentId;
 
-  function startPay(target?: FeeObligationRow) {
-    const current = account;
-    if (!current) return;
-    const open = payableObligations(current);
-    const next =
-      target && (target.remaining == null || target.remaining > 0)
-        ? target
-        : open.find((row) => row.enrollmentId === viewEnrollmentId) ?? open[0];
-    setPayEnrollmentId(next?.enrollmentId || viewEnrollmentId);
-    setPayChargeId(next?.chargeId || "");
-    setPayOpen(true);
-    setSaved(false);
+  function resetPayForm(nextAccount: StudentFeeAccount) {
+    const open = payableObligations(nextAccount);
+    const preferred =
+      open.find((row) => row.enrollmentId === viewEnrollmentId && row.chargeKind === "TUITION") ??
+      open.find((row) => row.enrollmentId === viewEnrollmentId) ??
+      open[0];
+    setPayEnrollmentId(preferred?.enrollmentId || viewEnrollmentId);
+    setPayChargeId(preferred ? payableSelectorId(preferred) : "");
     setPayAmount("");
     setPayMethod("CASH");
     setPayDate(new Date().toISOString().slice(0, 10));
     setPayReference("");
     setPayNotes("");
     setRequestId(crypto.randomUUID());
+  }
+
+  function startPay(target?: FeeObligationRow) {
+    const current = account;
+    if (!current) return;
+    const open = payableObligations(current);
+    const next = target && isPayableObligation(target) ? target : open.find((row) => row.enrollmentId === viewEnrollmentId) ?? open[0];
+    resetPayForm(current);
+    if (next) {
+      setPayEnrollmentId(next.enrollmentId);
+      setPayChargeId(payableSelectorId(next));
+    }
+    setPayOpen(true);
+    setError(null);
   }
 
   function applyAccount(next: StudentFeeAccount) {
@@ -173,11 +200,16 @@ export function SchoolStudentFeeProfilePage({
 
   function runRecord() {
     if (!account || lock.current) return;
+    if (!payableObligations(account).length) {
+      setError("This student has no outstanding charge.");
+      return;
+    }
     lock.current = true;
     setSaveBusy(true);
     const enrollmentId = payEnrollmentId || viewEnrollmentId;
     void recordSchoolFeePaymentAction({
       enrollmentId,
+      studentId: viewStudentId,
       chargeId: payChargeId,
       amount: payAmount,
       method: payMethod,
@@ -192,17 +224,24 @@ export function SchoolStudentFeeProfilePage({
         setError(result.error);
         return;
       }
-      setSaved(true);
       setCaps(result.capabilities);
-      if (result.account && result.account.enrollmentId === viewEnrollmentId) {
-        applyAccount(result.account);
-      } else {
+      const nextAccount =
+        result.account && result.account.studentId === viewStudentId
+          ? result.account.enrollmentId === viewEnrollmentId
+            ? result.account
+            : null
+          : null;
+      if (nextAccount) applyAccount(nextAccount);
+      else {
         const view = await getSchoolFeeAccountAction(viewEnrollmentId);
-        if (view.ok) {
+        if (view.ok && view.account.studentId === viewStudentId) {
           applyAccount(view.account);
           setCaps(view.capabilities);
-        } else if (result.account) applyAccount(result.account);
+        } else if (result.account && result.account.studentId === viewStudentId) applyAccount(result.account);
       }
+      const updated = nextAccount ?? (result.account?.studentId === viewStudentId ? result.account : null) ?? account;
+      setPayOpen(false);
+      resetPayForm(updated);
     });
   }
 
@@ -335,7 +374,7 @@ export function SchoolStudentFeeProfilePage({
                       <StatusPill value={feeStatusLabel(row.status)} />
                     </td>
                     <td className="px-4 py-3">
-                      {caps.canRecord && row.status !== "no_structure" && (row.remaining == null || row.remaining > 0) ? (
+                      {caps.canRecord && isPayableObligation(row) ? (
                         <button type="button" className={secondaryButton} onClick={() => startPay(row)}>
                           Record Payment
                         </button>
@@ -423,7 +462,10 @@ export function SchoolStudentFeeProfilePage({
         <ContainedDrawer
           title="Record Payment"
           subtitle={`${account.studentName} · ${studentNo}`}
-          onClose={() => setPayOpen(false)}
+          onClose={() => {
+            setPayOpen(false);
+            resetPayForm(account);
+          }}
           busy={saveBusy}
           footer={
             <>
@@ -431,41 +473,38 @@ export function SchoolStudentFeeProfilePage({
               <SchoolWorkflowButton
                 className={primaryButton}
                 busy={saveBusy}
-                confirmed={saved}
+                disabled={payable.length === 0}
                 idleLabel="Save Payment"
-                confirmedLabel="Saved ✓"
                 onClick={runRecord}
               />
             </>
           }
         >
           <div className="space-y-3 pb-4">
-            {payable.length > 1 ? (
-              <label className="block">
-                <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Charge</span>
+            <label className="block">
+              <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Charge to pay</span>
+              {payable.length ? (
                 <select
                   className={inputClass}
                   value={payChargeId}
                   onChange={(event) => {
                     const next = event.target.value;
-                    const match = payable.find((row) => row.chargeId === next);
-                    setPayChargeId(match?.chargeId ?? next);
+                    const match = payable.find((row) => payableSelectorId(row) === next);
+                    setPayChargeId(next);
                     setPayEnrollmentId(match?.enrollmentId || payEnrollmentId);
                     setPayAmount("");
                   }}
                 >
                   {payable.map((row) => (
-                    <option key={row.chargeId || `${row.enrollmentId}-${row.description}-${row.billingPeriod ?? ""}`} value={row.chargeId || ""}>
+                    <option key={payableSelectorId(row)} value={payableSelectorId(row)}>
                       {obligationLabel(row)}
                     </option>
                   ))}
                 </select>
-              </label>
-            ) : payable.length === 1 ? (
-              <p className="text-[13px] text-slate-500">{obligationLabel(payable[0])}</p>
-            ) : (
-              <p className="text-[13px] text-slate-500">There is no outstanding charge to receive a payment.</p>
-            )}
+              ) : (
+                <p className="mt-1 text-[13px] text-slate-500">This student has no outstanding charge.</p>
+              )}
+            </label>
             {remaining != null ? (
               <p className="text-[12.5px] text-slate-500">Outstanding on this charge: {formatTzs(remaining)}. Partial payments are allowed.</p>
             ) : null}
