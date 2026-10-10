@@ -1,5 +1,5 @@
 import { APP_NAME } from "@/lib/config/app";
-import { downloadPdfBytes, formatPdfNumber, pdfAscii } from "@/lib/pdf/report-document";
+import { downloadPdfBytes, formatPdfGeneratedAt, formatPdfNumber, pdfAscii } from "@/lib/pdf/report-document";
 import { CorporateReportDocument } from "@/lib/pdf/corporate-report-document";
 
 export type GoodsReceiptPdfPayload = {
@@ -25,14 +25,14 @@ function money(value: number) {
   return `TZS ${formatPdfNumber(value)}`;
 }
 
-export function downloadGoodsReceiptDocument(document: GoodsReceiptPdfPayload) {
+export function buildGoodsReceiptDocumentPdf(document: GoodsReceiptPdfPayload) {
   const doc = new CorporateReportDocument({
     businessUnit: "Supermarket",
     title: "Goods Receipt",
-    subtitle: `${APP_NAME} · warehouse receipt`,
+    subtitle: "Warehouse goods receipt",
     periodLabel: document.number,
     periodDates: document.receivedDate,
-    generatedAt: new Date().toISOString(),
+    generatedAt: formatPdfGeneratedAt(),
   });
 
   doc.addSectionTable(
@@ -80,6 +80,10 @@ export function downloadGoodsReceiptDocument(document: GoodsReceiptPdfPayload) {
     },
   );
 
+  return doc.build();
+}
+
+export function downloadGoodsReceiptDocument(document: GoodsReceiptPdfPayload) {
   const filename = `RM-Supermarket-Goods-Receipt-${pdfAscii(document.number).replace(/[^A-Za-z0-9]+/g, "-")}.pdf`;
-  downloadPdfBytes(doc.build(), filename);
+  downloadPdfBytes(buildGoodsReceiptDocumentPdf(document), filename);
 }

@@ -59,7 +59,7 @@ export function pdfLine(x1: number, y1: number, x2: number, y2: number, width = 
 }
 
 export function pdfFillRect(x: number, y: number, w: number, h: number, color: string) {
-  return `${color} ${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re f`;
+  return `${color} rg ${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re f`;
 }
 
 export function pdfStrokeRect(x: number, y: number, w: number, h: number, width = 0.5) {
@@ -73,7 +73,7 @@ export function pdfClip(value: string, max: number) {
 
 /** Approximate Helvetica string width in points */
 export function pdfTextWidth(value: string, size: number, bold = false) {
-  const factor = bold ? 0.55 : 0.5;
+  const factor = bold ? 0.62 : 0.58;
   return pdfAscii(value).length * size * factor;
 }
 

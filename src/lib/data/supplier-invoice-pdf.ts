@@ -1,5 +1,4 @@
-import { APP_NAME } from "@/lib/config/app";
-import { downloadPdfBytes, formatPdfNumber, pdfAscii } from "@/lib/pdf/report-document";
+import { downloadPdfBytes, formatPdfGeneratedAt, formatPdfNumber, pdfAscii } from "@/lib/pdf/report-document";
 import { CorporateReportDocument } from "@/lib/pdf/corporate-report-document";
 
 export type SupplierInvoicePdfPayload = {
@@ -30,14 +29,14 @@ function paymentLabel(status: string) {
   return "Unpaid";
 }
 
-export function downloadSupplierInvoiceDocument(invoice: SupplierInvoicePdfPayload) {
+export function buildSupplierInvoiceDocumentPdf(invoice: SupplierInvoicePdfPayload) {
   const doc = new CorporateReportDocument({
     businessUnit: "Supermarket",
     title: "Supplier Invoice",
-    subtitle: `${APP_NAME} · live purchase invoice record`,
+    subtitle: "Supplier invoice",
     periodLabel: invoice.number,
     periodDates: invoice.invoiceDate,
-    generatedAt: new Date().toISOString(),
+    generatedAt: formatPdfGeneratedAt(),
   });
 
   doc.addSectionTable(
@@ -99,6 +98,10 @@ export function downloadSupplierInvoiceDocument(invoice: SupplierInvoicePdfPaylo
     ],
   );
 
+  return doc.build();
+}
+
+export function downloadSupplierInvoiceDocument(invoice: SupplierInvoicePdfPayload) {
   const filename = `RM-Supermarket-Supplier-Invoice-${pdfAscii(invoice.number).replace(/[^A-Za-z0-9]+/g, "-")}.pdf`;
-  downloadPdfBytes(doc.build(), filename);
+  downloadPdfBytes(buildSupplierInvoiceDocumentPdf(invoice), filename);
 }

@@ -58,7 +58,7 @@ function formatPdfTzs(amount: number) {
   return `TZS ${formatPdfNumber(amount)}`;
 }
 
-function renderSalesPdf(data: SalesReportData, filters: SalesReportFilters = {}) {
+export function renderSalesPdf(data: SalesReportData, filters: SalesReportFilters = {}) {
   const doc = new CorporateSalesDocument({
     businessUnit: BUSINESS_UNIT,
     title: "Sales Report",
@@ -86,20 +86,20 @@ function renderSalesPdf(data: SalesReportData, filters: SalesReportFilters = {})
   );
 
   const paymentCols: TableColumn[] = [
-    { key: "method", label: "Payment Method", width: 78 },
-    { key: "count", label: "Transactions", width: 50, align: "right" },
-    { key: "amount", label: "Amount (TZS)", width: 70, align: "right" },
-    { key: "pct", label: "% of Sales", width: 50, align: "right" },
+    { key: "method", label: "Payment Method", width: 70 },
+    { key: "count", label: "Transactions", width: 62, align: "right" },
+    { key: "amount", label: "Amount (TZS)", width: 68, align: "right" },
+    { key: "pct", label: "% of Sales", width: 48, align: "right" },
   ];
   const paymentTotalCount = data.paymentBreakdown.reduce((sum, row) => sum + row.count, 0);
   const paymentTotalAmount = data.paymentBreakdown.reduce((sum, row) => sum + row.amount, 0);
 
   const cashierCols: TableColumn[] = [
-    { key: "cashier", label: "Cashier", width: 58 },
-    { key: "sales", label: "Sales", width: 36, align: "right" },
-    { key: "items", label: "Items Sold", width: 48, align: "right" },
-    { key: "revenue", label: "Revenue (TZS)", width: 66, align: "right" },
-    { key: "pct", label: "% of Sales", width: 40, align: "right" },
+    { key: "cashier", label: "Cashier", width: 70 },
+    { key: "sales", label: "Sales", width: 34, align: "right" },
+    { key: "items", label: "Items", width: 40, align: "right" },
+    { key: "revenue", label: "Revenue (TZS)", width: 62, align: "right" },
+    { key: "pct", label: "%", width: 28, align: "right" },
   ];
   const cashierSales = data.cashierPerformance.reduce((sum, row) => sum + row.sales, 0);
   const cashierItems = data.cashierPerformance.reduce((sum, row) => sum + row.itemsSold, 0);
@@ -177,7 +177,7 @@ function renderSalesPdf(data: SalesReportData, filters: SalesReportFilters = {})
   return doc.build();
 }
 
-function renderInventoryPdf(data: InventoryReportData) {
+export function renderInventoryPdf(data: InventoryReportData) {
   const doc = new CorporateReportDocument({
     businessUnit: BUSINESS_UNIT,
     title: "Inventory Report",
@@ -304,7 +304,7 @@ function renderInventoryPdf(data: InventoryReportData) {
   return doc.build();
 }
 
-function renderPurchasePdf(data: PurchaseReportData) {
+export function renderPurchasePdf(data: PurchaseReportData) {
   const doc = new CorporateReportDocument({
     businessUnit: BUSINESS_UNIT,
     title: "Purchase Report",
@@ -387,7 +387,7 @@ function renderPurchasePdf(data: PurchaseReportData) {
   return doc.build();
 }
 
-function renderProfitLossPdf(data: ProfitLossReportData) {
+export function renderProfitLossPdf(data: ProfitLossReportData) {
   const doc = new CorporateReportDocument({
     businessUnit: BUSINESS_UNIT,
     title: "Profit & Loss",

@@ -1,5 +1,5 @@
 import { APP_NAME } from "@/lib/config/app";
-import { downloadPdfBytes, formatPdfNumber, pdfAscii } from "@/lib/pdf/report-document";
+import { downloadPdfBytes, formatPdfGeneratedAt, formatPdfNumber, pdfAscii } from "@/lib/pdf/report-document";
 import { CorporateReportDocument } from "@/lib/pdf/corporate-report-document";
 
 export type PurchaseDocumentPdfPayload = {
@@ -38,14 +38,14 @@ function poStatusLabel(status: string) {
   return status;
 }
 
-export function downloadPurchaseDocument(document: PurchaseDocumentPdfPayload) {
+export function buildPurchaseDocumentPdf(document: PurchaseDocumentPdfPayload) {
   const doc = new CorporateReportDocument({
     businessUnit: "Supermarket",
     title: "Purchase Document",
-    subtitle: `${APP_NAME} · RM Holdings system purchase document`,
+    subtitle: "Purchase order and received goods",
     periodLabel: document.number,
     periodDates: document.receivedDate || document.orderDate,
-    generatedAt: new Date().toISOString(),
+    generatedAt: formatPdfGeneratedAt(),
   });
 
   doc.addSectionTable(
@@ -109,6 +109,10 @@ export function downloadPurchaseDocument(document: PurchaseDocumentPdfPayload) {
     ],
   );
 
+  return doc.build();
+}
+
+export function downloadPurchaseDocument(document: PurchaseDocumentPdfPayload) {
   const filename = `RM-Supermarket-Purchase-${pdfAscii(document.number).replace(/[^A-Za-z0-9]+/g, "-")}.pdf`;
-  downloadPdfBytes(doc.build(), filename);
+  downloadPdfBytes(buildPurchaseDocumentPdf(document), filename);
 }
