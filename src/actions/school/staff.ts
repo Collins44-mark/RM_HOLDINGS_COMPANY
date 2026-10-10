@@ -9,6 +9,8 @@ import { matchPermission } from "@/lib/config/permissions";
 import { syncUserAccessClaims } from "@/lib/auth/effective-access";
 import { createUserAction } from "@/actions/users";
 import {
+  isSchoolEmptyRead,
+  isSchoolMissingRelation,
   isSchoolUnconfiguredRead,
   mapSchoolDbError,
   requireSchoolPermission,
@@ -143,6 +145,35 @@ export type StaffAssignmentInput = {
 
 function str(value: unknown) {
   return String(value ?? "").trim();
+}
+
+const STAFF_CATALOG_LIMIT = 200;
+let cachedStaffListSelect: string | null = null;
+
+function staffListSelects(payrollSelect: string) {
+  return [
+    `id, staff_number, first_name, middle_name, last_name, employment_status, staff_type_id, position_id, job_title, phone, role_id, profile_id${payrollSelect}, sch_staff_types(name, kind), sch_staff_positions(name, allows_academic_assignments)`,
+    `id, staff_number, first_name, middle_name, last_name, employment_status, staff_type_id, position_id, job_title, phone, profile_id${payrollSelect}, sch_staff_types(name, kind), sch_staff_positions(name, allows_academic_assignments)`,
+    `id, staff_number, first_name, middle_name, last_name, employment_status, staff_type_id, position_id, job_title, phone, role_id, profile_id${payrollSelect}`,
+    `id, staff_number, first_name, middle_name, last_name, employment_status, job_title, phone, profile_id${payrollSelect}`,
+    `id, staff_number, first_name, middle_name, last_name, employment_status, job_title, phone, user_id${payrollSelect}`,
+  ];
+}
+
+function staffDetailSelects() {
+  return [
+    "id, staff_number, first_name, middle_name, last_name, gender, date_of_birth, phone, email, address, staff_type_id, role_id, position_id, job_title, employment_status, employment_date, monthly_salary, salary_effective_on, profile_id, sch_staff_types(name, kind), sch_staff_positions(name, allows_academic_assignments)",
+    "id, staff_number, first_name, middle_name, last_name, gender, date_of_birth, phone, email, address, staff_type_id, position_id, job_title, employment_status, employment_date, monthly_salary, salary_effective_on, profile_id, sch_staff_types(name, kind), sch_staff_positions(name, allows_academic_assignments)",
+    "id, staff_number, first_name, middle_name, last_name, gender, date_of_birth, phone, email, address, staff_type_id, role_id, position_id, job_title, employment_status, employment_date, monthly_salary, salary_effective_on, profile_id",
+    "id, staff_number, first_name, middle_name, last_name, gender, date_of_birth, phone, email, address, staff_type_id, job_title, employment_status, employment_date, monthly_salary, salary_effective_on, user_id",
+    "id, staff_number, first_name, middle_name, last_name, phone, email, job_title, employment_status, monthly_salary, profile_id",
+  ];
+}
+
+function shouldRetryStaffSelect(error: { message?: string; code?: string } | null) {
+  if (!error) return false;
+  if (isSchoolMissingRelation(error)) return true;
+  return /column|schema cache|relationship|does not exist/i.test(`${error.code ?? ""} ${error.message ?? ""}`);
 }
 
 function canManage(user: Awaited<ReturnType<typeof requireAuth>>) {
@@ -320,13 +351,6 @@ async function audit(input: {
   await writeAuditEvent({ ...input, module: "school", severity: "medium" });
 }
 
-function assignmentLabel(type: AssignmentType, parts: { level?: string; className?: string; stream?: string; subject?: string; department?: string }) {
-  if (type === "CLASS_TEACHER") return ["Class Teacher", parts.level, parts.className, parts.stream].filter(Boolean).join(" · ");
-  if (type === "SUBJECT_TEACHER") return ["Subject Teacher", parts.subject, parts.className, parts.stream].filter(Boolean).join(" · ");
-  if (type === "LEVEL_HEAD") return ["Level Head", parts.level].filter(Boolean).join(" · ");
-  return ["Department Head", parts.department].filter(Boolean).join(" · ");
-}
-
 export async function getStaffWorkspaceOptionsAction(mode: "view" | "manage" = "view") {
   try {
     const { supabase, businessUnitId } = await requireSchoolPermission(mode === "manage" ? MANAGE : VIEW);
@@ -484,73 +508,38 @@ export async function listSchoolStaffAction(input: { page?: number; q?: string; 
   try {
     const user = await requireAuth();
     const { supabase, businessUnitId } = await requireSchoolPermission(VIEW);
-    const { page, from, to, pageSize } = schoolPageRange(input.page ?? 1);
-    const q = searchNeedle(input.q);
-    const status = str(input.status);
+    const { page, pageSize } = schoolPageRange(input.page ?? 1);
     const payrollSelect = canViewPayroll(user) ? ", monthly_salary" : "";
-    const listSelect = (linkColumn: "profile_id" | "user_id", withRole: boolean) =>
-      `id, staff_number, first_name, middle_name, last_name, employment_status, staff_type_id, position_id, job_title, phone${withRole ? ", role_id" : ""}, ${linkColumn}${payrollSelect}, sch_staff_types(name, kind), sch_staff_positions(name, allows_academic_assignments)`;
-    async function runList(linkColumn: "profile_id" | "user_id", withRole: boolean) {
-      let query = supabase
+    const variants = cachedStaffListSelect ? [cachedStaffListSelect] : staffListSelects(payrollSelect);
+    let result: { data: unknown[] | null; error: { message?: string; code?: string } | null; count?: number | null } = {
+      data: null,
+      error: { message: "Staff list was not loaded." },
+    };
+    for (const select of variants) {
+      const query = supabase
         .from("sch_staff")
-        .select(listSelect(linkColumn, withRole), { count: "exact" })
+        .select(select, { count: "exact" })
         .eq("business_unit_id", businessUnitId)
         .order("created_at", { ascending: false })
-        .range(from, to);
-      if (status === "active" || status === "inactive") query = query.eq("employment_status", status);
-      if (q) {
-        const positions = await supabase
-          .from("sch_staff_positions")
-          .select("id")
-          .eq("business_unit_id", businessUnitId)
-          .ilike("name", `%${q}%`);
-        const positionIds = (positions.data ?? []).map((row) => String(row.id));
-        const positionFilter = positionIds.length ? `,position_id.in.(${positionIds.join(",")})` : "";
-        query = query.or(
-          `staff_number.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%${positionFilter}`,
-        );
+        .limit(STAFF_CATALOG_LIMIT);
+      result = await query;
+      if (!result.error) {
+        cachedStaffListSelect = select;
+        break;
       }
-      return await query;
+      cachedStaffListSelect = null;
+      if (!shouldRetryStaffSelect(result.error)) break;
     }
-    let result = await runList("profile_id", true);
-    if (result.error) result = await runList("profile_id", false);
-    if (result.error) result = await runList("user_id", true);
-    if (result.error) result = await runList("user_id", false);
-    if (result.error && !isSchoolUnconfiguredRead(result.error)) mapSchoolDbError(result.error, "load");
+    if (result.error && !isSchoolUnconfiguredRead(result.error) && !isSchoolEmptyRead(result.error)) {
+      mapSchoolDbError({ message: result.error.message ?? "", code: result.error.code }, "load");
+    }
     const rows = (result.data ?? []) as unknown as Record<string, unknown>[];
-    const ids = rows.map((row) => String(row.id));
     const roleIds = [...new Set(rows.map((row) => str(row.role_id)).filter(Boolean))];
     const roleNames = new Map<string, string>();
     if (roleIds.length) {
       const rolesRes = await supabase.from("roles").select("id, code, name").in("id", roleIds);
       for (const role of rolesRes.data ?? []) {
         roleNames.set(String(role.id), displayRoleName(str(role.code), str(role.name)));
-      }
-    }
-    const primary = new Map<string, string>();
-    if (ids.length) {
-      const assigns = await supabase
-        .from("sch_staff_assignments")
-        .select(
-          "staff_id, assignment_type, is_primary, sch_class_levels(name), sch_classes(name), sch_class_streams(name), sch_subjects(name), sch_departments(name)",
-        )
-        .eq("business_unit_id", businessUnitId)
-        .eq("is_active", true)
-        .in("staff_id", ids);
-      for (const row of assigns.data ?? []) {
-        if (primary.has(String(row.staff_id)) && !row.is_primary) continue;
-        const type = readAssignmentType(row.assignment_type);
-        if (!type) continue;
-        primary.set(
-          String(row.staff_id),
-          assignmentLabel(type, {
-            level: str((row.sch_class_levels as { name?: string } | null)?.name),
-            className: str((row.sch_classes as { name?: string } | null)?.name),
-            stream: str((row.sch_class_streams as { name?: string } | null)?.name),
-            subject: str((row.sch_subjects as { name?: string } | null)?.name),
-            department: str((row.sch_departments as { name?: string } | null)?.name),
-          }),
-        );
       }
     }
     return {
@@ -567,7 +556,7 @@ export async function listSchoolStaffAction(input: { page?: number; q?: string; 
           positionName: str(row.job_title) || str(position?.name),
           jobTitle: str(row.job_title),
           phone: str(row.phone),
-          primaryAssignment: primary.get(String(row.id)) ?? "",
+          primaryAssignment: "",
           status: asStatus(row.employment_status),
           allowsAcademicAssignments: allowsAcademicDuty(readKind(type?.kind), position?.allows_academic_assignments),
           hasSystemAccess: Boolean(str(row.profile_id) || str(row.user_id)),
@@ -588,15 +577,31 @@ export async function getSchoolStaffAction(id: string) {
     const { supabase, businessUnitId } = await requireSchoolPermission(VIEW);
     const staffId = str(id);
     if (!staffId) throw new SchoolError("Staff member was not found.", "NOT_FOUND");
-    const result = await supabase
-      .from("sch_staff")
-      .select("*, sch_staff_types(name, kind), sch_staff_positions(name, allows_academic_assignments)")
-      .eq("business_unit_id", businessUnitId)
-      .eq("id", staffId)
-      .maybeSingle();
-    if (result.error && !isSchoolUnconfiguredRead(result.error)) mapSchoolDbError(result.error, "load");
+    let result: { data: Record<string, unknown> | null; error: { message?: string; code?: string } | null } = {
+      data: null,
+      error: { message: "Staff member was not loaded." },
+    };
+    for (const select of staffDetailSelects()) {
+      const next = await supabase
+        .from("sch_staff")
+        .select(select)
+        .eq("business_unit_id", businessUnitId)
+        .eq("id", staffId)
+        .maybeSingle();
+      result = { data: (next.data as Record<string, unknown> | null) ?? null, error: next.error };
+      if (!next.error && next.data) break;
+      if (next.error && isSchoolEmptyRead(next.error) && !shouldRetryStaffSelect(next.error)) {
+        throw new SchoolError("Staff member was not found.", "NOT_FOUND");
+      }
+      if (next.error && !shouldRetryStaffSelect(next.error) && !isSchoolUnconfiguredRead(next.error)) {
+        mapSchoolDbError(next.error, "load");
+      }
+    }
+    if (result.error && !isSchoolEmptyRead(result.error) && !isSchoolUnconfiguredRead(result.error) && !result.data) {
+      throw new SchoolError("Couldn't load this staff member.", "DATABASE");
+    }
     if (!result.data) throw new SchoolError("Staff member was not found.", "NOT_FOUND");
-    const row = result.data as Record<string, unknown>;
+    const row = result.data;
     const type = row.sch_staff_types as { name?: string; kind?: string } | null;
     const position = row.sch_staff_positions as { name?: string; allows_academic_assignments?: boolean } | null;
     const showSalary = canViewPayroll(user);
@@ -918,12 +923,23 @@ export async function saveSchoolStaffAction(input: StaffFormInput) {
       });
     }
     if (existingId) {
-      const current = await supabase
+      let current = await supabase
         .from("sch_staff")
-        .select("id, staff_number, profile_id, user_id")
+        .select("id, staff_number, profile_id, monthly_salary")
         .eq("business_unit_id", businessUnitId)
         .eq("id", existingId)
         .maybeSingle();
+      if (current.error && shouldRetryStaffSelect(current.error)) {
+        current = await supabase
+          .from("sch_staff")
+          .select("id, staff_number, user_id, monthly_salary")
+          .eq("business_unit_id", businessUnitId)
+          .eq("id", existingId)
+          .maybeSingle();
+      }
+      if (current.error && !isSchoolEmptyRead(current.error) && !isSchoolUnconfiguredRead(current.error) && !current.data) {
+        throw new SchoolError("Couldn't load this staff member.", "DATABASE");
+      }
       if (!current.data) throw new SchoolError("Staff member was not found.", "NOT_FOUND");
       const updated = await supabase.from("sch_staff").update(payload).eq("id", existingId);
       if (updated.error) {
@@ -932,7 +948,8 @@ export async function saveSchoolStaffAction(input: StaffFormInput) {
         }
         mapSchoolDbError(updated.error, "save");
       }
-      const profileId = str(current.data.profile_id) || str(current.data.user_id);
+      const currentRow = current.data as Record<string, unknown>;
+      const profileId = str(currentRow.profile_id) || str(currentRow.user_id);
       if (profileId && role) {
         const assigned = await applySchoolRoleToProfile({ userId: profileId, businessUnitId, roleId: role.id });
         if (assigned.error) {
@@ -940,7 +957,10 @@ export async function saveSchoolStaffAction(input: StaffFormInput) {
           throw new SchoolError(assigned.error, "DATABASE");
         }
       }
-      await syncDefaultAllocation(existingId);
+      const previousSalary = parseMoney(currentRow.monthly_salary);
+      if (canManagePayroll(user) && salary != null && salary !== previousSalary) {
+        await syncDefaultAllocation(existingId);
+      }
       await writeAuditEvents([
         {
           action: "school.staff_updated",

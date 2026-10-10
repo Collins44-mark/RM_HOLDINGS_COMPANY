@@ -2,6 +2,7 @@ import { getSchoolStaffAction, getStaffFormOptionsAction } from "@/actions/schoo
 import { SchoolStaffFormPage } from "@/components/school/SchoolStaffFormPage";
 
 export const metadata = { title: "Edit Staff" };
+export const dynamic = "force-dynamic";
 
 export default async function SchoolEditStaffRoute({
   params,
@@ -17,7 +18,8 @@ export default async function SchoolEditStaffRoute({
       positions={options.ok ? options.positions : []}
       canManagePayroll={options.ok ? options.capabilities.canManagePayroll : false}
       staff={detail.ok ? detail.staff : null}
-      error={detail.ok ? (options.ok ? null : options.error) : detail.error}
+      error={detail.ok ? null : detail.error}
+      optionsError={options.ok ? null : options.error}
     />
   );
 }

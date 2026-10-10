@@ -2,6 +2,7 @@ import { getSchoolStaffAction, getStaffWorkspaceOptionsAction } from "@/actions/
 import { SchoolStaffProfilePage } from "@/components/school/SchoolStaffProfilePage";
 
 export const metadata = { title: "Staff" };
+export const dynamic = "force-dynamic";
 
 export default async function SchoolStaffProfileRoute({
   params,
@@ -24,7 +25,7 @@ export default async function SchoolStaffProfileRoute({
       canManageSystemAccess={detail.ok ? detail.capabilities.canManageSystemAccess : false}
       canViewPayroll={detail.ok ? detail.capabilities.canViewPayroll : false}
       openAccess={query.access === "1"}
-      error={detail.ok ? (options.ok ? null : options.error) : detail.error}
+      error={detail.ok ? null : detail.error}
     />
   );
 }

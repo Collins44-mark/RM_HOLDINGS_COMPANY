@@ -27,6 +27,7 @@ export function SchoolStaffFormPage({
   canManagePayroll = false,
   staff,
   error,
+  optionsError = null,
   loadOptions = false,
 }: {
   types: StaffTypeRow[];
@@ -35,6 +36,7 @@ export function SchoolStaffFormPage({
   canManagePayroll?: boolean;
   staff: StaffProfile | null;
   error: string | null;
+  optionsError?: string | null;
   loadOptions?: boolean;
 }) {
   const router = useRouter();
@@ -61,7 +63,7 @@ export function SchoolStaffFormPage({
     monthlySalary: staff?.monthlySalary ?? "",
     salaryEffectiveOn: staff?.salaryEffectiveOn ?? "",
   });
-  const [saveError, setSaveError] = useState<string | null>(error);
+  const [saveError, setSaveError] = useState<string | null>(staff ? null : error);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const lock = useRef(false);
@@ -130,7 +132,11 @@ export function SchoolStaffFormPage({
           onClick={runSave}
         />
       </header>
-      {saveError ? <p className="text-[13px] text-[#c45b66]">{saveError}</p> : null}
+      {!staff && (saveError || error) ? (
+        <p className="text-[13px] text-[#c45b66]">{saveError || error}</p>
+      ) : null}
+      {staff && optionsError ? <p className="text-[13px] text-[#c45b66]">{optionsError}</p> : null}
+      {staff && saveError ? <p className="text-[13px] text-[#c45b66]">{saveError}</p> : null}
 
       <section className={`${glassPanel} space-y-4`}>
         <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Personal information</h2>

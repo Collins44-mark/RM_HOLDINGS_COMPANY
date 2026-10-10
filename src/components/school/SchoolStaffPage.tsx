@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Users } from "lucide-react";
-import { archiveSchoolStaffAction, listSchoolStaffAction, type StaffListRow } from "@/actions/school/staff";
-import { consumeStaffFlash } from "@/lib/school/staff-flash";
+import { archiveSchoolStaffAction, type StaffListRow } from "@/actions/school/staff";
+import {
+  consumeStaffFlash,
+  peekStaffListSnapshot,
+  writeStaffListSnapshot,
+  writeStaffView,
+} from "@/lib/school/staff-flash";
 import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
 import {
   glassPanel,
@@ -17,8 +21,29 @@ import {
 } from "@/components/supermarket/purchasing-ui";
 import { SchoolIconWell } from "@/components/school/school-ui";
 import { SchoolPagination, replaceSchoolPageParam } from "@/components/school/SchoolPagination";
-import type { SchoolPageMeta } from "@/lib/school/pagination";
+import { schoolPageMeta, type SchoolPageMeta } from "@/lib/school/pagination";
 import { cn } from "@/lib/cn";
+
+function needle(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function matchesQuery(row: StaffListRow, q: string) {
+  const next = needle(q);
+  if (!next) return true;
+  return [row.name, row.staffNumber, row.phone, row.jobTitle, row.positionName, row.roleName].some((value) =>
+    String(value ?? "").toLowerCase().includes(next),
+  );
+}
+
+function filterRows(rows: StaffListRow[], status: string, q: string) {
+  return rows.filter((row) => {
+    if (status === "active" || status === "inactive") {
+      if (row.status !== status) return false;
+    }
+    return matchesQuery(row, q);
+  });
+}
 
 export function SchoolStaffPage({
   staff: initialRows,
@@ -38,38 +63,52 @@ export function SchoolStaffPage({
   status: string;
   error: string | null;
 }) {
-  const router = useRouter();
-  const [rows, setRows] = useState(initialRows);
-  const [page, setPage] = useState(initialPage);
+  const [rows, setRows] = useState(() => {
+    const snapshot = peekStaffListSnapshot();
+    return snapshot?.rows.length ? snapshot.rows : initialRows;
+  });
   const [q, setQ] = useState(query);
   const [filter, setFilter] = useState(status || "active");
+  const [pageNumber, setPageNumber] = useState(initialPage.page);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     const flash = consumeStaffFlash();
     if (!flash) return;
-    const activeFilter = status || "active";
-    if (activeFilter !== "all" && activeFilter !== flash.status) return;
     queueMicrotask(() => {
       setRows((current) => {
-        if (current.some((row) => row.id === flash.id)) return current;
-        setPage((meta) => ({ ...meta, total: meta.total + 1 }));
+        if (current.some((row) => row.id === flash.id)) {
+          return current.map((row) => (row.id === flash.id ? { ...row, ...flash } : row));
+        }
         return [flash, ...current];
       });
     });
-  }, [status]);
+  }, []);
 
-  function load(nextPage: number, nextQ: string, nextStatus: string) {
-    void listSchoolStaffAction({ page: nextPage, q: nextQ, status: nextStatus === "all" ? "" : nextStatus }).then((result) => {
-      if (!result.ok) {
-        setSaveError(result.error);
-        return;
-      }
-      setRows(result.staff);
-      setPage(result.page);
-      setFilter(nextStatus);
-      replaceSchoolPageParam(result.page.page);
-    });
+  const filtered = useMemo(() => filterRows(rows, filter, q), [rows, filter, q]);
+  const page = schoolPageMeta(pageNumber, filtered.length, initialPage.pageSize);
+  const visible = filtered.slice(page.from ? page.from - 1 : 0, page.to);
+
+  useEffect(() => {
+    writeStaffListSnapshot({ rows, page, q, status: filter });
+    replaceSchoolPageParam(page.page, undefined, { status: filter, q });
+  }, [filter, page, q, rows]);
+
+  useEffect(() => {
+    function onPop() {
+      const url = new URL(window.location.href);
+      setFilter(url.searchParams.get("status") || "active");
+      setQ(url.searchParams.get("q") ?? "");
+      const nextPage = Number(url.searchParams.get("page") ?? "1");
+      setPageNumber(Number.isInteger(nextPage) && nextPage > 0 ? nextPage : 1);
+    }
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  function applyFilter(nextStatus: string) {
+    setFilter(nextStatus);
+    setPageNumber(1);
   }
 
   return (
@@ -99,7 +138,7 @@ export function SchoolStaffPage({
             <button
               key={id}
               type="button"
-              onClick={() => load(1, q, id)}
+              onClick={() => applyFilter(id)}
               className={cn(
                 "h-8 rounded-full px-3.5 text-[12.5px] font-semibold transition duration-200",
                 filter === id ? "bg-white text-navy shadow-[0_4px_12px_rgba(15,35,64,0.08)]" : "text-slate-500 hover:text-navy",
@@ -113,10 +152,18 @@ export function SchoolStaffPage({
           className="min-w-[200px] flex-1"
           onSubmit={(event) => {
             event.preventDefault();
-            load(1, q, filter);
+            setPageNumber(1);
           }}
         >
-          <input className={inputClass} value={q} placeholder="Search staff no., name, or phone" onChange={(event) => setQ(event.target.value)} />
+          <input
+            className={inputClass}
+            value={q}
+            placeholder="Search staff no., name, or phone"
+            onChange={(event) => {
+              setQ(event.target.value);
+              setPageNumber(1);
+            }}
+          />
         </form>
       </div>
       {rows.length === 0 && !error ? (
@@ -124,6 +171,10 @@ export function SchoolStaffPage({
           <SchoolIconWell icon={Users} />
           <h2 className="text-[18px] font-semibold tracking-[-0.04em] text-navy">No staff members added yet.</h2>
           <p className="text-[13.5px] text-slate-500">Add a staff member. Teachers, drivers, and support roles share one staff record.</p>
+        </section>
+      ) : filtered.length === 0 ? (
+        <section className={cn(glassPanel, "px-4 py-8")}>
+          <p className="text-[13.5px] text-slate-500">No staff members match this filter.</p>
         </section>
       ) : (
         <section className={glassPanel}>
@@ -141,10 +192,15 @@ export function SchoolStaffPage({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {visible.map((row) => (
                   <tr key={row.id} className="border-t border-navy/5 text-[13.5px] text-navy">
                     <td className="px-4 py-3">
-                      <Link href={`/school/staff/${row.id}`} className="font-semibold hover:underline">
+                      <Link
+                        href={`/school/staff/${row.id}`}
+                        prefetch
+                        className="font-semibold hover:underline"
+                        onMouseEnter={() => writeStaffView(row)}
+                      >
                         {row.name}
                       </Link>
                     </td>
@@ -160,11 +216,10 @@ export function SchoolStaffPage({
                     <td className="px-4 py-3">
                       <CompactActionsMenu
                         ariaLabel={`${row.name} actions`}
+                        onOpen={() => writeStaffView(row)}
                         items={[
-                          { label: "View", onSelect: () => router.push(`/school/staff/${row.id}`) },
-                          ...(canManage
-                            ? [{ label: "Edit", onSelect: () => router.push(`/school/staff/${row.id}/edit`) }]
-                            : []),
+                          { label: "View", href: `/school/staff/${row.id}` },
+                          ...(canManage ? [{ label: "Edit", href: `/school/staff/${row.id}/edit` }] : []),
                           ...(canManage && row.status === "active"
                             ? [
                                 {
@@ -175,7 +230,9 @@ export function SchoolStaffPage({
                                         setSaveError(result.error);
                                         return;
                                       }
-                                      load(page.page, q, filter);
+                                      setRows((current) =>
+                                        current.map((item) => (item.id === row.id ? { ...item, status: "inactive" as const } : item)),
+                                      );
                                     });
                                   },
                                 },
@@ -189,7 +246,7 @@ export function SchoolStaffPage({
               </tbody>
             </table>
           </div>
-          <SchoolPagination page={page.page} total={page.total} onPage={(next) => load(next, q, filter)} />
+          <SchoolPagination page={page.page} total={page.total} onPage={setPageNumber} />
         </section>
       )}
     </div>

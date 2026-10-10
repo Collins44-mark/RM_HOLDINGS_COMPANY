@@ -14,7 +14,7 @@ export default async function SchoolStaffRoute({
   const result = await listSchoolStaffAction({
     page: parseSchoolPage(params.page),
     q: params.q,
-    status: params.status,
+    status: "all",
   });
   return (
     <SchoolStaffPage
