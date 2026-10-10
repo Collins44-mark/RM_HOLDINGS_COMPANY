@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
+import Link from "next/link";
 import {
   ArrowLeft,
   Bus,
@@ -30,6 +31,14 @@ import {
 import { cn } from "@/lib/cn";
 import { REPORT_PERIOD_OPTIONS, type ReportPeriod } from "@/lib/data/report-period";
 import {
+  defaultSchoolReportInput,
+  loadSchoolReportCached,
+  peekSchoolReportCache,
+  prefetchSchoolReport,
+  rememberSchoolReportResult,
+  SCHOOL_REPORT_RESET_FILTERS,
+} from "@/lib/school/report-cache";
+import {
   SCHOOL_REPORT_DEFS,
   type SchoolFinanceSlice,
   type SchoolReportKind,
@@ -37,7 +46,7 @@ import {
 } from "@/lib/school/report-types";
 import { exportSchoolReportPdf } from "@/lib/school/school-reports-pdf";
 import { schoolPageMeta } from "@/lib/school/pagination";
-import { peekSchoolReportSnapshot, writeSchoolReportSnapshot } from "@/lib/school/report-flash";
+import { peekSchoolReportSnapshot } from "@/lib/school/report-flash";
 
 const REPORT_CARDS: Array<{ id: SchoolReportKind; icon: LucideIcon; blurb: string }> = [
   { id: "finance", icon: Wallet, blurb: "Fees, collections, expenses and salaries for the selected period." },
@@ -71,19 +80,6 @@ function emptyWorkspace(kind: SchoolReportKind): SchoolReportWorkspace {
   };
 }
 
-const RESET_FILTERS = {
-  slice: "all" as SchoolFinanceSlice,
-  q: "",
-  levelId: "",
-  classId: "",
-  streamId: "",
-  status: "",
-  academicYearId: "",
-  categoryId: "",
-  busId: "",
-  page: 1,
-};
-
 type ReportLoadInput = {
   kind?: SchoolReportKind;
   slice?: SchoolFinanceSlice;
@@ -102,27 +98,25 @@ type ReportLoadInput = {
   pageSize?: number;
 };
 
-const defaultLoads = new Map<SchoolReportKind, Promise<SchoolReportsWorkspaceResult>>();
-
-function defaultLoad(kind: SchoolReportKind) {
-  const existing = defaultLoads.get(kind);
-  if (existing) return existing;
-  const request = loadSchoolReportsWorkspaceAction({ kind, period: "this-month", ...RESET_FILTERS });
-  defaultLoads.set(kind, request);
-  void request.then((result) => {
-    if (result.ok) writeSchoolReportSnapshot(result.workspace);
-    else defaultLoads.delete(kind);
-  });
-  window.setTimeout(() => defaultLoads.delete(kind), 45_000);
-  return request;
-}
-
 function syncReportKind(kind: SchoolReportKind | null) {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
   if (kind) url.searchParams.set("kind", kind);
   else url.searchParams.delete("kind");
   window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
+}
+
+function clientNav(event: MouseEvent) {
+  return !(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0);
+}
+
+function bootWorkspace(kind: SchoolReportKind | null | undefined, initial: SchoolReportsWorkspaceResult | null) {
+  if (initial?.ok) return initial.workspace;
+  if (kind) {
+    const cached = peekSchoolReportCache(defaultSchoolReportInput(kind)) ?? peekSchoolReportSnapshot(kind);
+    if (cached) return cached;
+  }
+  return emptyWorkspace(kind ?? "finance");
 }
 
 export function SchoolReportsPage({
@@ -143,11 +137,9 @@ export function SchoolReportsPage({
   controlledFrom?: string;
   controlledTo?: string;
 }) {
-  const bootKind = controlledKind ?? (initial?.ok ? initialKind ?? initial.workspace.kind : initialKind);
-  const first = initial?.ok ? initial.workspace : emptyWorkspace(bootKind ?? "finance");
-  const [selected, setSelected] = useState<SchoolReportKind | null>(
-    controlledKind ?? (initial != null && bootKind ? bootKind : null),
-  );
+  const bootKind = controlledKind ?? initialKind ?? (initial?.ok ? initial.workspace.kind : null);
+  const first = bootWorkspace(bootKind, initial);
+  const [selected, setSelected] = useState<SchoolReportKind | null>(controlledKind ?? bootKind ?? null);
   const [opening, setOpening] = useState<SchoolReportKind | null>(null);
   const [workspace, setWorkspace] = useState<SchoolReportWorkspace>(first);
   const [error, setError] = useState<string | null>(initial?.ok === false ? initial.error : null);
@@ -165,12 +157,12 @@ export function SchoolReportsPage({
   const [categoryId, setCategoryId] = useState("");
   const [busId, setBusId] = useState("");
   const [requested, setRequested] = useState<ReportLoadInput | null>(null);
-  const [busy, setBusy] = useState(Boolean(controlledKind) && !initial?.ok);
+  const [busy, setBusy] = useState(Boolean(bootKind) && first.rows.length === 0 && !initial?.ok);
   const [exporting, setExporting] = useState(false);
   const reqId = useRef(0);
   const searchTimer = useRef<number | null>(null);
   const started = useRef(false);
-  const selectedRef = useRef<SchoolReportKind | null>(controlledKind ?? (initial != null && bootKind ? bootKind : null));
+  const selectedRef = useRef<SchoolReportKind | null>(controlledKind ?? bootKind ?? null);
 
   function commitFilters(payload: ReportLoadInput) {
     if (payload.kind) setKind(payload.kind);
@@ -219,11 +211,11 @@ export function SchoolReportsPage({
       categoryId: next.categoryId ?? categoryId,
       busId: next.busId ?? busId,
       page: next.page ?? 1,
-      pageSize: next.pageSize ?? workspace.page.pageSize,
+      pageSize: next.pageSize ?? (next.kind && next.kind !== workspace.kind ? undefined : workspace.page.pageSize),
     };
     setRequested(payload);
     setBusy(true);
-    const request = cached ?? loadSchoolReportsWorkspaceAction(payload);
+    const request = cached ?? loadSchoolReportCached(payload);
     void request.then((result) => {
       if (id !== reqId.current) return;
       setBusy(false);
@@ -235,18 +227,25 @@ export function SchoolReportsPage({
   }
 
   function openReport(next: SchoolReportKind) {
+    const payload: ReportLoadInput = { kind: next, period: "this-month", ...SCHOOL_REPORT_RESET_FILTERS };
     selectedRef.current = next;
-    setOpening(next);
+    setSelected(next);
+    setKind(next);
+    setOpening(null);
     setQ("");
     setError(null);
-    const snapshot = peekSchoolReportSnapshot(next);
-    if (snapshot) {
-      reveal({ ok: true, workspace: snapshot }, { kind: next, period: "this-month", ...RESET_FILTERS });
+    commitFilters(payload);
+    if (!embedded && !controlledKind) syncReportKind(next);
+    const cached =
+      peekSchoolReportCache(payload) ?? peekSchoolReportSnapshot(next);
+    if (cached) {
+      setWorkspace(cached);
       setBusy(false);
       setRequested(null);
       return;
     }
-    load({ kind: next, period: "this-month", ...RESET_FILTERS }, defaultLoad(next));
+    setWorkspace((prev) => (prev.kind === next && prev.rows.length ? prev : emptyWorkspace(next)));
+    load(payload, prefetchSchoolReport(next));
   }
 
   function backToReports() {
@@ -291,26 +290,23 @@ export function SchoolReportsPage({
   }
 
   useEffect(() => {
-    if (initial?.ok) {
-      writeSchoolReportSnapshot(initial.workspace);
-      if (!defaultLoads.has(initial.workspace.kind)) {
-        defaultLoads.set(initial.workspace.kind, Promise.resolve(initial));
-      }
-    }
+    if (initial?.ok) rememberSchoolReportResult(initial);
     if (started.current) return;
     started.current = true;
-    if (!controlledKind) return;
-    if (initial?.ok && initial.workspace.kind === controlledKind) return;
+    const boot = controlledKind ?? bootKind;
+    if (!boot) return;
+    if (initial?.ok && initial.workspace.kind === boot) return;
+    if (first.rows.length > 0 && first.kind === boot && !controlledKind) return;
     queueMicrotask(() => {
       load({
-        kind: controlledKind,
+        kind: boot,
         period: controlledPeriod ?? period,
         from: controlledFrom ?? from,
         to: controlledTo ?? to,
         page: 1,
       });
     });
-    // Embedded load only.
+    // Boot load only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -350,28 +346,34 @@ export function SchoolReportsPage({
             const meta = SCHOOL_REPORT_DEFS.find((item) => item.id === card.id);
             const Icon = card.icon;
             return (
-              <button
+              <Link
                 key={card.id}
-                type="button"
+                href={`/school/reports?kind=${card.id}`}
+                prefetch
                 onPointerEnter={() => {
-                  void defaultLoad(card.id);
+                  void prefetchSchoolReport(card.id);
+                }}
+                onPointerDown={() => {
+                  void prefetchSchoolReport(card.id);
                 }}
                 onFocus={() => {
-                  void defaultLoad(card.id);
+                  void prefetchSchoolReport(card.id);
                 }}
-                onClick={() => openReport(card.id)}
-                aria-busy={opening === card.id}
+                onClick={(event) => {
+                  if (!clientNav(event)) return;
+                  event.preventDefault();
+                  openReport(card.id);
+                }}
                 className={cn(
                   glassCard,
                   "group relative flex min-h-[168px] flex-col items-start px-5 py-5 text-left transition duration-200 hover:-translate-y-px hover:shadow-[0_14px_32px_rgba(15,35,64,0.08)]",
-                  opening === card.id && "ring-1 ring-navy/15",
                 )}
               >
                 <SchoolIconWell icon={Icon} />
                 <p className="mt-4 text-[16px] font-semibold tracking-[-0.03em] text-navy">{meta?.label ?? card.id}</p>
                 <p className="mt-1 pr-6 text-[13px] leading-5 text-slate-500">{card.blurb}</p>
                 <ChevronRight className="pointer-events-none absolute right-5 top-5 h-4 w-4 text-slate-300 transition duration-200 group-hover:text-navy" />
-              </button>
+              </Link>
             );
           })}
         </section>
@@ -384,10 +386,19 @@ export function SchoolReportsPage({
       {embedded ? null : (
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <button type="button" className={cn(secondaryButton, "mb-3 h-9 gap-1.5 px-3 text-[13px]")} onClick={backToReports}>
+            <Link
+              href="/school/reports"
+              prefetch
+              className={cn(secondaryButton, "mb-3 h-9 gap-1.5 px-3 text-[13px]")}
+              onClick={(event) => {
+                if (!clientNav(event)) return;
+                event.preventDefault();
+                backToReports();
+              }}
+            >
               <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
               Back to Reports
-            </button>
+            </Link>
             <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">{def?.label ?? "Report"}</h1>
             <p className="mt-1 max-w-[42rem] text-[13.5px] leading-5 text-slate-500">{def?.description}</p>
           </div>

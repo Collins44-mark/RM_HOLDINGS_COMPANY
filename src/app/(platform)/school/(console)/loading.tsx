@@ -136,7 +136,7 @@ export default function SchoolConsoleLoading() {
     return (
       <SchoolReportsPage
         initial={snapshot ? { ok: true, workspace: snapshot } : null}
-        initialKind={snapshot ? kind : null}
+        initialKind={kind}
         pending={!snapshot}
       />
     );
