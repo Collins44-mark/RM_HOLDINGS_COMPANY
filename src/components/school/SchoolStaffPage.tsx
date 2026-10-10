@@ -24,6 +24,7 @@ export function SchoolStaffPage({
   staff: initialRows,
   page: initialPage,
   canManage,
+  canViewPayroll = false,
   query,
   status,
   error,
@@ -32,6 +33,7 @@ export function SchoolStaffPage({
   page: SchoolPageMeta;
   canManage: boolean;
   canManageSystemAccess: boolean;
+  canViewPayroll?: boolean;
   query: string;
   status: string;
   error: string | null;
@@ -75,7 +77,7 @@ export function SchoolStaffPage({
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">Staff</h1>
-          <p className="mt-1 text-[13.5px] text-slate-500">Manage school staff, roles and academic responsibilities.</p>
+          <p className="mt-1 text-[13.5px] text-slate-500">One employee record per person. Job title is employment; application roles are optional.</p>
         </div>
         {canManage ? (
           <Link href="/school/staff/new" className={primaryButton}>
@@ -130,8 +132,9 @@ export function SchoolStaffPage({
               <thead>
                 <tr className={tableHead}>
                   <th className="px-4 py-3 font-semibold">Name</th>
-                  <th className="px-4 py-3 font-semibold">Staff Type</th>
-                  <th className="px-4 py-3 font-semibold">Role</th>
+                  <th className="px-4 py-3 font-semibold">Job title</th>
+                  <th className="px-4 py-3 font-semibold">Access role</th>
+                  {canViewPayroll ? <th className="px-4 py-3 font-semibold">Monthly salary</th> : null}
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 font-semibold">Phone</th>
                   <th className="px-4 py-3 font-semibold">Actions</th>
@@ -145,8 +148,11 @@ export function SchoolStaffPage({
                         {row.name}
                       </Link>
                     </td>
-                    <td className="px-4 py-3">{row.typeName || "—"}</td>
+                    <td className="px-4 py-3">{row.jobTitle || row.positionName || row.typeName || "—"}</td>
                     <td className="px-4 py-3">{row.roleName || "—"}</td>
+                    {canViewPayroll ? (
+                      <td className="px-4 py-3">{row.monthlySalary == null ? "—" : row.monthlySalary.toLocaleString("en-TZ")}</td>
+                    ) : null}
                     <td className="px-4 py-3">
                       <StatusPill value={row.status === "active" ? "Active" : "Inactive"} />
                     </td>

@@ -14,6 +14,8 @@ export default async function SchoolEditStaffRoute({
     <SchoolStaffFormPage
       types={options.ok ? options.types : []}
       roles={options.ok ? options.roles : []}
+      positions={options.ok ? options.positions : []}
+      canManagePayroll={options.ok ? options.capabilities.canManagePayroll : false}
       staff={detail.ok ? detail.staff : null}
       error={detail.ok ? (options.ok ? null : options.error) : detail.error}
     />

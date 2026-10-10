@@ -361,6 +361,7 @@ export async function createUserAction(
       email: emailValue,
       staffTypeId: String(formData.get("staffTypeId") ?? "").trim(),
       staffPositionId: String(formData.get("staffPositionId") ?? "").trim(),
+      jobTitle: String(formData.get("jobTitle") ?? "").trim(),
       roleId: String(role.id),
     });
     if ("error" in staffResult && staffResult.error) {
@@ -705,8 +706,9 @@ export async function linkUserToStaffAction(input: {
 
 export async function createStaffProfileForUserAction(input: {
   userId: string;
-  staffTypeId: string;
-  staffPositionId: string;
+  staffTypeId?: string;
+  staffPositionId?: string;
+  jobTitle?: string;
 }): Promise<{ error?: string; staff?: LinkedStaffInfo }> {
   await requireVerifiedOwner();
   const ready = adminOrError();
@@ -731,7 +733,8 @@ export async function createStaffProfileForUserAction(input: {
     email: String(profile.data.email ?? ""),
     staffTypeId: String(input.staffTypeId ?? "").trim(),
     staffPositionId: String(input.staffPositionId ?? "").trim(),
-    roleId: String(schoolRole.data?.role_id ?? profile.data.role_id ?? ""),
+    jobTitle: String(input.jobTitle ?? "").trim(),
+    roleId: String(schoolRole.data?.role_id ?? ""),
   });
   if ("error" in result) return { error: result.error };
   revalidateUsersWorkspace();

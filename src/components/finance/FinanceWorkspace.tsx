@@ -7,6 +7,8 @@ import { FinanceSummaryCards } from "@/components/finance/FinanceSummaryCards";
 import { FinanceTabs } from "@/components/finance/FinanceTabs";
 import { FinanceTrendTable } from "@/components/finance/FinanceTrendTable";
 import { FinancialPerformanceCard } from "@/components/finance/FinancialPerformanceCard";
+import { SchoolSalaryPage } from "@/components/school/SchoolSalaryPage";
+import type { SchoolSalaryWorkspaceResult } from "@/actions/school/salary";
 import type {
   FinanceCategoryRow,
   FinanceDelta,
@@ -27,6 +29,7 @@ export function FinanceWorkspace({
   trend,
   trendGrain,
   categories,
+  salary,
 }: {
   period: ReportPeriod;
   label: string;
@@ -38,6 +41,7 @@ export function FinanceWorkspace({
   trend: FinanceTrendRow[];
   trendGrain: "month" | "day";
   categories: FinanceCategoryRow[];
+  salary?: SchoolSalaryWorkspaceResult | null;
 }) {
   const [tab, setTab] = useState<FinanceTab>(initialTab);
 
@@ -55,7 +59,7 @@ export function FinanceWorkspace({
     function onPopState() {
       const params = new URLSearchParams(window.location.search);
       const raw = params.get("tab");
-      setTab(raw === "trend" || raw === "category" ? raw : "units");
+      setTab(raw === "trend" || raw === "category" || raw === "salary" ? raw : "units");
     }
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -73,6 +77,7 @@ export function FinanceWorkspace({
       {tab === "trend" ? <FinanceTrendTable rows={trend} grain={trendGrain} /> : null}
       {tab === "category" ? <FinanceCategoryTable rows={categories} /> : null}
       {tab === "units" ? <FinancialPerformanceCard rows={rows} totals={totals} /> : null}
+      {tab === "salary" ? <SchoolSalaryPage initial={salary ?? null} ownerHref /> : null}
     </div>
   );
 }

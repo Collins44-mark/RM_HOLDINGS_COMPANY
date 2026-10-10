@@ -4,7 +4,7 @@ import type { ReportPeriod } from "@/lib/data/report-period";
 export const SCHOOL_REPORT_KINDS = ["finance", "admissions", "students", "parents", "transport"] as const;
 export type SchoolReportKind = (typeof SCHOOL_REPORT_KINDS)[number];
 
-export const SCHOOL_FINANCE_SLICES = ["all", "fees", "expenses"] as const;
+export const SCHOOL_FINANCE_SLICES = ["all", "fees", "expenses", "salaries"] as const;
 export type SchoolFinanceSlice = (typeof SCHOOL_FINANCE_SLICES)[number];
 
 export type SchoolReportOption = { id: string; name: string };
@@ -25,7 +25,7 @@ export const SCHOOL_REPORT_DEFS: SchoolReportKindDef[] = [
   {
     id: "finance",
     label: "Finance Report",
-    description: "Fees billed, posted collections, outstanding balances and operating expenses.",
+    description: "Fees billed, posted collections, outstanding balances, operating expenses, and salary payments.",
     registryId: "school-finance",
     permissions: [
       "school.fees.view",
@@ -34,6 +34,7 @@ export const SCHOOL_REPORT_DEFS: SchoolReportKindDef[] = [
       "school.fees.verify",
       "school.fees.receipt",
       "school.expenses.view",
+      "school.payroll.view",
     ],
   },
   {

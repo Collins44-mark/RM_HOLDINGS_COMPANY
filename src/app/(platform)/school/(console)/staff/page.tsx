@@ -22,6 +22,7 @@ export default async function SchoolStaffRoute({
       page={result.ok ? result.page : schoolPageMeta(1, 0)}
       canManage={result.ok ? result.capabilities.canManage : false}
       canManageSystemAccess={result.ok ? result.capabilities.canManageSystemAccess : false}
+      canViewPayroll={result.ok ? result.capabilities.canViewPayroll : false}
       query={params.q ?? ""}
       status={params.status ?? "active"}
       error={result.ok ? null : result.error}

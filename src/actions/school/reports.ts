@@ -29,6 +29,7 @@ import {
   type SchoolReportWorkspace,
 } from "@/lib/school/report-types";
 import { schoolExpenseMethodLabel, schoolExpenseSourceLabel } from "@/lib/school/expense-types";
+import { parseMoney, remainingSalary, salaryPeriodFromRange } from "@/lib/school/salary";
 import { catalogLookup, loadSchoolStructureCatalog } from "@/lib/school/structure-catalog";
 import { loadSchoolStructureScope } from "@/lib/school/structure-scope";
 
@@ -159,8 +160,9 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
   const status = str(input.status);
   const categoryId = str(input.categoryId);
   const busId = str(input.busId);
-  const showFees = slice !== "expenses";
-  const showExpenses = slice !== "fees";
+  const showFees = slice !== "expenses" && slice !== "salaries";
+  const showExpenses = slice !== "fees" && slice !== "salaries";
+  const showSalaries = slice === "salaries";
 
   const [typesRes, busesRes, postedExpRes] = await Promise.all([
     supabase.from("sch_expense_categories").select("id, name, is_active").eq("business_unit_id", businessUnitId).order("name"),
@@ -305,6 +307,63 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
       if (row.category_id) typeUsed.add(str(row.category_id));
     }
   }
+
+  let salaryRows: Array<Record<string, string>> = [];
+  let salaryTotal = 0;
+  let salaryCommitment = 0;
+  let salaryPaid = 0;
+  let salaryOutstanding = 0;
+  if (showSalaries) {
+    const { year, month } = salaryPeriodFromRange(base.from, base.to);
+    const [staffRes, allStaffRes, payRes] = await Promise.all([
+      supabase
+        .from("sch_staff")
+        .select("id, staff_number, first_name, middle_name, last_name, employment_status, job_title, monthly_salary", { count: "exact" })
+        .eq("business_unit_id", businessUnitId)
+        .eq("employment_status", "active")
+        .order("last_name")
+        .range(from, to),
+      supabase
+        .from("sch_staff")
+        .select("id, monthly_salary")
+        .eq("business_unit_id", businessUnitId)
+        .eq("employment_status", "active"),
+      supabase
+        .from("sch_staff_salary_payments")
+        .select("staff_id, amount, is_active")
+        .eq("business_unit_id", businessUnitId)
+        .eq("period_year", year)
+        .eq("period_month", month)
+        .eq("is_active", true),
+    ]);
+    if (staffRes.error && !isSchoolUnconfiguredRead(staffRes.error)) mapSchoolDbError(staffRes.error, "load");
+    const paidByStaff = new Map<string, number>();
+    for (const row of payRes.data ?? []) {
+      const id = str(row.staff_id);
+      paidByStaff.set(id, (paidByStaff.get(id) ?? 0) + num(row.amount));
+    }
+    salaryTotal = staffRes.count ?? (staffRes.data ?? []).length;
+    for (const row of allStaffRes.data ?? []) {
+      const salary = parseMoney(row.monthly_salary);
+      const paid = paidByStaff.get(String(row.id)) ?? 0;
+      if (salary != null) salaryCommitment += salary;
+      salaryPaid += paid;
+      salaryOutstanding += remainingSalary(salary, paid) ?? 0;
+    }
+    salaryRows = (staffRes.data ?? []).map((row) => {
+      const salary = parseMoney(row.monthly_salary);
+      const paid = paidByStaff.get(String(row.id)) ?? 0;
+      const outstanding = remainingSalary(salary, paid);
+      return {
+        employee: [str(row.first_name), str(row.middle_name), str(row.last_name)].filter(Boolean).join(" "),
+        staffNumber: str(row.staff_number),
+        jobTitle: str(row.job_title) || "—",
+        commitment: salary == null ? "—" : formatTzs(salary),
+        paid: formatTzs(paid),
+        outstanding: outstanding == null ? "—" : formatTzs(outstanding),
+      };
+    });
+  }
   const cards =
     slice === "expenses"
       ? [
@@ -319,6 +378,12 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
             { label: "Outstanding Balance", value: formatTzs(outstanding) },
             { label: "Students with Outstanding Balances", value: String(withBalance) },
           ]
+        : slice === "salaries"
+          ? [
+              { label: "Monthly commitment", value: formatTzs(salaryCommitment), hint: "Configured salaries, not cash" },
+              { label: "Salary paid", value: formatTzs(salaryPaid), hint: "Posted salary expenses this period" },
+              { label: "Outstanding", value: formatTzs(salaryOutstanding) },
+            ]
         : [
             { label: "Fees Billed", value: formatTzs(billed), hint: "Selected fee accounts" },
             { label: "Fees Collected", value: formatTzs(collected), hint: "Posted in this period" },
@@ -326,7 +391,7 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
             { label: "Operating Expenses", value: formatTzs(expPosted), hint: "Posted in this period" },
           ];
 
-  const useFeesTable = slice !== "expenses";
+  const useFeesTable = slice !== "expenses" && slice !== "salaries";
   return {
     ...base,
     years: options.years,
@@ -336,7 +401,16 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
     buses: (busesRes.data ?? []).map((row) => ({ id: String(row.id), name: [str(row.registration_number), str(row.name)].filter(Boolean).join(" · ") })),
     expenseTypes: (typesRes.data ?? []).filter((row) => row.is_active).map((row) => ({ id: String(row.id), name: str(row.name) })),
     cards,
-    columns: useFeesTable
+    columns: slice === "salaries"
+      ? [
+          { key: "employee", label: "Employee" },
+          { key: "staffNumber", label: "Staff no." },
+          { key: "jobTitle", label: "Job title" },
+          { key: "commitment", label: "Monthly salary", align: "right" as const },
+          { key: "paid", label: "Paid", align: "right" as const },
+          { key: "outstanding", label: "Outstanding", align: "right" as const },
+        ]
+      : useFeesTable
       ? [
           { key: "student", label: "Student" },
           { key: "studentNumber", label: "Student no." },
@@ -358,9 +432,9 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
           { key: "bus", label: "Bus" },
           { key: "status", label: "Status" },
         ],
-    rows: useFeesTable ? feeRows : expRows,
-    page: schoolPageMeta(page, useFeesTable ? feeTotal : expTotal, pageSize),
-    filtersNote: `${base.periodLabel} · ${slice === "fees" ? "Fees & Payments" : slice === "expenses" ? "Expenses" : "All"}`,
+    rows: slice === "salaries" ? salaryRows : useFeesTable ? feeRows : expRows,
+    page: schoolPageMeta(page, slice === "salaries" ? salaryTotal : useFeesTable ? feeTotal : expTotal, pageSize),
+    filtersNote: `${base.periodLabel} · ${slice === "fees" ? "Fees & Payments" : slice === "expenses" ? "Expenses" : slice === "salaries" ? "Salaries" : "All"}`,
   };
 }
 

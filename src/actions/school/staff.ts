@@ -16,6 +16,7 @@ import {
   SchoolError,
 } from "@/lib/school/access";
 import { schoolPageMeta, schoolPageRange } from "@/lib/school/pagination";
+import { parseMoney } from "@/lib/school/salary";
 import {
   adminOrNull,
   linkedProfileIds,
@@ -25,6 +26,9 @@ import {
 
 const VIEW = "school.staff.view";
 const MANAGE = "school.staff.manage";
+const PAYROLL_VIEW = "school.payroll.view";
+const PAYROLL_MANAGE = "school.payroll.manage";
+const PAYROLL_PAY = "school.payroll.pay";
 
 export type StaffStatus = "active" | "inactive";
 export type StaffTypeKind = "academic" | "administrative" | "support" | "transport";
@@ -52,11 +56,13 @@ export type StaffListRow = {
   typeName: string;
   roleName: string;
   positionName: string;
+  jobTitle: string;
   phone: string;
   primaryAssignment: string;
   status: StaffStatus;
   allowsAcademicAssignments: boolean;
   hasSystemAccess: boolean;
+  monthlySalary: number | null;
 };
 
 export type StaffAssignmentRow = {
@@ -91,9 +97,12 @@ export type StaffProfile = {
   roleName: string;
   positionId: string;
   positionName: string;
+  jobTitle: string;
   allowsAcademicAssignments: boolean;
   employmentStatus: StaffStatus;
   employmentDate: string;
+  monthlySalary: number | null;
+  salaryEffectiveOn: string;
   hasSystemAccess: boolean;
   linkedAccountName: string;
   linkedAccountEmail: string;
@@ -110,11 +119,14 @@ export type StaffFormInput = {
   phone: string;
   email: string;
   address: string;
-  staffTypeId: string;
-  roleId: string;
+  staffTypeId?: string;
+  roleId?: string;
   positionId?: string;
+  jobTitle?: string;
   employmentStatus: StaffStatus;
   employmentDate: string;
+  monthlySalary?: number | string | null;
+  salaryEffectiveOn?: string;
 };
 
 export type StaffAssignmentInput = {
@@ -142,8 +154,25 @@ function canManageSystemAccess(user: Awaited<ReturnType<typeof requireAuth>>) {
   return isOwnerRole(user.roleCode);
 }
 
+function canViewPayroll(user: Awaited<ReturnType<typeof requireAuth>>) {
+  if (isOwnerRole(user.roleCode)) return true;
+  return user.permissions.some((matcher) => matcher !== "*" && matchPermission(PAYROLL_VIEW, matcher));
+}
+
+function canManagePayroll(user: Awaited<ReturnType<typeof requireAuth>>) {
+  if (isOwnerRole(user.roleCode)) return true;
+  return user.permissions.some((matcher) => matcher !== "*" && matchPermission(PAYROLL_MANAGE, matcher));
+}
+
 function staffCaps(user: Awaited<ReturnType<typeof requireAuth>>) {
-  return { canView: true, canManage: canManage(user), canManageSystemAccess: canManageSystemAccess(user) };
+  return {
+    canView: true,
+    canManage: canManage(user),
+    canManageSystemAccess: canManageSystemAccess(user),
+    canViewPayroll: canViewPayroll(user),
+    canManagePayroll: canManagePayroll(user),
+    canPayPayroll: isOwnerRole(user.roleCode) || user.permissions.some((matcher) => matcher !== "*" && matchPermission(PAYROLL_PAY, matcher)),
+  };
 }
 
 function searchNeedle(value: unknown) {
@@ -234,7 +263,7 @@ async function resolveAssignableSchoolRole(
   supabase: Awaited<ReturnType<typeof requireSchoolPermission>>["supabase"],
   roleId: string,
 ) {
-  if (!roleId) throw new SchoolError("Select a School role.", "VALIDATION");
+  if (!roleId) return null;
   const result = await supabase.from("roles").select("id, code, name, module").eq("id", roleId).maybeSingle();
   if (!result.data) throw new SchoolError("The selected School role was not found.", "VALIDATION");
   const row = { code: str(result.data.code), module: str(result.data.module) || "school" };
@@ -365,16 +394,23 @@ export async function getStaffWorkspaceOptionsAction(mode: "view" | "manage" = "
 
 export async function getStaffFormOptionsAction() {
   try {
+    const user = await requireAuth();
     const { supabase, businessUnitId } = await requireSchoolPermission(MANAGE);
-    const [typesRes, roles] = await Promise.all([
+    const [typesRes, positionsRes, roles] = await Promise.all([
       supabase
         .from("sch_staff_types")
         .select("id, name, code, kind, is_active")
         .eq("business_unit_id", businessUnitId)
         .order("name"),
+      supabase
+        .from("sch_staff_positions")
+        .select("id, staff_type_id, name, code, allows_academic_assignments, is_active")
+        .eq("business_unit_id", businessUnitId)
+        .order("name"),
       loadAssignableSchoolRoles(supabase),
     ]);
     if (typesRes.error && !isSchoolUnconfiguredRead(typesRes.error)) mapSchoolDbError(typesRes.error, "load");
+    if (positionsRes.error && !isSchoolUnconfiguredRead(positionsRes.error)) mapSchoolDbError(positionsRes.error, "load");
     return {
       ok: true as const,
       types: (typesRes.data ?? []).map((row) => ({
@@ -384,10 +420,25 @@ export async function getStaffFormOptionsAction() {
         kind: readKind(row.kind),
         isActive: Boolean(row.is_active),
       })),
+      positions: (positionsRes.data ?? []).map((row) => ({
+        id: String(row.id),
+        staffTypeId: String(row.staff_type_id),
+        name: String(row.name),
+        code: String(row.code),
+        allowsAcademicAssignments: Boolean(row.allows_academic_assignments),
+        isActive: Boolean(row.is_active),
+      })),
       roles,
+      capabilities: staffCaps(user),
     };
   } catch (error) {
-    return { ok: false as const, error: schoolActionError(error), types: [] as StaffTypeRow[], roles: [] as SchoolRoleOption[] };
+    return {
+      ok: false as const,
+      error: schoolActionError(error),
+      types: [] as StaffTypeRow[],
+      positions: [] as StaffPositionRow[],
+      roles: [] as SchoolRoleOption[],
+    };
   }
 }
 
@@ -436,8 +487,9 @@ export async function listSchoolStaffAction(input: { page?: number; q?: string; 
     const { page, from, to, pageSize } = schoolPageRange(input.page ?? 1);
     const q = searchNeedle(input.q);
     const status = str(input.status);
+    const payrollSelect = canViewPayroll(user) ? ", monthly_salary" : "";
     const listSelect = (linkColumn: "profile_id" | "user_id", withRole: boolean) =>
-      `id, staff_number, first_name, middle_name, last_name, employment_status, staff_type_id, position_id, phone${withRole ? ", role_id" : ""}, ${linkColumn}, sch_staff_types(name, kind), sch_staff_positions(name, allows_academic_assignments)`;
+      `id, staff_number, first_name, middle_name, last_name, employment_status, staff_type_id, position_id, job_title, phone${withRole ? ", role_id" : ""}, ${linkColumn}${payrollSelect}, sch_staff_types(name, kind), sch_staff_positions(name, allows_academic_assignments)`;
     async function runList(linkColumn: "profile_id" | "user_id", withRole: boolean) {
       let query = supabase
         .from("sch_staff")
@@ -512,12 +564,14 @@ export async function listSchoolStaffAction(input: { page?: number; q?: string; 
           name: personName(str(row.first_name), str(row.middle_name), str(row.last_name)),
           typeName: str(type?.name),
           roleName: roleNames.get(str(row.role_id)) ?? "",
-          positionName: str(position?.name),
+          positionName: str(row.job_title) || str(position?.name),
+          jobTitle: str(row.job_title),
           phone: str(row.phone),
           primaryAssignment: primary.get(String(row.id)) ?? "",
           status: asStatus(row.employment_status),
           allowsAcademicAssignments: allowsAcademicDuty(readKind(type?.kind), position?.allows_academic_assignments),
           hasSystemAccess: Boolean(str(row.profile_id) || str(row.user_id)),
+          monthlySalary: canViewPayroll(user) ? parseMoney(row.monthly_salary) : null,
         };
       }),
       page: schoolPageMeta(page, result.count ?? rows.length, pageSize),
@@ -545,6 +599,7 @@ export async function getSchoolStaffAction(id: string) {
     const row = result.data as Record<string, unknown>;
     const type = row.sch_staff_types as { name?: string; kind?: string } | null;
     const position = row.sch_staff_positions as { name?: string; allows_academic_assignments?: boolean } | null;
+    const showSalary = canViewPayroll(user);
     const roleId = str(row.role_id);
     let roleCode = "";
     let roleName = "";
@@ -581,10 +636,13 @@ export async function getSchoolStaffAction(id: string) {
       roleCode,
       roleName,
       positionId: str(row.position_id),
-      positionName: str(position?.name),
+      positionName: str(row.job_title) || str(position?.name),
+      jobTitle: str(row.job_title),
       allowsAcademicAssignments: allowsAcademicDuty(readKind(type?.kind), position?.allows_academic_assignments),
       employmentStatus: asStatus(row.employment_status),
       employmentDate: String(row.employment_date ?? ""),
+      monthlySalary: showSalary ? parseMoney(row.monthly_salary) : null,
+      salaryEffectiveOn: showSalary ? String(row.salary_effective_on ?? "") : "",
       hasSystemAccess: Boolean(str(row.profile_id) || str(row.user_id)),
       linkedAccountName: "",
       linkedAccountEmail: "",
@@ -753,44 +811,45 @@ export async function saveSchoolSubjectRecordAction(input: { name: string; depar
 
 export async function saveSchoolStaffAction(input: StaffFormInput) {
   try {
+    const user = await requireAuth();
     const { supabase, businessUnitId } = await requireSchoolPermission(MANAGE);
     const firstName = str(input.firstName);
     const lastName = str(input.lastName);
     if (!firstName || !lastName) throw new SchoolError("First and last name are required.", "VALIDATION");
     const staffTypeId = str(input.staffTypeId);
-    if (!staffTypeId) throw new SchoolError("Staff type is required.", "VALIDATION");
-    const [typeRes, role] = await Promise.all([
-      supabase
+    const role = await resolveAssignableSchoolRole(supabase, str(input.roleId));
+    let typeRes: { data: { id: string; name: string; kind: string } | null } = { data: null };
+    if (staffTypeId) {
+      const loaded = await supabase
         .from("sch_staff_types")
         .select("id, name, kind")
         .eq("business_unit_id", businessUnitId)
         .eq("id", staffTypeId)
-        .maybeSingle(),
-      resolveAssignableSchoolRole(supabase, str(input.roleId)),
-    ]);
-    if (!typeRes.data) throw new SchoolError("Staff type was not found.", "VALIDATION");
-    let positionId = str(input.positionId);
-    if (!positionId) {
-      const fallback = await supabase
-        .from("sch_staff_positions")
-        .select("id")
-        .eq("business_unit_id", businessUnitId)
-        .eq("staff_type_id", staffTypeId)
-        .eq("is_active", true)
-        .limit(1)
         .maybeSingle();
-      positionId = str(fallback.data?.id);
-    } else {
+      if (!loaded.data) throw new SchoolError("Staff type was not found.", "VALIDATION");
+      typeRes = { data: loaded.data as { id: string; name: string; kind: string } };
+    }
+    const positionId = str(input.positionId);
+    let positionName = "";
+    if (positionId) {
       const positionRes = await supabase
         .from("sch_staff_positions")
-        .select("id, staff_type_id")
+        .select("id, staff_type_id, name")
         .eq("business_unit_id", businessUnitId)
         .eq("id", positionId)
         .maybeSingle();
-      if (!positionRes.data || String(positionRes.data.staff_type_id) !== staffTypeId) {
+      if (!positionRes.data || (staffTypeId && String(positionRes.data.staff_type_id) !== staffTypeId)) {
         throw new SchoolError("The selected position does not belong to that staff type.", "VALIDATION");
       }
+      if (!staffTypeId) {
+        throw new SchoolError("Choose a staff type for that position, or leave both blank.", "VALIDATION");
+      }
+      positionName = str(positionRes.data.name);
     }
+    const jobTitle = str(input.jobTitle).slice(0, 80);
+    const salary = canManagePayroll(user) ? parseMoney(input.monthlySalary) : undefined;
+    if (salary != null && salary < 0) throw new SchoolError("Monthly salary cannot be negative.", "VALIDATION");
+    const salaryEffectiveOn = canManagePayroll(user) ? dateValue(input.salaryEffectiveOn, "Salary effective date") : undefined;
     const payload = {
       business_unit_id: businessUnitId,
       first_name: firstName.slice(0, 80),
@@ -801,11 +860,18 @@ export async function saveSchoolStaffAction(input: StaffFormInput) {
       phone: str(input.phone).slice(0, 40),
       email: str(input.email).slice(0, 160),
       address: str(input.address).slice(0, 240),
-      staff_type_id: staffTypeId,
-      role_id: role.id,
+      staff_type_id: staffTypeId || null,
+      role_id: role?.id ?? null,
       position_id: positionId || null,
+      job_title: jobTitle,
       employment_status: asStatus(input.employmentStatus),
       employment_date: dateValue(input.employmentDate, "Employment date"),
+      ...(canManagePayroll(user)
+        ? {
+            monthly_salary: salary ?? null,
+            salary_effective_on: salary == null ? null : salaryEffectiveOn || new Date().toISOString().slice(0, 10),
+          }
+        : {}),
     };
     const existingId = str(input.id);
     const phoneDigits = payload.phone.replace(/\D/g, "");
@@ -823,21 +889,33 @@ export async function saveSchoolStaffAction(input: StaffFormInput) {
       }
     }
     const displayName = personName(firstName, str(input.middleName), lastName);
-    const typeKind = readKind(typeRes.data.kind);
+    const typeKind = typeRes.data ? readKind(typeRes.data.kind) : "support";
     function listRow(id: string, staffNumber: string, hasSystemAccess: boolean): StaffListRow {
       return {
         id,
         staffNumber,
         name: displayName,
-        typeName: str(typeRes.data!.name),
-        roleName: role.name,
-        positionName: "",
+        typeName: str(typeRes.data?.name),
+        roleName: role?.name ?? "",
+        positionName: jobTitle || positionName,
+        jobTitle,
         phone: payload.phone,
         primaryAssignment: "",
         status: asStatus(input.employmentStatus),
         allowsAcademicAssignments: allowsAcademicDuty(typeKind),
         hasSystemAccess,
+        monthlySalary: canManagePayroll(user) ? salary ?? null : null,
       };
+    }
+    async function syncDefaultAllocation(staffId: string) {
+      if (!canManagePayroll(user) || salary == null) return;
+      await supabase.from("sch_staff_salary_allocations").delete().eq("staff_id", staffId).eq("business_unit_id", businessUnitId);
+      await supabase.from("sch_staff_salary_allocations").insert({
+        business_unit_id: businessUnitId,
+        staff_id: staffId,
+        cost_business_unit_id: businessUnitId,
+        amount: salary,
+      });
     }
     if (existingId) {
       const current = await supabase
@@ -855,13 +933,14 @@ export async function saveSchoolStaffAction(input: StaffFormInput) {
         mapSchoolDbError(updated.error, "save");
       }
       const profileId = str(current.data.profile_id) || str(current.data.user_id);
-      if (profileId) {
+      if (profileId && role) {
         const assigned = await applySchoolRoleToProfile({ userId: profileId, businessUnitId, roleId: role.id });
         if (assigned.error) {
           await supabase.from("sch_staff").update({ role_id: null }).eq("id", existingId);
           throw new SchoolError(assigned.error, "DATABASE");
         }
       }
+      await syncDefaultAllocation(existingId);
       await writeAuditEvents([
         {
           action: "school.staff_updated",
@@ -872,15 +951,19 @@ export async function saveSchoolStaffAction(input: StaffFormInput) {
           entityId: existingId,
           businessUnitId,
         },
-        {
-          action: "school.staff_role_assigned",
-          module: "school",
-          description: `Staff role assigned · ${displayName} · ${role.name}`,
-          severity: "medium",
-          entityType: "sch_staff",
-          entityId: existingId,
-          businessUnitId,
-        },
+        ...(role
+          ? [
+              {
+                action: "school.staff_role_assigned",
+                module: "school",
+                description: `Staff role assigned · ${displayName} · ${role.name}`,
+                severity: "medium" as const,
+                entityType: "sch_staff",
+                entityId: existingId,
+                businessUnitId,
+              },
+            ]
+          : []),
       ]);
       return {
         ok: true as const,
@@ -908,6 +991,7 @@ export async function saveSchoolStaffAction(input: StaffFormInput) {
     }
     const id = String(inserted.data!.id);
     const staffNumber = String(inserted.data!.staff_number);
+    await syncDefaultAllocation(id);
     await writeAuditEvents([
       {
         action: "school.staff_created",
@@ -918,15 +1002,19 @@ export async function saveSchoolStaffAction(input: StaffFormInput) {
         entityId: id,
         businessUnitId,
       },
-      {
-        action: "school.staff_role_assigned",
-        module: "school",
-        description: `Staff role assigned · ${displayName} · ${role.name}`,
-        severity: "medium",
-        entityType: "sch_staff",
-        entityId: id,
-        businessUnitId,
-      },
+      ...(role
+        ? [
+            {
+              action: "school.staff_role_assigned",
+              module: "school",
+              description: `Staff role assigned · ${displayName} · ${role.name}`,
+              severity: "medium" as const,
+              entityType: "sch_staff",
+              entityId: id,
+              businessUnitId,
+            },
+          ]
+        : []),
     ]);
     return { ok: true as const, id, staffNumber, staff: listRow(id, staffNumber, false) };
   } catch (error) {

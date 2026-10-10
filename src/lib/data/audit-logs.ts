@@ -151,6 +151,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "school.guardian_linked": "Guardian linked",
   "school.staff_created": "Staff created",
   "school.staff_updated": "Staff updated",
+  "school.salary_updated": "Staff salary updated",
+  "school.salary_paid": "Staff salary paid",
   "school.staff_assignment_created": "Staff assignment created",
   "school.level_head_assigned": "Level head assigned",
   "school.department_head_assigned": "Department head assigned",

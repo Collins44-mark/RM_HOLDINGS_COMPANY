@@ -933,6 +933,9 @@ function UserDetails({
               label="Staff / Position"
               value={user.staff ? `${user.staff.positionName || "Staff"} · ${user.staff.staffNumber}` : "Not a staff member"}
             />
+            {user.staff && user.staff.monthlySalary != null ? (
+              <Row label="Monthly salary" value={user.staff.monthlySalary.toLocaleString("en-TZ")} />
+            ) : null}
           </dl>
         </section>
         <div className="flex flex-wrap gap-2">
@@ -1220,16 +1223,18 @@ function CreateAsStaffFields() {
       </label>
       {enabled ? (
         <>
+          <p className="text-[12.5px] text-slate-500">
+            Staff type and job title describe employment. They are optional and are not application roles.
+          </p>
           <label className="block">
             <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Staff type</span>
             <select
               name="staffTypeId"
-              required
               value={staffTypeId}
               onChange={(event) => setStaffTypeId(event.target.value)}
               className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
             >
-              <option value="">Select type</option>
+              <option value="">Optional</option>
               {types.map((row) => (
                 <option key={row.id} value={row.id}>
                   {row.name}
@@ -1241,16 +1246,23 @@ function CreateAsStaffFields() {
             <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Position</span>
             <select
               name="staffPositionId"
-              required
               className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
             >
-              <option value="">Select position</option>
+              <option value="">Optional</option>
               {typePositions.map((row) => (
                 <option key={row.id} value={row.id}>
                   {row.name}
                 </option>
               ))}
             </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Job title</span>
+            <input
+              name="jobTitle"
+              placeholder="e.g. Cleaner, Security, Driver"
+              className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
+            />
           </label>
         </>
       ) : null}
@@ -1281,6 +1293,7 @@ function UserStaffDialog({
   const [positions, setPositions] = useState<StaffPositionRow[]>([]);
   const [staffTypeId, setStaffTypeId] = useState("");
   const [staffPositionId, setStaffPositionId] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
 
   useEffect(() => {
     if (mode !== "create") return;
@@ -1357,6 +1370,7 @@ function UserStaffDialog({
                 userId: user.id,
                 staffTypeId,
                 staffPositionId,
+                jobTitle,
               });
               if (result.error || !result.staff) {
                 onError(result.error || "Unable to create the staff profile.");
@@ -1369,7 +1383,6 @@ function UserStaffDialog({
           <label className="block">
             <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Staff type</span>
             <select
-              required
               value={staffTypeId}
               onChange={(event) => {
                 setStaffTypeId(event.target.value);
@@ -1377,7 +1390,7 @@ function UserStaffDialog({
               }}
               className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
             >
-              <option value="">Select type</option>
+              <option value="">Optional</option>
               {types.map((row) => (
                 <option key={row.id} value={row.id}>
                   {row.name}
@@ -1388,18 +1401,26 @@ function UserStaffDialog({
           <label className="block">
             <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Position</span>
             <select
-              required
               value={staffPositionId}
               onChange={(event) => setStaffPositionId(event.target.value)}
               className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
             >
-              <option value="">Select position</option>
+              <option value="">Optional</option>
               {typePositions.map((row) => (
                 <option key={row.id} value={row.id}>
                   {row.name}
                 </option>
               ))}
             </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Job title</span>
+            <input
+              value={jobTitle}
+              onChange={(event) => setJobTitle(event.target.value)}
+              placeholder="Optional"
+              className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
+            />
           </label>
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 text-[14px] font-medium text-slate-600">

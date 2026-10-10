@@ -1,3 +1,4 @@
+import { loadSchoolSalaryWorkspaceAction } from "@/actions/school/salary";
 import { FinanceWorkspace } from "@/components/finance/FinanceWorkspace";
 import {
   getConsolidatedFinanceForReportPeriod,
@@ -18,7 +19,10 @@ export default async function FinancePage({
   const from = typeof params.from === "string" ? params.from : undefined;
   const to = typeof params.to === "string" ? params.to : undefined;
 
-  const finance = await getConsolidatedFinanceForReportPeriod({ period, from, to });
+  const [finance, salary] = await Promise.all([
+    getConsolidatedFinanceForReportPeriod({ period, from, to }),
+    loadSchoolSalaryWorkspaceAction({ period, from, to, status: "active" }),
+  ]);
 
   return (
     <FinanceWorkspace
@@ -32,6 +36,7 @@ export default async function FinancePage({
       trend={finance.trend}
       trendGrain={finance.trendGrain}
       categories={finance.categories}
+      salary={salary}
     />
   );
 }

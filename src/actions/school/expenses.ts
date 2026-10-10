@@ -54,7 +54,7 @@ function localDate(date: Date) {
 }
 
 function asSource(value: unknown): SchoolExpenseSource {
-  if (value === "TRANSPORT_FUEL" || value === "TRANSPORT_MAINTENANCE") return value;
+  if (value === "TRANSPORT_FUEL" || value === "TRANSPORT_MAINTENANCE" || value === "SALARY") return value;
   return "MANUAL";
 }
 

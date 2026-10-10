@@ -38,6 +38,7 @@ export const en = {
   "nav./school/transport/fuel": "Fuel",
   "nav./school/transport/maintenance": "Maintenance",
   "nav./school/expenses": "Expenses",
+  "nav./school/expenses/salaries": "Salaries",
   "nav./school/reports": "Reports",
   "nav./school/settings": "Settings",
   "nav./rice/farmers": "Farmers",
@@ -128,6 +129,7 @@ export const en = {
   "finance.tab.units": "By Business Unit",
   "finance.tab.trend": "Trend Analysis",
   "finance.tab.category": "Category Breakdown",
+  "finance.tab.salary": "Salaries",
   "reports.title": "Reports",
   "reports.description":
     "Generate and download operational, financial and management reports for any business unit.",
@@ -211,6 +213,7 @@ export const sw: Record<MessageKey, string> = {
   "nav./school/transport/fuel": "Mafuta",
   "nav./school/transport/maintenance": "Matengenezo",
   "nav./school/expenses": "Gharama",
+  "nav./school/expenses/salaries": "Mishahara",
   "nav./school/reports": "Ripoti",
   "nav./school/settings": "Mipangilio",
   "nav./rice/farmers": "Wakulima",
@@ -301,6 +304,7 @@ export const sw: Record<MessageKey, string> = {
   "finance.tab.units": "Kwa Kitengo cha Biashara",
   "finance.tab.trend": "Mchanganuo wa Mwelekeo",
   "finance.tab.category": "Mgawanyo wa Kategoria",
+  "finance.tab.salary": "Mishahara",
   "reports.title": "Ripoti",
   "reports.description":
     "Tengeneza na pakua ripoti za uendeshaji, fedha na usimamizi kwa kitengo chochote cha biashara.",

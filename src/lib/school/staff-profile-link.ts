@@ -6,6 +6,7 @@ export type LinkedStaffInfo = {
   staffNumber: string;
   name: string;
   positionName: string;
+  monthlySalary?: number | null;
 };
 
 export type StaffLinkUserOption = {
@@ -52,25 +53,35 @@ export function adminOrNull() {
   return createSupabaseAdminClient();
 }
 
-export async function staffByProfileIds(admin: SupabaseClient, profileIds: string[]) {
+export async function staffByProfileIds(
+  admin: SupabaseClient,
+  profileIds: string[],
+  options: { includeSalary?: boolean } = {},
+) {
   const map = new Map<string, LinkedStaffInfo>();
   const ids = [...new Set(profileIds.filter(Boolean))];
   if (!ids.length) return map;
   const { data, error } = await admin
     .from("sch_staff")
-    .select("id, staff_number, first_name, middle_name, last_name, profile_id, sch_staff_positions(name)")
+    .select("id, staff_number, first_name, middle_name, last_name, profile_id, job_title, monthly_salary, sch_staff_positions(name)")
     .in("profile_id", ids);
   if (error || !data) return map;
   for (const row of data) {
     const profileId = str(row.profile_id);
     if (!profileId) continue;
     const position = row.sch_staff_positions as { name?: string } | { name?: string }[] | null;
-    const positionName = Array.isArray(position) ? str(position[0]?.name) : str(position?.name);
+    const positionName =
+      str((row as { job_title?: string }).job_title) ||
+      (Array.isArray(position) ? str(position[0]?.name) : str(position?.name));
+    const salaryRaw = options.includeSalary ? row.monthly_salary : undefined;
+    const monthlySalary =
+      salaryRaw == null || salaryRaw === "" ? null : Number.isFinite(Number(salaryRaw)) ? Number(salaryRaw) : null;
     map.set(profileId, {
       id: String(row.id),
       staffNumber: str(row.staff_number),
       name: personName(str(row.first_name), str(row.middle_name), str(row.last_name)),
       positionName,
+      ...(options.includeSalary ? { monthlySalary } : {}),
     });
   }
   return map;
@@ -125,8 +136,9 @@ export async function insertStaffForProfile(
     fullName: string;
     phone: string;
     email: string;
-    staffTypeId: string;
-    staffPositionId: string;
+    staffTypeId?: string;
+    staffPositionId?: string;
+    jobTitle?: string;
     roleId?: string;
   },
 ): Promise<{ error: string } | { staff: LinkedStaffInfo; businessUnitId: string }> {
@@ -138,14 +150,29 @@ export async function insertStaffForProfile(
     return { error: `This account is already linked to ${str(already.data.staff_number)}.` };
   }
 
-  const position = await admin
-    .from("sch_staff_positions")
-    .select("id, staff_type_id")
-    .eq("business_unit_id", businessUnitId)
-    .eq("id", input.staffPositionId)
-    .maybeSingle();
-  if (!position.data || String(position.data.staff_type_id) !== input.staffTypeId) {
-    return { error: "Choose a valid staff type and position." };
+  const staffTypeId = str(input.staffTypeId);
+  const staffPositionId = str(input.staffPositionId);
+  let positionName = str(input.jobTitle);
+  if (staffPositionId) {
+    const position = await admin
+      .from("sch_staff_positions")
+      .select("id, staff_type_id, name")
+      .eq("business_unit_id", businessUnitId)
+      .eq("id", staffPositionId)
+      .maybeSingle();
+    if (!position.data) return { error: "Choose a valid position." };
+    if (staffTypeId && String(position.data.staff_type_id) !== staffTypeId) {
+      return { error: "The selected position does not belong to that staff type." };
+    }
+    positionName = positionName || str(position.data.name);
+  } else if (staffTypeId) {
+    const type = await admin
+      .from("sch_staff_types")
+      .select("id")
+      .eq("business_unit_id", businessUnitId)
+      .eq("id", staffTypeId)
+      .maybeSingle();
+    if (!type.data) return { error: "Choose a valid staff type." };
   }
 
   const { data: number, error: numError } = await admin.rpc("sch_next_document_number", {
@@ -166,8 +193,9 @@ export async function insertStaffForProfile(
       last_name: names.lastName.slice(0, 80),
       phone: str(input.phone).slice(0, 40),
       email: str(input.email).slice(0, 160),
-      staff_type_id: input.staffTypeId,
-      position_id: input.staffPositionId,
+      staff_type_id: staffTypeId || null,
+      position_id: staffPositionId || null,
+      job_title: str(input.jobTitle).slice(0, 80),
       ...(str(input.roleId) ? { role_id: str(input.roleId) } : {}),
       employment_status: "active",
       profile_id: input.profileId,
@@ -181,13 +209,13 @@ export async function insertStaffForProfile(
     return { error: "Unable to create the staff profile." };
   }
   const positionRow = inserted.data.sch_staff_positions as { name?: string } | { name?: string }[] | null;
-  const positionName = Array.isArray(positionRow) ? str(positionRow[0]?.name) : str(positionRow?.name);
+  const insertedPosition = str(input.jobTitle) || (Array.isArray(positionRow) ? str(positionRow[0]?.name) : str(positionRow?.name)) || positionName;
   return {
     staff: {
       id: String(inserted.data.id),
       staffNumber: str(inserted.data.staff_number),
       name: personName(str(inserted.data.first_name), str(inserted.data.middle_name), str(inserted.data.last_name)),
-      positionName,
+      positionName: insertedPosition,
     } satisfies LinkedStaffInfo,
     businessUnitId,
   };

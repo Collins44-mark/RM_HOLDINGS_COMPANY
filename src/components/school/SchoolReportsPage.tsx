@@ -206,6 +206,7 @@ export function SchoolReportsPage({
             <option value="all">All</option>
             <option value="fees">Fees & Payments</option>
             <option value="expenses">Expenses</option>
+            <option value="salaries">Salaries</option>
           </select>
         ) : null}
         {kind === "students" || kind === "parents" ? null : (
@@ -340,7 +341,7 @@ export function SchoolReportsPage({
             <option value="cancelled">Cancelled</option>
           </select>
         ) : null}
-        {kind === "students" || (kind === "finance" && slice !== "expenses") ? (
+        {kind === "students" || (kind === "finance" && slice !== "expenses" && slice !== "salaries") ? (
           <select
             className={cn(filterClass, "w-auto min-w-[8rem]")}
             value={status}

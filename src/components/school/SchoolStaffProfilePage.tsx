@@ -54,6 +54,7 @@ export function SchoolStaffProfilePage({
   subjects: initialSubjects,
   canManage,
   canManageSystemAccess,
+  canViewPayroll = false,
   openAccess = false,
   error,
 }: {
@@ -64,6 +65,7 @@ export function SchoolStaffProfilePage({
   subjects: SubjectRow[];
   canManage: boolean;
   canManageSystemAccess: boolean;
+  canViewPayroll?: boolean;
   openAccess?: boolean;
   error: string | null;
 }) {
@@ -219,7 +221,14 @@ export function SchoolStaffProfilePage({
       <section className={`${glassPanel} grid grid-cols-1 gap-4 md:grid-cols-2`}>
         <Fact label="Staff no." value={staff.staffNumber} />
         <Fact label="Staff type" value={staff.typeName} />
-        <Fact label="School role" value={staff.roleName} />
+        <Fact label="Job title" value={staff.jobTitle || staff.positionName} />
+        <Fact label="Application role" value={staff.roleName} />
+        {canViewPayroll ? (
+          <Fact
+            label="Monthly salary"
+            value={staff.monthlySalary == null ? "Not set" : staff.monthlySalary.toLocaleString("en-TZ")}
+          />
+        ) : null}
         <Fact label="Phone" value={staff.phone} />
         <Fact label="Email" value={staff.email} />
         <Fact label="Address" value={staff.address} />

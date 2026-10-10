@@ -175,12 +175,16 @@ export async function listManagedUsers() {
     .order("full_name", { ascending: true });
 
   if (error || !data) return [];
-  return attachStaffLinks((data as unknown as ProfileRecord[]).map(toManagedUser), client);
+  return attachStaffLinks((data as unknown as ProfileRecord[]).map(toManagedUser), client, true);
 }
 
-async function attachStaffLinks(users: ReturnType<typeof toManagedUser>[], client: NonNullable<ReturnType<typeof createSupabaseAdminClient>> | Awaited<ReturnType<typeof createSupabaseServerClient>>) {
+async function attachStaffLinks(
+  users: ReturnType<typeof toManagedUser>[],
+  client: NonNullable<ReturnType<typeof createSupabaseAdminClient>> | Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  includeSalary = false,
+) {
   if (!users.length || !client) return users;
-  const map = await staffByProfileIds(client, users.map((user) => user.id));
+  const map = await staffByProfileIds(client, users.map((user) => user.id), { includeSalary });
   return users.map((user) => ({ ...user, staff: map.get(user.id) ?? null }));
 }
 

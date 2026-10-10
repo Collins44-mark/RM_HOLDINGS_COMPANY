@@ -76,6 +76,7 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "parents", actions: ["view", "manage"] },
       { resource: "classes", actions: ["view", "manage"] },
       { resource: "staff", actions: ["view", "manage"] },
+      { resource: "payroll", actions: ["view", "manage", "pay"] },
       { resource: "teachers", actions: ["view", "manage"] },
       { resource: "subjects", actions: ["view", "manage"] },
       { resource: "exams", actions: ["view", "manage"] },
@@ -209,7 +210,10 @@ export function isOperablePermission(code: string) {
     code === "school.maintenance.edit" ||
     code === "school.expenses.view" ||
     code === "school.expenses.create" ||
-    code === "school.expenses.edit"
+    code === "school.expenses.edit" ||
+    code === "school.payroll.view" ||
+    code === "school.payroll.manage" ||
+    code === "school.payroll.pay"
   );
 }
 
@@ -274,6 +278,7 @@ const RESOURCE_LABELS: Record<string, string> = {
   results: "Results",
   fees: "Fees",
   expenses: "Expenses",
+  payroll: "Payroll",
 };
 
 export function permissionModuleLabel(module: string) {
@@ -399,6 +404,9 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.parents.manage",
       "school.staff.view",
       "school.staff.manage",
+      "school.payroll.view",
+      "school.payroll.manage",
+      "school.payroll.pay",
       "school.subjects.view",
       "school.subjects.manage",
       "school.exams.view",
@@ -455,6 +463,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.fuel.view",
       "school.maintenance.view",
       "school.expenses.view",
+      "school.payroll.view",
     ],
   },
   {
@@ -481,6 +490,8 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.expenses.view",
       "school.expenses.create",
       "school.expenses.edit",
+      "school.payroll.view",
+      "school.payroll.pay",
     ],
   },
   {

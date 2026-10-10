@@ -9,6 +9,7 @@ import {
   saveSchoolStaffAction,
   type SchoolRoleOption,
   type StaffFormInput,
+  type StaffPositionRow,
   type StaffProfile,
   type StaffStatus,
   type StaffTypeRow,
@@ -22,12 +23,16 @@ const MANAGE_ROLES_HREF = "/owner/users?view=roles";
 export function SchoolStaffFormPage({
   types: initialTypes,
   roles: initialRoles,
+  positions: initialPositions = [],
+  canManagePayroll = false,
   staff,
   error,
   loadOptions = false,
 }: {
   types: StaffTypeRow[];
   roles: SchoolRoleOption[];
+  positions?: StaffPositionRow[];
+  canManagePayroll?: boolean;
   staff: StaffProfile | null;
   error: string | null;
   loadOptions?: boolean;
@@ -35,6 +40,8 @@ export function SchoolStaffFormPage({
   const router = useRouter();
   const [types, setTypes] = useState(initialTypes);
   const [roles, setRoles] = useState(initialRoles);
+  const [positions, setPositions] = useState(initialPositions);
+  const [payroll, setPayroll] = useState(canManagePayroll);
   const [form, setForm] = useState<StaffFormInput>({
     id: staff?.id,
     firstName: staff?.firstName ?? "",
@@ -47,8 +54,12 @@ export function SchoolStaffFormPage({
     address: staff?.address ?? "",
     staffTypeId: staff?.staffTypeId ?? "",
     roleId: staff?.roleId ?? "",
+    positionId: staff?.positionId ?? "",
+    jobTitle: staff?.jobTitle ?? "",
     employmentStatus: (staff?.employmentStatus ?? "active") as StaffStatus,
     employmentDate: staff?.employmentDate ?? "",
+    monthlySalary: staff?.monthlySalary ?? "",
+    salaryEffectiveOn: staff?.salaryEffectiveOn ?? "",
   });
   const [saveError, setSaveError] = useState<string | null>(error);
   const [busy, setBusy] = useState(false);
@@ -66,6 +77,8 @@ export function SchoolStaffFormPage({
       }
       setTypes(result.types);
       setRoles(result.roles);
+      if (result.positions) setPositions(result.positions);
+      if (result.capabilities) setPayroll(result.capabilities.canManagePayroll);
     });
     return () => {
       active = false;
@@ -104,7 +117,9 @@ export function SchoolStaffFormPage({
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">{staff ? staff.staffNumber : "Add Staff"}</h1>
-          <p className="mt-1 text-[13.5px] text-slate-500">Staff is the school person. School Role comes from Users & Permissions.</p>
+          <p className="mt-1 text-[13.5px] text-slate-500">
+            Staff is the school person. Access roles come from Users & Permissions and are optional for employees who do not log in.
+          </p>
         </div>
         <SchoolWorkflowButton
           className={primaryButton}
@@ -156,8 +171,8 @@ export function SchoolStaffFormPage({
         <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Employment</h2>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <SchoolField label="Staff type">
-            <select className={inputClass} value={form.staffTypeId} onChange={(event) => patch({ staffTypeId: event.target.value })}>
-              <option value="">Select type</option>
+            <select className={inputClass} value={form.staffTypeId} onChange={(event) => patch({ staffTypeId: event.target.value, positionId: "" })}>
+              <option value="">Optional</option>
               {types
                 .filter((row) => row.isActive)
                 .map((row) => (
@@ -167,9 +182,24 @@ export function SchoolStaffFormPage({
                 ))}
             </select>
           </SchoolField>
-          <SchoolField label="School Role">
+          <SchoolField label="Position">
+            <select className={inputClass} value={form.positionId ?? ""} onChange={(event) => patch({ positionId: event.target.value })}>
+              <option value="">Optional</option>
+              {positions
+                .filter((row) => row.isActive && (!form.staffTypeId || row.staffTypeId === form.staffTypeId))
+                .map((row) => (
+                  <option key={row.id} value={row.id}>
+                    {row.name}
+                  </option>
+                ))}
+            </select>
+          </SchoolField>
+          <SchoolField label="Job title">
+            <input className={inputClass} value={form.jobTitle ?? ""} onChange={(event) => patch({ jobTitle: event.target.value })} placeholder="e.g. Cleaner, Teacher, Driver" />
+          </SchoolField>
+          <SchoolField label="Application role">
             <select className={inputClass} value={form.roleId} onChange={(event) => patch({ roleId: event.target.value })}>
-              <option value="">Select School Role</option>
+              <option value="">None — no system login required</option>
               {roles.map((row) => (
                 <option key={row.id} value={row.id}>
                   {row.name}
@@ -177,7 +207,7 @@ export function SchoolStaffFormPage({
               ))}
             </select>
             <p className="mt-1.5 text-[12.5px] text-slate-500">
-              Role not available?{" "}
+              Access role is not a job title.{" "}
               <Link href={MANAGE_ROLES_HREF} className="font-medium text-navy hover:underline">
                 Manage Roles & Permissions →
               </Link>
@@ -196,7 +226,28 @@ export function SchoolStaffFormPage({
           <SchoolField label="Employment date">
             <input type="date" className={inputClass} value={form.employmentDate} onChange={(event) => patch({ employmentDate: event.target.value })} />
           </SchoolField>
+          {payroll ? (
+            <>
+              <SchoolField label="Monthly salary (TZS)">
+                <input
+                  className={inputClass}
+                  value={form.monthlySalary ?? ""}
+                  onChange={(event) => patch({ monthlySalary: event.target.value })}
+                  placeholder="Optional"
+                />
+              </SchoolField>
+              <SchoolField label="Salary effective date">
+                <input
+                  type="date"
+                  className={inputClass}
+                  value={form.salaryEffectiveOn ?? ""}
+                  onChange={(event) => patch({ salaryEffectiveOn: event.target.value })}
+                />
+              </SchoolField>
+            </>
+          ) : null}
         </div>
+        {payroll ? <p className="text-[12.5px] text-slate-500">Setting a salary does not record a payment.</p> : null}
       </section>
     </div>
   );

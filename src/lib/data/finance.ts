@@ -94,7 +94,7 @@ export type FinanceDelta = {
   margin: number;
 };
 
-export type FinanceTab = "units" | "trend" | "category";
+export type FinanceTab = "units" | "trend" | "category" | "salary";
 
 export type FinanceTrendRow = {
   period: string;
@@ -114,7 +114,7 @@ export type FinanceCategoryRow = {
 
 export function parseFinanceTab(value: string | string[] | undefined): FinanceTab {
   const raw = Array.isArray(value) ? value[0] : value;
-  if (raw === "trend" || raw === "category" || raw === "units") return raw;
+  if (raw === "trend" || raw === "category" || raw === "units" || raw === "salary") return raw;
   return "units";
 }
 
@@ -517,7 +517,7 @@ async function loadSchoolPeriodSlice(from: Date, to: Date): Promise<Pick<PeriodP
         .lte("payment_date", toDate),
       supabase
         .from("sch_expenses")
-        .select("expense_date, amount")
+        .select("expense_date, amount, source_type, category_id")
         .eq("business_unit_id", bu.id)
         .eq("is_active", true)
         .gte("expense_date", fromDate)
@@ -555,7 +555,7 @@ async function loadSchoolPeriodSlice(from: Date, to: Date): Promise<Pick<PeriodP
       schoolExpenses: (expensesRes.error ? [] : expensesRes.data ?? []).map((row) => ({
         expenseDate: dayKey(String(row.expense_date ?? "")),
         amount: Number(row.amount || 0),
-        category: "School expenses",
+        category: String(row.source_type ?? "") === "SALARY" ? "School salaries" : "School expenses",
       })),
     };
   } catch (error) {

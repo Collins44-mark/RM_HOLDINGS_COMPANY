@@ -70,6 +70,7 @@ export const SCHOOL_NAV: NavItem[] = [
     children: [
       { href: "/school/fees", label: "Fees & Payments", icon: "money" },
       { href: "/school/expenses", label: "Expenses", icon: "wallet" },
+      { href: "/school/expenses/salaries", label: "Salaries", icon: "wallet" },
     ],
   },
   {

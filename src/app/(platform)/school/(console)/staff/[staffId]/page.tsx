@@ -22,6 +22,7 @@ export default async function SchoolStaffProfileRoute({
       subjects={options.ok ? options.subjects : []}
       canManage={detail.ok ? detail.capabilities.canManage : false}
       canManageSystemAccess={detail.ok ? detail.capabilities.canManageSystemAccess : false}
+      canViewPayroll={detail.ok ? detail.capabilities.canViewPayroll : false}
       openAccess={query.access === "1"}
       error={detail.ok ? (options.ok ? null : options.error) : detail.error}
     />

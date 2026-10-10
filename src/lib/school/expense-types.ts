@@ -3,7 +3,7 @@ import type { SchoolPageMeta } from "@/lib/school/pagination";
 
 export type SchoolExpenseMethod = "CASH" | "MOBILE_MONEY" | "BANK";
 
-export type SchoolExpenseSource = "MANUAL" | "TRANSPORT_FUEL" | "TRANSPORT_MAINTENANCE";
+export type SchoolExpenseSource = "MANUAL" | "TRANSPORT_FUEL" | "TRANSPORT_MAINTENANCE" | "SALARY";
 
 export type SchoolExpenseCaps = {
   canView: boolean;
@@ -99,12 +99,14 @@ export function schoolExpenseMethodLabel(method: string) {
 export function schoolExpenseSourceLabel(source: string) {
   if (source === "TRANSPORT_FUEL") return "Transport / Fuel";
   if (source === "TRANSPORT_MAINTENANCE") return "Transport / Maintenance";
+  if (source === "SALARY") return "Salary";
   return "School expense";
 }
 
 export function schoolExpenseSourceHref(source: string) {
   if (source === "TRANSPORT_FUEL") return "/school/transport/fuel";
   if (source === "TRANSPORT_MAINTENANCE") return "/school/transport/maintenance";
+  if (source === "SALARY") return "/school/expenses/salaries";
   return null;
 }
 
