@@ -19,6 +19,7 @@ import {
 } from "@/lib/school/access";
 import { schoolPageMeta, schoolPageRange } from "@/lib/school/pagination";
 import { parseMoney, parsePayday } from "@/lib/school/salary";
+import { formatCompactStaffNumber } from "@/lib/school/student-number";
 import { upsertSalaryArrangement } from "@/lib/school/salary-arrangement";
 import {
   adminOrNull,
@@ -935,7 +936,10 @@ export async function saveSchoolStaffAction(input: StaffFormInput) {
         .ilike("last_name", lastName);
       const match = (dup.data ?? []).find((row) => str(row.phone).replace(/\D/g, "") === phoneDigits);
       if (match) {
-        throw new SchoolError(`This person already exists as ${String(match.staff_number)}. Add an assignment instead.`, "CONFLICT");
+        throw new SchoolError(
+          `This person already exists as ${formatCompactStaffNumber(String(match.staff_number))}. Add an assignment instead.`,
+          "CONFLICT",
+        );
       }
     }
     const displayName = personName(firstName, str(input.middleName), lastName);

@@ -38,6 +38,7 @@ import {
 } from "@/actions/users";
 import { getStaffWorkspaceOptionsAction, type StaffPositionRow, type StaffTypeRow } from "@/actions/school/staff";
 import type { StaffLinkStaffOption } from "@/lib/school/staff-profile-link";
+import { formatCompactStaffNumber } from "@/lib/school/student-number";
 
 export type UsersWorkspaceView = UsersWorkspaceTab;
 
@@ -471,7 +472,7 @@ export function UsersManager({
                       <td className="px-5 py-3.5 text-slate-600">{user.moduleNames.join(", ")}</td>
                     ) : null}
                     <td className="px-5 py-3.5 text-slate-600">
-                      {user.staff ? `${user.staff.positionName || "Staff"} · ${user.staff.staffNumber}` : "—"}
+                      {user.staff ? `${user.staff.positionName || "Staff"} · ${formatCompactStaffNumber(user.staff.staffNumber)}` : "—"}
                     </td>
                     <td className="px-5 py-3.5">
                       <StatusBadge status={user.status} />
@@ -509,7 +510,9 @@ export function UsersManager({
                     {showModulesColumn ? `${user.roleName} · ${user.moduleNames.join(", ")}` : user.roleName}
                   </span>
                   <span className="mt-1 block text-[12px] text-slate-500">
-                    {user.staff ? `${user.staff.positionName || "Staff"} · ${user.staff.staffNumber}` : "No staff profile"}
+                    {user.staff
+                      ? `${user.staff.positionName || "Staff"} · ${formatCompactStaffNumber(user.staff.staffNumber)}`
+                      : "No staff profile"}
                   </span>
                 </span>
                 <UserActionsMenu
@@ -932,7 +935,11 @@ function UserDetails({
             <Row label="Role" value={user.roleName} />
             <Row
               label="Staff / Position"
-              value={user.staff ? `${user.staff.positionName || "Staff"} · ${user.staff.staffNumber}` : "Not a staff member"}
+              value={
+                user.staff
+                  ? `${user.staff.positionName || "Staff"} · ${formatCompactStaffNumber(user.staff.staffNumber)}`
+                  : "Not a staff member"
+              }
             />
             {user.staff && user.staff.monthlySalary != null ? (
               <Row label="Monthly salary" value={user.staff.monthlySalary.toLocaleString("en-TZ")} />
@@ -1409,7 +1416,7 @@ function UserStaffDialog({
                 >
                   <p className="text-[13.5px] font-semibold text-navy">{row.name}</p>
                   <p className="text-[12px] text-slate-500">
-                    {row.staffNumber}
+                    {formatCompactStaffNumber(row.staffNumber)}
                     {row.positionName ? ` · ${row.positionName}` : ""}
                   </p>
                 </button>

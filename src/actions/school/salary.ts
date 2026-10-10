@@ -15,6 +15,7 @@ import {
   SchoolError,
 } from "@/lib/school/access";
 import { parseSchoolPageSize, schoolPageMeta, schoolPageRange } from "@/lib/school/pagination";
+import { formatCompactStaffNumber } from "@/lib/school/student-number";
 import { upsertSalaryArrangement } from "@/lib/school/salary-arrangement";
 import {
   parseMoney,
@@ -286,6 +287,7 @@ export async function loadSchoolSalaryWorkspaceAction(input: {
         (row) =>
           row.name.toLowerCase().includes(needle) ||
           row.staffNumber.toLowerCase().includes(needle) ||
+          formatCompactStaffNumber(row.staffNumber).toLowerCase().includes(needle) ||
           row.jobTitle.toLowerCase().includes(needle),
       );
     }

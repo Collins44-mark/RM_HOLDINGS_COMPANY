@@ -15,6 +15,7 @@ import { ContainedDrawer, DrawerCancel } from "@/components/ui/ContainedDrawer";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import { schoolPageMeta, type SchoolPageMeta } from "@/lib/school/pagination";
+import { formatCompactStaffNumber } from "@/lib/school/student-number";
 import {
   SALARY_METHODS,
   type SalaryCaps,
@@ -265,12 +266,12 @@ export function SchoolSalaryPage({
       ) : (
         <section className={glassPanel}>
           <div className={tableScrollClass}>
-            <table className="w-full min-w-[960px] text-left">
+            <table className={cn("w-full text-left", ownerHref ? "min-w-[960px]" : "min-w-[820px]")}>
               <thead>
                 <tr className={tableHead}>
                   <th className="px-4 py-3 font-semibold">Employee</th>
                   <th className="px-4 py-3 font-semibold">Job title</th>
-                  <th className="px-4 py-3 font-semibold">Business unit</th>
+                  {ownerHref ? <th className="px-4 py-3 font-semibold">Business unit</th> : null}
                   <th className="px-4 py-3 font-semibold">Monthly salary</th>
                   <th className="px-4 py-3 font-semibold">Paid</th>
                   <th className="px-4 py-3 font-semibold">Remaining</th>
@@ -285,10 +286,10 @@ export function SchoolSalaryPage({
                       <Link href={`/school/staff/${row.id}`} className="font-semibold hover:underline">
                         {row.name}
                       </Link>
-                      <p className="text-[12px] text-slate-500">{row.staffNumber}</p>
+                      <p className="text-[12px] text-slate-500">{formatCompactStaffNumber(row.staffNumber)}</p>
                     </td>
                     <td className="px-4 py-3">{row.jobTitle || row.typeName || "—"}</td>
-                    <td className="px-4 py-3">{row.costBusinessUnitName}</td>
+                    {ownerHref ? <td className="px-4 py-3">{row.costBusinessUnitName}</td> : null}
                     <td className="px-4 py-3">{row.monthlySalary == null ? "—" : formatTzs(row.monthlySalary)}</td>
                     <td className="px-4 py-3">{formatTzs(row.paidInPeriod)}</td>
                     <td className="px-4 py-3">{row.outstandingInPeriod == null ? "—" : formatTzs(row.outstandingInPeriod)}</td>
@@ -577,7 +578,7 @@ function SalaryPayDrawer({
             <option value="">Select an employee</option>
             {unitPayees.map((item) => (
               <option key={item.arrangementId} value={`${item.id}:${item.costBusinessUnitId}`}>
-                {item.name} · {item.staffNumber}
+                {item.name} · {formatCompactStaffNumber(item.staffNumber)}
               </option>
             ))}
           </select>

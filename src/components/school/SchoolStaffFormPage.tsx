@@ -17,6 +17,7 @@ import {
 import { SchoolField, SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton } from "@/components/supermarket/purchasing-ui";
 import { writeStaffFlash } from "@/lib/school/staff-flash";
+import { formatCompactStaffNumber } from "@/lib/school/student-number";
 
 const MANAGE_ROLES_HREF = "/owner/users?view=roles";
 
@@ -125,7 +126,9 @@ export function SchoolStaffFormPage({
       </Link>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">{staff ? staff.staffNumber : "Add Staff"}</h1>
+          <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">
+            {staff ? formatCompactStaffNumber(staff.staffNumber) : "Add Staff"}
+          </h1>
           <p className="mt-1 text-[13.5px] text-slate-500">
             Staff is the school person. Access roles come from Users & Permissions and are optional for employees who do not log in.
           </p>

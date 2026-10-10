@@ -157,7 +157,7 @@ async function allocateStaffNumber(admin: SupabaseClient, businessUnitId: string
       .select("next_value")
       .maybeSingle();
     if (inserted.data?.next_value != null) {
-      return `STF-${String(Number(inserted.data.next_value) - 1).padStart(6, "0")}`;
+      return `STF-${String(Number(inserted.data.next_value) - 1).padStart(3, "0")}`;
     }
     if (inserted.error?.code !== "23505") return null;
   }
@@ -179,7 +179,7 @@ async function allocateStaffNumber(admin: SupabaseClient, businessUnitId: string
     .select("next_value")
     .maybeSingle();
   const issued = updated.data?.next_value != null ? Number(updated.data.next_value) - 1 : n;
-  return `STF-${String(issued).padStart(6, "0")}`;
+  return `STF-${String(issued).padStart(3, "0")}`;
 }
 
 export async function insertStaffForProfile(

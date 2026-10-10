@@ -30,6 +30,7 @@ import {
 } from "@/lib/school/report-types";
 import { schoolExpenseMethodLabel, schoolExpenseSourceLabel } from "@/lib/school/expense-types";
 import { parseMoney, remainingSalary, salaryPeriodFromRange } from "@/lib/school/salary";
+import { formatCompactStaffNumber } from "@/lib/school/student-number";
 import { catalogLookup, loadSchoolStructureCatalog } from "@/lib/school/structure-catalog";
 import { loadSchoolStructureScope } from "@/lib/school/structure-scope";
 
@@ -360,7 +361,7 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
         employee: staff
           ? [str(staff.first_name), str(staff.middle_name), str(staff.last_name)].filter(Boolean).join(" ")
           : "Staff",
-        staffNumber: staff ? str(staff.staff_number) : "—",
+        staffNumber: staff ? formatCompactStaffNumber(str(staff.staff_number)) : "—",
         jobTitle: staff ? str(staff.job_title) || "—" : "—",
         commitment: salary == null ? "—" : formatTzs(salary),
         paid: formatTzs(paid),

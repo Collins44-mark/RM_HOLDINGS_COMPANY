@@ -29,6 +29,7 @@ import type { StaffLinkUserOption } from "@/lib/school/staff-profile-link";
 import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
 import { SchoolConfirmDialog, SchoolField, SchoolGlassModal, SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, secondaryButton, StatusPill } from "@/components/supermarket/purchasing-ui";
+import { formatCompactStaffNumber } from "@/lib/school/student-number";
 
 function Fact({ label, value }: { label: string; value: string }) {
   return (
@@ -187,7 +188,7 @@ export function SchoolStaffProfilePage({
             {[staff.firstName, staff.middleName, staff.lastName].filter(Boolean).join(" ")}
           </h1>
           <p className="mt-1 text-[13.5px] text-slate-500">
-            {staff.staffNumber} · {[staff.typeName, staff.roleName].filter(Boolean).join(" · ") || "Staff"}
+            {formatCompactStaffNumber(staff.staffNumber)} · {[staff.typeName, staff.roleName].filter(Boolean).join(" · ") || "Staff"}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -219,7 +220,7 @@ export function SchoolStaffProfilePage({
       {saveError ? <p className="text-[13px] text-[#c45b66]">{saveError}</p> : null}
 
       <section className={`${glassPanel} grid grid-cols-1 gap-4 md:grid-cols-2`}>
-        <Fact label="Staff no." value={staff.staffNumber} />
+        <Fact label="Staff no." value={formatCompactStaffNumber(staff.staffNumber)} />
         <Fact label="Staff type" value={staff.typeName} />
         <Fact label="Job title" value={staff.jobTitle || staff.positionName} />
         <Fact label="Application role" value={staff.roleName} />

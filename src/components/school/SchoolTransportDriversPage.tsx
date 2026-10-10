@@ -25,6 +25,7 @@ import { ContainedDrawer, DrawerCancel } from "@/components/ui/ContainedDrawer";
 import { cn } from "@/lib/cn";
 import type { TransportCaps, TransportDriverRow } from "@/lib/school/transport-types";
 import { schoolPageMeta, type SchoolPageMeta } from "@/lib/school/pagination";
+import { formatCompactStaffNumber } from "@/lib/school/student-number";
 
 export function SchoolTransportDriversPage({ initial }: { initial: TransportDriversWorkspace }) {
   const ready = initial.ok;
@@ -123,7 +124,7 @@ export function SchoolTransportDriversPage({ initial }: { initial: TransportDriv
                   <tr key={row.assignmentId} className="border-t border-navy/5 text-[13.5px] text-navy">
                     <td className="px-4 py-3 font-semibold">
                       {row.staffName}
-                      <span className="block text-[12px] font-normal text-slate-500">{row.staffNumber}</span>
+                      <span className="block text-[12px] font-normal text-slate-500">{formatCompactStaffNumber(row.staffNumber)}</span>
                     </td>
                     <td className="px-4 py-3">{row.busRegistration}</td>
                     <td className="px-4 py-3">
@@ -175,7 +176,7 @@ export function SchoolTransportDriversPage({ initial }: { initial: TransportDriv
                 <option value="">Select staff</option>
                 {staff.map((row) => (
                   <option key={row.id} value={row.id}>
-                    {row.name} · {row.staffNumber}
+                    {row.name} · {formatCompactStaffNumber(row.staffNumber)}
                   </option>
                 ))}
               </select>

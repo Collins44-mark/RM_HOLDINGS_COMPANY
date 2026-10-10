@@ -136,16 +136,35 @@ export function salaryPayStatus(monthlySalary: number | null, paidInPeriod: numb
   return "partial";
 }
 
-export function salaryPeriodFromRange(from: string, to = from) {
-  void to;
-  const start = from.slice(0, 7);
-  const year = Number(start.slice(0, 4));
-  const month = Number(start.slice(5, 7));
-  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
-    const now = new Date();
+function parseYearMonth(value: string) {
+  const stamp = value.slice(0, 7);
+  const year = Number(stamp.slice(0, 4));
+  const month = Number(stamp.slice(5, 7));
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return null;
+  return { year, month };
+}
+
+/**
+ * Map a finance date range onto a payroll month.
+ * Salary payments are stored by period_year / period_month, not payment_date.
+ * Multi-month ranges (this year, custom spans) use today's month when it falls
+ * inside the range so Owner Consolidated Finance matches School Salaries.
+ */
+export function salaryPeriodFromRange(from: string, to = from, now = new Date()) {
+  const start = parseYearMonth(from);
+  const end = parseYearMonth(to);
+  if (!start) {
     return { year: now.getFullYear(), month: now.getMonth() + 1 };
   }
-  return { year, month };
+  if (!end || (start.year === end.year && start.month === end.month)) {
+    return start;
+  }
+  const current = { year: now.getFullYear(), month: now.getMonth() + 1 };
+  const key = (period: { year: number; month: number }) => period.year * 12 + period.month;
+  if (key(current) >= key(start) && key(current) <= key(end)) {
+    return current;
+  }
+  return start;
 }
 
 export function periodLabel(year: number, month: number) {

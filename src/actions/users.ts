@@ -43,6 +43,7 @@ import {
 } from "@/lib/school/staff-profile-link";
 import { isSchoolTeacherRole, schoolRoleCodeForAssignment } from "@/lib/school/teacher-staff";
 import { upsertSalaryArrangement } from "@/lib/school/salary-arrangement";
+import { formatCompactStaffNumber } from "@/lib/school/student-number";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function applyOptionalUserSalary(
@@ -773,7 +774,7 @@ export async function linkUserToStaffAction(input: {
   if (!businessUnitId) return { error: "School business unit was not found." };
   const existing = await ready.admin.from("sch_staff").select("id, staff_number").eq("profile_id", userId).maybeSingle();
   if (existing.data && String(existing.data.id) !== staffId) {
-    return { error: `This account is already linked to ${String(existing.data.staff_number)}.` };
+    return { error: `This account is already linked to ${formatCompactStaffNumber(String(existing.data.staff_number))}.` };
   }
   const linked = await setStaffProfileId(ready.admin, { staffId, profileId: userId, businessUnitId });
   if ("error" in linked) return { error: linked.error };

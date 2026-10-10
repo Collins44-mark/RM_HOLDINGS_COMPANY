@@ -23,6 +23,7 @@ import { SchoolIconWell } from "@/components/school/school-ui";
 import { SchoolPagination, replaceSchoolPageParam } from "@/components/school/SchoolPagination";
 import { schoolPageMeta, type SchoolPageMeta } from "@/lib/school/pagination";
 import { cn } from "@/lib/cn";
+import { formatCompactStaffNumber } from "@/lib/school/student-number";
 
 function needle(value: string) {
   return value.trim().toLowerCase();
@@ -31,8 +32,8 @@ function needle(value: string) {
 function matchesQuery(row: StaffListRow, q: string) {
   const next = needle(q);
   if (!next) return true;
-  return [row.name, row.staffNumber, row.phone, row.jobTitle, row.positionName, row.roleName].some((value) =>
-    String(value ?? "").toLowerCase().includes(next),
+  return [row.name, row.staffNumber, formatCompactStaffNumber(row.staffNumber), row.phone, row.jobTitle, row.positionName, row.roleName].some(
+    (value) => String(value ?? "").toLowerCase().includes(next),
   );
 }
 
@@ -203,6 +204,7 @@ export function SchoolStaffPage({
                       >
                         {row.name}
                       </Link>
+                      <p className="text-[12px] text-slate-500">{formatCompactStaffNumber(row.staffNumber)}</p>
                     </td>
                     <td className="px-4 py-3">{row.jobTitle || row.positionName || row.typeName || "—"}</td>
                     <td className="px-4 py-3">{row.roleName || "—"}</td>
