@@ -15,12 +15,13 @@ import {
   SchoolError,
 } from "@/lib/school/access";
 import { parseSchoolPageSize, schoolPageMeta, schoolPageRange } from "@/lib/school/pagination";
+import { upsertSalaryArrangement } from "@/lib/school/salary-arrangement";
 import {
-  allocationsReconcile,
   parseMoney,
   remainingSalary,
+  salaryPayStatus,
   salaryPeriodFromRange,
-  type SalaryAllocationInput,
+  type SalaryAllocationRow,
   type SalaryCaps,
   type SalaryStaffRow,
   type SalarySummary,
@@ -94,6 +95,7 @@ function refreshSalary() {
   revalidatePath("/school/expenses/salaries");
   revalidatePath("/school/expenses");
   revalidatePath("/school/staff");
+  revalidatePath("/supermarket/finance/salaries");
   revalidatePath("/owner/finance");
   revalidatePath("/owner/reports");
   revalidatePath("/school");
@@ -110,6 +112,9 @@ export async function loadSchoolSalaryWorkspaceAction(input: {
   q?: string;
   status?: string;
   unitCode?: string;
+  lockedUnitCode?: string;
+  periodYear?: number | string;
+  periodMonth?: number | string;
   page?: number;
   pageSize?: number;
 } = {}): Promise<SchoolSalaryWorkspaceResult> {
@@ -117,29 +122,30 @@ export async function loadSchoolSalaryWorkspaceAction(input: {
     const user = await requireAuth();
     const { supabase, businessUnitId } = await requireAnySchoolPermission(VIEW_ANY);
     const { period, from: fromDate, to: toDate } = periodBounds(input);
-    const { year, month } = salaryPeriodFromRange(fromDate, toDate);
+    const fromRange = salaryPeriodFromRange(fromDate, toDate);
+    const year = Number(input.periodYear) || fromRange.year;
+    const month = Number(input.periodMonth) || fromRange.month;
     const pageSize = parseSchoolPageSize(input.pageSize);
     const { page, from, to } = schoolPageRange(input.page ?? 1, pageSize);
     const q = searchNeedle(input.q);
     const status = str(input.status);
-    const unitCode = str(input.unitCode);
+    const lockedUnitCode = str(input.lockedUnitCode);
+    const unitCode = lockedUnitCode || str(input.unitCode);
 
     const [staffRes, unitsRes, payRes, allocRes, histRes] = await Promise.all([
       supabase
         .from("sch_staff")
         .select(
           "id, staff_number, first_name, middle_name, last_name, employment_status, job_title, monthly_salary, salary_effective_on, business_unit_id, sch_staff_types(name), sch_staff_positions(name)",
-          { count: "exact" },
         )
         .eq("business_unit_id", businessUnitId)
         .order("last_name")
-        .order("first_name")
-        .range(from, to),
+        .order("first_name"),
       supabase.from("business_units").select("id, code, name").order("name"),
       supabase
         .from("sch_staff_salary_payments")
         .select(
-          "id, staff_id, period_year, period_month, amount, payment_date, method, reference, notes, expense_id, is_active, created_at",
+          "id, staff_id, cost_business_unit_id, period_year, period_month, amount, payment_date, method, reference, notes, expense_id, is_active, created_at",
         )
         .eq("business_unit_id", businessUnitId)
         .eq("period_year", year)
@@ -147,7 +153,7 @@ export async function loadSchoolSalaryWorkspaceAction(input: {
         .order("payment_date", { ascending: false }),
       supabase
         .from("sch_staff_salary_allocations")
-        .select("id, staff_id, cost_business_unit_id, amount")
+        .select("id, staff_id, cost_business_unit_id, amount, payday, effective_on, is_active")
         .eq("business_unit_id", businessUnitId),
       supabase
         .from("sch_staff_salary_history")
@@ -161,63 +167,118 @@ export async function loadSchoolSalaryWorkspaceAction(input: {
     if (staffRes.error && !isSchoolUnconfiguredRead(staffRes.error)) mapSchoolDbError(staffRes.error, "load");
     if (payRes.error && !isSchoolUnconfiguredRead(payRes.error)) mapSchoolDbError(payRes.error, "load");
 
+    let allocations = allocRes.data ?? [];
+    if (allocRes.error && !isSchoolUnconfiguredRead(allocRes.error)) {
+      const fallback = await supabase
+        .from("sch_staff_salary_allocations")
+        .select("id, staff_id, cost_business_unit_id, amount")
+        .eq("business_unit_id", businessUnitId);
+      allocations = (fallback.data ?? []).map((row) => ({ ...row, payday: 28, effective_on: null, is_active: true }));
+    }
+
+    let payments = payRes.data ?? [];
+    if (payRes.error) {
+      const fallback = await supabase
+        .from("sch_staff_salary_payments")
+        .select(
+          "id, staff_id, period_year, period_month, amount, payment_date, method, reference, notes, expense_id, is_active, created_at",
+        )
+        .eq("business_unit_id", businessUnitId)
+        .eq("period_year", year)
+        .eq("period_month", month)
+        .order("payment_date", { ascending: false });
+      payments = (fallback.data ?? []).map((row) => ({ ...row, cost_business_unit_id: businessUnitId }));
+    }
+
     const units = (unitsRes.data ?? []).map((row) => ({
       id: String(row.id),
       code: str(row.code),
       name: str(row.name),
     }));
     const unitById = new Map(units.map((row) => [row.id, row]));
+    const unitByCode = new Map(units.map((row) => [row.code, row]));
     const schoolUnit = units.find((row) => row.id === businessUnitId) ?? {
       id: businessUnitId,
       code: "school",
       name: "School",
     };
 
-    const paidByStaff = new Map<string, number>();
-    for (const row of payRes.data ?? []) {
+    const staffById = new Map(
+      (staffRes.data ?? []).map((row) => {
+        const type = row.sch_staff_types as { name?: string } | null;
+        const position = row.sch_staff_positions as { name?: string } | null;
+        return [
+          String(row.id),
+          {
+            id: String(row.id),
+            staffNumber: str(row.staff_number),
+            name: personName(str(row.first_name), str(row.middle_name), str(row.last_name)),
+            jobTitle: str(row.job_title) || str(position?.name),
+            typeName: str(type?.name),
+            status: str(row.employment_status) === "inactive" ? ("inactive" as const) : ("active" as const),
+            monthlySalary: parseMoney(row.monthly_salary),
+            salaryEffectiveOn: String(row.salary_effective_on ?? ""),
+          },
+        ];
+      }),
+    );
+
+    const paidKey = (staffId: string, costId: string) => `${staffId}:${costId}`;
+    const paidByKey = new Map<string, number>();
+    for (const row of payments) {
       if (!row.is_active) continue;
-      const id = String(row.staff_id);
-      paidByStaff.set(id, (paidByStaff.get(id) ?? 0) + num(row.amount));
-    }
-
-    const allocByStaff = new Map<string, SalaryStaffRow["allocations"]>();
-    for (const row of allocRes.data ?? []) {
       const staffId = String(row.staff_id);
-      const cost = unitById.get(String(row.cost_business_unit_id));
-      const list = allocByStaff.get(staffId) ?? [];
-      list.push({
-        id: String(row.id),
-        costBusinessUnitId: String(row.cost_business_unit_id),
-        amount: num(row.amount),
-        costBusinessUnitCode: cost?.code ?? "",
-        costBusinessUnitName: cost?.name ?? "Business unit",
-      });
-      allocByStaff.set(staffId, list);
+      const costId = str(row.cost_business_unit_id) || businessUnitId;
+      const key = paidKey(staffId, costId);
+      paidByKey.set(key, (paidByKey.get(key) ?? 0) + num(row.amount));
     }
 
-    let rows = (staffRes.data ?? []).map((row) => {
-      const type = row.sch_staff_types as { name?: string } | null;
-      const position = row.sch_staff_positions as { name?: string } | null;
-      const id = String(row.id);
-      const monthlySalary = parseMoney(row.monthly_salary);
-      const paidInPeriod = paidByStaff.get(id) ?? 0;
-      return {
-        id,
-        staffNumber: str(row.staff_number),
-        name: personName(str(row.first_name), str(row.middle_name), str(row.last_name)),
-        jobTitle: str(row.job_title) || str(position?.name),
-        typeName: str(type?.name),
-        status: str(row.employment_status) === "inactive" ? ("inactive" as const) : ("active" as const),
+    const filterUnit = unitCode ? unitByCode.get(unitCode) : null;
+    let rows: SalaryStaffRow[] = [];
+    for (const row of allocations) {
+      const amount = parseMoney(row.amount);
+      if (amount == null) continue;
+      const staff = staffById.get(String(row.staff_id));
+      if (!staff) continue;
+      const costId = String(row.cost_business_unit_id || businessUnitId);
+      const cost = unitById.get(costId) ?? schoolUnit;
+      if (filterUnit && cost.id !== filterUnit.id) continue;
+      const paidInPeriod = paidByKey.get(paidKey(staff.id, costId)) ?? 0;
+      const outstanding = remainingSalary(amount, paidInPeriod);
+      const allocation: SalaryAllocationRow = {
+        id: String(row.id),
+        costBusinessUnitId: costId,
+        amount,
+        costBusinessUnitCode: cost.code,
+        costBusinessUnitName: cost.name,
+        payday: Number(row.payday) || 28,
+        effectiveOn: String(row.effective_on ?? staff.salaryEffectiveOn),
+        isActive: row.is_active !== false,
+      };
+      rows.push({
+        id: staff.id,
+        arrangementId: String(row.id),
+        staffNumber: staff.staffNumber,
+        name: staff.name,
+        jobTitle: staff.jobTitle,
+        typeName: staff.typeName,
+        status: staff.status,
+        salaryActive: allocation.isActive,
+        payday: allocation.payday,
         businessUnitId,
         businessUnitCode: schoolUnit.code,
         businessUnitName: schoolUnit.name,
-        monthlySalary,
-        salaryEffectiveOn: String(row.salary_effective_on ?? ""),
+        costBusinessUnitId: costId,
+        costBusinessUnitCode: cost.code,
+        costBusinessUnitName: cost.name,
+        monthlySalary: amount,
+        salaryEffectiveOn: allocation.effectiveOn,
         paidInPeriod,
-        outstandingInPeriod: remainingSalary(monthlySalary, paidInPeriod),
-        allocations: allocByStaff.get(id) ?? [],
-      } satisfies SalaryStaffRow;
-    });
+        outstandingInPeriod: outstanding,
+        payStatus: salaryPayStatus(amount, paidInPeriod),
+        allocations: [allocation],
+      });
+    }
 
     if (q) {
       const needle = q.toLowerCase();
@@ -229,40 +290,33 @@ export async function loadSchoolSalaryWorkspaceAction(input: {
       );
     }
     if (status === "active" || status === "inactive") {
-      rows = rows.filter((row) => row.status === status);
-    }
-    if (unitCode) {
-      rows = rows.filter((row) => {
-        if (!row.allocations.length) return row.businessUnitCode === unitCode;
-        return row.allocations.some((item) => item.costBusinessUnitCode === unitCode);
-      });
+      rows = rows.filter((row) => row.status === status && row.salaryActive);
+    } else if (status === "inactive-salary") {
+      rows = rows.filter((row) => !row.salaryActive);
     }
 
-    const names = new Map(rows.map((row) => [row.id, row.name]));
-    const allForSummary = rows;
+    rows.sort((a, b) => a.name.localeCompare(b.name) || a.costBusinessUnitName.localeCompare(b.costBusinessUnitName));
+
     const summary: SalarySummary = {
-      employeeCount: allForSummary.length,
-      withSalary: allForSummary.filter((row) => row.monthlySalary != null).length,
-      commitment: allForSummary.reduce((sum, row) => sum + (row.monthlySalary ?? 0), 0),
-      paid: allForSummary.reduce((sum, row) => sum + row.paidInPeriod, 0),
-      outstanding: allForSummary.reduce((sum, row) => sum + (row.outstandingInPeriod ?? 0), 0),
+      employeeCount: new Set(rows.filter((row) => row.salaryActive).map((row) => row.id)).size,
+      withSalary: rows.filter((row) => row.salaryActive).length,
+      commitment: rows.filter((row) => row.salaryActive).reduce((sum, row) => sum + (row.monthlySalary ?? 0), 0),
+      paid: rows.reduce((sum, row) => sum + row.paidInPeriod, 0),
+      outstanding: rows.filter((row) => row.salaryActive).reduce((sum, row) => sum + (row.outstandingInPeriod ?? 0), 0),
     };
 
-    const staffNames = new Map(
-      (staffRes.data ?? []).map((row) => [
-        String(row.id),
-        personName(str(row.first_name), str(row.middle_name), str(row.last_name)),
-      ]),
-    );
+    const pageRows = rows.slice(from, to + 1);
+    const names = new Map(rows.map((row) => [row.id, row.name]));
 
     return {
       ok: true,
       workspace: {
-        employees: rows,
-        payments: (payRes.data ?? []).map((row) => ({
+        employees: pageRows,
+        payees: rows.filter((row) => row.salaryActive && row.monthlySalary != null),
+        payments: payments.map((row) => ({
           id: String(row.id),
           staffId: String(row.staff_id),
-          staffName: names.get(String(row.staff_id)) || staffNames.get(String(row.staff_id)) || "Staff",
+          staffName: names.get(String(row.staff_id)) || staffById.get(String(row.staff_id))?.name || "Staff",
           periodYear: num(row.period_year),
           periodMonth: num(row.period_month),
           amount: num(row.amount),
@@ -276,20 +330,21 @@ export async function loadSchoolSalaryWorkspaceAction(input: {
         history: (histRes.data ?? []).map((row) => ({
           id: String(row.id),
           staffId: String(row.staff_id),
-          staffName: staffNames.get(String(row.staff_id)) || "Staff",
+          staffName: staffById.get(String(row.staff_id))?.name || "Staff",
           monthlySalary: num(row.monthly_salary),
           effectiveOn: String(row.effective_on ?? ""),
           createdAt: String(row.created_at ?? ""),
         })),
         units,
         summary,
-        page: schoolPageMeta(page, staffRes.count ?? rows.length, pageSize),
+        page: schoolPageMeta(page, rows.length, pageSize),
         period,
         from: fromDate,
         to: toDate,
         periodYear: year,
         periodMonth: month,
         unitCode,
+        lockedUnitCode,
         q: str(input.q),
         status,
         capabilities: caps(user),
@@ -304,7 +359,10 @@ export async function saveSchoolStaffSalaryAction(input: {
   staffId: string;
   monthlySalary?: number | string | null;
   salaryEffectiveOn?: string;
-  allocations?: SalaryAllocationInput[];
+  costBusinessUnitId?: string;
+  payday?: number | string | null;
+  salaryActive?: boolean;
+  allocations?: Array<{ costBusinessUnitId: string; amount: number }>;
 }) {
   try {
     const { supabase, businessUnitId, userId } = await requireSchoolPermission(MANAGE);
@@ -316,15 +374,6 @@ export async function saveSchoolStaffSalaryAction(input: {
     if (salary != null && effectiveOn && !/^\d{4}-\d{2}-\d{2}$/.test(effectiveOn)) {
       throw new SchoolError("Enter a valid salary effective date.", "VALIDATION");
     }
-    const allocations = (input.allocations ?? [])
-      .map((row) => ({
-        costBusinessUnitId: str(row.costBusinessUnitId),
-        amount: parseMoney(row.amount) ?? 0,
-      }))
-      .filter((row) => row.costBusinessUnitId && row.amount > 0);
-    if (salary != null && allocations.length && !allocationsReconcile(salary, allocations)) {
-      throw new SchoolError("Cost allocations must add up to the monthly salary.", "VALIDATION");
-    }
 
     const current = await supabase
       .from("sch_staff")
@@ -334,33 +383,26 @@ export async function saveSchoolStaffSalaryAction(input: {
       .maybeSingle();
     if (!current.data) throw new SchoolError("Staff member was not found.", "NOT_FOUND");
 
-    const updated = await supabase
-      .from("sch_staff")
-      .update({
-        monthly_salary: salary,
-        salary_effective_on: salary == null ? null : effectiveOn || new Date().toISOString().slice(0, 10),
-      })
-      .eq("id", staffId)
-      .eq("business_unit_id", businessUnitId);
-    if (updated.error) mapSchoolDbError(updated.error, "save");
+    const extra = (input.allocations ?? []).filter((row) => str(row.costBusinessUnitId) && (parseMoney(row.amount) ?? 0) > 0);
+    const targets =
+      extra.length > 0
+        ? extra.map((row) => ({
+            costBusinessUnitId: str(row.costBusinessUnitId),
+            monthlySalary: parseMoney(row.amount),
+          }))
+        : [{ costBusinessUnitId: str(input.costBusinessUnitId) || businessUnitId, monthlySalary: salary }];
 
-    await supabase.from("sch_staff_salary_allocations").delete().eq("staff_id", staffId).eq("business_unit_id", businessUnitId);
-    const nextAllocations =
-      salary != null && allocations.length
-        ? allocations
-        : salary != null
-          ? [{ costBusinessUnitId: businessUnitId, amount: salary }]
-          : [];
-    if (nextAllocations.length) {
-      const inserted = await supabase.from("sch_staff_salary_allocations").insert(
-        nextAllocations.map((row) => ({
-          business_unit_id: businessUnitId,
-          staff_id: staffId,
-          cost_business_unit_id: row.costBusinessUnitId,
-          amount: row.amount,
-        })),
-      );
-      if (inserted.error) mapSchoolDbError(inserted.error, "save");
+    for (const target of targets) {
+      const saved = await upsertSalaryArrangement(supabase, {
+        staffHomeBusinessUnitId: businessUnitId,
+        staffId,
+        costBusinessUnitId: target.costBusinessUnitId,
+        monthlySalary: target.monthlySalary,
+        payday: input.payday,
+        effectiveOn,
+        isActive: input.salaryActive !== false && target.monthlySalary != null,
+      });
+      if (saved.error) throw new SchoolError(saved.error, "DATABASE");
     }
 
     await audit({
@@ -380,6 +422,7 @@ export async function saveSchoolStaffSalaryAction(input: {
 
 export async function recordSchoolSalaryPaymentAction(input: {
   staffId: string;
+  costBusinessUnitId?: string;
   periodYear: number | string;
   periodMonth: number | string;
   amount: number | string;
@@ -410,8 +453,9 @@ export async function recordSchoolSalaryPaymentAction(input: {
     if (method !== "CASH" && reference.length < 2) throw new SchoolError("Enter a payment reference.", "VALIDATION");
     const requestId = str(input.requestId);
     if (!requestId) throw new SchoolError("Salary payment request is invalid.", "VALIDATION");
+    const costBusinessUnitId = str(input.costBusinessUnitId) || businessUnitId;
 
-    const { data, error } = await supabase.rpc("sch_record_salary_payment", {
+    const payloadArgs = {
       p_staff_id: staffId,
       p_period_year: year,
       p_period_month: month,
@@ -422,7 +466,25 @@ export async function recordSchoolSalaryPaymentAction(input: {
       p_notes: str(input.notes),
       p_request_id: requestId,
       p_actor_id: userId,
-    });
+      p_cost_business_unit_id: costBusinessUnitId,
+    };
+    let { data, error } = await supabase.rpc("sch_record_salary_payment", payloadArgs);
+    if (error && /could not find|schema cache|does not exist|PGRST202/i.test(error.message)) {
+      const retry = await supabase.rpc("sch_record_salary_payment", {
+        p_staff_id: staffId,
+        p_period_year: year,
+        p_period_month: month,
+        p_amount: amount,
+        p_payment_date: paymentDate,
+        p_method: method,
+        p_reference: reference,
+        p_notes: str(input.notes),
+        p_request_id: requestId,
+        p_actor_id: userId,
+      });
+      data = retry.data;
+      error = retry.error;
+    }
     if (error) throw new SchoolError(error.message || "Couldn't record this salary payment.", "DATABASE");
     const payload = (data ?? {}) as { id?: string; expense_id?: string; expense_number?: string; duplicate?: boolean };
     if (!payload.duplicate) {

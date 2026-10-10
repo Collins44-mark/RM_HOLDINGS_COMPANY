@@ -89,6 +89,10 @@ const ROUTE_PERMISSION_RULES: RoutePermissionRule[] = [
       "school.maintenance.view",
     ],
   },
+  {
+    prefix: "/supermarket/finance/salaries",
+    any: ["school.payroll.view", "school.payroll.manage", "school.payroll.pay"],
+  },
   { prefix: "/school/expenses/salaries", any: ["school.payroll.view", "school.payroll.manage", "school.payroll.pay"] },
   { prefix: "/school/expenses", any: ["school.expenses.view", "school.transport.view", "school.payroll.view"] },
   {

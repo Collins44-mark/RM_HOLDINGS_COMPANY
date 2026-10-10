@@ -784,7 +784,8 @@ function UserFormDialog({
             ))}
           </div>
         </div>
-        {!user ? <CreateAsStaffFields /> : null}
+        {!user ? <CreateAsStaffFields businessUnits={businessUnits} /> : null}
+        {user?.staff ? <OptionalSalaryFields businessUnits={businessUnits} /> : null}
         {perModule ? (
           <div className="space-y-3">
             {implementedSelected.map((code) => {
@@ -1192,7 +1193,63 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function CreateAsStaffFields() {
+function OptionalSalaryFields({
+  businessUnits,
+}: {
+  businessUnits: UsersUnitOption[];
+}) {
+  const [enabled, setEnabled] = useState(false);
+  return (
+    <div className="space-y-3 rounded-[14px] bg-[#f8fafc] p-3">
+      <label className="flex items-center gap-2 text-[13px] font-medium text-navy">
+        <input type="checkbox" name="configureSalary" value="1" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
+        Configure salary (optional)
+      </label>
+      {enabled ? (
+        <>
+          <p className="text-[12.5px] text-slate-500">This is a monthly commitment, not a payment. Leave off for owners and unpaid accounts.</p>
+          <label className="block">
+            <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Monthly salary (TZS)</span>
+            <input name="monthlySalary" className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy" />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Business unit</span>
+            <select name="salaryBusinessUnitCode" className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy">
+              {businessUnits.map((unit) => (
+                <option key={unit.code} value={unit.code}>
+                  {unit.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Payday (day of month)</span>
+            <select name="salaryPayday" defaultValue="28" className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy">
+              {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
+                <option key={day} value={day}>
+                  {day}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Effective from</span>
+            <input type="date" name="salaryEffectiveOn" className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy" />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Arrangement</span>
+            <select name="salaryActive" defaultValue="active" className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy">
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </label>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function CreateAsStaffFields({ businessUnits }: { businessUnits: UsersUnitOption[] }) {
   const [enabled, setEnabled] = useState(false);
   const [types, setTypes] = useState<StaffTypeRow[]>([]);
   const [positions, setPositions] = useState<StaffPositionRow[]>([]);
@@ -1264,6 +1321,7 @@ function CreateAsStaffFields() {
               className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
             />
           </label>
+          <OptionalSalaryFields businessUnits={businessUnits} />
         </>
       ) : null}
     </div>

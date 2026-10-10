@@ -315,49 +315,53 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
   let salaryOutstanding = 0;
   if (showSalaries) {
     const { year, month } = salaryPeriodFromRange(base.from, base.to);
-    const [staffRes, allStaffRes, payRes] = await Promise.all([
+    const [staffRes, allocRes, payRes] = await Promise.all([
       supabase
         .from("sch_staff")
-        .select("id, staff_number, first_name, middle_name, last_name, employment_status, job_title, monthly_salary", { count: "exact" })
+        .select("id, staff_number, first_name, middle_name, last_name, employment_status, job_title, monthly_salary")
         .eq("business_unit_id", businessUnitId)
         .eq("employment_status", "active")
-        .order("last_name")
-        .range(from, to),
+        .order("last_name"),
       supabase
-        .from("sch_staff")
-        .select("id, monthly_salary")
-        .eq("business_unit_id", businessUnitId)
-        .eq("employment_status", "active"),
+        .from("sch_staff_salary_allocations")
+        .select("staff_id, cost_business_unit_id, amount, is_active")
+        .eq("business_unit_id", businessUnitId),
       supabase
         .from("sch_staff_salary_payments")
-        .select("staff_id, amount, is_active")
+        .select("staff_id, cost_business_unit_id, amount, is_active")
         .eq("business_unit_id", businessUnitId)
         .eq("period_year", year)
         .eq("period_month", month)
         .eq("is_active", true),
     ]);
     if (staffRes.error && !isSchoolUnconfiguredRead(staffRes.error)) mapSchoolDbError(staffRes.error, "load");
-    const paidByStaff = new Map<string, number>();
+    const paidByKey = new Map<string, number>();
     for (const row of payRes.data ?? []) {
-      const id = str(row.staff_id);
-      paidByStaff.set(id, (paidByStaff.get(id) ?? 0) + num(row.amount));
+      const key = `${str(row.staff_id)}:${str(row.cost_business_unit_id) || businessUnitId}`;
+      paidByKey.set(key, (paidByKey.get(key) ?? 0) + num(row.amount));
     }
-    salaryTotal = staffRes.count ?? (staffRes.data ?? []).length;
-    for (const row of allStaffRes.data ?? []) {
-      const salary = parseMoney(row.monthly_salary);
-      const paid = paidByStaff.get(String(row.id)) ?? 0;
-      if (salary != null) salaryCommitment += salary;
+    const staffById = new Map((staffRes.data ?? []).map((row) => [String(row.id), row]));
+    const arrangements = (allocRes.data ?? []).filter((row) => row.is_active !== false && parseMoney(row.amount) != null);
+    for (const row of arrangements) {
+      const salary = parseMoney(row.amount);
+      if (salary == null) continue;
+      const paid = paidByKey.get(`${str(row.staff_id)}:${str(row.cost_business_unit_id) || businessUnitId}`) ?? 0;
+      salaryCommitment += salary;
       salaryPaid += paid;
       salaryOutstanding += remainingSalary(salary, paid) ?? 0;
     }
-    salaryRows = (staffRes.data ?? []).map((row) => {
-      const salary = parseMoney(row.monthly_salary);
-      const paid = paidByStaff.get(String(row.id)) ?? 0;
+    salaryTotal = arrangements.length;
+    salaryRows = arrangements.slice(from, to + 1).map((row) => {
+      const staff = staffById.get(String(row.staff_id));
+      const salary = parseMoney(row.amount);
+      const paid = paidByKey.get(`${str(row.staff_id)}:${str(row.cost_business_unit_id) || businessUnitId}`) ?? 0;
       const outstanding = remainingSalary(salary, paid);
       return {
-        employee: [str(row.first_name), str(row.middle_name), str(row.last_name)].filter(Boolean).join(" "),
-        staffNumber: str(row.staff_number),
-        jobTitle: str(row.job_title) || "—",
+        employee: staff
+          ? [str(staff.first_name), str(staff.middle_name), str(staff.last_name)].filter(Boolean).join(" ")
+          : "Staff",
+        staffNumber: staff ? str(staff.staff_number) : "—",
+        jobTitle: staff ? str(staff.job_title) || "—" : "—",
         commitment: salary == null ? "—" : formatTzs(salary),
         paid: formatTzs(paid),
         outstanding: outstanding == null ? "—" : formatTzs(outstanding),

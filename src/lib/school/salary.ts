@@ -13,6 +13,9 @@ export type SalaryAllocationRow = SalaryAllocationInput & {
   id: string;
   costBusinessUnitCode: string;
   costBusinessUnitName: string;
+  payday: number;
+  effectiveOn: string;
+  isActive: boolean;
 };
 
 export type SalaryPaymentRow = {
@@ -30,20 +33,29 @@ export type SalaryPaymentRow = {
   isActive: boolean;
 };
 
+export type SalaryPayStatus = "unpaid" | "partial" | "paid";
+
 export type SalaryStaffRow = {
   id: string;
+  arrangementId: string;
   staffNumber: string;
   name: string;
   jobTitle: string;
   typeName: string;
   status: "active" | "inactive";
+  salaryActive: boolean;
+  payday: number;
   businessUnitId: string;
   businessUnitCode: string;
   businessUnitName: string;
+  costBusinessUnitId: string;
+  costBusinessUnitCode: string;
+  costBusinessUnitName: string;
   monthlySalary: number | null;
   salaryEffectiveOn: string;
   paidInPeriod: number;
   outstandingInPeriod: number | null;
+  payStatus: SalaryPayStatus | null;
   allocations: SalaryAllocationRow[];
 };
 
@@ -63,6 +75,7 @@ export type SalarySummary = {
 
 export type SalaryWorkspace = {
   employees: SalaryStaffRow[];
+  payees: SalaryStaffRow[];
   payments: SalaryPaymentRow[];
   history: Array<{
     id: string;
@@ -81,6 +94,7 @@ export type SalaryWorkspace = {
   periodYear: number;
   periodMonth: number;
   unitCode: string;
+  lockedUnitCode: string;
   q: string;
   status: string;
   capabilities: SalaryCaps;
@@ -106,6 +120,20 @@ export function allocationsReconcile(salary: number, allocations: Array<{ amount
 export function remainingSalary(monthlySalary: number | null, paidInPeriod: number) {
   if (monthlySalary == null) return null;
   return Math.max(0, Math.round((monthlySalary - paidInPeriod) * 100) / 100);
+}
+
+export function parsePayday(value: unknown): number | null {
+  if (value === "" || value == null) return null;
+  const n = typeof value === "number" ? value : Number(String(value).trim());
+  if (!Number.isInteger(n) || n < 1 || n > 31) return null;
+  return n;
+}
+
+export function salaryPayStatus(monthlySalary: number | null, paidInPeriod: number): SalaryPayStatus | null {
+  if (monthlySalary == null) return null;
+  if (paidInPeriod <= 0) return "unpaid";
+  if (paidInPeriod + 0.005 >= monthlySalary) return "paid";
+  return "partial";
 }
 
 export function salaryPeriodFromRange(from: string, to = from) {

@@ -24,6 +24,7 @@ export function SchoolStaffFormPage({
   types: initialTypes,
   roles: initialRoles,
   positions: initialPositions = [],
+  units: initialUnits = [],
   canManagePayroll = false,
   staff,
   error,
@@ -33,6 +34,7 @@ export function SchoolStaffFormPage({
   types: StaffTypeRow[];
   roles: SchoolRoleOption[];
   positions?: StaffPositionRow[];
+  units?: Array<{ id: string; code: string; name: string }>;
   canManagePayroll?: boolean;
   staff: StaffProfile | null;
   error: string | null;
@@ -43,6 +45,7 @@ export function SchoolStaffFormPage({
   const [types, setTypes] = useState(initialTypes);
   const [roles, setRoles] = useState(initialRoles);
   const [positions, setPositions] = useState(initialPositions);
+  const [units, setUnits] = useState(initialUnits);
   const [payroll, setPayroll] = useState(canManagePayroll);
   const [form, setForm] = useState<StaffFormInput>({
     id: staff?.id,
@@ -62,6 +65,9 @@ export function SchoolStaffFormPage({
     employmentDate: staff?.employmentDate ?? "",
     monthlySalary: staff?.monthlySalary ?? "",
     salaryEffectiveOn: staff?.salaryEffectiveOn ?? "",
+    payday: staff?.payday ?? 28,
+    salaryActive: staff?.salaryActive ?? true,
+    salaryBusinessUnitId: staff?.salaryBusinessUnitId ?? "",
   });
   const [saveError, setSaveError] = useState<string | null>(staff ? null : error);
   const [busy, setBusy] = useState(false);
@@ -80,6 +86,7 @@ export function SchoolStaffFormPage({
       setTypes(result.types);
       setRoles(result.roles);
       if (result.positions) setPositions(result.positions);
+      if (result.units) setUnits(result.units);
       if (result.capabilities) setPayroll(result.capabilities.canManagePayroll);
     });
     return () => {
@@ -232,29 +239,72 @@ export function SchoolStaffFormPage({
           <SchoolField label="Employment date">
             <input type="date" className={inputClass} value={form.employmentDate} onChange={(event) => patch({ employmentDate: event.target.value })} />
           </SchoolField>
-          {payroll ? (
-            <>
-              <SchoolField label="Monthly salary (TZS)">
-                <input
-                  className={inputClass}
-                  value={form.monthlySalary ?? ""}
-                  onChange={(event) => patch({ monthlySalary: event.target.value })}
-                  placeholder="Optional"
-                />
-              </SchoolField>
-              <SchoolField label="Salary effective date">
-                <input
-                  type="date"
-                  className={inputClass}
-                  value={form.salaryEffectiveOn ?? ""}
-                  onChange={(event) => patch({ salaryEffectiveOn: event.target.value })}
-                />
-              </SchoolField>
-            </>
-          ) : null}
         </div>
-        {payroll ? <p className="text-[12.5px] text-slate-500">Setting a salary does not record a payment.</p> : null}
       </section>
+
+      {payroll ? (
+        <section className={`${glassPanel} space-y-4`}>
+          <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Salary (optional)</h2>
+          <p className="text-[12.5px] text-slate-500">
+            A monthly salary is a commitment, not a payment. Leave this blank for owners and users who are not paid through payroll.
+          </p>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <SchoolField label="Monthly salary (TZS)">
+              <input
+                className={inputClass}
+                value={form.monthlySalary ?? ""}
+                onChange={(event) => patch({ monthlySalary: event.target.value })}
+                placeholder="Optional"
+              />
+            </SchoolField>
+            <SchoolField label="Business unit">
+              <select
+                className={inputClass}
+                value={form.salaryBusinessUnitId ?? ""}
+                onChange={(event) => patch({ salaryBusinessUnitId: event.target.value })}
+              >
+                <option value="">School (default)</option>
+                {units.map((unit) => (
+                  <option key={unit.id} value={unit.id}>
+                    {unit.name}
+                  </option>
+                ))}
+              </select>
+            </SchoolField>
+            <SchoolField label="Payday (day of month)">
+              <select
+                className={inputClass}
+                value={String(form.payday ?? 28)}
+                onChange={(event) => patch({ payday: Number(event.target.value) })}
+              >
+                {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
+                  <option key={day} value={day}>
+                    {day}
+                  </option>
+                ))}
+              </select>
+            </SchoolField>
+            <SchoolField label="Effective from">
+              <input
+                type="date"
+                className={inputClass}
+                value={form.salaryEffectiveOn ?? ""}
+                onChange={(event) => patch({ salaryEffectiveOn: event.target.value })}
+              />
+            </SchoolField>
+            <SchoolField label="Salary arrangement">
+              <select
+                className={inputClass}
+                value={form.salaryActive === false ? "inactive" : "active"}
+                onChange={(event) => patch({ salaryActive: event.target.value === "active" })}
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </SchoolField>
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

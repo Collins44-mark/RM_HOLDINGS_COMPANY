@@ -158,6 +158,7 @@ export const SUPERMARKET_NAV: NavItem[] = [
     children: [
       { href: "/supermarket/finance", label: "Overview", icon: "finance", exact: true },
       { href: "/supermarket/finance/expenses", label: "Expenses", icon: "wallet" },
+      { href: "/supermarket/finance/salaries", label: "Salaries", icon: "wallet" },
       { href: "/supermarket/finance/payments", label: "Payments", icon: "money" },
       { href: "/supermarket/finance/petty-cash", label: "Petty Cash", icon: "wallet" },
       { href: "/supermarket/finance/tax-vat", label: "Tax & VAT", icon: "audit" },

@@ -18,7 +18,8 @@ import {
   SchoolError,
 } from "@/lib/school/access";
 import { schoolPageMeta, schoolPageRange } from "@/lib/school/pagination";
-import { parseMoney } from "@/lib/school/salary";
+import { parseMoney, parsePayday } from "@/lib/school/salary";
+import { upsertSalaryArrangement } from "@/lib/school/salary-arrangement";
 import {
   adminOrNull,
   linkedProfileIds,
@@ -105,6 +106,9 @@ export type StaffProfile = {
   employmentDate: string;
   monthlySalary: number | null;
   salaryEffectiveOn: string;
+  payday: number;
+  salaryActive: boolean;
+  salaryBusinessUnitId: string;
   hasSystemAccess: boolean;
   linkedAccountName: string;
   linkedAccountEmail: string;
@@ -129,6 +133,9 @@ export type StaffFormInput = {
   employmentDate: string;
   monthlySalary?: number | string | null;
   salaryEffectiveOn?: string;
+  payday?: number | string | null;
+  salaryActive?: boolean;
+  salaryBusinessUnitId?: string;
 };
 
 export type StaffAssignmentInput = {
@@ -453,6 +460,9 @@ export async function getStaffFormOptionsAction() {
         isActive: Boolean(row.is_active),
       })),
       roles,
+      units: (
+        await supabase.from("business_units").select("id, code, name").order("name")
+      ).data?.map((row) => ({ id: String(row.id), code: String(row.code), name: String(row.name) })) ?? [],
       capabilities: staffCaps(user),
     };
   } catch (error) {
@@ -462,6 +472,7 @@ export async function getStaffFormOptionsAction() {
       types: [] as StaffTypeRow[],
       positions: [] as StaffPositionRow[],
       roles: [] as SchoolRoleOption[],
+      units: [] as Array<{ id: string; code: string; name: string }>,
     };
   }
 }
@@ -623,6 +634,26 @@ export async function getSchoolStaffAction(id: string) {
       .eq("business_unit_id", businessUnitId)
       .eq("staff_id", staffId)
       .order("created_at", { ascending: false });
+    const arrangementRes = showSalary
+      ? await supabase
+          .from("sch_staff_salary_allocations")
+          .select("id, cost_business_unit_id, amount, payday, effective_on, is_active")
+          .eq("staff_id", staffId)
+          .eq("cost_business_unit_id", businessUnitId)
+          .maybeSingle()
+      : { data: null, error: null };
+    const arrangement =
+      arrangementRes.data ??
+      (showSalary
+        ? (
+            await supabase
+              .from("sch_staff_salary_allocations")
+              .select("id, cost_business_unit_id, amount")
+              .eq("staff_id", staffId)
+              .eq("cost_business_unit_id", businessUnitId)
+              .maybeSingle()
+          ).data
+        : null);
     const profile: StaffProfile = {
       id: String(row.id),
       staffNumber: str(row.staff_number),
@@ -646,8 +677,19 @@ export async function getSchoolStaffAction(id: string) {
       allowsAcademicAssignments: allowsAcademicDuty(readKind(type?.kind), position?.allows_academic_assignments),
       employmentStatus: asStatus(row.employment_status),
       employmentDate: String(row.employment_date ?? ""),
-      monthlySalary: showSalary ? parseMoney(row.monthly_salary) : null,
-      salaryEffectiveOn: showSalary ? String(row.salary_effective_on ?? "") : "",
+      monthlySalary: showSalary ? parseMoney(arrangement?.amount ?? row.monthly_salary) : null,
+      salaryEffectiveOn: showSalary
+        ? String(arrangement && "effective_on" in arrangement ? arrangement.effective_on : row.salary_effective_on ?? "")
+        : "",
+      payday: showSalary ? parsePayday(arrangement && "payday" in arrangement ? arrangement.payday : 28) ?? 28 : 28,
+      salaryActive: showSalary
+        ? arrangement
+          ? !("is_active" in arrangement) || arrangement.is_active !== false
+          : parseMoney(row.monthly_salary) != null
+        : false,
+      salaryBusinessUnitId: showSalary
+        ? str(arrangement && "cost_business_unit_id" in arrangement ? arrangement.cost_business_unit_id : businessUnitId)
+        : "",
       hasSystemAccess: Boolean(str(row.profile_id) || str(row.user_id)),
       linkedAccountName: "",
       linkedAccountEmail: "",
@@ -855,6 +897,9 @@ export async function saveSchoolStaffAction(input: StaffFormInput) {
     const salary = canManagePayroll(user) ? parseMoney(input.monthlySalary) : undefined;
     if (salary != null && salary < 0) throw new SchoolError("Monthly salary cannot be negative.", "VALIDATION");
     const salaryEffectiveOn = canManagePayroll(user) ? dateValue(input.salaryEffectiveOn, "Salary effective date") : undefined;
+    const payday = canManagePayroll(user) ? parsePayday(input.payday) ?? 28 : undefined;
+    const salaryActive = canManagePayroll(user) ? input.salaryActive !== false : undefined;
+    const salaryBusinessUnitId = canManagePayroll(user) ? str(input.salaryBusinessUnitId) || businessUnitId : undefined;
     const payload = {
       business_unit_id: businessUnitId,
       first_name: firstName.slice(0, 80),
@@ -913,14 +958,17 @@ export async function saveSchoolStaffAction(input: StaffFormInput) {
       };
     }
     async function syncDefaultAllocation(staffId: string) {
-      if (!canManagePayroll(user) || salary == null) return;
-      await supabase.from("sch_staff_salary_allocations").delete().eq("staff_id", staffId).eq("business_unit_id", businessUnitId);
-      await supabase.from("sch_staff_salary_allocations").insert({
-        business_unit_id: businessUnitId,
-        staff_id: staffId,
-        cost_business_unit_id: businessUnitId,
-        amount: salary,
+      if (!canManagePayroll(user) || salaryBusinessUnitId == null) return;
+      const saved = await upsertSalaryArrangement(supabase, {
+        staffHomeBusinessUnitId: businessUnitId,
+        staffId,
+        costBusinessUnitId: salaryBusinessUnitId,
+        monthlySalary: salary ?? null,
+        payday,
+        effectiveOn: salaryEffectiveOn,
+        isActive: salary == null ? false : salaryActive !== false,
       });
+      if (saved.error) throw new SchoolError(saved.error, "DATABASE");
     }
     if (existingId) {
       let current = await supabase
@@ -957,8 +1005,7 @@ export async function saveSchoolStaffAction(input: StaffFormInput) {
           throw new SchoolError(assigned.error, "DATABASE");
         }
       }
-      const previousSalary = parseMoney(currentRow.monthly_salary);
-      if (canManagePayroll(user) && salary != null && salary !== previousSalary) {
+      if (canManagePayroll(user) && salary !== undefined) {
         await syncDefaultAllocation(existingId);
       }
       await writeAuditEvents([

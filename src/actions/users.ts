@@ -42,6 +42,31 @@ import {
   type StaffLinkStaffOption,
 } from "@/lib/school/staff-profile-link";
 import { isSchoolTeacherRole, schoolRoleCodeForAssignment } from "@/lib/school/teacher-staff";
+import { upsertSalaryArrangement } from "@/lib/school/salary-arrangement";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+async function applyOptionalUserSalary(
+  admin: SupabaseClient,
+  formData: FormData,
+  staffId: string | null | undefined,
+): Promise<string | undefined> {
+  if (String(formData.get("configureSalary") ?? "") !== "1") return;
+  if (!staffId) return "Salary was skipped because this account is not linked to a staff record.";
+  const home = await schoolBusinessUnitId(admin);
+  if (!home) return "School business unit was not found for salary.";
+  const code = String(formData.get("salaryBusinessUnitCode") ?? "school").trim() || "school";
+  const unit = await admin.from("business_units").select("id").eq("code", code).maybeSingle();
+  const saved = await upsertSalaryArrangement(admin, {
+    staffHomeBusinessUnitId: home,
+    staffId,
+    costBusinessUnitId: unit.data?.id ? String(unit.data.id) : home,
+    monthlySalary: String(formData.get("monthlySalary") ?? ""),
+    payday: String(formData.get("salaryPayday") ?? "28"),
+    effectiveOn: String(formData.get("salaryEffectiveOn") ?? ""),
+    isActive: String(formData.get("salaryActive") ?? "active") !== "inactive",
+  });
+  return saved.error;
+}
 
 export type CredentialsPayload = {
   name: string;
@@ -434,6 +459,8 @@ export async function createUserAction(
       });
     }
   }
+  const salaryWarning = await applyOptionalUserSalary(admin, formData, createdUser.staff?.id);
+  if (salaryWarning) warning = warning ? `${warning} ${salaryWarning}` : `User created. ${salaryWarning}`;
 
   revalidateUsersWorkspace();
   await writeAuditEvent({
@@ -641,6 +668,7 @@ export async function updateUserAction(
     roleCode: parsed.data.roleCode,
     moduleRoles,
   });
+  let staffId = target.staff?.id;
   if (isSchoolTeacherRole(schoolAccessRole)) {
     const teacherStaff = await ensureTeacherStaffForProfile(readyForRoles.admin, {
       profileId: userId,
@@ -649,6 +677,7 @@ export async function updateUserAction(
       email: target.email ?? "",
     });
     if ("staff" in teacherStaff && teacherStaff.staff) {
+      staffId = teacherStaff.staff.id;
       await writeAuditEvent({
         action: "created" in teacherStaff && teacherStaff.created === false ? "school.staff_linked_user" : "school.staff_created",
         module: "school",
@@ -660,6 +689,8 @@ export async function updateUserAction(
       });
     }
   }
+  const salaryWarning = await applyOptionalUserSalary(readyForRoles.admin, formData, staffId);
+  if (salaryWarning) return { error: salaryWarning };
 
   const previousModules = [...target.modules].sort().join(",");
   const nextModules = [...parsed.data.modules].sort().join(",");
