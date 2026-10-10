@@ -15,11 +15,12 @@ import {
   glassPanel,
   inputClass,
   primaryButton,
+  secondaryButton,
   StatusPill,
   tableHead,
   tableScrollClass,
 } from "@/components/supermarket/purchasing-ui";
-import { SchoolConfirmDialog, SchoolIconWell } from "@/components/school/school-ui";
+import { SchoolConfirmDialog, SchoolField, SchoolGlassModal, SchoolIconWell, SchoolWorkflowButton } from "@/components/school/school-ui";
 import { SchoolPagination, replaceSchoolPageParam } from "@/components/school/SchoolPagination";
 import { parseSchoolPage, parseSchoolPageSize, type SchoolPageMeta } from "@/lib/school/pagination";
 import { cn } from "@/lib/cn";
@@ -52,6 +53,7 @@ export function SchoolAdmissionsPage({
   admissions: initialRows,
   page: initialPage,
   canManage,
+  canCancel = false,
   query,
   status,
   error,
@@ -60,6 +62,7 @@ export function SchoolAdmissionsPage({
   admissions: AdmissionListRow[];
   page: SchoolPageMeta;
   canManage: boolean;
+  canCancel?: boolean;
   query: string;
   status: string;
   error: string | null;
@@ -77,6 +80,7 @@ export function SchoolAdmissionsPage({
   const [paging, setPaging] = useState(false);
   const searchTimer = useRef<number | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
   const [completeId, setCompleteId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
@@ -200,10 +204,10 @@ export function SchoolAdmissionsPage({
   }, []);
 
   function runCancel() {
-    if (!cancelId || lock.current) return;
+    if (!cancelId || lock.current || cancelReason.trim().length < 3) return;
     lock.current = true;
     setBusy(true);
-    void cancelSchoolAdmissionAction(cancelId).then((result) => {
+    void cancelSchoolAdmissionAction(cancelId, cancelReason).then((result) => {
       lock.current = false;
       setBusy(false);
       if (!result.ok) {
@@ -211,6 +215,7 @@ export function SchoolAdmissionsPage({
         return;
       }
       setCancelId(null);
+      setCancelReason("");
       load(confirmed.current.page, confirmed.current.q, confirmed.current.filter, confirmed.current.pageSize);
     });
   }
@@ -340,8 +345,10 @@ export function SchoolAdmissionsPage({
                             ? [
                                 { label: "Edit", href: `/school/admissions/${row.id}/edit` },
                                 { label: "Complete", onSelect: () => setCompleteId(row.id) },
-                                { label: "Cancel", onSelect: () => setCancelId(row.id) },
                               ]
+                            : []),
+                          ...(canCancel && row.status === "draft"
+                            ? [{ label: "Cancel Admission", onSelect: () => setCancelId(row.id) }]
                             : []),
                         ]}
                       />
@@ -362,15 +369,44 @@ export function SchoolAdmissionsPage({
         </section>
       )}
 
-      <SchoolConfirmDialog
-        open={Boolean(cancelId)}
-        title="Cancel admission"
-        message="This draft will be cancelled. It will not create a student."
-        confirmLabel="Cancel admission"
-        busy={busy}
-        onCancel={() => setCancelId(null)}
-        onConfirm={runCancel}
-      />
+      {cancelId ? (
+        <SchoolGlassModal
+          title="Cancel admission"
+          subtitle="This draft will be cancelled and kept under Cancelled. It will not create a student."
+          onClose={() => {
+            if (busy) return;
+            setCancelId(null);
+            setCancelReason("");
+          }}
+          footer={
+            <>
+              <button
+                type="button"
+                className={secondaryButton}
+                disabled={busy}
+                onClick={() => {
+                  setCancelId(null);
+                  setCancelReason("");
+                }}
+              >
+                Keep draft
+              </button>
+              <SchoolWorkflowButton
+                className={primaryButton}
+                busy={busy}
+                idleLabel="Cancel admission"
+                busyLabel="Saving"
+                disabled={cancelReason.trim().length < 3}
+                onClick={runCancel}
+              />
+            </>
+          }
+        >
+          <SchoolField label="Cancellation reason">
+            <textarea className={inputClass} rows={3} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} />
+          </SchoolField>
+        </SchoolGlassModal>
+      ) : null}
       <SchoolConfirmDialog
         open={Boolean(completeId)}
         title="Complete admission"

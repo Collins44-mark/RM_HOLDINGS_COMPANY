@@ -9,6 +9,7 @@ import {
   getSchoolPlacementStreamsAction,
 } from "@/actions/school/placement";
 import { listSchoolStudentsAction, type StudentListRow } from "@/actions/school/students";
+import { SchoolChangeClassDialog, SchoolWithdrawDialog, runWithdrawStudent } from "@/components/school/SchoolLifecycleDialogs";
 import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
 import { glassPanel, StatusPill, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { SchoolIconWell } from "@/components/school/school-ui";
@@ -28,6 +29,8 @@ export function SchoolStudentsPage({
   classId: initialClassId,
   streamId: initialStreamId,
   pageSize: initialPageSize,
+  canWithdraw = false,
+  canTransfer = false,
   error,
   pending = false,
 }: {
@@ -39,6 +42,8 @@ export function SchoolStudentsPage({
   classId: string;
   streamId: string;
   pageSize: number;
+  canWithdraw?: boolean;
+  canTransfer?: boolean;
   error: string | null;
   pending?: boolean;
 }) {
@@ -55,6 +60,10 @@ export function SchoolStudentsPage({
   const [streams, setStreams] = useState<PlacementChoice[]>([]);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [paging, setPaging] = useState(false);
+  const [status, setStatus] = useState("active");
+  const [withdrawId, setWithdrawId] = useState<string | null>(null);
+  const [transferRow, setTransferRow] = useState<StudentListRow | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const flash = consumeStudentFlash();
@@ -88,13 +97,14 @@ export function SchoolStudentsPage({
     };
   }, [classId]);
 
-  function load(next: { page?: number; q?: string; levelId?: string; classId?: string; streamId?: string; pageSize?: number }) {
+  function load(next: { page?: number; q?: string; levelId?: string; classId?: string; streamId?: string; pageSize?: number; status?: string }) {
     const nextPage = next.page ?? 1;
     const nextQ = next.q ?? q;
     const nextLevel = next.levelId ?? levelId;
     const nextClass = next.classId ?? classId;
     const nextStream = next.streamId ?? streamId;
     const nextSize = next.pageSize ?? pageSize;
+    const nextStatus = next.status ?? status;
     setPaging(true);
     void listSchoolStudentsAction({
       page: nextPage,
@@ -103,6 +113,7 @@ export function SchoolStudentsPage({
       levelId: nextLevel,
       classId: nextClass,
       streamId: nextStream,
+      status: nextStatus,
     }).then((result) => {
       setPaging(false);
       if (!result.ok) {
@@ -113,6 +124,7 @@ export function SchoolStudentsPage({
       setRows(result.students);
       setPage(result.page);
       setPageSize(nextSize);
+      setStatus(nextStatus);
       replaceSchoolPageParam(result.page.page, nextSize);
     });
   }
@@ -155,6 +167,25 @@ export function SchoolStudentsPage({
         onSearch={setQ}
         onSearchSubmit={() => load({ page: 1, q })}
       />
+      <div className="flex flex-wrap gap-2">
+        {[
+          { id: "active", label: "Active" },
+          { id: "withdrawn", label: "Withdrawn" },
+          { id: "all", label: "All" },
+        ].map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={cn(
+              "rounded-full border px-3 py-1 text-[12.5px] font-medium",
+              status === item.id ? "border-navy/20 bg-navy text-white" : "border-navy/10 bg-white/80 text-navy",
+            )}
+            onClick={() => load({ page: 1, status: item.id })}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
       {rows.length === 0 && !error && !pending ? (
         <section className={`${glassPanel} flex flex-col items-start gap-3 py-10`}>
           <SchoolIconWell icon={Users} />
@@ -193,12 +224,20 @@ export function SchoolStudentsPage({
                     <td className="px-4 py-3">{row.streamName || "—"}</td>
                     <td className="px-4 py-3">{row.guardianName || "—"}</td>
                     <td className="px-4 py-3">
-                      <StatusPill value={row.status === "active" ? "Active" : "Inactive"} />
+                      <StatusPill value={row.status === "active" ? "Active" : row.status === "withdrawn" ? "Withdrawn" : "Inactive"} />
                     </td>
                     <td className="px-4 py-3">
                       <CompactActionsMenu
                         ariaLabel={`${row.name} actions`}
-                        items={[{ label: "View", onSelect: () => router.push(`/school/students/${row.id}`) }]}
+                        items={[
+                          { label: "View", onSelect: () => router.push(`/school/students/${row.id}`) },
+                          ...(canTransfer && row.status === "active"
+                            ? [{ label: "Change Class", onSelect: () => setTransferRow(row) }]
+                            : []),
+                          ...(canWithdraw && row.status === "active"
+                            ? [{ label: "Withdraw Student", onSelect: () => setWithdrawId(row.id) }]
+                            : []),
+                        ]}
                       />
                     </td>
                   </tr>
@@ -215,6 +254,47 @@ export function SchoolStudentsPage({
           />
         </section>
       )}
+      {withdrawId ? (
+        <SchoolWithdrawDialog
+          studentId={withdrawId}
+          busy={busy}
+          error={saveError}
+          onClose={() => setWithdrawId(null)}
+          onConfirm={(input) => {
+            runWithdrawStudent(
+              { ...input, studentId: withdrawId },
+              {
+                onBusy: setBusy,
+                onError: setSaveError,
+                onDone: () => {
+                  setWithdrawId(null);
+                  load({ page: page.page });
+                },
+              },
+            );
+          }}
+        />
+      ) : null}
+      {transferRow ? (
+        <SchoolChangeClassDialog
+          studentId={transferRow.id}
+          current={{
+            yearName: "",
+            levelName: transferRow.levelName,
+            className: transferRow.className,
+            streamName: transferRow.streamName,
+            yearId: transferRow.academicYearId,
+            levelId: transferRow.levelId,
+            classId: transferRow.classId,
+            streamId: transferRow.streamId,
+          }}
+          onClose={() => setTransferRow(null)}
+          onSaved={() => {
+            setTransferRow(null);
+            load({ page: page.page });
+          }}
+        />
+      ) : null}
     </div>
   );
 }

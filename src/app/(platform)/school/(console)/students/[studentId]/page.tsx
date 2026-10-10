@@ -14,6 +14,8 @@ export default async function SchoolStudentProfileRoute({
     <SchoolStudentProfilePage
       student={result.ok ? result.student : null}
       canManage={result.ok ? result.capabilities.canManage : false}
+      canWithdraw={result.ok ? result.capabilities.canWithdraw : false}
+      canTransfer={result.ok ? result.capabilities.canTransfer : false}
       canEditGuardians={result.ok ? result.capabilities.canEditGuardians : false}
       error={result.ok ? null : result.error}
     />

@@ -619,7 +619,7 @@ async function loadStudents(ctx: SchoolContext, input: SchoolReportLoadInput, ba
     .order("last_name")
     .order("first_name");
   if (allowedIds) query = query.in("id", allowedIds);
-  if (status === "active" || status === "inactive") query = query.eq("status", status);
+  if (status === "active" || status === "inactive" || status === "withdrawn") query = query.eq("status", status);
   if (q) query = query.or(`student_number.ilike.%${q}%,admission_number.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%`);
   const list = await query.range(from, to);
   if (list.error && !isSchoolUnconfiguredRead(list.error)) mapSchoolDbError(list.error, "load");

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { assignSchoolStudentStreamAction, type StudentGuardianRow, type StudentProfile } from "@/actions/school/students";
+import { SchoolChangeClassDialog, SchoolWithdrawDialog, runWithdrawStudent } from "@/components/school/SchoolLifecycleDialogs";
 import { glassPanel, inputClass, primaryButton, secondaryButton, StatusPill } from "@/components/supermarket/purchasing-ui";
 import { formatCompactStudentNumber } from "@/lib/school/student-number";
 import { SchoolGuardianDrawer } from "@/components/school/SchoolGuardianDrawer";
@@ -22,12 +23,16 @@ function Fact({ label, value }: { label: string; value: string }) {
 export function SchoolStudentProfilePage({
   student,
   canManage = false,
+  canWithdraw = false,
+  canTransfer = false,
   canEditGuardians = false,
   error,
   pending = false,
 }: {
   student: StudentProfile | null;
   canManage?: boolean;
+  canWithdraw?: boolean;
+  canTransfer?: boolean;
   canEditGuardians?: boolean;
   error: string | null;
   pending?: boolean;
@@ -71,8 +76,9 @@ export function SchoolStudentProfilePage({
             {student.admissionNumber ? ` · ${student.admissionNumber}` : ""}
           </p>
         </div>
-        <StatusPill value={student.status === "active" ? "Active" : "Inactive"} />
+        <StatusPill value={student.status === "active" ? "Active" : student.status === "withdrawn" ? "Withdrawn" : "Inactive"} />
       </header>
+      <StudentLifecycleActions student={student} canWithdraw={canWithdraw} canTransfer={canTransfer} />
       <EnrollmentFacts student={student} canManage={canManage} />
 
       <section className={`${glassPanel} grid grid-cols-1 gap-4 md:grid-cols-2`}>
@@ -89,7 +95,99 @@ export function SchoolStudentProfilePage({
       <SchoolStudentTransportPanel studentId={student.id} enrollmentId={student.enrollmentId} initial={student.transport} />
 
       <StudentGuardians studentId={student.id} guardians={student.guardians} canEdit={canEditGuardians} />
+      {student.placementHistory.length ? (
+        <section className={`${glassPanel} space-y-3`}>
+          <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Placement history</h2>
+          <ul className="space-y-2 text-[13.5px] text-navy">
+            {student.placementHistory.map((row) => (
+              <li key={row.id}>
+                {row.startedOn} · {row.academicYearName || "Year"} · {row.levelName} · {row.className}
+                {row.streamName ? ` · ${row.streamName}` : ""} · {row.status}
+                {row.endedOn ? ` · ended ${row.endedOn}` : ""}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
+  );
+}
+
+function StudentLifecycleActions({
+  student,
+  canWithdraw,
+  canTransfer,
+}: {
+  student: StudentProfile;
+  canWithdraw: boolean;
+  canTransfer: boolean;
+}) {
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const active = student.status === "active" && student.enrollmentStatus === "active";
+  if (!active && student.status !== "withdrawn") {
+    if (!canWithdraw && !canTransfer) return null;
+  }
+  return (
+    <section className={`${glassPanel} space-y-3`}>
+      {student.status === "withdrawn" ? (
+        <p className="text-[13.5px] text-slate-500">
+          Withdrawn{student.withdrawnOn ? ` on ${student.withdrawnOn}` : ""}.
+          {student.withdrawnReason ? ` ${student.withdrawnReason}` : ""} Historical fees, exams and guardians remain on file.
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {canTransfer && active ? (
+            <button type="button" className={secondaryButton} onClick={() => setTransferOpen(true)}>
+              Change Class
+            </button>
+          ) : null}
+          {canWithdraw && active ? (
+            <button type="button" className={secondaryButton} onClick={() => setWithdrawOpen(true)}>
+              Withdraw Student
+            </button>
+          ) : null}
+        </div>
+      )}
+      {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
+      {withdrawOpen ? (
+        <SchoolWithdrawDialog
+          studentId={student.id}
+          busy={busy}
+          error={error}
+          onClose={() => setWithdrawOpen(false)}
+          onConfirm={(input) =>
+            runWithdrawStudent(
+              { ...input, studentId: student.id },
+              {
+                onBusy: setBusy,
+                onError: setError,
+                onDone: () => window.location.reload(),
+              },
+            )
+          }
+        />
+      ) : null}
+      {transferOpen ? (
+        <SchoolChangeClassDialog
+          studentId={student.id}
+          current={{
+            yearName: student.academicYearName,
+            levelName: student.levelName,
+            className: student.className,
+            streamName: student.streamName,
+            yearId: student.academicYearId,
+            levelId: student.levelId,
+            classId: student.classId,
+            streamId: student.streamId,
+          }}
+          onClose={() => setTransferOpen(false)}
+          onSaved={() => window.location.reload()}
+        />
+      ) : null}
+    </section>
   );
 }
 
@@ -198,7 +296,7 @@ function EnrollmentFacts({ student, canManage }: { student: StudentProfile; canM
         <Fact label="Stream" value={streamName} />
         <Fact label="Enrollment status" value={student.enrollmentStatus} />
       </div>
-      {canManage && student.enrollmentId ? (
+      {canManage && student.status === "active" && student.enrollmentStatus === "active" && student.enrollmentId ? (
         <div className="flex flex-wrap items-end gap-2">
           <label className="min-w-[12rem] flex-1">
             <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Assign stream</span>

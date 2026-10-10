@@ -56,6 +56,7 @@ export function buildOwnerNav(
 export const SCHOOL_NAV: NavItem[] = [
   { href: "/school", label: "Overview", icon: "dashboard", exact: true },
   { href: "/school/students", label: "Students", icon: "user" },
+  { href: "/school/promotions", label: "Promotions", icon: "school" },
   { href: "/school/admissions", label: "Admissions", icon: "user-plus" },
   { href: "/school/parents", label: "Parents / Guardians", icon: "users-round" },
   { href: "/school/classes", label: "Classes", icon: "book" },

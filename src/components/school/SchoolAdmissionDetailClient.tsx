@@ -11,6 +11,7 @@ export function SchoolAdmissionDetailClient({ admissionId }: { admissionId: stri
   const heading = peekAdmissionView(admissionId);
   const [admission, setAdmission] = useState<AdmissionDetail | null>(cached?.admission ?? null);
   const [canManage, setCanManage] = useState(cached?.canManage ?? false);
+  const [canCancel, setCanCancel] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,6 +35,7 @@ export function SchoolAdmissionDetailClient({ admissionId }: { admissionId: stri
       writeAdmissionDetail(result.admission, result.capabilities.canManage);
       setAdmission(result.admission);
       setCanManage(result.capabilities.canManage);
+      setCanCancel(result.capabilities.canCancel);
     })();
     return () => {
       active = false;
@@ -44,6 +46,7 @@ export function SchoolAdmissionDetailClient({ admissionId }: { admissionId: stri
     <SchoolAdmissionDetailPage
       admission={admission}
       canManage={canManage}
+      canCancel={canCancel}
       error={error}
       pending={!admission && !error}
       heading={

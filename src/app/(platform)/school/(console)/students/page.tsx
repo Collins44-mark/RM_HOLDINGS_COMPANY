@@ -30,6 +30,8 @@ export default async function SchoolStudentsRoute({
       classId={params.classId ?? ""}
       streamId={params.streamId ?? ""}
       pageSize={pageSize}
+      canWithdraw={result.ok ? result.capabilities.canWithdraw : false}
+      canTransfer={result.ok ? result.capabilities.canTransfer : false}
       error={result.ok ? null : result.error}
     />
   );

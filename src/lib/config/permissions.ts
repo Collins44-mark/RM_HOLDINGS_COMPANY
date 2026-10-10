@@ -71,8 +71,8 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       name: titleize(code),
     })),
     ...expand("school", [
-      { resource: "students", actions: ["view", "manage"] },
-      { resource: "admissions", actions: ["view", "manage"] },
+      { resource: "students", actions: ["view", "manage", "withdraw", "transfer"] },
+      { resource: "admissions", actions: ["view", "manage", "cancel"] },
       { resource: "parents", actions: ["view", "manage"] },
       { resource: "classes", actions: ["view", "manage"] },
       { resource: "staff", actions: ["view", "manage"] },
@@ -90,6 +90,7 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "maintenance", actions: ["view", "create", "edit"] },
       { resource: "expenses", actions: ["view", "create", "edit"] },
       { resource: "store", actions: ["view", "manage", "sell", "issue"] },
+      { resource: "promotions", actions: ["view", "manage"] },
       { resource: "reports", actions: ["view"] },
       { resource: "settings", actions: ["view", "manage"] },
     ]).map((code) => ({ module: "school", code, name: titleize(code) })),
@@ -176,8 +177,13 @@ export function isOperablePermission(code: string) {
     code === "school.classes.manage" ||
     code === "school.admissions.view" ||
     code === "school.admissions.manage" ||
+    code === "school.admissions.cancel" ||
     code === "school.students.view" ||
     code === "school.students.manage" ||
+    code === "school.students.withdraw" ||
+    code === "school.students.transfer" ||
+    code === "school.promotions.view" ||
+    code === "school.promotions.manage" ||
     code === "school.parents.view" ||
     code === "school.parents.manage" ||
     code === "school.staff.view" ||
@@ -404,8 +410,13 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.classes.manage",
       "school.admissions.view",
       "school.admissions.manage",
+      "school.admissions.cancel",
       "school.students.view",
       "school.students.manage",
+      "school.students.withdraw",
+      "school.students.transfer",
+      "school.promotions.view",
+      "school.promotions.manage",
       "school.parents.view",
       "school.parents.manage",
       "school.staff.view",
@@ -458,7 +469,12 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.settings.view",
       "school.classes.view",
       "school.admissions.view",
+      "school.admissions.cancel",
       "school.students.view",
+      "school.students.withdraw",
+      "school.students.transfer",
+      "school.promotions.view",
+      "school.promotions.manage",
       "school.parents.view",
       "school.staff.view",
       "school.subjects.view",
@@ -529,6 +545,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
     permissionMatchers: [
       "school.admissions.view",
       "school.admissions.manage",
+      "school.admissions.cancel",
       "school.classes.view",
       "school.students.view",
       "school.parents.view",

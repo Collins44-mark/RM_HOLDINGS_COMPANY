@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { writeAuditEvent, writeAuditEvents, type WriteAuditEventInput } from "@/lib/audit";
 import { requireAuth } from "@/lib/auth/session";
 import { hasPermission, isOwnerRole } from "@/lib/auth/rbac";
@@ -8,6 +9,7 @@ import { identityFromUser } from "@/lib/auth/types";
 import {
   isSchoolUnconfiguredRead,
   mapSchoolDbError,
+  requireAnySchoolPermission,
   requireSchoolPermission,
   schoolActionError,
   SchoolError,
@@ -20,6 +22,7 @@ import { catalogLookup, loadSchoolStructureCatalog } from "@/lib/school/structur
 
 const VIEW = "school.admissions.view";
 const MANAGE = "school.admissions.manage";
+const CANCEL = "school.admissions.cancel";
 
 export type AdmissionStatus = "draft" | "completed" | "cancelled";
 
@@ -79,6 +82,8 @@ export type AdmissionDetail = {
   guardianOccupation: string;
   studentId: string | null;
   studentNumber: string | null;
+  cancelledAt: string;
+  cancelledReason: string;
   fee: ApplicableFeeRow;
   transportEnabled: boolean;
   transportRouteId: string;
@@ -126,6 +131,14 @@ function canManage(user: Awaited<ReturnType<typeof requireAuth>>) {
   return user.permissions.some((matcher) => matcher !== "*" && matchPermission(MANAGE, matcher));
 }
 
+function canCancel(user: Awaited<ReturnType<typeof requireAuth>>) {
+  if (isOwnerRole(user.roleCode)) return true;
+  return (
+    user.permissions.some((matcher) => matcher !== "*" && matchPermission(CANCEL, matcher)) ||
+    user.permissions.some((matcher) => matcher !== "*" && matchPermission(MANAGE, matcher))
+  );
+}
+
 function canConfigureAcademic(user: Awaited<ReturnType<typeof requireAuth>>) {
   if (isOwnerRole(user.roleCode)) return true;
   const identity = identityFromUser(user);
@@ -136,6 +149,7 @@ function caps(user: Awaited<ReturnType<typeof requireAuth>>) {
   return {
     canView: true,
     canManage: canManage(user),
+    canCancel: canCancel(user),
     canConfigureAcademic: canConfigureAcademic(user),
   };
 }
@@ -475,7 +489,7 @@ export async function getSchoolAdmissionAction(id: string) {
       supabase
         .from("sch_admissions")
         .select(
-          "id, admission_number, status, admission_date, academic_year_id, term_id, stream_id, class_id, student_id, first_name, middle_name, last_name, date_of_birth, gender, nationality, address, phone, email, guardian_full_name, guardian_relationship, guardian_phone, guardian_email, guardian_address, guardian_occupation, transport_enabled, transport_route_id",
+          "id, admission_number, status, admission_date, cancelled_at, cancelled_reason, academic_year_id, term_id, stream_id, class_id, student_id, first_name, middle_name, last_name, date_of_birth, gender, nationality, address, phone, email, guardian_full_name, guardian_relationship, guardian_phone, guardian_email, guardian_address, guardian_occupation, transport_enabled, transport_route_id",
         )
         .eq("business_unit_id", businessUnitId)
         .eq("id", admissionId)
@@ -578,6 +592,8 @@ export async function getSchoolAdmissionAction(id: string) {
       guardianOccupation: str(row.guardian_occupation),
       studentId: row.student_id ? String(row.student_id) : null,
       studentNumber: studentRes.data?.student_number ? String(studentRes.data.student_number) : null,
+      cancelledAt: str(row.cancelled_at),
+      cancelledReason: str(row.cancelled_reason),
       fee: fees,
       transportEnabled: Boolean(row.transport_enabled),
       transportRouteId: str(row.transport_route_id),
@@ -780,11 +796,13 @@ export async function completeSchoolAdmissionAction(input: AdmissionFormInput & 
   }
 }
 
-export async function cancelSchoolAdmissionAction(id: string) {
+export async function cancelSchoolAdmissionAction(id: string, reason: string) {
   try {
-    const ctx = await requireSchoolPermission(MANAGE);
-    const { supabase, businessUnitId } = ctx;
+    const ctx = await requireAnySchoolPermission([CANCEL, MANAGE]);
+    const { supabase, businessUnitId, userId } = ctx;
     const admissionId = str(id);
+    const cancellationReason = str(reason);
+    if (cancellationReason.length < 3) throw new SchoolError("Enter a cancellation reason.", "VALIDATION");
     const current = await supabase
       .from("sch_admissions")
       .select("id, status, admission_number")
@@ -792,17 +810,32 @@ export async function cancelSchoolAdmissionAction(id: string) {
       .eq("id", admissionId)
       .maybeSingle();
     if (!current.data) throw new SchoolError("Admission was not found.", "NOT_FOUND");
-    if (String(current.data.status) !== "draft") throw new SchoolError("Only a draft admission can be cancelled.", "VALIDATION");
-    const updated = await supabase.from("sch_admissions").update({ status: "cancelled" }).eq("id", admissionId);
-    if (updated.error) mapSchoolDbError(updated.error, "save");
-    await audit({
-      action: "school.admission_cancelled",
-      description: `Admission cancelled · ${String(current.data.admission_number)}`,
-      entityType: "sch_admissions",
-      entityId: admissionId,
-      businessUnitId,
+    const { data, error } = await supabase.rpc("sch_cancel_admission", {
+      p_admission_id: admissionId,
+      p_reason: cancellationReason,
+      p_actor_id: userId,
     });
-    return { ok: true as const };
+    if (error) {
+      const message = str(error.message);
+      if (message && !/schema cache|does not exist|PGRST/i.test(message)) {
+        throw new SchoolError(message.slice(0, 240), "VALIDATION");
+      }
+      mapSchoolDbError(error, "save");
+    }
+    const result = (data ?? {}) as Record<string, unknown>;
+    if (!result.duplicate) {
+      await audit({
+        action: "school.admission_cancelled",
+        description: `Admission cancelled · ${String(current.data.admission_number)}`,
+        entityType: "sch_admissions",
+        entityId: admissionId,
+        businessUnitId,
+      });
+    }
+    revalidatePath("/school");
+    revalidatePath("/school/admissions");
+    revalidatePath("/school/reports");
+    return { ok: true as const, duplicate: Boolean(result.duplicate) };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
   }

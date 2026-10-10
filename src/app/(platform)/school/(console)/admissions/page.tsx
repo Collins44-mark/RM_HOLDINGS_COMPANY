@@ -12,6 +12,7 @@ export default async function SchoolAdmissionsRoute() {
       admissions={result.ok ? result.admissions : result.admissions ?? []}
       page={result.ok ? result.page : result.page ?? schoolPageMeta(1, 0)}
       canManage={result.capabilities?.canManage ?? false}
+      canCancel={result.capabilities?.canCancel ?? false}
       query=""
       status="all"
       error={result.ok ? null : result.error}

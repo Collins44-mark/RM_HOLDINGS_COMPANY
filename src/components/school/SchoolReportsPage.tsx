@@ -567,6 +567,7 @@ export function SchoolReportsPage({
               <>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
+                <option value="withdrawn">Withdrawn</option>
               </>
             ) : (
               <>

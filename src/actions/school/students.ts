@@ -25,6 +25,8 @@ import type { StudentTransportWorkspace } from "@/lib/school/transport-types";
 
 const VIEW = "school.students.view";
 const MANAGE = "school.students.manage";
+const WITHDRAW = "school.students.withdraw";
+const TRANSFER = "school.students.transfer";
 
 export type StudentListRow = {
   id: string;
@@ -32,6 +34,10 @@ export type StudentListRow = {
   admissionNumber: string;
   name: string;
   status: string;
+  academicYearId: string;
+  levelId: string;
+  classId: string;
+  streamId: string;
   levelName: string;
   className: string;
   streamName: string;
@@ -49,6 +55,17 @@ export type StudentGuardianRow = {
   isPrimary: boolean;
 };
 
+export type StudentPlacementHistoryRow = {
+  id: string;
+  academicYearName: string;
+  levelName: string;
+  className: string;
+  streamName: string;
+  status: string;
+  startedOn: string;
+  endedOn: string;
+};
+
 export type StudentProfile = {
   id: string;
   studentNumber: string;
@@ -63,8 +80,12 @@ export type StudentProfile = {
   phone: string;
   email: string;
   status: string;
+  withdrawnOn: string;
+  withdrawnReason: string;
+  academicYearId: string;
   academicYearName: string;
   termName: string;
+  levelId: string;
   levelName: string;
   className: string;
   streamName: string;
@@ -75,6 +96,7 @@ export type StudentProfile = {
   enrollmentStatus: string;
   guardians: StudentGuardianRow[];
   transport: StudentTransportWorkspace | null;
+  placementHistory: StudentPlacementHistoryRow[];
 };
 
 function str(value: unknown) {
@@ -91,12 +113,28 @@ function canEditGuardians(user: Awaited<ReturnType<typeof requireAuth>>) {
   return user.permissions.some((matcher) => matcher !== "*" && matchPermission("school.parents.manage", matcher));
 }
 
+function canWithdraw(user: Awaited<ReturnType<typeof requireAuth>>) {
+  if (isOwnerRole(user.roleCode)) return true;
+  return (
+    user.permissions.some((matcher) => matcher !== "*" && matchPermission(WITHDRAW, matcher)) ||
+    user.permissions.some((matcher) => matcher !== "*" && matchPermission(MANAGE, matcher))
+  );
+}
+
+function canTransfer(user: Awaited<ReturnType<typeof requireAuth>>) {
+  if (isOwnerRole(user.roleCode)) return true;
+  return (
+    user.permissions.some((matcher) => matcher !== "*" && matchPermission(TRANSFER, matcher)) ||
+    user.permissions.some((matcher) => matcher !== "*" && matchPermission(MANAGE, matcher))
+  );
+}
+
 function searchNeedle(value: unknown) {
   return str(value).replace(/[%_,()]/g, " ").slice(0, 80);
 }
 
 export async function listSchoolStudentsAction(
-  input: { page?: number; pageSize?: number; q?: string; levelId?: string; classId?: string; streamId?: string } = {},
+  input: { page?: number; pageSize?: number; q?: string; levelId?: string; classId?: string; streamId?: string; status?: string } = {},
 ) {
   try {
     const user = await requireAuth();
@@ -124,7 +162,7 @@ export async function listSchoolStudentsAction(
           students: [] as StudentListRow[],
           page: schoolPageMeta(1, 0, pageSize),
           levels,
-          capabilities: { canView: true, canManage: canManage(user) },
+          capabilities: { canView: true, canManage: canManage(user), canWithdraw: canWithdraw(user), canTransfer: canTransfer(user) },
         };
       }
     }
@@ -134,6 +172,8 @@ export async function listSchoolStudentsAction(
       .eq("business_unit_id", businessUnitId)
       .order("created_at", { ascending: false })
       .range(from, to);
+    const status = str(input.status) || "active";
+    if (status === "active" || status === "withdrawn" || status === "inactive") query = query.eq("status", status);
     if (allowedIds) query = query.in("id", allowedIds);
     if (q) {
       query = query.or(`student_number.ilike.%${q}%,admission_number.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%`);
@@ -142,13 +182,13 @@ export async function listSchoolStudentsAction(
     if (result.error && !isSchoolUnconfiguredRead(result.error)) mapSchoolDbError(result.error, "load");
     const students = (result.data ?? []) as Record<string, unknown>[];
     const ids = students.map((row) => String(row.id));
-    const placement = new Map<string, { levelName: string; className: string; streamName: string }>();
+    const placement = new Map<string, { academicYearId: string; levelId: string; classId: string; streamId: string; levelName: string; className: string; streamName: string }>();
     const guardians = new Map<string, string>();
     if (ids.length) {
       const [enrollments, links] = await Promise.all([
         supabase
           .from("sch_student_enrollments")
-          .select("student_id, stream_id, class_id")
+          .select("student_id, stream_id, class_id, academic_year_id")
           .eq("business_unit_id", businessUnitId)
           .eq("status", "active")
           .in("student_id", ids),
@@ -175,7 +215,14 @@ export async function listSchoolStudentsAction(
         const place = streamId
           ? lookup.placement(streamId) ?? byStream.get(streamId)
           : lookup.placementByClass(classId) ?? byClass.get(classId);
-        if (place) placement.set(String(row.student_id), place);
+        if (place) {
+          placement.set(String(row.student_id), {
+            ...place,
+            academicYearId: str(row.academic_year_id),
+            classId: classId || place.classId,
+            streamId,
+          });
+        }
       }
       for (const row of links.data ?? []) {
         const studentId = String(row.student_id);
@@ -193,6 +240,10 @@ export async function listSchoolStudentsAction(
         admissionNumber: str(row.admission_number),
         name: [str(row.first_name), str(row.middle_name), str(row.last_name)].filter(Boolean).join(" "),
         status: str(row.status) || "active",
+        academicYearId: place?.academicYearId ?? "",
+        levelId: place?.levelId ?? "",
+        classId: place?.classId ?? "",
+        streamId: place?.streamId ?? "",
         levelName: place?.levelName ?? "",
         className: place?.className ?? "",
         streamName: place?.streamName ?? "",
@@ -204,7 +255,7 @@ export async function listSchoolStudentsAction(
       students: rows,
       page: schoolPageMeta(page, result.count ?? rows.length, pageSize),
       levels,
-      capabilities: { canView: true, canManage: canManage(user) },
+      capabilities: { canView: true, canManage: canManage(user), canWithdraw: canWithdraw(user), canTransfer: canTransfer(user) },
     };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
@@ -221,7 +272,7 @@ export async function getSchoolStudentAction(id: string) {
     const studentRes = await supabase
       .from("sch_students")
       .select(
-        "id, student_number, admission_number, first_name, middle_name, last_name, date_of_birth, gender, nationality, address, status",
+        "id, student_number, admission_number, first_name, middle_name, last_name, date_of_birth, gender, nationality, address, status, withdrawn_on, withdrawn_reason",
       )
       .eq("business_unit_id", businessUnitId)
       .eq("id", studentId)
@@ -230,14 +281,20 @@ export async function getSchoolStudentAction(id: string) {
     if (!studentRes.data) throw new SchoolError("Student was not found.", "NOT_FOUND");
     const row = studentRes.data as Record<string, unknown>;
 
-    const [enrollmentRes, linksRes, catalog] = await Promise.all([
+    const [enrollmentRes, historyRes, linksRes, catalog] = await Promise.all([
       supabase
         .from("sch_student_enrollments")
-        .select("id, status, academic_year_id, term_id, stream_id, class_id")
+        .select("id, status, academic_year_id, term_id, stream_id, class_id, started_on, ended_on")
         .eq("business_unit_id", businessUnitId)
         .eq("student_id", studentId)
         .eq("status", "active")
         .maybeSingle(),
+      supabase
+        .from("sch_student_enrollments")
+        .select("id, status, academic_year_id, stream_id, class_id, started_on, ended_on")
+        .eq("business_unit_id", businessUnitId)
+        .eq("student_id", studentId)
+        .order("started_on", { ascending: false }),
       supabase
         .from("sch_student_guardians")
         .select("relationship, is_primary, guardian_id, sch_guardians(id, full_name, phone, email, address, occupation)")
@@ -246,7 +303,11 @@ export async function getSchoolStudentAction(id: string) {
       loadSchoolStructureCatalog(ctx),
     ]);
 
-    const enrollment = enrollmentRes.data as
+    const currentOrLatest =
+      (enrollmentRes.data as Record<string, unknown> | null) ??
+      ((historyRes.data ?? [])[0] as Record<string, unknown> | undefined) ??
+      null;
+    const enrollment = currentOrLatest as
       | { id?: string; status?: string; academic_year_id?: string; term_id?: string; stream_id?: string; class_id?: string }
       | null;
     const streamId = str(enrollment?.stream_id);
@@ -305,18 +366,37 @@ export async function getSchoolStudentAction(id: string) {
       phone: "",
       email: "",
       status: str(row.status) || "active",
+      withdrawnOn: str(row.withdrawn_on),
+      withdrawnReason: str(row.withdrawn_reason),
+      academicYearId: str(enrollment?.academic_year_id),
       academicYearName: str(yearRes.data?.name),
       termName: str(termRes.data?.name),
+      levelId: place?.levelId ?? "",
       levelName: place?.levelName ?? "",
       className: place?.className ?? "",
       streamName: place?.streamName ?? "",
       classId,
       streamId,
-      enrollmentId: enrollment?.id ? String(enrollment.id) : null,
+      enrollmentId: enrollment?.id && str(enrollment.status) === "active" ? String(enrollment.id) : enrollment?.id ? String(enrollment.id) : null,
       streams: streams.map((row) => ({ id: row.id, name: row.name })),
       enrollmentStatus: str(enrollment?.status),
       guardians,
       transport: transport.ok ? transport.workspace : null,
+      placementHistory: (historyRes.data ?? []).map((item) => {
+        const histStream = str(item.stream_id);
+        const histClass = str(item.class_id);
+        const histPlace = histStream ? lookup.placement(histStream) : lookup.placementByClass(histClass);
+        return {
+          id: str(item.id),
+          academicYearName: lookup.yearName(str(item.academic_year_id)),
+          levelName: histPlace?.levelName ?? "",
+          className: histPlace?.className ?? "",
+          streamName: histPlace?.streamName ?? "",
+          status: str(item.status),
+          startedOn: str(item.started_on),
+          endedOn: str(item.ended_on),
+        };
+      }),
     };
     return {
       ok: true as const,
@@ -324,6 +404,8 @@ export async function getSchoolStudentAction(id: string) {
       capabilities: {
         canView: true,
         canManage: canManage(user),
+        canWithdraw: canWithdraw(user),
+        canTransfer: canTransfer(user),
         canEditGuardians: canEditGuardians(user),
         canManageTransport: transport.ok ? transport.workspace.canManage : false,
       },

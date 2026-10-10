@@ -16,6 +16,7 @@ import { SchoolSalaryPage } from "@/components/school/SchoolSalaryPage";
 import { SchoolParentsPage } from "@/components/school/SchoolParentsPage";
 import { SchoolReportsPage } from "@/components/school/SchoolReportsPage";
 import { SchoolStorePage } from "@/components/school/SchoolStorePage";
+import { SchoolPromotionsPage } from "@/components/school/SchoolPromotionsPage";
 import { schoolPageMeta } from "@/lib/school/pagination";
 import { peekAdmissionView, peekAdmissionsListSnapshot, peekFeeView, peekFeesListSnapshot } from "@/lib/school/admission-flash";
 import { peekExamsListSnapshot } from "@/lib/school/exam-flash";
@@ -132,6 +133,9 @@ export default function SchoolConsoleLoading() {
   }
   if (pathname === "/school/store") {
     return <SchoolStorePage initial={null} pending />;
+  }
+  if (pathname === "/school/promotions") {
+    return <SchoolPromotionsPage years={[]} today="" canManage={false} error={null} pending />;
   }
   if (pathname === "/school/reports") {
     const kind =

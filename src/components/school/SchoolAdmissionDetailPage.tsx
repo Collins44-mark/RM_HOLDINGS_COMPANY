@@ -1,12 +1,13 @@
 "use client";
 
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import type { AdmissionDetail } from "@/actions/school/admissions";
+import { cancelSchoolAdmissionAction, type AdmissionDetail } from "@/actions/school/admissions";
 import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
-import { glassPanel, primaryButton, StatusPill } from "@/components/supermarket/purchasing-ui";
-import { SchoolIconWell } from "@/components/school/school-ui";
+import { glassPanel, inputClass, primaryButton, secondaryButton, StatusPill } from "@/components/supermarket/purchasing-ui";
+import { SchoolField, SchoolGlassModal, SchoolIconWell, SchoolWorkflowButton } from "@/components/school/school-ui";
 import { UserPlus } from "lucide-react";
 import { formatTzs } from "@/lib/format/currency";
 import { formatCompactStudentNumber } from "@/lib/school/student-number";
@@ -23,17 +24,25 @@ function Fact({ label, value }: { label: string; value: string }) {
 export function SchoolAdmissionDetailPage({
   admission,
   canManage,
+  canCancel = false,
   error,
   pending = false,
   heading = null,
 }: {
   admission: AdmissionDetail | null;
   canManage: boolean;
+  canCancel?: boolean;
   error: string | null;
   pending?: boolean;
   heading?: { admissionNumber?: string; studentName?: string } | null;
 }) {
   const router = useRouter();
+  const [admissionState, setAdmissionState] = useState(admission);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const lock = useRef(false);
   if (!admission && pending) {
     return (
       <div className="min-w-0 max-w-full space-y-5 pb-10">
@@ -58,7 +67,8 @@ export function SchoolAdmissionDetailPage({
     );
   }
 
-  const statusLabel = admission.status === "draft" ? "Draft" : admission.status === "completed" ? "Completed" : "Cancelled";
+  const record = admissionState?.id === admission.id ? admissionState : admission;
+  const statusLabel = record.status === "draft" ? "Draft" : record.status === "completed" ? "Completed" : "Cancelled";
 
   return (
     <div className="min-w-0 max-w-full space-y-5 pb-10">
@@ -78,14 +88,19 @@ export function SchoolAdmissionDetailPage({
         </div>
         <div className="flex items-center gap-2">
           <StatusPill value={statusLabel} />
-          {canManage && admission.status === "draft" ? (
+          {canManage && record.status === "draft" ? (
             <CompactActionsMenu
               ariaLabel="Admission actions"
               items={[
-                { label: "Edit", onSelect: () => router.push(`/school/admissions/${admission.id}/edit`) },
-                { label: "Complete", onSelect: () => router.push(`/school/admissions/${admission.id}/edit`) },
+                { label: "Edit", onSelect: () => router.push(`/school/admissions/${record.id}/edit`) },
+                { label: "Complete", onSelect: () => router.push(`/school/admissions/${record.id}/edit`) },
               ]}
             />
+          ) : null}
+          {canCancel && record.status === "draft" ? (
+            <button type="button" className={secondaryButton} onClick={() => setCancelOpen(true)}>
+              Cancel Admission
+            </button>
           ) : null}
           {admission.studentId ? (
             <Link href={`/school/students/${admission.studentId}`} className={primaryButton}>
@@ -104,6 +119,12 @@ export function SchoolAdmissionDetailPage({
         <Fact label="Class" value={admission.className} />
         <Fact label="Stream" value={admission.streamName} />
         <Fact label="Student number" value={admission.studentNumber ? formatCompactStudentNumber(admission.studentNumber) : ""} />
+        {record.status === "cancelled" ? (
+          <>
+            <Fact label="Cancelled on" value={record.cancelledAt ? record.cancelledAt.slice(0, 10) : ""} />
+            <Fact label="Cancellation reason" value={record.cancelledReason} />
+          </>
+        ) : null}
       </section>
 
       <section className={`${glassPanel} space-y-3`}>
@@ -146,6 +167,56 @@ export function SchoolAdmissionDetailPage({
           <p className="text-[13.5px] text-slate-500">Fee structure not configured for this class.</p>
         )}
       </section>
+      {cancelOpen ? (
+        <SchoolGlassModal
+          title="Cancel admission"
+          subtitle="This draft will remain under Cancelled with its original details."
+          onClose={() => {
+            if (busy) return;
+            setCancelOpen(false);
+          }}
+          footer={
+            <>
+              <button type="button" className={secondaryButton} disabled={busy} onClick={() => setCancelOpen(false)}>
+                Keep draft
+              </button>
+              <SchoolWorkflowButton
+                className={primaryButton}
+                busy={busy}
+                idleLabel="Cancel admission"
+                busyLabel="Saving"
+                disabled={cancelReason.trim().length < 3}
+                onClick={() => {
+                  if (lock.current) return;
+                  lock.current = true;
+                  setBusy(true);
+                  setCancelError(null);
+                  void cancelSchoolAdmissionAction(record.id, cancelReason).then((result) => {
+                    lock.current = false;
+                    setBusy(false);
+                    if (!result.ok) {
+                      setCancelError(result.error);
+                      return;
+                    }
+                    setAdmissionState({
+                      ...record,
+                      status: "cancelled",
+                      cancelledAt: new Date().toISOString(),
+                      cancelledReason: cancelReason,
+                    });
+                    setCancelOpen(false);
+                  });
+                }}
+              />
+            </>
+          }
+        >
+          <SchoolField label="Cancellation reason">
+            <textarea className={inputClass} rows={3} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} />
+          </SchoolField>
+          {cancelError ? <p className="text-[13px] text-[#c45b66]">{cancelError}</p> : null}
+        </SchoolGlassModal>
+      ) : null}
     </div>
   );
 }
