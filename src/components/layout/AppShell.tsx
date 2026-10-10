@@ -32,8 +32,8 @@ export function AppShell({
   const sidebarWidth = collapsed ? SIDEBAR_WIDTH.collapsed : SIDEBAR_WIDTH.expanded;
   const isAddProductPage = pathname === "/supermarket/products/new";
   const isPosPage = pathname === "/supermarket/pos";
-  const showFooter =
-    pathname !== "/owner" && pathname !== "/dashboard" && !isAddProductPage && !isPosPage;
+  const isOwnerHome = pathname === "/owner" || pathname === "/dashboard";
+  const showFooter = !isOwnerHome && !isAddProductPage && !isPosPage;
   const t = useT();
   const { nav, workspace, moduleCode } = navigationForPath(user, pathname, businessUnits);
   const localizedNav = localizeNavItems(nav, t);
@@ -80,7 +80,13 @@ export function AppShell({
           onMenuClick={() => setMobileOpen(true)}
           onToggleSidebar={toggle}
         />
-        <main className="relative z-10 min-w-0 flex-1 overflow-x-clip px-4 py-4 sm:px-5 sm:py-5 md:px-6 lg:px-7 lg:py-6">
+        <main
+          className={
+            isOwnerHome
+              ? "relative z-10 min-w-0 flex-1 overflow-x-clip px-0 pt-0 pb-6 -mt-14 sm:-mt-[72px] sm:pb-7 lg:pb-8"
+              : "relative z-10 min-w-0 flex-1 overflow-x-clip px-4 py-4 sm:px-5 sm:py-5 md:px-6 lg:px-7 lg:py-6"
+          }
+        >
           {moduleCode && moduleCode !== "owner" && moduleCode !== "supermarket" && moduleCode !== "school" ? (
             <ModuleContextBar
               moduleCode={moduleCode}

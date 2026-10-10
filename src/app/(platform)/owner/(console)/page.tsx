@@ -44,7 +44,7 @@ export default async function OwnerDashboardPage({
   const insights = getExecutiveInsights(finance.rows);
 
   return (
-    <div className="space-y-6">
+    <div className="relative">
       <WelcomeBanner
         greeting={t(greetingKeyForHour(hour))}
         name="Owner"
@@ -53,21 +53,23 @@ export default async function OwnerDashboardPage({
         weather={weather}
         timeZone={settings.timezone}
       />
-      <GroupOverviewSection
-        totals={finance.totals}
-        comparison={finance.comparison}
-        comparisonLabel={finance.comparisonLabel}
-        period={period}
-        label={finance.label}
-      />
-      <BusinessPerformanceSection rows={finance.rows} />
-      <BusinessSnapshot
-        highestRevenue={insights.highestRevenue}
-        highestMargin={insights.highestMargin}
-        activeUnits={insights.activeUnits}
-        configuredUnits={insights.configuredUnits}
-        lastUpdated={formatSnapshotUpdated(now, settings.timezone)}
-      />
+      <div className="relative z-10 space-y-6 px-4 pb-2 sm:px-5 md:px-6 lg:px-7">
+        <GroupOverviewSection
+          totals={finance.totals}
+          comparison={finance.comparison}
+          comparisonLabel={finance.comparisonLabel}
+          period={period}
+          label={finance.label}
+        />
+        <BusinessPerformanceSection rows={finance.rows} />
+        <BusinessSnapshot
+          highestRevenue={insights.highestRevenue}
+          highestMargin={insights.highestMargin}
+          activeUnits={insights.activeUnits}
+          configuredUnits={insights.configuredUnits}
+          lastUpdated={formatSnapshotUpdated(now, settings.timezone)}
+        />
+      </div>
     </div>
   );
 }

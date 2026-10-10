@@ -15,26 +15,26 @@ export function BusinessPerformanceSection({ rows }: { rows: UnitFinanceRow[] })
           Revenue, expenses and operating position across all business units.
         </p>
       </div>
-      <div className="overflow-hidden rounded-[20px] border border-white/90 bg-white/92 shadow-[0_8px_28px_rgba(20,40,70,0.045)]">
+      <div className="overflow-hidden rounded-[24px] border border-white/70 bg-white/68 shadow-[0_10px_32px_rgba(20,40,70,0.06)] backdrop-blur-xl">
         <div className="overflow-x-auto">
           <table className="min-w-[860px] w-full border-separate border-spacing-0 text-left">
             <thead>
               <tr>
-                <th className="px-5 py-3.5 text-[12.5px] font-medium text-slate-400">
+                <th className="px-5 py-3.5 text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">
                   Business Unit
                 </th>
-                <th className="px-5 py-3.5 text-[12.5px] font-medium text-slate-400">
+                <th className="px-5 py-3.5 text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">
                   Revenue
                 </th>
-                <th className="px-5 py-3.5 text-[12.5px] font-medium text-slate-400">
+                <th className="px-5 py-3.5 text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">
                   Expenses
                 </th>
-                <th className="px-5 py-3.5 text-[12.5px] font-medium text-slate-400">
+                <th className="px-5 py-3.5 text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">
                   Operating Position
                 </th>
-                <th className="px-5 py-3.5 text-[12.5px] font-medium text-slate-400">Margin</th>
-                <th className="px-5 py-3.5 text-[12.5px] font-medium text-slate-400">Status</th>
-                <th className="px-5 py-3.5 text-right text-[12.5px] font-medium text-slate-400">
+                <th className="px-5 py-3.5 text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">Margin</th>
+                <th className="px-5 py-3.5 text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">Status</th>
+                <th className="px-5 py-3.5 text-right text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">
                   Action
                 </th>
               </tr>

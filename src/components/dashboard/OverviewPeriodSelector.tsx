@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Calendar, ChevronDown } from "lucide-react";
+import { cn } from "@/lib/cn";
 import {
   REPORT_PERIOD_OPTIONS,
   type ReportPeriod,
@@ -10,9 +11,11 @@ import {
 export function OverviewPeriodSelector({
   period,
   label,
+  variant = "default",
 }: {
   period: ReportPeriod;
   label: string;
+  variant?: "default" | "glass";
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -41,7 +44,12 @@ export function OverviewPeriodSelector({
               to: value === "custom" ? searchParams.get("to") ?? "" : undefined,
             });
           }}
-          className="h-10 appearance-none rounded-[12px] border border-black/[0.06] bg-white py-2 pl-10 pr-10 text-[13px] font-medium text-navy outline-none transition duration-200 focus:border-[#9bb6e0] focus:ring-4 focus:ring-[#5b82c4]/10"
+          className={cn(
+            "h-10 appearance-none py-2 pl-10 pr-10 text-[13px] font-medium text-navy outline-none transition duration-200 focus:border-[#9bb6e0] focus:ring-4 focus:ring-[#5b82c4]/10",
+            variant === "glass"
+              ? "rounded-full border border-white/80 bg-white/72 shadow-[0_6px_20px_rgba(20,40,70,0.06)] backdrop-blur-md"
+              : "rounded-[12px] border border-black/[0.06] bg-white",
+          )}
         >
           {REPORT_PERIOD_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>

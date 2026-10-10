@@ -28,9 +28,9 @@ export function GroupOverviewSection({
             Consolidated performance across all RM Holdings business units.
           </p>
         </div>
-        <OverviewPeriodSelector period={period} label={label} />
+        <OverviewPeriodSelector period={period} label={label} variant="glass" />
       </div>
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3.5 xl:grid-cols-4">
         <OverviewSummaryCard
           label="Total Revenue"
           value={formatTzs(totals.revenue)}

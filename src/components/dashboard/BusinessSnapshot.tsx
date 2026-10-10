@@ -18,7 +18,7 @@ export function BusinessSnapshot({
   lastUpdated: string;
 }) {
   return (
-    <section className="rounded-[20px] border border-white/90 bg-white/92 px-5 py-5 shadow-[0_8px_28px_rgba(20,40,70,0.045)] sm:px-6">
+    <section className="rounded-[24px] border border-white/70 bg-white/68 px-5 py-5 shadow-[0_10px_32px_rgba(20,40,70,0.06)] backdrop-blur-xl sm:px-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-[18px] font-bold tracking-[-0.03em] text-navy sm:text-[20px]">
@@ -87,8 +87,8 @@ function SnapshotCard({
   trend?: number;
 }) {
   return (
-    <article className="flex min-w-0 flex-1 items-start gap-3 rounded-[16px] border border-black/[0.04] bg-white px-3 py-3 shadow-[0_4px_16px_rgba(20,40,70,0.03)] sm:gap-3.5 sm:px-4 sm:py-4">
-      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-[#f3f5f8] text-navy sm:h-11 sm:w-11 sm:rounded-[14px]">
+    <article className="flex min-w-0 flex-1 items-start gap-3 rounded-[18px] border border-white/70 bg-white/70 px-3 py-3 shadow-[0_4px_16px_rgba(20,40,70,0.04)] sm:gap-3.5 sm:px-4 sm:py-4">
+      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/80 bg-white/80 text-navy sm:h-11 sm:w-11">
         <Icon className="h-4 w-4 sm:h-5 sm:w-5" strokeWidth={1.65} />
       </span>
       <div className="min-w-0 pt-0.5">
