@@ -26,6 +26,7 @@ import {
   type SchoolExpenseWorkspace,
 } from "@/lib/school/expense-types";
 import { parseSchoolPageSize, schoolPageMeta, schoolPageRange } from "@/lib/school/pagination";
+import type { SchoolEmergencyFund } from "@/lib/school/store-types";
 
 const VIEW = "school.expenses.view";
 const CREATE = "school.expenses.create";
@@ -54,7 +55,16 @@ function localDate(date: Date) {
 }
 
 function asSource(value: unknown): SchoolExpenseSource {
-  if (value === "TRANSPORT_FUEL" || value === "TRANSPORT_MAINTENANCE" || value === "SALARY") return value;
+  if (
+    value === "TRANSPORT_FUEL" ||
+    value === "TRANSPORT_MAINTENANCE" ||
+    value === "SALARY" ||
+    value === "STORE_ISSUE" ||
+    value === "STORE_COGS" ||
+    value === "EMERGENCY"
+  ) {
+    return value;
+  }
   return "MANUAL";
 }
 
@@ -69,6 +79,7 @@ function caps(user: Awaited<ReturnType<typeof requireAuth>>): SchoolExpenseCaps 
     canRecord: hasPerm(user, CREATE),
     canManageTypes: hasPerm(user, EDIT),
     canReverse: hasPerm(user, EDIT),
+    canManageFund: hasPerm(user, EDIT),
   };
 }
 
@@ -99,7 +110,54 @@ function emptyWorkspace(capabilities: SchoolExpenseCaps, period: ReportPeriod, f
     categoryId: "",
     q: "",
     capabilities,
+    emergencyFund: emptyFund(capabilities.canManageFund),
   };
+}
+
+function emptyFund(canManage: boolean): SchoolEmergencyFund {
+  return { balance: 0, opening: 0, replenished: 0, spent: 0, hasOpening: false, entries: [], canManage };
+}
+
+function mapFund(
+  rows: Array<{
+    id?: unknown;
+    entry_kind?: unknown;
+    amount?: unknown;
+    occurred_on?: unknown;
+    reference?: unknown;
+    notes?: unknown;
+    expense_id?: unknown;
+    is_active?: unknown;
+    recorded_by?: unknown;
+  }>,
+  canManage: boolean,
+): SchoolEmergencyFund {
+  const fund = emptyFund(canManage);
+  for (const row of rows) {
+    const kind = str(row.entry_kind);
+    const amount = num(row.amount);
+    const active = Boolean(row.is_active);
+    const mappedKind = kind === "OPENING" || kind === "REPLENISH" || kind === "SPEND" ? kind : "REPLENISH";
+    if (active && mappedKind === "OPENING") {
+      fund.opening += amount;
+      fund.hasOpening = true;
+    }
+    if (active && mappedKind === "REPLENISH") fund.replenished += amount;
+    if (active && mappedKind === "SPEND") fund.spent += amount;
+    fund.entries.push({
+      id: str(row.id),
+      kind: mappedKind,
+      amount,
+      occurredOn: str(row.occurred_on),
+      reference: str(row.reference),
+      notes: str(row.notes),
+      expenseId: row.expense_id ? str(row.expense_id) : null,
+      isActive: active,
+      recordedBy: str(row.recorded_by),
+    });
+  }
+  fund.balance = fund.opening + fund.replenished - fund.spent;
+  return fund;
 }
 
 function periodBounds(input: { period?: string; from?: string; to?: string }) {
@@ -331,7 +389,7 @@ export async function loadSchoolExpensesWorkspaceAction(input: ExpenseLoadInput 
 
     await ensureOtherExpenseType(ctx);
 
-    const [typesRes, busesRes, postedRes] = await Promise.all([
+    const [typesRes, busesRes, postedRes, fundRes] = await Promise.all([
       supabase
         .from("sch_expense_categories")
         .select("id, code, name, description, is_active, created_at, updated_at")
@@ -349,11 +407,19 @@ export async function loadSchoolExpensesWorkspaceAction(input: ExpenseLoadInput 
         .eq("is_active", true)
         .gte("expense_date", bounds.from)
         .lte("expense_date", bounds.to),
+      supabase
+        .from("sch_emergency_fund_entries")
+        .select("id, entry_kind, amount, occurred_on, reference, notes, expense_id, is_active, recorded_by")
+        .eq("business_unit_id", businessUnitId)
+        .order("occurred_on", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(40),
     ]);
 
     if (typesRes.error && !isSchoolUnconfiguredRead(typesRes.error)) mapSchoolDbError(typesRes.error, "load");
     if (busesRes.error && !isSchoolUnconfiguredRead(busesRes.error)) mapSchoolDbError(busesRes.error, "load");
     if (postedRes.error && !isSchoolUnconfiguredRead(postedRes.error)) mapSchoolDbError(postedRes.error, "load");
+    if (fundRes.error && !isSchoolUnconfiguredRead(fundRes.error)) mapSchoolDbError(fundRes.error, "load");
 
     const typesMissing = Boolean(typesRes.error && isSchoolUnconfiguredRead(typesRes.error));
     if (typesMissing) {
@@ -411,6 +477,7 @@ export async function loadSchoolExpensesWorkspaceAction(input: ExpenseLoadInput 
       categoryId: list.categoryId,
       q: list.q,
       capabilities,
+      emergencyFund: mapFund(fundRes.data ?? [], capabilities.canManageFund),
     };
     return { ok: true as const, workspace };
   } catch (error) {
@@ -553,6 +620,7 @@ export async function recordSchoolExpenseAction(input: {
   payee?: string;
   reference?: string;
   busId?: string;
+  fundingSource?: string;
   requestId: string;
 }) {
   try {
@@ -572,7 +640,8 @@ export async function recordSchoolExpenseAction(input: {
     const requestId = str(input.requestId);
     if (!requestId) throw new SchoolError("Expense request is invalid.", "VALIDATION");
 
-    const { data, error } = await supabase.rpc("sch_record_manual_expense", {
+    const fundingSource = str(input.fundingSource).toUpperCase() === "EMERGENCY" ? "EMERGENCY" : "OPERATING";
+    const { data, error } = await supabase.rpc("sch_record_funded_expense", {
       p_category_id: categoryId,
       p_amount: amount,
       p_expense_date: expenseDate,
@@ -581,6 +650,7 @@ export async function recordSchoolExpenseAction(input: {
       p_payee: str(input.payee),
       p_reference: reference,
       p_bus_id: str(input.busId) || null,
+      p_funding_source: fundingSource,
       p_request_id: requestId,
       p_actor_id: userId,
     });
@@ -624,6 +694,51 @@ export async function reverseSchoolExpenseAction(input: { id: string }) {
       refreshFinance();
     }
     return { ok: true as const };
+  } catch (error) {
+    return { ok: false as const, error: schoolActionError(error) };
+  }
+}
+
+export async function creditSchoolEmergencyFundAction(input: {
+  kind: "OPENING" | "REPLENISH";
+  amount: number | string;
+  occurredOn: string;
+  reference?: string;
+  notes?: string;
+  requestId: string;
+}) {
+  try {
+    const { supabase, businessUnitId, userId } = await requireAnySchoolPermission([EDIT]);
+    const amount = num(input.amount);
+    if (!(amount > 0)) throw new SchoolError("Amount must be greater than zero.", "VALIDATION");
+    const occurredOn = str(input.occurredOn);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(occurredOn)) throw new SchoolError("Enter a valid date.", "VALIDATION");
+    const { data, error } = await supabase.rpc("sch_emergency_fund_credit", {
+      p_kind: input.kind,
+      p_amount: amount,
+      p_occurred_on: occurredOn,
+      p_reference: str(input.reference),
+      p_notes: str(input.notes),
+      p_request_id: str(input.requestId),
+      p_actor_id: userId,
+      p_business_unit_id: businessUnitId,
+    });
+    if (error) throw new SchoolError(error.message || "Couldn't update the emergency fund.", "DATABASE");
+    const payload = (data ?? {}) as { id?: string; duplicate?: boolean };
+    if (!payload.duplicate) {
+      await audit({
+        action: input.kind === "OPENING" ? "school.emergency_fund_opened" : "school.emergency_fund_replenished",
+        description:
+          input.kind === "OPENING"
+            ? `Emergency fund opening balance · ${amount}`
+            : `Emergency fund replenished · ${amount}`,
+        entityType: "sch_emergency_fund_entries",
+        entityId: payload.id ?? null,
+        businessUnitId,
+      });
+      refreshFinance();
+    }
+    return { ok: true as const, id: payload.id ?? "", duplicate: Boolean(payload.duplicate) };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
   }

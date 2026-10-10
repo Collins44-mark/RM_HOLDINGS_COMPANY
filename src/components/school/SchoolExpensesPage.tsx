@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { Plus, Wallet } from "lucide-react";
 import {
+  creditSchoolEmergencyFundAction,
   loadSchoolExpenseListAction,
   loadSchoolExpensesWorkspaceAction,
   recordSchoolExpenseAction,
@@ -45,6 +46,7 @@ import {
   type SchoolExpenseTypeRow,
   type SchoolExpenseWorkspace,
 } from "@/lib/school/expense-types";
+import type { SchoolEmergencyFund } from "@/lib/school/store-types";
 
 type ExpenseListWindow = {
   key: string;
@@ -60,7 +62,8 @@ import { schoolPageMeta, type SchoolPageMeta } from "@/lib/school/pagination";
 import { transportInputClass } from "@/lib/school/transport-ui";
 
 const EMPTY_SUMMARY: SchoolExpenseSummary = { totalPosted: 0, postedCount: 0, typesUsed: 0 };
-const EMPTY_CAPS: SchoolExpenseCaps = { canView: false, canRecord: false, canManageTypes: false, canReverse: false };
+const EMPTY_CAPS: SchoolExpenseCaps = { canView: false, canRecord: false, canManageTypes: false, canReverse: false, canManageFund: false };
+const EMPTY_FUND: SchoolEmergencyFund = { balance: 0, opening: 0, replenished: 0, spent: 0, hasOpening: false, entries: [], canManage: false };
 
 function todayIso() {
   const now = new Date();
@@ -88,6 +91,7 @@ export function SchoolExpensesPage({
   const [summary, setSummary] = useState<SchoolExpenseSummary>(first?.summary ?? EMPTY_SUMMARY);
   const [page, setPage] = useState<SchoolPageMeta>(first?.page ?? schoolPageMeta(1, 0));
   const [caps, setCaps] = useState<SchoolExpenseCaps>(first?.capabilities ?? EMPTY_CAPS);
+  const [fund, setFund] = useState<SchoolEmergencyFund>(first?.emergencyFund ?? EMPTY_FUND);
   const [buses, setBuses] = useState(first?.buses ?? []);
   const [period, setPeriod] = useState<ReportPeriod>(first?.period ?? "this-month");
   const [from, setFrom] = useState(first?.from ?? "");
@@ -141,6 +145,7 @@ export function SchoolExpensesPage({
     setSummary(workspace.summary);
     setPage(workspace.page);
     setCaps(workspace.capabilities);
+    setFund(workspace.emergencyFund ?? EMPTY_FUND);
     setBuses(workspace.buses);
     setPeriod(workspace.period);
     setFrom(workspace.from);
@@ -252,6 +257,8 @@ export function SchoolExpensesPage({
         <SummaryCard label="Transactions" value={String(summary.postedCount)} hint="Posted expense records" />
         <SummaryCard label="Expense Types Used" value={String(summary.typesUsed)} hint="Active types with activity" />
       </section>
+
+      <EmergencyFundPanel fund={fund} onChanged={() => load({ page: 1 })} />
 
       <form
         className="flex flex-wrap items-center gap-2"
@@ -434,6 +441,7 @@ export function SchoolExpensesPage({
           types={activeTypes}
           buses={buses.filter((bus) => bus.isActive)}
           canManageTypes={caps.canManageTypes}
+          fundBalance={fund.balance}
           onClose={() => setRecordOpen(false)}
           onSaved={() => {
             setRecordOpen(false);
@@ -556,12 +564,14 @@ function RecordExpenseDrawer({
   types,
   buses,
   canManageTypes,
+  fundBalance,
   onClose,
   onSaved,
 }: {
   types: SchoolExpenseTypeRow[];
   buses: Array<{ id: string; registrationNumber: string; name: string }>;
   canManageTypes: boolean;
+  fundBalance: number;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -573,6 +583,7 @@ function RecordExpenseDrawer({
   const [payee, setPayee] = useState("");
   const [reference, setReference] = useState("");
   const [busId, setBusId] = useState("");
+  const [fundingSource, setFundingSource] = useState<"OPERATING" | "EMERGENCY">("OPERATING");
   const [newTypeName, setNewTypeName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -601,6 +612,7 @@ function RecordExpenseDrawer({
       payee,
       reference,
       busId,
+      fundingSource,
       requestId,
     });
     setBusy(false);
@@ -652,6 +664,16 @@ function RecordExpenseDrawer({
         </SchoolField>
         <SchoolField label="Description">
           <input className={inputClass} value={description} onChange={(event) => setDescription(event.target.value)} />
+        </SchoolField>
+        <SchoolField label="Funding source">
+          <select
+            className={inputClass}
+            value={fundingSource}
+            onChange={(event) => setFundingSource(event.target.value as typeof fundingSource)}
+          >
+            <option value="OPERATING">Operating funds</option>
+            <option value="EMERGENCY">Emergency fund ({formatTzs(fundBalance)} available)</option>
+          </select>
         </SchoolField>
         <SchoolField label="Payment method">
           <select className={inputClass} value={method} onChange={(event) => setMethod(event.target.value as typeof method)}>
@@ -814,5 +836,136 @@ function ExpenseTypesDrawer({
         </ul>
       </div>
     </ContainedDrawer>
+  );
+}
+
+function EmergencyFundPanel({ fund, onChanged }: { fund: SchoolEmergencyFund; onChanged: () => void }) {
+  const [kind, setKind] = useState<"OPENING" | "REPLENISH">(fund.hasOpening ? "REPLENISH" : "OPENING");
+  const [amount, setAmount] = useState("");
+  const [occurredOn, setOccurredOn] = useState(todayIso());
+  const [reference, setReference] = useState("");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [requestId, setRequestId] = useState(newRequestId);
+
+  return (
+    <section className={cn(glassPanel, "space-y-4 px-5 py-5")}>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Emergency Fund</h2>
+          <p className="mt-1 text-[13px] text-slate-500">Opening balances and replenishments are not revenue. Spending posts one school expense.</p>
+        </div>
+        <p className="text-[22px] font-semibold tracking-[-0.04em] text-navy">{formatTzs(fund.balance)}</p>
+      </div>
+      <p className="text-[12.5px] text-slate-500">
+        Opening {formatTzs(fund.opening)} + replenishments {formatTzs(fund.replenished)} − spending {formatTzs(fund.spent)} = {formatTzs(fund.balance)}
+      </p>
+      {fund.canManage ? (
+        <form
+          className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-6"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (busy) return;
+            setBusy(true);
+            setError(null);
+            void creditSchoolEmergencyFundAction({
+              kind: fund.hasOpening ? "REPLENISH" : kind,
+              amount,
+              occurredOn,
+              reference,
+              notes,
+              requestId,
+            }).then((result) => {
+              setBusy(false);
+              if (!result.ok) {
+                setError(result.error);
+                return;
+              }
+              setAmount("");
+              setReference("");
+              setNotes("");
+              setRequestId(newRequestId());
+              onChanged();
+            });
+          }}
+        >
+          <select
+            className={inputClass}
+            value={fund.hasOpening ? "REPLENISH" : kind}
+            disabled={fund.hasOpening}
+            onChange={(event) => setKind(event.target.value as typeof kind)}
+          >
+            <option value="OPENING">Opening balance</option>
+            <option value="REPLENISH">Replenish</option>
+          </select>
+          <input className={inputClass} inputMode="decimal" value={amount} placeholder="Amount" onChange={(event) => setAmount(event.target.value)} />
+          <input type="date" className={inputClass} value={occurredOn} onChange={(event) => setOccurredOn(event.target.value)} />
+          <input className={inputClass} value={reference} placeholder="Reference" onChange={(event) => setReference(event.target.value)} />
+          <input className={inputClass} value={notes} placeholder="Notes" onChange={(event) => setNotes(event.target.value)} />
+          <SchoolWorkflowButton
+            className={primaryButton}
+            busy={busy}
+            idleLabel={fund.hasOpening ? "Add funds" : "Record opening"}
+            onClick={() => {
+              if (busy) return;
+              setBusy(true);
+              setError(null);
+              void creditSchoolEmergencyFundAction({
+                kind: fund.hasOpening ? "REPLENISH" : kind,
+                amount,
+                occurredOn,
+                reference,
+                notes,
+                requestId,
+              }).then((result) => {
+                setBusy(false);
+                if (!result.ok) {
+                  setError(result.error);
+                  return;
+                }
+                setAmount("");
+                setReference("");
+                setNotes("");
+                setRequestId(newRequestId());
+                onChanged();
+              });
+            }}
+          />
+        </form>
+      ) : null}
+      {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
+      {fund.entries.length ? (
+        <div className={tableScrollClass}>
+          <table className="w-full min-w-[640px] text-left">
+            <thead>
+              <tr className={tableHead}>
+                {["Date", "Type", "Amount", "Reference", "Notes", "Status"].map((heading) => (
+                  <th key={heading} className="px-4 py-2 font-semibold">
+                    {heading}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {fund.entries.map((entry) => (
+                <tr key={entry.id} className="border-t border-navy/5 text-[13px] text-navy">
+                  <td className="px-4 py-2">{entry.occurredOn}</td>
+                  <td className="px-4 py-2">{entry.kind === "OPENING" ? "Opening" : entry.kind === "REPLENISH" ? "Replenish" : "Expense"}</td>
+                  <td className="px-4 py-2">{formatAmount(entry.amount)}</td>
+                  <td className="px-4 py-2">{entry.reference || "—"}</td>
+                  <td className="px-4 py-2">{entry.notes || "—"}</td>
+                  <td className="px-4 py-2">
+                    <StatusPill value={entry.isActive ? "Posted" : "Reversed"} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="text-[13px] text-slate-500">No emergency fund entries yet.</p>
+      )}
+    </section>
   );
 }

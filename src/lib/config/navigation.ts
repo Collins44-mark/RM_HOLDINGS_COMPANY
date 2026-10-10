@@ -73,6 +73,7 @@ export const SCHOOL_NAV: NavItem[] = [
       { href: "/school/expenses/salaries", label: "Salaries", icon: "wallet" },
     ],
   },
+  { href: "/school/store", label: "Store & Inventory", icon: "package" },
   {
     href: "/school/transport",
     label: "Transport",

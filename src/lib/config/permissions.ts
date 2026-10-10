@@ -89,6 +89,7 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "fuel", actions: ["view", "create", "edit"] },
       { resource: "maintenance", actions: ["view", "create", "edit"] },
       { resource: "expenses", actions: ["view", "create", "edit"] },
+      { resource: "store", actions: ["view", "manage", "sell", "issue"] },
       { resource: "reports", actions: ["view"] },
       { resource: "settings", actions: ["view", "manage"] },
     ]).map((code) => ({ module: "school", code, name: titleize(code) })),
@@ -211,6 +212,10 @@ export function isOperablePermission(code: string) {
     code === "school.expenses.view" ||
     code === "school.expenses.create" ||
     code === "school.expenses.edit" ||
+    code === "school.store.view" ||
+    code === "school.store.manage" ||
+    code === "school.store.sell" ||
+    code === "school.store.issue" ||
     code === "school.payroll.view" ||
     code === "school.payroll.manage" ||
     code === "school.payroll.pay"
@@ -278,6 +283,7 @@ const RESOURCE_LABELS: Record<string, string> = {
   results: "Results",
   fees: "Fees",
   expenses: "Expenses",
+  store: "Store & Inventory",
   payroll: "Payroll",
 };
 
@@ -437,6 +443,10 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.expenses.view",
       "school.expenses.create",
       "school.expenses.edit",
+      "school.store.view",
+      "school.store.manage",
+      "school.store.sell",
+      "school.store.issue",
     ],
   },
   {
@@ -463,6 +473,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.fuel.view",
       "school.maintenance.view",
       "school.expenses.view",
+      "school.store.view",
       "school.payroll.view",
     ],
   },
@@ -490,6 +501,9 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.expenses.view",
       "school.expenses.create",
       "school.expenses.edit",
+      "school.store.view",
+      "school.store.sell",
+      "school.store.issue",
       "school.payroll.view",
       "school.payroll.pay",
     ],
@@ -520,6 +534,8 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       "school.parents.view",
       "school.parents.manage",
       "school.fees.view",
+      "school.store.view",
+      "school.store.sell",
     ],
   },
   {

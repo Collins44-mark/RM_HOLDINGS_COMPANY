@@ -3,13 +3,23 @@ import type { SchoolPageMeta } from "@/lib/school/pagination";
 
 export type SchoolExpenseMethod = "CASH" | "MOBILE_MONEY" | "BANK";
 
-export type SchoolExpenseSource = "MANUAL" | "TRANSPORT_FUEL" | "TRANSPORT_MAINTENANCE" | "SALARY";
+export type SchoolExpenseSource =
+  | "MANUAL"
+  | "TRANSPORT_FUEL"
+  | "TRANSPORT_MAINTENANCE"
+  | "SALARY"
+  | "STORE_ISSUE"
+  | "STORE_COGS"
+  | "EMERGENCY";
+
+export type SchoolExpenseFundingSource = "OPERATING" | "EMERGENCY";
 
 export type SchoolExpenseCaps = {
   canView: boolean;
   canRecord: boolean;
   canManageTypes: boolean;
   canReverse: boolean;
+  canManageFund: boolean;
 };
 
 export const SCHOOL_OTHER_EXPENSE_CODE = "OTHER";
@@ -81,6 +91,7 @@ export type SchoolExpenseWorkspace = {
   categoryId: string;
   q: string;
   capabilities: SchoolExpenseCaps;
+  emergencyFund: import("@/lib/school/store-types").SchoolEmergencyFund;
 };
 
 export const SCHOOL_EXPENSE_METHODS: Array<{ value: SchoolExpenseMethod; label: string }> = [
@@ -100,6 +111,9 @@ export function schoolExpenseSourceLabel(source: string) {
   if (source === "TRANSPORT_FUEL") return "Transport / Fuel";
   if (source === "TRANSPORT_MAINTENANCE") return "Transport / Maintenance";
   if (source === "SALARY") return "Salary";
+  if (source === "STORE_ISSUE") return "Store / school use";
+  if (source === "STORE_COGS") return "Store / cost of sales";
+  if (source === "EMERGENCY") return "Emergency fund";
   return "School expense";
 }
 
@@ -107,6 +121,7 @@ export function schoolExpenseSourceHref(source: string) {
   if (source === "TRANSPORT_FUEL") return "/school/transport/fuel";
   if (source === "TRANSPORT_MAINTENANCE") return "/school/transport/maintenance";
   if (source === "SALARY") return "/school/expenses/salaries";
+  if (source === "STORE_ISSUE" || source === "STORE_COGS") return "/school/store";
   return null;
 }
 

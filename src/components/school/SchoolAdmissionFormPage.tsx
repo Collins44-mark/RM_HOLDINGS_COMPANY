@@ -19,6 +19,8 @@ import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import { formatCompactStudentNumber } from "@/lib/school/student-number";
 import { transportBillingFrequencyLabel, type TransportRouteOption } from "@/lib/school/transport-types";
+import { createSchoolStoreSaleAction, loadSchoolStoreWorkspaceAction } from "@/actions/school/store";
+import type { SchoolStoreItem } from "@/lib/school/store-types";
 
 export type AdmissionFormOptions = {
   years: Array<{ id: string; name: string; isCurrent: boolean }>;
@@ -148,12 +150,22 @@ export function SchoolAdmissionFormPage({
   const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [duplicateMeta, setDuplicateMeta] = useState<{ studentId: string; studentNumber: string } | null>(null);
   const [catalogReady, setCatalogReady] = useState(!loadOptions);
+  const [storeItems, setStoreItems] = useState<SchoolStoreItem[]>([]);
+  const [storeLines, setStoreLines] = useState<Array<{ itemId: string; qty: string }>>([]);
   const lock = useRef(false);
 
   function patch(next: Partial<AdmissionFormInput>) {
     setForm((current) => ({ ...current, ...next }));
     setSaved(false);
   }
+
+  useEffect(() => {
+    void loadSchoolStoreWorkspaceAction({ view: "items", pageSize: 100 }).then((result) => {
+      if (result.ok) {
+        setStoreItems(result.workspace.items.filter((item) => item.isActive && item.category === "UNIFORM" && item.qtyOnHand > 0 && item.sellingPrice > 0));
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (!loadOptions) return;
@@ -259,6 +271,18 @@ export function SchoolAdmissionFormPage({
         }
         setSaveError(result.error);
         return;
+      }
+      const pendingStore = storeLines.filter((line) => line.itemId && Number(line.qty) > 0);
+      if (result.studentId && pendingStore.length) {
+        void createSchoolStoreSaleAction({
+          studentId: result.studentId,
+          lines: pendingStore.map((line) => ({ itemId: line.itemId, qty: Number(line.qty) })),
+          saleDate: form.admissionDate,
+          admissionId: result.id,
+          requestId: crypto.randomUUID(),
+        }).then((sale) => {
+          if (!sale.ok) setSaveError(`Admission completed. Store sale was not recorded: ${sale.error}`);
+        });
       }
       setCompleteBusy(false);
       setCompleted(true);
@@ -659,6 +683,51 @@ export function SchoolAdmissionFormPage({
               <p className="text-[13px] text-slate-500">Transport is optional. Leave this off if the student will not use school buses.</p>
             )}
           </div>
+          {storeItems.length ? (
+            <div className="space-y-3 border-t border-navy/8 pt-4">
+              <h3 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">Uniforms (optional)</h3>
+              <p className="text-[13px] text-slate-500">
+                Leave this empty to complete admission without a store purchase. A sale is recorded only if you add items and complete admission.
+              </p>
+              {storeLines.map((line, index) => (
+                <div key={`${line.itemId}-${index}`} className="grid grid-cols-[1fr_5rem] gap-2">
+                  <select
+                    className={inputClass}
+                    value={line.itemId}
+                    onChange={(event) => {
+                      const next = [...storeLines];
+                      next[index] = { ...line, itemId: event.target.value };
+                      setStoreLines(next);
+                    }}
+                  >
+                    {storeItems.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                        {item.variant ? ` · ${item.variant}` : ""} · {formatTzs(item.sellingPrice)}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className={inputClass}
+                    inputMode="decimal"
+                    value={line.qty}
+                    onChange={(event) => {
+                      const next = [...storeLines];
+                      next[index] = { ...line, qty: event.target.value };
+                      setStoreLines(next);
+                    }}
+                  />
+                </div>
+              ))}
+              <button
+                type="button"
+                className="text-[12.5px] font-semibold text-navy"
+                onClick={() => setStoreLines([...storeLines, { itemId: storeItems[0]?.id ?? "", qty: "1" }])}
+              >
+                Add uniform
+              </button>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
