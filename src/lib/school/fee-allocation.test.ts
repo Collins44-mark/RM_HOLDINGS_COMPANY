@@ -3,12 +3,15 @@ import test from "node:test";
 import {
   allocatedPaymentTotal,
   chargeRemaining,
+  compactFeeChargeLabel,
   isAllocatedFeePayment,
   isPayableObligation,
   parsePayableSelectorId,
   pendingTuitionSelectorId,
   tuitionBilledFromRollup,
 } from "./fee-allocation";
+import { applyRecordedFeePayment } from "./apply-fee-payment";
+import type { StudentFeeAccount } from "./fee-types";
 
 test("partial transport payment leaves the remainder on that charge only", () => {
   const transportId = "transport-oct";
@@ -66,4 +69,112 @@ test("tuition billed is recovered from the enrollment rollup when only transport
   assert.equal(parsePayableSelectorId(pending).pendingTuition, true);
   assert.equal(parsePayableSelectorId(pending).enrollmentId, "enr-1");
   assert.equal(parsePayableSelectorId("charge-uuid").chargeId, "charge-uuid");
+});
+
+test("dropdown labels stay short and omit billed/paid/remaining", () => {
+  assert.equal(
+    compactFeeChargeLabel({
+      chargeKind: "TUITION",
+      description: "Annual school fees",
+      academicYearName: "2026",
+    }),
+    "Annual Fees · 2026",
+  );
+  assert.equal(
+    compactFeeChargeLabel({
+      chargeKind: "TRANSPORT",
+      description: "Transport · KIVIGA",
+      academicYearName: "2026",
+      billingPeriod: "Oct 2026",
+    }),
+    "Transport · KIVIGA · Oct 2026",
+  );
+  assert.equal(compactFeeChargeLabel({
+    chargeKind: "TUITION",
+    description: "Term 5 Fees",
+    academicYearName: "2026",
+  }).includes("billed"), false);
+});
+
+test("a recorded payment reduces only the selected charge", () => {
+  const account = {
+    enrollmentId: "enr-1",
+    studentId: "stu-1",
+    feeStructureId: "fs",
+    chargeId: "tuition-1",
+    annualAmount: 3_120_000,
+    paidAmount: 120_000,
+    outstandingAmount: 3_000_000,
+    totalBilled: 3_120_000,
+    totalPaid: 120_000,
+    totalOutstanding: 3_000_000,
+    status: "partial",
+    academicYearName: "2026",
+    obligations: [
+      {
+        enrollmentId: "enr-1",
+        chargeId: "tuition-1",
+        description: "Annual school fees",
+        academicYearId: "y1",
+        academicYearName: "2026",
+        billed: 3_000_000,
+        paid: 0,
+        remaining: 3_000_000,
+        status: "outstanding",
+        chargeKind: "TUITION",
+      },
+      {
+        enrollmentId: "enr-1",
+        chargeId: "transport-oct",
+        description: "Transport · KIVIGA",
+        academicYearId: "y1",
+        academicYearName: "2026",
+        billed: 120_000,
+        paid: 120_000,
+        remaining: 0,
+        status: "paid",
+        chargeKind: "TRANSPORT",
+        billingPeriod: "Oct 2026",
+      },
+    ],
+    payments: [],
+  } as unknown as StudentFeeAccount;
+  const next = applyRecordedFeePayment(account, {
+    selectorId: "tuition-1",
+    amount: 500_000,
+    chargeId: "tuition-1",
+    payment: {
+      id: "pay-1",
+      paymentNumber: "PAY-1",
+      amount: 500_000,
+      method: "CASH",
+      paymentDate: "2026-10-10",
+      recordedAt: "2026-10-10T00:00:00.000Z",
+      reference: "",
+      notes: "",
+      status: "posted",
+      chargeId: "tuition-1",
+      academicYearName: "2026",
+      recordedByName: "",
+      recordedById: null,
+      verifiedByName: "",
+      verifiedById: null,
+      verifiedAt: null,
+    },
+  });
+  const tuition = next.obligations.find((row) => row.chargeId === "tuition-1");
+  const transport = next.obligations.find((row) => row.chargeId === "transport-oct");
+  assert.equal(tuition?.paid, 500_000);
+  assert.equal(tuition?.remaining, 2_500_000);
+  assert.equal(transport?.paid, 120_000);
+  assert.equal(transport?.remaining, 0);
+  assert.equal(next.payments.length, 1);
+  const twice = applyRecordedFeePayment(next, {
+    selectorId: "tuition-1",
+    amount: 500_000,
+    chargeId: "tuition-1",
+    payment: next.payments[0],
+  });
+  assert.equal(twice.payments.length, 1);
+  assert.equal(twice.obligations.find((row) => row.chargeId === "tuition-1")?.paid, 500_000);
 });

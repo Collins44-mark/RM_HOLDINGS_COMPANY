@@ -13,7 +13,7 @@ import {
 } from "@/lib/school/access";
 import { revalidatePath } from "next/cache";
 import { getStudentFeeAccount } from "@/lib/school/fee-account";
-import { isPayableObligation, parsePayableSelectorId } from "@/lib/school/fee-allocation";
+import { parsePayableSelectorId } from "@/lib/school/fee-allocation";
 import {
   asFeeStatus,
   paymentMethodLabel,
@@ -365,54 +365,37 @@ export async function recordSchoolFeePaymentAction(input: {
     const requestId = str(input.requestId);
     if (!requestId) throw new SchoolError("Payment request is invalid.", "VALIDATION");
     const enrollmentId = str(input.enrollmentId);
-    const account = await getStudentFeeAccount({
-      supabase,
-      businessUnitId,
-      enrollmentId,
-    });
-    if (!account) throw new SchoolError("Fee account was not found.", "NOT_FOUND");
-    const studentId = str(input.studentId);
-    if (studentId && studentId !== account.studentId) {
-      throw new SchoolError("This payment does not belong to the selected student.", "VALIDATION");
-    }
     const selected = parsePayableSelectorId(str(input.chargeId));
     const targetEnrollmentId = selected.enrollmentId || enrollmentId;
-    if (targetEnrollmentId !== account.enrollmentId) {
-      const sameStudent = account.obligations.some((row) => row.enrollmentId === targetEnrollmentId);
-      if (!sameStudent) throw new SchoolError("This charge does not belong to the selected student.", "VALIDATION");
+    const enrollment = await supabase
+      .from("sch_student_enrollments")
+      .select("id, student_id, business_unit_id")
+      .eq("business_unit_id", businessUnitId)
+      .eq("id", targetEnrollmentId)
+      .maybeSingle();
+    if (!enrollment.data) throw new SchoolError("Fee account was not found.", "NOT_FOUND");
+    const studentId = str(enrollment.data.student_id);
+    if (str(input.studentId) && str(input.studentId) !== studentId) {
+      throw new SchoolError("This payment does not belong to the selected student.", "VALIDATION");
     }
-    const target = selected.chargeId
-      ? account.obligations.find((row) => row.chargeId === selected.chargeId && row.enrollmentId === (selected.enrollmentId || row.enrollmentId))
-      : account.obligations.find(
-          (row) =>
-            row.enrollmentId === targetEnrollmentId &&
-            row.chargeKind === "TUITION" &&
-            isPayableObligation(row) &&
-            !row.chargeId,
-        ) ?? account.obligations.find((row) => row.enrollmentId === targetEnrollmentId && row.chargeKind === "TUITION" && isPayableObligation(row));
-    if (selected.chargeId) {
+    let chargeId = selected.chargeId || null;
+    if (chargeId) {
       const owned = await supabase
         .from("sch_fee_charges")
         .select("id, student_id, enrollment_id, is_active")
         .eq("business_unit_id", businessUnitId)
-        .eq("id", selected.chargeId)
-        .eq("student_id", account.studentId)
+        .eq("id", chargeId)
+        .eq("student_id", studentId)
         .maybeSingle();
       if (!owned.data || !owned.data.is_active) {
         throw new SchoolError("This charge does not belong to the selected student.", "VALIDATION");
       }
-    }
-    if (!target && !account.feeStructureId && !selected.pendingTuition) {
-      throw new SchoolError("Fee structure not configured for this class.", "VALIDATION");
-    }
-    if (!target || !isPayableObligation(target)) {
+      chargeId = String(owned.data.id);
+    } else if (!selected.pendingTuition) {
       throw new SchoolError("This student has no outstanding charge.", "VALIDATION");
     }
-    if (target.remaining != null && amount > target.remaining) {
-      throw new SchoolError("Amount cannot exceed the outstanding balance.", "VALIDATION");
-    }
     const { data, error } = await supabase.rpc("sch_record_fee_payment", {
-      p_enrollment_id: target.enrollmentId,
+      p_enrollment_id: targetEnrollmentId,
       p_amount: amount,
       p_method: method,
       p_payment_date: paymentDate,
@@ -420,26 +403,42 @@ export async function recordSchoolFeePaymentAction(input: {
       p_notes: str(input.notes).slice(0, 240),
       p_request_id: requestId,
       p_actor_id: userId,
-      p_charge_id: target.chargeId || null,
+      p_charge_id: chargeId,
     });
     if (error) throw new SchoolError(error.message || "Couldn't save this payment.", "DATABASE");
-    const payload = (data ?? {}) as { id?: string; payment_number?: string; duplicate?: boolean };
+    const payload = (data ?? {}) as {
+      id?: string;
+      payment_number?: string;
+      charge_id?: string;
+      outstanding?: number;
+      duplicate?: boolean;
+    };
     if (!payload.duplicate) {
       await audit({
         action: "school.fee_payment_recorded",
-        description: `School fee payment recorded · ${account.studentNumber} · ${amount}`,
+        description: `School fee payment recorded · ${amount}`,
         entityType: "sch_fee_payments",
         entityId: payload.id ?? null,
         businessUnitId,
       });
     }
-    const next = await getStudentFeeAccount({ supabase, businessUnitId, enrollmentId: account.enrollmentId });
-    revalidatePath("/school/fees");
-    revalidatePath("/school");
-    revalidatePath("/owner");
-    revalidatePath("/owner/finance");
-    revalidatePath("/owner/reports");
-    return { ok: true as const, account: next, paymentId: payload.id ?? null, capabilities: caps(user) };
+    revalidatePath("/school/fees", "page");
+    revalidatePath(`/school/fees/${targetEnrollmentId}`, "page");
+    revalidatePath("/owner/finance", "page");
+    return {
+      ok: true as const,
+      paymentId: payload.id ?? null,
+      paymentNumber: payload.payment_number ?? "",
+      chargeId: payload.charge_id ? String(payload.charge_id) : chargeId,
+      outstanding: payload.outstanding ?? null,
+      duplicate: Boolean(payload.duplicate),
+      amount,
+      method,
+      paymentDate,
+      reference: str(input.reference),
+      notes: str(input.notes).slice(0, 240),
+      capabilities: caps(user),
+    };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
   }

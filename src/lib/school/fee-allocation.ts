@@ -70,3 +70,26 @@ export function isPayableObligation(row: { remaining?: number | null; status?: s
   if (String(row.status ?? "") === "no_structure") return false;
   return row.remaining != null && row.remaining > 0;
 }
+
+export function compactFeeChargeLabel(row: {
+  chargeKind?: string;
+  description?: string;
+  academicYearName?: string;
+  billingPeriod?: string;
+}) {
+  const year = String(row.academicYearName ?? "")
+    .replace(/^Academic Year\s+/i, "")
+    .trim();
+  if (String(row.chargeKind ?? "") === "TRANSPORT") {
+    const raw = String(row.description ?? "");
+    const route = raw.replace(/^Transport\s*·\s*/i, "").replace(/^School transport$/i, "").trim();
+    return ["Transport", route && route !== "Route" ? route : null, row.billingPeriod || year].filter(Boolean).join(" · ");
+  }
+  const raw = String(row.description ?? "").trim() || "Annual Fees";
+  const short = raw
+    .replace(/^Annual school fees$/i, "Annual Fees")
+    .replace(/school fees/gi, "Fees")
+    .replace(/\s+/g, " ")
+    .trim();
+  return [short, year].filter(Boolean).join(" · ");
+}

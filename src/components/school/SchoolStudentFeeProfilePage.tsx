@@ -10,7 +10,7 @@ import {
   verifySchoolFeePaymentAction,
 } from "@/actions/school/fees";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
-import { ContainedDrawer, DrawerCancel } from "@/components/ui/ContainedDrawer";
+import { ContainedDrawer, DrawerCancel, useContainedDrawerClose } from "@/components/ui/ContainedDrawer";
 import {
   glassPanel,
   inputClass,
@@ -23,7 +23,9 @@ import {
 import { cn } from "@/lib/cn";
 import { formatAmount, formatTzs } from "@/lib/format/currency";
 import { downloadFeeReceiptPdf, type FeeReceiptPayload } from "@/lib/school/fee-receipt-pdf";
-import { isPayableObligation, payableSelectorId } from "@/lib/school/fee-allocation";
+import { compactFeeChargeLabel, isPayableObligation, payableSelectorId } from "@/lib/school/fee-allocation";
+import { applyRecordedFeePayment } from "@/lib/school/apply-fee-payment";
+import { SchoolDrawerSelect } from "@/components/school/SchoolDrawerSelect";
 import {
   feeStatusLabel,
   paymentMethodLabel,
@@ -67,11 +69,7 @@ function remainingOf(account: StudentFeeAccount, selectorId: string) {
 }
 
 function obligationLabel(row: FeeObligationRow) {
-  const period = row.billingPeriod || row.academicYearName;
-  const billed = row.billed == null ? "—" : formatAmount(row.billed);
-  const paid = formatAmount(row.paid);
-  const remaining = row.remaining == null ? "—" : formatAmount(row.remaining);
-  return `${row.description} · ${period} · billed ${billed} · paid ${paid} · remaining ${remaining}`;
+  return compactFeeChargeLabel(row);
 }
 
 function payableObligations(account: StudentFeeAccount) {
@@ -199,49 +197,62 @@ export function SchoolStudentFeeProfilePage({
   }
 
   function runRecord() {
-    if (!account || lock.current) return;
+    if (!account || lock.current) return Promise.resolve(false);
     if (!payableObligations(account).length) {
       setError("This student has no outstanding charge.");
-      return;
+      return Promise.resolve(false);
     }
     lock.current = true;
     setSaveBusy(true);
+    setError(null);
     const enrollmentId = payEnrollmentId || viewEnrollmentId;
-    void recordSchoolFeePaymentAction({
+    const selectorId = payChargeId;
+    return recordSchoolFeePaymentAction({
       enrollmentId,
       studentId: viewStudentId,
-      chargeId: payChargeId,
+      chargeId: selectorId,
       amount: payAmount,
       method: payMethod,
       paymentDate: payDate,
       reference: payReference,
       notes: payNotes,
       requestId,
-    }).then(async (result) => {
+    }).then((result) => {
       lock.current = false;
       setSaveBusy(false);
       if (!result.ok) {
         setError(result.error);
-        return;
+        return false;
       }
       setCaps(result.capabilities);
-      const nextAccount =
-        result.account && result.account.studentId === viewStudentId
-          ? result.account.enrollmentId === viewEnrollmentId
-            ? result.account
-            : null
-          : null;
-      if (nextAccount) applyAccount(nextAccount);
-      else {
-        const view = await getSchoolFeeAccountAction(viewEnrollmentId);
-        if (view.ok && view.account.studentId === viewStudentId) {
-          applyAccount(view.account);
-          setCaps(view.capabilities);
-        } else if (result.account && result.account.studentId === viewStudentId) applyAccount(result.account);
+      if (!result.duplicate) {
+        applyAccount(
+          applyRecordedFeePayment(account, {
+            selectorId,
+            amount: result.amount,
+            chargeId: result.chargeId,
+            payment: {
+              id: result.paymentId || requestId,
+              paymentNumber: result.paymentNumber,
+              amount: result.amount,
+              method: result.method,
+              paymentDate: result.paymentDate,
+              recordedAt: new Date().toISOString(),
+              reference: result.reference,
+              notes: result.notes,
+              status: "posted",
+              chargeId: result.chargeId,
+              academicYearName: account.academicYearName,
+              recordedByName: "",
+              recordedById: null,
+              verifiedByName: "",
+              verifiedById: null,
+              verifiedAt: null,
+            },
+          }),
+        );
       }
-      const updated = nextAccount ?? (result.account?.studentId === viewStudentId ? result.account : null) ?? account;
-      setPayOpen(false);
-      resetPayForm(updated);
+      return true;
     });
   }
 
@@ -289,7 +300,7 @@ export function SchoolStudentFeeProfilePage({
         <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
         Fees & Payments
       </Link>
-      {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
+      {error && !payOpen ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
 
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -468,46 +479,36 @@ export function SchoolStudentFeeProfilePage({
           }}
           busy={saveBusy}
           footer={
-            <>
-              <DrawerCancel disabled={saveBusy} />
-              <SchoolWorkflowButton
-                className={primaryButton}
-                busy={saveBusy}
-                disabled={payable.length === 0}
-                idleLabel="Save Payment"
-                onClick={runRecord}
-              />
-            </>
+            <RecordPaymentFooter busy={saveBusy} disabled={payable.length === 0} onSave={runRecord} />
           }
         >
           <div className="space-y-3 pb-4">
             <label className="block">
               <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Charge to pay</span>
               {payable.length ? (
-                <select
-                  className={inputClass}
+                <SchoolDrawerSelect
                   value={payChargeId}
-                  onChange={(event) => {
-                    const next = event.target.value;
+                  options={payable.map((row) => ({
+                    value: payableSelectorId(row),
+                    label: obligationLabel(row),
+                  }))}
+                  onChange={(next) => {
                     const match = payable.find((row) => payableSelectorId(row) === next);
                     setPayChargeId(next);
                     setPayEnrollmentId(match?.enrollmentId || payEnrollmentId);
                     setPayAmount("");
                   }}
-                >
-                  {payable.map((row) => (
-                    <option key={payableSelectorId(row)} value={payableSelectorId(row)}>
-                      {obligationLabel(row)}
-                    </option>
-                  ))}
-                </select>
+                />
               ) : (
                 <p className="mt-1 text-[13px] text-slate-500">This student has no outstanding charge.</p>
               )}
             </label>
-            {remaining != null ? (
-              <p className="text-[12.5px] text-slate-500">Outstanding on this charge: {formatTzs(remaining)}. Partial payments are allowed.</p>
+            {payable.length && remaining != null ? (
+              <p className="text-[12.5px] leading-5 text-slate-500">
+                Outstanding {formatTzs(remaining)}. Partial payment is allowed.
+              </p>
             ) : null}
+            {payOpen && error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
             <label className="block">
               <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Amount</span>
               <input
@@ -581,5 +582,33 @@ export function SchoolStudentFeeProfilePage({
         </ContainedDrawer>
       ) : null}
     </div>
+  );
+}
+
+function RecordPaymentFooter({
+  busy,
+  disabled,
+  onSave,
+}: {
+  busy: boolean;
+  disabled: boolean;
+  onSave: () => Promise<boolean>;
+}) {
+  const close = useContainedDrawerClose();
+  return (
+    <>
+      <DrawerCancel disabled={busy} />
+      <SchoolWorkflowButton
+        className={primaryButton}
+        busy={busy}
+        disabled={disabled}
+        idleLabel="Save Payment"
+        onClick={() => {
+          void onSave().then((ok) => {
+            if (ok) close(true);
+          });
+        }}
+      />
+    </>
   );
 }
