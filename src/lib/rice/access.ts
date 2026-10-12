@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth/session";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { matchPermission } from "@/lib/config/permissions";
+import { getBusinessUnitByCode } from "@/lib/data/business-units";
 
 export type RiceContext = {
   supabase: NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>;
@@ -39,11 +40,19 @@ export const requireRiceContext = cache(async (): Promise<RiceContext> => {
 
   let businessUnitId = cachedRiceBuId;
   if (!businessUnitId) {
-    const { data: bu, error } = await supabase.from("business_units").select("id").eq("code", "rice").maybeSingle();
-    if (error) throw new RiceError("Couldn't load Rice Mill & Warehouse.", "DATABASE");
-    if (!bu?.id) throw new RiceError("Rice Mill business unit was not found.", "NOT_FOUND");
-    cachedRiceBuId = String(bu.id);
-    businessUnitId = cachedRiceBuId;
+    const unit = await getBusinessUnitByCode("rice");
+    if (unit?.id) {
+      cachedRiceBuId = unit.id;
+      businessUnitId = cachedRiceBuId;
+    } else {
+      const { data: bu, error } = await supabase.from("business_units").select("id").eq("code", "rice").maybeSingle();
+      if (error && !isRiceEmptyRead(error) && !isRiceUnconfiguredRead(error)) {
+        throw new RiceError("Couldn't load Rice Mill & Warehouse.", "DATABASE");
+      }
+      if (!bu?.id) throw new RiceError("Rice Mill business unit was not found.", "NOT_FOUND");
+      cachedRiceBuId = String(bu.id);
+      businessUnitId = cachedRiceBuId;
+    }
   }
 
   const isOwner = isOwnerRole(user.roleCode);

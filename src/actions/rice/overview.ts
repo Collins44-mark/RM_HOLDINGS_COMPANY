@@ -2,7 +2,7 @@
 
 import { getBusinessUnitByCode } from "@/lib/data/business-units";
 import { parseReportPeriod, reportPeriodRange, type ReportPeriod } from "@/lib/data/report-period";
-import { isRiceMissingRelation, requireRiceContext, riceActionError } from "@/lib/rice/access";
+import { isRiceEmptyRead, isRiceMissingRelation, requireRiceContext, RiceError, riceActionError } from "@/lib/rice/access";
 import { loadRiceExpenses, loadRiceItems, loadRicePurchases, loadRiceSales, loadRiceServiceIncome } from "@/lib/rice/queries";
 import { RICE_LEDGER_UNAVAILABLE, type RiceMetric, type RiceOverviewView } from "@/lib/rice/overview";
 
@@ -79,8 +79,11 @@ export async function getRiceOverviewAction(input: {
         .eq("business_unit_id", ctx.businessUnitId)
         .eq("is_active", true)
         .eq("produced_on", today);
-      if (milledError && isRiceMissingRelation(milledError)) {
-        throw milledError;
+      if (milledError && !isRiceEmptyRead(milledError)) {
+        if (isRiceMissingRelation(milledError)) {
+          throw new RiceError("Rice mill ledgers are not in the live database yet.", "NOT_CONFIGURED");
+        }
+        throw new RiceError("Couldn't load milling production.", "DATABASE");
       }
       const milledToday = (milledRows ?? []).reduce((sum, row) => sum + (Number(row.input_qty_kg) || 0), 0);
 
@@ -118,7 +121,11 @@ export async function getRiceOverviewAction(input: {
       return { ok: true as const, overview };
     } catch (inner) {
       const message = inner instanceof Error ? inner.message : "";
-      if (isRiceMissingRelation(inner as { message?: string }) || /not in the live database/i.test(message)) {
+      const unconfigured =
+        (inner instanceof RiceError && inner.code === "NOT_CONFIGURED") ||
+        isRiceMissingRelation(inner as { message?: string; code?: string }) ||
+        /not in the live database/i.test(message);
+      if (unconfigured) {
         return {
           ok: true as const,
           overview: {

@@ -1,5 +1,5 @@
 import type { RiceContext } from "@/lib/rice/access";
-import { isRiceMissingRelation, riceHasPermission, RiceError } from "@/lib/rice/access";
+import { isRiceEmptyRead, isRiceMissingRelation, riceHasPermission, RiceError } from "@/lib/rice/access";
 import type {
   RiceCaps,
   RiceExpense,
@@ -45,6 +45,7 @@ export async function loadRiceItems(ctx: RiceContext, includeInactive = false): 
   const { data, error } = await query;
   if (error) {
     if (isRiceMissingRelation(error)) throw new RiceError("Rice mill ledgers are not in the live database yet.", "NOT_CONFIGURED");
+    if (isRiceEmptyRead(error)) return [];
     throw new RiceError("Couldn't load rice items.", "DATABASE");
   }
   const { data: stock } = await ctx.supabase
