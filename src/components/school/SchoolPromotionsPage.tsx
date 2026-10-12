@@ -124,6 +124,9 @@ export function SchoolPromotionsPage({
   today,
   canManage,
   canViewClasses = false,
+  classes: initialClasses = [],
+  fromYearName: initialFromYearName = "",
+  toYearName: initialToYearName = "",
   error,
   pending = false,
 }: {
@@ -131,6 +134,9 @@ export function SchoolPromotionsPage({
   today: string;
   canManage: boolean;
   canViewClasses?: boolean;
+  classes?: PromotionClassCard[];
+  fromYearName?: string;
+  toYearName?: string;
   error: string | null;
   pending?: boolean;
 }) {
@@ -139,9 +145,9 @@ export function SchoolPromotionsPage({
   const [fromYearId, setFromYearId] = useState(initialYears.find((row) => row.isCurrent)?.id ?? initialYears[0]?.id ?? "");
   const [toYearId, setToYearId] = useState(initialYears.find((row) => !row.isCurrent)?.id ?? "");
   const [effectiveOn, setEffectiveOn] = useState(today);
-  const [cards, setCards] = useState<PromotionClassCard[]>([]);
-  const [boardStatus, setBoardStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [boardError, setBoardError] = useState<string | null>(null);
+  const [cards, setCards] = useState<PromotionClassCard[]>(initialClasses);
+  const [boardStatus, setBoardStatus] = useState<"ready" | "error">(error && !initialClasses.length ? "error" : "ready");
+  const [boardError, setBoardError] = useState<string | null>(error && !initialClasses.length ? error : null);
   const [selectedClass, setSelectedClass] = useState<PromotionClassCard | null>(null);
   const [rows, setRows] = useState<DraftRow[]>([]);
   const [page, setPage] = useState(1);
@@ -149,11 +155,11 @@ export function SchoolPromotionsPage({
   const [destClasses, setDestClasses] = useState<DestClass[]>([]);
   const [streams, setStreams] = useState<Array<{ id: string; name: string; classId: string }>>([]);
   const [levels, setLevels] = useState<Array<{ id: string; name: string }>>([]);
-  const [fromYearName, setFromYearName] = useState("");
-  const [toYearName, setToYearName] = useState("");
+  const [fromYearName, setFromYearName] = useState(initialFromYearName);
+  const [toYearName, setToYearName] = useState(initialToYearName);
   const [alreadyInTarget, setAlreadyInTarget] = useState(0);
   const [history, setHistory] = useState<PromotionHistoryRow[]>([]);
-  const [saveError, setSaveError] = useState<string | null>(error);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -165,7 +171,9 @@ export function SchoolPromotionsPage({
   const previewSeq = useRef(0);
   const previewCache = useRef(new Map<string, PreviewBundle>());
   const boardSeq = useRef(0);
-  const boardLoadedKey = useRef("");
+  const initialFrom = initialYears.find((row) => row.isCurrent)?.id ?? initialYears[0]?.id ?? "";
+  const initialTo = initialYears.find((row) => !row.isCurrent)?.id ?? "";
+  const boardLoadedKey = useRef(pending || (error && !initialClasses.length) ? "" : `${initialFrom}|${initialTo}`);
   const selectedClassId = selectedClass?.id ?? "";
   const selectedKey = selectedClass ? previewKey(fromYearId, toYearId, selectedClass.id) : "";
 
@@ -176,18 +184,11 @@ export function SchoolPromotionsPage({
     const key = `${from}|${to}`;
     const seq = ++boardSeq.current;
     const keepExisting = silent && boardLoadedKey.current === key;
-    if (!keepExisting) {
-      setBoardStatus("loading");
-      setBoardError(null);
-    }
     void loadSchoolPromotionBoardAction({ fromYearId: from, toYearId: to }).then((next) => {
       if (seq !== boardSeq.current) return;
       if (!next.ok) {
         setBoardError(next.error);
-        if (!keepExisting) {
-          setCards([]);
-          setBoardStatus("error");
-        }
+        if (!keepExisting) setBoardStatus("error");
         return;
       }
       boardLoadedKey.current = key;
@@ -201,10 +202,9 @@ export function SchoolPromotionsPage({
 
   useEffect(() => {
     if (pending || !fromYearId) return;
-    loadBoard(false, fromYearId, toYearId);
-    return () => {
-      boardSeq.current += 1;
-    };
+    const key = `${fromYearId}|${toYearId}`;
+    if (boardLoadedKey.current === key) return;
+    loadBoard(true, fromYearId, toYearId);
   }, [pending, fromYearId, toYearId, loadBoard]);
 
   function patchRow(studentId: string, patch: Partial<DraftRow>) {
@@ -469,7 +469,7 @@ export function SchoolPromotionsPage({
 
       {!selectedClass ? (
         <section className="space-y-4">
-          {boardError && boardStatus !== "loading" ? (
+          {boardError ? (
             <div className="flex flex-wrap items-center gap-3">
               <p className="text-[13px] text-[#c45b66]">{boardError}</p>
               <button type="button" className={secondaryButton} onClick={() => loadBoard(false)}>
@@ -477,19 +477,7 @@ export function SchoolPromotionsPage({
               </button>
             </div>
           ) : null}
-          {boardStatus === "loading" ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-busy="true" aria-label="Loading classes">
-              {Array.from({ length: 6 }, (_, index) => (
-                <div key={index} className={cn(glassCard, "px-4 py-4")}>
-                  <SkeletonBar className="h-2.5 w-16" />
-                  <SkeletonBar className="mt-3 h-4 w-32" />
-                  <SkeletonBar className="mt-3 h-3 w-24" />
-                  <SkeletonBar className="mt-4 h-6 w-12" />
-                  <SkeletonBar className="mt-2 h-3 w-40" />
-                </div>
-              ))}
-            </div>
-          ) : boardStatus === "ready" && cards.length ? (
+          {boardStatus === "ready" && cards.length ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {cards.map((card) => {
                 const processed = Boolean(toYearId) && card.enrolled > 0 && card.awaiting === 0;

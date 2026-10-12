@@ -12,8 +12,9 @@ import {
   requireSchoolPermission,
   schoolActionError,
   SchoolError,
+  type SchoolContext,
 } from "@/lib/school/access";
-import { catalogLookup, loadSchoolStructureCatalog } from "@/lib/school/structure-catalog";
+import { catalogLookup, loadSchoolStructureCatalog, type SchoolStructureCatalog } from "@/lib/school/structure-catalog";
 import { findApplicableFeeStructure } from "@/lib/school/fee-structure";
 import { loadPlacementByClassIds, loadPlacementByStreamIds } from "@/lib/school/placement-query";
 
@@ -447,60 +448,68 @@ export async function confirmSchoolPromotionsAction(input: {
   }
 }
 
-export async function loadSchoolPromotionBoardAction(input: { fromYearId: string; toYearId: string }) {
-  try {
-    const ctx = await requireAnySchoolPermission([PROMOTIONS_VIEW, PROMOTIONS_MANAGE, STUDENTS_MANAGE]);
-    const { supabase, businessUnitId } = ctx;
-    const fromYearId = str(input.fromYearId);
-    const toYearId = str(input.toYearId);
-    if (!fromYearId) throw new SchoolError("Select the current academic year.", "VALIDATION");
-    const catalog = await loadSchoolStructureCatalog(ctx);
-    if (!catalog.years.some((row) => row.id === fromYearId)) throw new SchoolError("The current academic year was not found.", "NOT_FOUND");
-    const enrollments = await supabase
+async function loadPromotionClassBoard(
+  ctx: SchoolContext,
+  catalog: SchoolStructureCatalog,
+  fromYearId: string,
+  toYearId: string,
+) {
+  const { supabase, businessUnitId } = ctx;
+  if (!fromYearId) throw new SchoolError("Select the current academic year.", "VALIDATION");
+  if (!catalog.years.some((row) => row.id === fromYearId)) throw new SchoolError("The current academic year was not found.", "NOT_FOUND");
+  const enrollments = await supabase
+    .from("sch_student_enrollments")
+    .select("student_id, class_id, sch_students!inner(status)")
+    .eq("business_unit_id", businessUnitId)
+    .eq("academic_year_id", fromYearId)
+    .eq("status", "active")
+    .eq("sch_students.status", "active");
+  if (enrollments.error && !isSchoolUnconfiguredRead(enrollments.error)) mapSchoolDbError(enrollments.error, "load");
+  const already = new Set<string>();
+  if (toYearId && toYearId !== fromYearId) {
+    const existingTarget = await supabase
       .from("sch_student_enrollments")
-      .select("student_id, class_id, sch_students!inner(status)")
+      .select("student_id")
       .eq("business_unit_id", businessUnitId)
-      .eq("academic_year_id", fromYearId)
-      .eq("status", "active")
-      .eq("sch_students.status", "active");
-    if (enrollments.error && !isSchoolUnconfiguredRead(enrollments.error)) mapSchoolDbError(enrollments.error, "load");
-    const already = new Set<string>();
-    if (toYearId && toYearId !== fromYearId) {
-      const existingTarget = await supabase
-        .from("sch_student_enrollments")
-        .select("student_id")
-        .eq("business_unit_id", businessUnitId)
-        .eq("academic_year_id", toYearId)
-        .eq("status", "active");
-      for (const row of existingTarget.data ?? []) already.add(str(row.student_id));
-    }
-    const enrolled = new Map<string, number>();
-    const awaiting = new Map<string, number>();
-    for (const row of enrollments.data ?? []) {
-      const classId = str(row.class_id);
-      if (!classId) continue;
-      enrolled.set(classId, (enrolled.get(classId) ?? 0) + 1);
-      const student = row.sch_students as { status?: string } | { status?: string }[] | null;
-      const profile = Array.isArray(student) ? student[0] : student;
-      const studentId = str((row as { student_id?: string }).student_id);
-      if (profile && !already.has(studentId)) awaiting.set(classId, (awaiting.get(classId) ?? 0) + 1);
-    }
-    const classes: PromotionClassCard[] = catalog.classes.map((row) => ({
+      .eq("academic_year_id", toYearId)
+      .eq("status", "active");
+    for (const row of existingTarget.data ?? []) already.add(str(row.student_id));
+  }
+  const enrolled = new Map<string, number>();
+  const awaiting = new Map<string, number>();
+  for (const row of enrollments.data ?? []) {
+    const classId = str(row.class_id);
+    if (!classId) continue;
+    enrolled.set(classId, (enrolled.get(classId) ?? 0) + 1);
+    const student = row.sch_students as { status?: string } | { status?: string }[] | null;
+    const profile = Array.isArray(student) ? student[0] : student;
+    const studentId = str((row as { student_id?: string }).student_id);
+    if (profile && !already.has(studentId)) awaiting.set(classId, (awaiting.get(classId) ?? 0) + 1);
+  }
+  return {
+    fromYearId,
+    toYearId,
+    fromYearName: catalog.years.find((row) => row.id === fromYearId)?.name ?? "",
+    toYearName: catalog.years.find((row) => row.id === toYearId)?.name ?? "",
+    classes: catalog.classes.map((row) => ({
       id: row.id,
       name: row.name,
       levelId: row.levelId,
       levelName: catalog.levels.find((level) => level.id === row.levelId)?.name ?? "",
       enrolled: enrolled.get(row.id) ?? 0,
       awaiting: awaiting.get(row.id) ?? 0,
-    }));
-    return {
-      ok: true as const,
-      fromYearId,
-      toYearId,
-      fromYearName: catalog.years.find((row) => row.id === fromYearId)?.name ?? "",
-      toYearName: catalog.years.find((row) => row.id === toYearId)?.name ?? "",
-      classes,
-    };
+    })) as PromotionClassCard[],
+  };
+}
+
+export async function loadSchoolPromotionBoardAction(input: { fromYearId: string; toYearId: string }) {
+  try {
+    const ctx = await requireAnySchoolPermission([PROMOTIONS_VIEW, PROMOTIONS_MANAGE, STUDENTS_MANAGE]);
+    const fromYearId = str(input.fromYearId);
+    const toYearId = str(input.toYearId);
+    const catalog = await loadSchoolStructureCatalog(ctx);
+    const board = await loadPromotionClassBoard(ctx, catalog, fromYearId, toYearId);
+    return { ok: true as const, ...board };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error), classes: [] as PromotionClassCard[] };
   }
@@ -574,15 +583,32 @@ export async function loadSchoolPromotionYearsAction() {
     const user = await requireAuth();
     const ctx = await requireAnySchoolPermission([PROMOTIONS_VIEW, PROMOTIONS_MANAGE, STUDENTS_MANAGE]);
     const catalog = await loadSchoolStructureCatalog(ctx);
+    const fromYearId = catalog.years.find((row) => row.isCurrent)?.id ?? catalog.years[0]?.id ?? "";
+    const toYearId = catalog.years.find((row) => row.id !== fromYearId)?.id ?? "";
+    const board = fromYearId
+      ? await loadPromotionClassBoard(ctx, catalog, fromYearId, toYearId)
+      : { classes: [] as PromotionClassCard[], fromYearName: "", toYearName: "", fromYearId: "", toYearId: "" };
     return {
       ok: true as const,
       years: catalog.years,
       today: new Date().toISOString().slice(0, 10),
       canManage: hasPerm(user, PROMOTIONS_MANAGE) || hasPerm(user, STUDENTS_MANAGE),
       canViewClasses: hasPerm(user, CLASSES_VIEW) || hasPerm(user, CLASSES_MANAGE),
+      classes: board.classes,
+      fromYearName: board.fromYearName,
+      toYearName: board.toYearName,
     };
   } catch (error) {
-    return { ok: false as const, error: schoolActionError(error), years: [] as Array<{ id: string; name: string; isCurrent: boolean }>, canManage: false, canViewClasses: false };
+    return {
+      ok: false as const,
+      error: schoolActionError(error),
+      years: [] as Array<{ id: string; name: string; isCurrent: boolean }>,
+      canManage: false,
+      canViewClasses: false,
+      classes: [] as PromotionClassCard[],
+      fromYearName: "",
+      toYearName: "",
+    };
   }
 }
 
