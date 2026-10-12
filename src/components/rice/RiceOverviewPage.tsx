@@ -61,7 +61,7 @@ function KpiCard({
       <IconWell icon={icon} />
       <p className="mt-3 text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</p>
       <p className="mt-1.5 min-h-7 text-[22px] font-semibold tracking-[-0.04em] text-navy">{display.value}</p>
-      <p className="mt-1 min-h-8 text-[12px] leading-4 text-slate-400">{display.hint}</p>
+      {display.hint ? <p className="mt-1 text-[12px] leading-4 text-slate-400">{display.hint}</p> : null}
     </article>
   );
 }
@@ -207,7 +207,9 @@ export function RiceOverviewPage({
 
         {overview?.serviceIncome.status === "ok" && services.length ? (
           <section className={cn(glassPanel, "min-h-[22rem]")}>
-            <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Service Income (This Month)</h2>
+            <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">
+              Service Income ({overview.periodLabel})
+            </h2>
             <ul className="mt-5 space-y-3">
               {services.map((row, index) => (
                 <li key={row.name} className="flex items-center gap-3 text-[13.5px] text-navy">
@@ -227,8 +229,8 @@ export function RiceOverviewPage({
           </section>
         ) : (
           <UnavailablePanel
-            title="Service Income (This Month)"
-            hint={overview?.serviceIncome.hint ?? "No posted service income this month."}
+            title={`Service Income (${overview?.periodLabel ?? periodLabel})`}
+            hint={overview?.serviceIncome.hint ?? "No posted service income this period."}
           />
         )}
       </section>

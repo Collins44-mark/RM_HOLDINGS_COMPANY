@@ -96,12 +96,18 @@ export const PERMISSION_CATALOG: PermissionItem[] =
     ]).map((code) => ({ module: "school", code, name: titleize(code) })),
     ...expand("rice", [
       { resource: "farmers", actions: [...CRUD] },
+      { resource: "purchases", actions: ["view", "create"] },
       { resource: "warehouse", actions: ["view", "receive", "release", "edit"] },
       { resource: "stock", actions: ["view", "edit"] },
       { resource: "milling", actions: ["view", "create"] },
       { resource: "grading", actions: ["view", "create"] },
+      { resource: "storage", actions: ["view", "create"] },
       { resource: "sales", actions: ["view", "create"] },
       { resource: "payments", actions: ["view", "create"] },
+      { resource: "finance", actions: ["view"] },
+      { resource: "expenses", actions: ["view", "create"] },
+      { resource: "reports", actions: ["view"] },
+      { resource: "settings", actions: ["view", "manage"] },
     ]).map((code) => ({ module: "rice", code, name: titleize(code) })),
     ...expand("farm", [
       { resource: "plots", actions: [...CRUD] },
@@ -161,8 +167,8 @@ export const PERMISSION_CATALOG: PermissionItem[] =
   ];
 
 /** Permissions that map to live application capabilities. */
-export const OPERABLE_PERMISSION_MODULES = ["platform", "supermarket", "school"] as const;
-export const IMPLEMENTED_BUSINESS_MODULES = ["supermarket", "school"] as const;
+export const OPERABLE_PERMISSION_MODULES = ["platform", "supermarket", "school", "rice"] as const;
+export const IMPLEMENTED_BUSINESS_MODULES = ["supermarket", "school", "rice"] as const;
 export const OWNER_DISPLAY_NAME = "Owner";
 /** Unique `roles.name` for code SUPER_ADMIN. Never shown in the UI. */
 export const OWNER_LEGACY_DB_NAME = "Owner Legacy";
@@ -171,6 +177,7 @@ export function isOperablePermission(code: string) {
   return (
     code.startsWith("platform.") ||
     code.startsWith("supermarket.") ||
+    code.startsWith("rice.") ||
     code === "school.settings.view" ||
     code === "school.settings.manage" ||
     code === "school.classes.view" ||
@@ -265,6 +272,7 @@ const MODULE_LABELS: Record<string, string> = {
   platform: "Platform",
   supermarket: "Supermarket",
   school: "School",
+  rice: "Rice Mill & Warehouse",
 };
 
 const RESOURCE_LABELS: Record<string, string> = {

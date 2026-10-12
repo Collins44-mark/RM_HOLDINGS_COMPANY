@@ -1,0 +1,293 @@
+"use server";
+
+import { requireAuth } from "@/lib/auth/session";
+import { parseReportPeriod, reportPeriodRange, type ReportPeriod } from "@/lib/data/report-period";
+import { RiceError, requireAnyRicePermission, riceActionError } from "@/lib/rice/access";
+import {
+  loadRiceBatches,
+  loadRiceExpenses,
+  loadRiceItems,
+  loadRiceMovements,
+  loadRiceParties,
+  loadRicePurchases,
+  loadRiceSales,
+  loadRiceServiceIncome,
+  loadRiceStorage,
+  riceCaps,
+  riceFinanceSummary,
+} from "@/lib/rice/queries";
+import type {
+  RiceCaps,
+  RiceExpense,
+  RiceFinanceSummary,
+  RiceItem,
+  RiceMillBatch,
+  RiceParty,
+  RicePurchase,
+  RiceSale,
+  RiceServiceIncome,
+  RiceStockMovement,
+  RiceStorageAccount,
+  RiceStorageMovement,
+} from "@/lib/rice/types";
+
+function dateIso(value: Date) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+function rangeFrom(input: { period?: string; from?: string; to?: string }) {
+  const period = parseReportPeriod(input.period ?? "this-month") as ReportPeriod;
+  const range = reportPeriodRange(period, new Date(), { from: input.from, to: input.to });
+  return { period, range, from: dateIso(range.from), to: dateIso(range.to) };
+}
+
+export type RicePurchasesWorkspace = {
+  items: RiceItem[];
+  parties: RiceParty[];
+  purchases: RicePurchase[];
+  caps: RiceCaps;
+  periodLabel: string;
+};
+
+export type RiceMillingWorkspace = {
+  items: RiceItem[];
+  batches: RiceMillBatch[];
+  caps: RiceCaps;
+  periodLabel: string;
+};
+
+export type RiceWarehouseWorkspace = {
+  items: RiceItem[];
+  movements: RiceStockMovement[];
+  caps: RiceCaps;
+};
+
+export type RiceStorageWorkspace = {
+  parties: RiceParty[];
+  accounts: RiceStorageAccount[];
+  movements: RiceStorageMovement[];
+  services: RiceServiceIncome[];
+  caps: RiceCaps;
+  periodLabel: string;
+};
+
+export type RiceSalesWorkspace = {
+  items: RiceItem[];
+  parties: RiceParty[];
+  sales: RiceSale[];
+  caps: RiceCaps;
+  periodLabel: string;
+};
+
+export type RiceFinanceWorkspace = {
+  summary: RiceFinanceSummary;
+  purchases: RicePurchase[];
+  sales: RiceSale[];
+  services: RiceServiceIncome[];
+  expenses: RiceExpense[];
+  caps: RiceCaps;
+  periodLabel: string;
+};
+
+export type RiceReportsWorkspace = RiceFinanceWorkspace & {
+  items: RiceItem[];
+  batches: RiceMillBatch[];
+  accounts: RiceStorageAccount[];
+  storageMovements: RiceStorageMovement[];
+};
+
+export type RiceSettingsWorkspace = {
+  items: RiceItem[];
+  caps: RiceCaps;
+};
+
+export async function loadRicePurchasesWorkspaceAction(input: { period?: string; from?: string; to?: string } = {}) {
+  try {
+    const ctx = await requireAnyRicePermission(["rice.purchases.view", "rice.purchases.create", "rice.farmers.view"]);
+    const user = await requireAuth();
+    const { range, from, to } = rangeFrom(input);
+    const [items, parties, purchases] = await Promise.all([
+      loadRiceItems(ctx),
+      loadRiceParties(ctx),
+      loadRicePurchases(ctx, from, to),
+    ]);
+    return {
+      ok: true as const,
+      workspace: {
+        items,
+        parties: parties.filter((row) => row.kind === "SUPPLIER" || row.kind === "BOTH"),
+        purchases,
+        caps: riceCaps(user),
+        periodLabel: range.label,
+      } satisfies RicePurchasesWorkspace,
+    };
+  } catch (error) {
+    return { ok: false as const, error: riceActionError(error) };
+  }
+}
+
+export async function loadRiceMillingWorkspaceAction(input: { period?: string; from?: string; to?: string } = {}) {
+  try {
+    const ctx = await requireAnyRicePermission(["rice.milling.view", "rice.milling.create"]);
+    const user = await requireAuth();
+    const { range, from, to } = rangeFrom(input);
+    const [items, batches] = await Promise.all([loadRiceItems(ctx), loadRiceBatches(ctx, from, to)]);
+    return {
+      ok: true as const,
+      workspace: { items, batches, caps: riceCaps(user), periodLabel: range.label } satisfies RiceMillingWorkspace,
+    };
+  } catch (error) {
+    return { ok: false as const, error: riceActionError(error) };
+  }
+}
+
+export async function loadRiceWarehouseWorkspaceAction() {
+  try {
+    const ctx = await requireAnyRicePermission(["rice.warehouse.view", "rice.stock.view", "rice.stock.edit"]);
+    const user = await requireAuth();
+    const [items, movements] = await Promise.all([loadRiceItems(ctx), loadRiceMovements(ctx)]);
+    return { ok: true as const, workspace: { items, movements, caps: riceCaps(user) } satisfies RiceWarehouseWorkspace };
+  } catch (error) {
+    return { ok: false as const, error: riceActionError(error) };
+  }
+}
+
+export async function loadRiceStorageWorkspaceAction(input: { period?: string; from?: string; to?: string } = {}) {
+  try {
+    const ctx = await requireAnyRicePermission([
+      "rice.storage.view",
+      "rice.storage.create",
+      "rice.warehouse.view",
+      "rice.warehouse.receive",
+      "rice.warehouse.release",
+    ]);
+    const user = await requireAuth();
+    const { range, from, to } = rangeFrom(input);
+    const [parties, storage, services] = await Promise.all([
+      loadRiceParties(ctx),
+      loadRiceStorage(ctx),
+      loadRiceServiceIncome(ctx, from, to),
+    ]);
+    return {
+      ok: true as const,
+      workspace: {
+        parties: parties.filter((row) => row.kind === "CUSTOMER" || row.kind === "BOTH"),
+        accounts: storage.accounts,
+        movements: storage.movements,
+        services,
+        caps: riceCaps(user),
+        periodLabel: range.label,
+      } satisfies RiceStorageWorkspace,
+    };
+  } catch (error) {
+    return { ok: false as const, error: riceActionError(error) };
+  }
+}
+
+export async function loadRiceSalesWorkspaceAction(input: { period?: string; from?: string; to?: string } = {}) {
+  try {
+    const ctx = await requireAnyRicePermission(["rice.sales.view", "rice.sales.create", "rice.payments.view"]);
+    const user = await requireAuth();
+    const { range, from, to } = rangeFrom(input);
+    const [items, parties, sales] = await Promise.all([
+      loadRiceItems(ctx),
+      loadRiceParties(ctx),
+      loadRiceSales(ctx, from, to),
+    ]);
+    return {
+      ok: true as const,
+      workspace: {
+        items: items.filter((row) => row.kind !== "PADDY"),
+        parties: parties.filter((row) => row.kind === "CUSTOMER" || row.kind === "BOTH"),
+        sales,
+        caps: riceCaps(user),
+        periodLabel: range.label,
+      } satisfies RiceSalesWorkspace,
+    };
+  } catch (error) {
+    return { ok: false as const, error: riceActionError(error) };
+  }
+}
+
+export async function loadRiceFinanceWorkspaceAction(input: { period?: string; from?: string; to?: string } = {}) {
+  try {
+    const ctx = await requireAnyRicePermission([
+      "rice.finance.view",
+      "rice.payments.view",
+      "rice.payments.create",
+      "rice.expenses.view",
+      "rice.expenses.create",
+    ]);
+    const user = await requireAuth();
+    const { range, from, to } = rangeFrom(input);
+    const [purchases, sales, services, expenses] = await Promise.all([
+      loadRicePurchases(ctx, from, to),
+      loadRiceSales(ctx, from, to),
+      loadRiceServiceIncome(ctx, from, to),
+      loadRiceExpenses(ctx, from, to),
+    ]);
+    return {
+      ok: true as const,
+      workspace: {
+        summary: riceFinanceSummary(purchases, sales, services, expenses),
+        purchases,
+        sales,
+        services,
+        expenses,
+        caps: riceCaps(user),
+        periodLabel: range.label,
+      } satisfies RiceFinanceWorkspace,
+    };
+  } catch (error) {
+    return { ok: false as const, error: riceActionError(error) };
+  }
+}
+
+export async function loadRiceReportsWorkspaceAction(input: { period?: string; from?: string; to?: string } = {}) {
+  try {
+    const ctx = await requireAnyRicePermission(["rice.reports.view", "rice.sales.view", "rice.purchases.view", "rice.finance.view"]);
+    const user = await requireAuth();
+    const { range, from, to } = rangeFrom(input);
+    const [items, purchases, batches, sales, services, expenses, storage] = await Promise.all([
+      loadRiceItems(ctx),
+      loadRicePurchases(ctx, from, to),
+      loadRiceBatches(ctx, from, to),
+      loadRiceSales(ctx, from, to),
+      loadRiceServiceIncome(ctx, from, to),
+      loadRiceExpenses(ctx, from, to),
+      loadRiceStorage(ctx),
+    ]);
+    return {
+      ok: true as const,
+      workspace: {
+        items,
+        purchases,
+        batches,
+        sales,
+        services,
+        expenses,
+        accounts: storage.accounts,
+        storageMovements: storage.movements,
+        summary: riceFinanceSummary(purchases, sales, services, expenses),
+        caps: riceCaps(user),
+        periodLabel: range.label,
+      } satisfies RiceReportsWorkspace,
+    };
+  } catch (error) {
+    return { ok: false as const, error: riceActionError(error) };
+  }
+}
+
+export async function loadRiceSettingsWorkspaceAction() {
+  try {
+    const ctx = await requireAnyRicePermission(["rice.settings.view", "rice.settings.manage"]);
+    const user = await requireAuth();
+    const items = await loadRiceItems(ctx, true);
+    return { ok: true as const, workspace: { items, caps: riceCaps(user) } satisfies RiceSettingsWorkspace };
+  } catch (error) {
+    if (error instanceof RiceError && error.code === "NOT_CONFIGURED") {
+      return { ok: false as const, error: error.message };
+    }
+    return { ok: false as const, error: riceActionError(error) };
+  }
+}

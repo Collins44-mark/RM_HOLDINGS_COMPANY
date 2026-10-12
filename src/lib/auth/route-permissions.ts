@@ -119,6 +119,20 @@ const ROUTE_PERMISSION_RULES: RoutePermissionRule[] = [
       "school.maintenance.view",
     ],
   },
+  { prefix: "/rice/purchases", any: ["rice.purchases.view", "rice.purchases.create", "rice.farmers.view"] },
+  { prefix: "/rice/milling", any: ["rice.milling.view", "rice.milling.create"] },
+  { prefix: "/rice/warehouse", any: ["rice.warehouse.view", "rice.stock.view", "rice.stock.edit"] },
+  {
+    prefix: "/rice/customer-storage",
+    any: ["rice.storage.view", "rice.storage.create", "rice.warehouse.view", "rice.warehouse.receive", "rice.warehouse.release"],
+  },
+  { prefix: "/rice/sales", any: ["rice.sales.view", "rice.sales.create", "rice.payments.view"] },
+  {
+    prefix: "/rice/finance",
+    any: ["rice.finance.view", "rice.payments.view", "rice.payments.create", "rice.expenses.view", "rice.expenses.create"],
+  },
+  { prefix: "/rice/reports", any: ["rice.reports.view", "rice.sales.view", "rice.purchases.view", "rice.finance.view"] },
+  { prefix: "/rice/settings", any: ["rice.settings.view", "rice.settings.manage"] },
 ];
 
 const SORTED_RULES = [...ROUTE_PERMISSION_RULES].sort((a, b) => b.prefix.length - a.prefix.length);

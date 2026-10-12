@@ -4,19 +4,19 @@ import { ModuleSectionPage } from "@/components/ui/PageHeader";
 const LEGACY_SECTIONS: Record<string, { title: string; description: string }> = {
   farmers: {
     title: "Farmers",
-    description: "Farmer records for Rice Mill & Warehouse remaining on this route until the purchases workspace is implemented.",
+    description: "Supplier and farmer records are now posted from Purchases.",
   },
   stock: {
     title: "Stock",
-    description: "Stock remains available at this route. Company-owned inventory and customer storage will be recorded separately when the warehouse ledger is implemented.",
+    description: "Company-owned stock is now on Warehouse. Customer-owned paddy is on Customer Storage.",
   },
   grading: {
     title: "Grading",
-    description: "Grading remains available at this route until milling & production records are implemented.",
+    description: "Grading and milling output are recorded on Milling & Production.",
   },
   payments: {
     title: "Payments",
-    description: "Payments remain available at this route until the rice finance workspace is implemented.",
+    description: "Purchase and sale payments are recorded on Purchases, Sales & Dispatch, and Finance.",
   },
 };
 
