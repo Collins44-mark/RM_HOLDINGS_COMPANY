@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { GraduationCap } from "lucide-react";
+import { GraduationCap, LayoutGrid } from "lucide-react";
 import {
   confirmSchoolPromotionsAction,
   loadSchoolPromotionBoardAction,
@@ -46,6 +46,25 @@ function outcomeLabel(value: string) {
   return value;
 }
 
+function toDraft(student: PromotionPreviewStudent): DraftRow {
+  return {
+    ...student,
+    outcome: student.canPromote ? student.suggestedOutcome : student.suggestedOutcome === "PROMOTE" ? "RETAIN" : student.suggestedOutcome,
+    destLevelId: student.suggestedLevelId || student.levelId,
+    destClassId: student.canPromote ? student.suggestedClassId : student.classId,
+    destStreamId: "",
+    reason: "",
+  };
+}
+
+function rowValidation(row: DraftRow) {
+  if (row.outcome === "PROMOTE" && !row.canPromote) return "Promote is unavailable because no next class is configured.";
+  if (row.outcome === "EXCLUDE" || row.outcome === "GRADUATE") return "";
+  const destClassId = row.outcome === "RETAIN" ? row.classId : row.destClassId;
+  if (!destClassId) return "Select a destination class.";
+  return "";
+}
+
 export function SchoolPromotionsPage({
   years: initialYears,
   today,
@@ -59,7 +78,6 @@ export function SchoolPromotionsPage({
   error: string | null;
   pending?: boolean;
 }) {
-  const [step, setStep] = useState<"board" | "class" | "validate" | "confirm">("board");
   const [panel, setPanel] = useState<"students" | "history">("students");
   const [years] = useState(initialYears);
   const [fromYearId, setFromYearId] = useState(initialYears.find((row) => row.isCurrent)?.id ?? initialYears[0]?.id ?? "");
@@ -78,16 +96,17 @@ export function SchoolPromotionsPage({
   const [alreadyInTarget, setAlreadyInTarget] = useState(0);
   const [history, setHistory] = useState<PromotionHistoryRow[]>([]);
   const [saveError, setSaveError] = useState<string | null>(error);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ promoted: number; retained: number; transferred: number; graduated: number; excluded: number; failed: number; failures: Array<{ studentId: string; error: string }> } | null>(null);
+  const [saving, setSaving] = useState(false);
   const requestId = useRef(crypto.randomUUID());
   const lock = useRef(false);
+  const selectedClassId = selectedClass?.id ?? "";
 
   function loadBoard(nextFrom = fromYearId, nextTo = toYearId) {
     if (!nextFrom) return;
-    setBusy(true);
     void loadSchoolPromotionBoardAction({ fromYearId: nextFrom, toYearId: nextTo }).then((next) => {
-      setBusy(false);
       if (!next.ok) {
         setSaveError(next.error);
         return;
@@ -118,14 +137,27 @@ export function SchoolPromotionsPage({
     };
   }, [pending, fromYearId, toYearId]);
 
+  function patchRow(studentId: string, patch: Partial<DraftRow>) {
+    setRowErrors((current) => {
+      if (!current[studentId]) return current;
+      const next = { ...current };
+      delete next[studentId];
+      return next;
+    });
+    setRows((current) => current.map((item) => (item.studentId === studentId ? { ...item, ...patch } : item)));
+  }
+
   function openClass(card: PromotionClassCard) {
-    if (!fromYearId || !toYearId || busy || lock.current) return;
+    if (!fromYearId || !toYearId || busy || saving || lock.current) return;
     lock.current = true;
     setBusy(true);
     setSaveError(null);
+    setSuccess(null);
+    setRowErrors({});
     setSelectedClass(card);
     setPanel("students");
-    setResult(null);
+    setRows([]);
+    setPage(1);
     void previewSchoolPromotionsAction({ fromYearId, toYearId, classId: card.id }).then((next) => {
       lock.current = false;
       setBusy(false);
@@ -139,20 +171,19 @@ export function SchoolPromotionsPage({
       setStreams(next.streams);
       setLevels(next.levels);
       setAlreadyInTarget(next.alreadyInTarget);
-      setRows(
-        next.students.map((student) => ({
-          ...student,
-          outcome: student.canPromote ? student.suggestedOutcome : student.suggestedOutcome === "PROMOTE" ? "RETAIN" : student.suggestedOutcome,
-          destLevelId: student.suggestedLevelId || student.levelId,
-          destClassId: student.canPromote ? student.suggestedClassId : student.classId,
-          destStreamId: "",
-          reason: "",
-        })),
-      );
-      setPage(1);
+      setRows(next.students.map(toDraft));
       requestId.current = crypto.randomUUID();
-      setStep("class");
     });
+  }
+
+  function closeClass() {
+    if (saving) return;
+    setSelectedClass(null);
+    setRows([]);
+    setHistory([]);
+    setPanel("students");
+    setRowErrors({});
+    loadBoard();
   }
 
   const pageMeta = schoolPageMeta(page, rows.length, pageSize);
@@ -163,12 +194,6 @@ export function SchoolPromotionsPage({
     for (const row of rows) tally[row.outcome] += 1;
     return tally;
   }, [rows]);
-
-  const unresolved = rows.filter((row) => {
-    if (row.outcome === "EXCLUDE" || row.outcome === "GRADUATE") return false;
-    if ((row.outcome === "PROMOTE" || row.outcome === "RETAIN" || row.outcome === "TRANSFER") && !row.destClassId) return true;
-    return false;
-  });
 
   function destinationLabel(row: DraftRow) {
     if (row.outcome === "EXCLUDE") return "Excluded from this run";
@@ -193,6 +218,77 @@ export function SchoolPromotionsPage({
     });
   }
 
+  function validateAndSave() {
+    if (saving || lock.current || !canManage || !selectedClass || !rows.length) return;
+    const nextErrors: Record<string, string> = {};
+    for (const row of rows) {
+      const message = rowValidation(row);
+      if (message) nextErrors[row.studentId] = message;
+    }
+    if (Object.keys(nextErrors).length) {
+      setRowErrors(nextErrors);
+      setSaveError("Fix the highlighted students before saving.");
+      const first = rows.find((row) => nextErrors[row.studentId]);
+      if (first) {
+        const index = rows.findIndex((row) => row.studentId === first.studentId);
+        setPage(Math.floor(index / pageSize) + 1);
+      }
+      return;
+    }
+    lock.current = true;
+    setSaving(true);
+    setSaveError(null);
+    setSuccess(null);
+    void confirmSchoolPromotionsAction({
+      fromYearId,
+      toYearId,
+      effectiveOn,
+      requestId: requestId.current,
+      students: rows.map((row) => ({
+        studentId: row.studentId,
+        outcome: row.outcome,
+        levelId: row.outcome === "RETAIN" ? row.levelId : row.destLevelId,
+        classId: row.outcome === "RETAIN" ? row.classId : row.destClassId,
+        streamId: row.destStreamId,
+        reason: row.reason,
+      })),
+    }).then((next) => {
+      lock.current = false;
+      setSaving(false);
+      if (!next.ok) {
+        setSaveError(next.error);
+        return;
+      }
+      requestId.current = crypto.randomUUID();
+      loadBoard();
+      if (next.duplicate) {
+        setSaveError("This save was already processed. Review the class and try again if students remain.");
+        return;
+      }
+      const summary = `Saved ${selectedClass.name}: ${next.promoted} promoted · ${next.retained} kept · ${next.transferred} transferred · ${next.graduated} graduated · ${next.excluded} excluded.`;
+      if (next.failed) {
+        const failedIds = new Set(next.failures.map((item) => item.studentId).filter(Boolean));
+        const mapped: Record<string, string> = {};
+        for (const item of next.failures) {
+          if (item.studentId) mapped[item.studentId] = item.error || "Could not save this student.";
+        }
+        setRowErrors(mapped);
+        setRows((current) => (failedIds.size ? current.filter((row) => failedIds.has(row.studentId)) : current));
+        setSaveError(`${next.failed} student${next.failed === 1 ? "" : "s"} could not be saved. Your other selections were kept.`);
+        setSuccess(null);
+        return;
+      }
+      setRowErrors({});
+      setSuccess(summary);
+      void previewSchoolPromotionsAction({ fromYearId, toYearId, classId: selectedClass.id }).then((preview) => {
+        if (!preview.ok) return;
+        setRows(preview.students.map(toDraft));
+        setAlreadyInTarget(preview.alreadyInTarget);
+        setPage(1);
+      });
+    });
+  }
+
   if (pending && !years.length) {
     return (
       <div className="min-w-0 max-w-full space-y-5 pb-10">
@@ -208,101 +304,118 @@ export function SchoolPromotionsPage({
         <SchoolIconWell icon={GraduationCap} />
         <div>
           <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">Promotions & Academic Progression</h1>
-          <p className="mt-1 text-[13.5px] text-slate-500">Preview first. Nothing is moved until an authorized user confirms this run.</p>
+          <p className="mt-1 text-[13.5px] text-slate-500">Open a class, set outcomes, then Validate & Save. Progression never runs automatically.</p>
         </div>
       </header>
       {saveError ? <p className="text-[13px] text-[#c45b66]">{saveError}</p> : null}
+      {success ? (
+        <p className={cn(glassCard, "px-3.5 py-2.5 text-[13.5px] text-navy")}>{success}</p>
+      ) : null}
 
-      {step === "board" ? (
-        <section className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <SchoolField label="Current academic year">
-              <select
-                className={inputClass}
-                value={fromYearId}
-                onChange={(event) => {
-                  const next = event.target.value;
-                  setFromYearId(next);
-                  if (toYearId === next) setToYearId("");
-                }}
-              >
-                {years.map((row) => (
-                  <option key={row.id} value={row.id}>
-                    {row.name}
-                    {row.isCurrent ? " (current)" : ""}
-                  </option>
-                ))}
-              </select>
-            </SchoolField>
-            <SchoolField label="Target academic year">
-              <select
-                className={inputClass}
-                value={toYearId}
-                onChange={(event) => setToYearId(event.target.value)}
-              >
-                <option value="">Select target year</option>
-                {years
-                  .filter((row) => row.id !== fromYearId)
-                  .map((row) => (
-                    <option key={row.id} value={row.id}>
-                      {row.name}
-                    </option>
-                  ))}
-              </select>
-            </SchoolField>
-            <SchoolField label="Effective date">
-              <input className={inputClass} type="date" value={effectiveOn} onChange={(event) => setEffectiveOn(event.target.value)} />
-            </SchoolField>
-          </div>
-          {!canManage ? <p className="text-[13px] text-slate-500">You can review classes, but confirming a run requires promotion permission.</p> : null}
-          {cards.length ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {cards.map((card) => (
-                <button
-                  key={card.id}
-                  type="button"
-                  disabled={!toYearId || busy}
-                  onClick={() => openClass(card)}
-                  className={cn(glassCard, "px-4 py-4 text-left transition duration-200 hover:bg-white/88 disabled:cursor-not-allowed disabled:opacity-60")}
-                >
-                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{card.levelName || "Class"}</p>
-                  <p className="mt-1 text-[16px] font-semibold tracking-[-0.03em] text-navy">{card.name}</p>
-                  <p className="mt-2 text-[12.5px] text-slate-500">{fromYearName || "Selected year"}</p>
-                  <p className="mt-3 text-[20px] font-semibold tracking-[-0.04em] text-navy">{card.enrolled}</p>
-                  <p className="text-[12.5px] text-slate-500">
-                    {card.enrolled === 1 ? "enrolled student" : "enrolled students"}
-                    {toYearId ? ` · ${card.awaiting} awaiting review` : ""}
-                  </p>
-                </button>
+      <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <SchoolField label="Current academic year">
+          <select
+            className={inputClass}
+            value={fromYearId}
+            disabled={Boolean(selectedClassId) || saving}
+            onChange={(event) => {
+              const next = event.target.value;
+              setFromYearId(next);
+              if (toYearId === next) setToYearId("");
+            }}
+          >
+            {years.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.name}
+                {row.isCurrent ? " (current)" : ""}
+              </option>
+            ))}
+          </select>
+        </SchoolField>
+        <SchoolField label="Target academic year">
+          <select
+            className={inputClass}
+            value={toYearId}
+            disabled={Boolean(selectedClassId) || saving}
+            onChange={(event) => setToYearId(event.target.value)}
+          >
+            <option value="">Select target year</option>
+            {years
+              .filter((row) => row.id !== fromYearId)
+              .map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.name}
+                </option>
               ))}
+          </select>
+        </SchoolField>
+        <SchoolField label="Effective date">
+          <input className={inputClass} type="date" value={effectiveOn} onChange={(event) => setEffectiveOn(event.target.value)} />
+        </SchoolField>
+      </section>
+      {!canManage ? <p className="text-[13px] text-slate-500">You can review classes, but saving a run requires promotion permission.</p> : null}
+
+      {!selectedClass ? (
+        <section className="space-y-4">
+          {cards.length ? (
+            <div className={cn("grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3", busy && "pointer-events-none opacity-60")}>
+              {cards.map((card) => {
+                const processed = Boolean(toYearId) && card.enrolled > 0 && card.awaiting === 0;
+                return (
+                  <button
+                    key={card.id}
+                    type="button"
+                    disabled={!toYearId || busy}
+                    onClick={() => openClass(card)}
+                    className={cn(glassCard, "px-4 py-4 text-left transition duration-200 hover:bg-white/88 disabled:cursor-not-allowed disabled:opacity-60")}
+                  >
+                    <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{card.levelName || "Class"}</p>
+                    <p className="mt-1 text-[16px] font-semibold tracking-[-0.03em] text-navy">{card.name}</p>
+                    <p className="mt-2 text-[12.5px] text-slate-500">{fromYearName || "Selected year"}</p>
+                    <p className="mt-3 text-[20px] font-semibold tracking-[-0.04em] text-navy">{card.enrolled}</p>
+                    <p className={cn("text-[12.5px]", processed ? "text-emerald-700" : "text-slate-500")}>
+                      {card.enrolled === 1 ? "enrolled student" : "enrolled students"}
+                      {toYearId ? (processed ? " · processed" : ` · ${card.awaiting} awaiting review`) : ""}
+                    </p>
+                  </button>
+                );
+              })}
             </div>
           ) : (
             <p className="text-[13.5px] text-slate-500">No classes are configured for this school yet.</p>
           )}
         </section>
-      ) : null}
-
-      {step === "class" && selectedClass ? (
-        <section className={`${glassPanel} space-y-4`}>
+      ) : (
+        <section className={`${glassPanel} page-enter space-y-4`}>
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-[12.5px] text-slate-500">
+              <button
+                type="button"
+                onClick={closeClass}
+                disabled={saving}
+                aria-label="Back to classes"
+                className={cn(
+                  glassCard,
+                  "inline-flex items-center gap-2.5 px-3 py-2 text-[13.5px] font-semibold text-navy transition duration-200 hover:bg-white/88 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#5b82c4]/15 disabled:opacity-60",
+                )}
+              >
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-white/80 bg-white/55 text-navy shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">
+                  <LayoutGrid className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+                </span>
+                Classes
+              </button>
+              <p className="mt-3 text-[12.5px] text-slate-500">
                 {fromYearName} → {toYearName}
               </p>
               <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">{selectedClass.name}</h2>
               <p className="mt-1 text-[13px] text-slate-500">
-                {rows.length} students in this class
+                {busy && !rows.length ? "Loading students…" : `${rows.length} students in this class`}
                 {alreadyInTarget ? ` · ${alreadyInTarget} already enrolled in the target year` : ""}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className={secondaryButton} onClick={() => { setStep("board"); setSelectedClass(null); loadBoard(); }}>
-                All classes
-              </button>
-              <button type="button" className={panel === "history" ? primaryButton : secondaryButton} onClick={loadHistory}>
-                Class history
-              </button>
-            </div>
+            <button type="button" className={panel === "history" ? primaryButton : secondaryButton} onClick={loadHistory} disabled={busy || saving}>
+              Class history
+            </button>
           </div>
 
           {panel === "history" ? (
@@ -343,10 +456,12 @@ export function SchoolPromotionsPage({
               <p className="text-[13.5px] text-slate-500">No confirmed progression history for this class yet.</p>
             )
           ) : rows.length === 0 ? (
-            <p className="text-[13.5px] text-slate-500">No enrolled students are waiting in this class for the selected years.</p>
+            <p className="text-[13.5px] text-slate-500">
+              {busy ? "Loading this class…" : "No enrolled students are waiting in this class for the selected years."}
+            </p>
           ) : (
             <>
-              <div className={tableScrollClass}>
+              <div className={cn(tableScrollClass, saving && "opacity-60")}>
                 <table className="w-full min-w-[1100px] text-left">
                   <thead>
                     <tr className={tableHead}>
@@ -362,6 +477,7 @@ export function SchoolPromotionsPage({
                       const classChoices = destClasses.filter((item) => item.levelId === (row.outcome === "RETAIN" ? row.levelId : row.destLevelId));
                       const streamChoices = streams.filter((item) => item.classId === (row.outcome === "RETAIN" ? row.classId : row.destClassId));
                       const lockedClass = row.outcome === "RETAIN";
+                      const message = rowErrors[row.studentId];
                       return (
                         <tr key={row.studentId} className="border-t border-navy/5 text-[13px] text-navy">
                           <td className="px-3 py-3">
@@ -376,22 +492,16 @@ export function SchoolPromotionsPage({
                             <select
                               className={inputClass}
                               value={row.outcome}
+                              disabled={saving}
                               title={row.canPromote ? undefined : "Promote is unavailable because no next class is configured."}
                               onChange={(event) => {
                                 const outcome = event.target.value as ProgressionOutcome;
                                 if (outcome === "PROMOTE" && !row.canPromote) return;
-                                setRows((current) =>
-                                  current.map((item) =>
-                                    item.studentId === row.studentId
-                                      ? {
-                                          ...item,
-                                          outcome,
-                                          destLevelId: outcome === "RETAIN" ? item.levelId : item.destLevelId,
-                                          destClassId: outcome === "RETAIN" ? item.classId : item.destClassId,
-                                        }
-                                      : item,
-                                  ),
-                                );
+                                patchRow(row.studentId, {
+                                  outcome,
+                                  destLevelId: outcome === "RETAIN" ? row.levelId : row.destLevelId,
+                                  destClassId: outcome === "RETAIN" ? row.classId : row.destClassId,
+                                });
                               }}
                             >
                               {OUTCOMES.map((item) => (
@@ -409,14 +519,9 @@ export function SchoolPromotionsPage({
                                 <select
                                   className={inputClass}
                                   value={row.destLevelId}
-                                  disabled={lockedClass}
+                                  disabled={lockedClass || saving}
                                   onChange={(event) => {
-                                    const destLevelId = event.target.value;
-                                    setRows((current) =>
-                                      current.map((item) =>
-                                        item.studentId === row.studentId ? { ...item, destLevelId, destClassId: "", destStreamId: "" } : item,
-                                      ),
-                                    );
+                                    patchRow(row.studentId, { destLevelId: event.target.value, destClassId: "", destStreamId: "" });
                                   }}
                                 >
                                   <option value="">Level</option>
@@ -429,12 +534,9 @@ export function SchoolPromotionsPage({
                                 <select
                                   className={inputClass}
                                   value={lockedClass ? row.classId : row.destClassId}
-                                  disabled={lockedClass}
+                                  disabled={lockedClass || saving}
                                   onChange={(event) => {
-                                    const destClassId = event.target.value;
-                                    setRows((current) =>
-                                      current.map((item) => (item.studentId === row.studentId ? { ...item, destClassId, destStreamId: "" } : item)),
-                                    );
+                                    patchRow(row.studentId, { destClassId: event.target.value, destStreamId: "" });
                                   }}
                                 >
                                   <option value="">Class</option>
@@ -447,6 +549,7 @@ export function SchoolPromotionsPage({
                                 </select>
                               </div>
                             )}
+                            {message ? <p className="mt-1.5 text-[12px] text-[#c45b66]">{message}</p> : null}
                           </td>
                           <td className="px-3 py-3">
                             {row.outcome === "EXCLUDE" || row.outcome === "GRADUATE" ? (
@@ -455,12 +558,8 @@ export function SchoolPromotionsPage({
                               <select
                                 className={inputClass}
                                 value={row.destStreamId}
-                                onChange={(event) => {
-                                  const destStreamId = event.target.value;
-                                  setRows((current) =>
-                                    current.map((item) => (item.studentId === row.studentId ? { ...item, destStreamId } : item)),
-                                  );
-                                }}
+                                disabled={saving}
+                                onChange={(event) => patchRow(row.studentId, { destStreamId: event.target.value })}
                               >
                                 <option value="">No stream</option>
                                 {streamChoices.map((item) => (
@@ -487,16 +586,21 @@ export function SchoolPromotionsPage({
                   setPage(1);
                 }}
               />
+              <p className="text-[12.5px] text-slate-500">
+                Promote {counts.PROMOTE} · Keep {counts.RETAIN} · Transfer {counts.TRANSFER} · Graduate {counts.GRADUATE} · Exclude {counts.EXCLUDE}
+              </p>
             </>
           )}
           {panel === "students" ? (
             <div className="flex flex-wrap gap-2">
-              <button type="button" className={secondaryButton} onClick={() => { setStep("board"); setSelectedClass(null); loadBoard(); }}>
-                Back
-              </button>
-              <button type="button" className={primaryButton} disabled={!rows.length} onClick={() => setStep("validate")}>
-                Validate destinations
-              </button>
+              <SchoolWorkflowButton
+                className={primaryButton}
+                busy={saving}
+                idleLabel="Validate & Save"
+                busyLabel="Saving"
+                disabled={!canManage || !rows.length || busy}
+                onClick={validateAndSave}
+              />
             </div>
           ) : (
             <button type="button" className={secondaryButton} onClick={() => setPanel("students")}>
@@ -504,119 +608,7 @@ export function SchoolPromotionsPage({
             </button>
           )}
         </section>
-      ) : null}
-
-      {step === "validate" ? (
-        <section className={`${glassPanel} space-y-4`}>
-          <h2 className="text-[16px] font-semibold text-navy">Destination check</h2>
-          {unresolved.length ? (
-            <p className="text-[13.5px] text-amber-800">{unresolved.length} students still need a destination class before you can confirm.</p>
-          ) : (
-            <p className="text-[13.5px] text-slate-500">Destinations are complete. Stream is optional.</p>
-          )}
-          <ul className="space-y-2 text-[13.5px] text-navy">
-            {rows
-              .filter((row) => row.outcome !== "EXCLUDE")
-              .map((row) => {
-                const destId = row.outcome === "RETAIN" ? row.classId : row.destClassId;
-                const dest = destClasses.find((item) => item.id === destId);
-                return (
-                  <li key={row.studentId}>
-                    <span className="font-medium">{row.name}</span>
-                    {" · "}
-                    {destinationLabel(row)}
-                    {dest ? ` · subjects: ${dest.subjects.length ? dest.subjects.join(", ") : "none configured"} · fees: ${dest.feeConfigured ? "configured" : "not configured"}` : ""}
-                  </li>
-                );
-              })}
-          </ul>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className={secondaryButton} onClick={() => setStep("class")}>
-              Back
-            </button>
-            <button type="button" className={primaryButton} disabled={Boolean(unresolved.length) || !canManage} onClick={() => setStep("confirm")}>
-              Review summary
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      {step === "confirm" ? (
-        <section className={`${glassPanel} space-y-4`}>
-          <h2 className="text-[16px] font-semibold text-navy">Confirm progression</h2>
-          <p className="text-[13.5px] text-slate-500">
-            {selectedClass?.name}: Promote {counts.PROMOTE} · Keep {counts.RETAIN} · Transfer {counts.TRANSFER} · Graduate {counts.GRADUATE} · Exclude {counts.EXCLUDE}
-          </p>
-          {result ? (
-            <div className="space-y-2 text-[13.5px] text-navy">
-              <p>
-                Saved: {result.promoted} promoted, {result.retained} retained, {result.transferred} transferred, {result.graduated} graduated, {result.excluded} excluded.
-              </p>
-              {result.failed ? (
-                <p className="text-[#c45b66]">
-                  {result.failed} could not be saved.
-                  {result.failures.map((item) => ` ${item.error}`).join("")}
-                </p>
-              ) : null}
-            </div>
-          ) : (
-            <SchoolWorkflowButton
-              className={primaryButton}
-              busy={busy}
-              idleLabel="Confirm and save"
-              busyLabel="Saving"
-              disabled={!canManage}
-              onClick={() => {
-                if (busy || lock.current || !canManage) return;
-                lock.current = true;
-                setBusy(true);
-                setSaveError(null);
-                void confirmSchoolPromotionsAction({
-                  fromYearId,
-                  toYearId,
-                  effectiveOn,
-                  requestId: requestId.current,
-                  students: rows.map((row) => ({
-                    studentId: row.studentId,
-                    outcome: row.outcome,
-                    levelId: row.outcome === "RETAIN" ? row.levelId : row.destLevelId,
-                    classId: row.outcome === "RETAIN" ? row.classId : row.destClassId,
-                    streamId: row.destStreamId,
-                    reason: row.reason,
-                  })),
-                }).then((next) => {
-                  lock.current = false;
-                  setBusy(false);
-                  if (!next.ok) {
-                    setSaveError(next.error);
-                    return;
-                  }
-                  setResult(next);
-                });
-              }}
-            />
-          )}
-          {!result ? (
-            <button type="button" className={secondaryButton} onClick={() => setStep("validate")}>
-              Back
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={secondaryButton}
-              onClick={() => {
-                setResult(null);
-                setSelectedClass(null);
-                setRows([]);
-                setStep("board");
-                loadBoard();
-              }}
-            >
-              Back to classes
-            </button>
-          )}
-        </section>
-      ) : null}
+      )}
     </div>
   );
 }
