@@ -58,6 +58,7 @@ function expenseFilterKey(period: ReportPeriod, fromDate: string, toDate: string
   return `${period}|${fromDate}|${toDate}|${query}|${typeId}`;
 }
 import { schoolPageMeta, type SchoolPageMeta } from "@/lib/school/pagination";
+import { formatCompactDocumentNumber } from "@/lib/school/student-number";
 import { transportInputClass } from "@/lib/school/transport-ui";
 
 const EMPTY_SUMMARY: SchoolExpenseSummary = { totalPosted: 0, postedCount: 0, typesUsed: 0 };
@@ -379,10 +380,10 @@ export function SchoolExpensesPage({
       ) : rows.length > 0 ? (
         <section className={glassPanel}>
           <div className={cn(tableScrollClass, listBusy && "opacity-60 transition-opacity duration-200")}>
-            <table className="w-full min-w-[980px] text-left">
+            <table className="w-full min-w-[720px] text-left">
               <thead>
                 <tr className={tableHead}>
-                  {["Date", "Expense type", "Description", "Bus", "Payment", "Amount", "Reference", "Status", ""].map(
+                  {["Date", "Expense type", "Bus", "Payment", "Amount", "Status", ""].map(
                     (heading) => (
                       <th key={heading || "actions"} className="px-4 py-3 font-semibold">
                         {heading}
@@ -397,9 +398,8 @@ export function SchoolExpensesPage({
                   return (
                     <tr key={row.id} className="border-t border-navy/5 text-[13.5px] text-navy">
                       <td className="whitespace-nowrap px-4 py-3">{row.expenseDate}</td>
-                      <td className="px-4 py-3">{row.categoryName || "—"}</td>
-                      <td className="max-w-[240px] px-4 py-3">
-                        <p className="truncate">{row.description || "—"}</p>
+                      <td className="px-4 py-3">
+                        <p>{row.categoryName || "—"}</p>
                         {row.sourceType !== "MANUAL" ? (
                           sourceHref ? (
                             <Link href={sourceHref} className="text-[11.5px] text-slate-400 hover:text-navy">
@@ -413,13 +413,12 @@ export function SchoolExpensesPage({
                       <td className="px-4 py-3">{row.busLabel || "—"}</td>
                       <td className="px-4 py-3">{schoolExpenseMethodLabel(row.method)}</td>
                       <td className="whitespace-nowrap px-4 py-3 font-medium">{formatAmount(row.amount)}</td>
-                      <td className="px-4 py-3">{row.reference || row.expenseNumber}</td>
                       <td className="px-4 py-3">
                         <StatusPill value={row.isActive ? "Posted" : "Reversed"} />
                       </td>
                       <td className="px-4 py-3">
                         <CompactActionsMenu
-                          ariaLabel={`Actions for ${row.expenseNumber}`}
+                          ariaLabel={`Actions for ${formatCompactDocumentNumber(row.expenseNumber)}`}
                           items={[
                             { label: "View details", onSelect: () => setDetail(row) },
                             ...(caps.canReverse && row.isActive && row.sourceType === "MANUAL"
@@ -472,20 +471,21 @@ export function SchoolExpensesPage({
 
       {detail ? (
         <ContainedDrawer
-          title={detail.expenseNumber}
+          title={formatCompactDocumentNumber(detail.expenseNumber)}
           subtitle={schoolExpenseSourceLabel(detail.sourceType)}
           onClose={() => setDetail(null)}
         >
           <dl className="space-y-2.5 pb-4 text-[13.5px]">
+            <DetailLine label="Expense ID" value={formatCompactDocumentNumber(detail.expenseNumber)} />
             <DetailLine label="Date" value={detail.expenseDate} />
             <DetailLine label="Expense type" value={detail.categoryName || "—"} />
+            <DetailLine label="Description" value={detail.description || "—"} />
             <DetailLine label="Amount" value={formatTzs(detail.amount)} />
             <DetailLine label="Payment" value={schoolExpenseMethodLabel(detail.method)} />
             <DetailLine label="Payee" value={detail.payee || "—"} />
             <DetailLine label="Bus" value={detail.busLabel || "—"} />
             <DetailLine label="Reference" value={detail.reference || "—"} />
             <DetailLine label="Status" value={detail.isActive ? "Posted" : "Reversed"} />
-            <DetailLine label="Description" value={detail.description || "—"} />
           </dl>
         </ContainedDrawer>
       ) : null}

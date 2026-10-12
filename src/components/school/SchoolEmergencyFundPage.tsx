@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronDown, Download, Shield } from "lucide-react";
+import { ChevronDown, Download, Receipt } from "lucide-react";
 import {
   creditSchoolEmergencyFundAction,
   loadSchoolEmergencyFundAction,
   type SchoolEmergencyFundResult,
 } from "@/actions/school/expenses";
-import { SchoolField, SchoolIconWell, SchoolWorkflowButton } from "@/components/school/school-ui";
+import { SchoolField, SchoolWorkflowButton } from "@/components/school/school-ui";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import {
@@ -162,10 +162,20 @@ export function SchoolEmergencyFundPage({
     <div className="min-w-0 max-w-full space-y-5 pb-10">
       <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <Link href="/school/expenses" className="text-[12.5px] font-medium text-slate-500 hover:text-navy">
+          <Link
+            href="/school/expenses"
+            aria-label="Back to Expenses"
+            className={cn(
+              glassCard,
+              "inline-flex items-center gap-2.5 px-3 py-2 text-[13.5px] font-semibold text-navy transition duration-200 hover:bg-white/88 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#5b82c4]/15",
+            )}
+          >
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-white/80 bg-white/55 text-navy shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">
+              <Receipt className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+            </span>
             Expenses
           </Link>
-          <h1 className="mt-1 text-[26px] font-semibold tracking-[-0.045em] text-navy">Emergency Fund</h1>
+          <h1 className="mt-3 text-[26px] font-semibold tracking-[-0.045em] text-navy">Emergency Fund</h1>
         </div>
         <div className="relative">
           <button
@@ -197,26 +207,18 @@ export function SchoolEmergencyFundPage({
 
       {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <article className={cn(glassCard, "flex items-center gap-3.5 px-4 py-3.5")}>
-          <SchoolIconWell icon={Shield} />
-          <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">Current Balance</p>
-            <p className="mt-0.5 text-[20px] font-semibold tracking-[-0.04em] text-navy">{formatTzs(fund.balance)}</p>
-          </div>
-        </article>
-        <article className={cn(glassCard, "px-4 py-3.5")}>
-          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">Period opening</p>
-          <p className="mt-0.5 text-[18px] font-semibold tracking-[-0.04em] text-navy">{formatTzs(totals.openingBalance)}</p>
-        </article>
-        <article className={cn(glassCard, "px-4 py-3.5")}>
-          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">Added this period</p>
-          <p className="mt-0.5 text-[18px] font-semibold tracking-[-0.04em] text-navy">{formatTzs(totals.added)}</p>
-        </article>
-        <article className={cn(glassCard, "px-4 py-3.5")}>
-          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">Spent this period</p>
-          <p className="mt-0.5 text-[18px] font-semibold tracking-[-0.04em] text-navy">{formatTzs(totals.spent)}</p>
-        </article>
+      <section className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          ["Current Balance", fund.balance],
+          ["Period Opening", totals.openingBalance],
+          ["Added This Period", totals.added],
+          ["Spent This Period", totals.spent],
+        ].map(([label, value]) => (
+          <article key={label} className={cn(glassCard, "px-3.5 py-2.5")}>
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</p>
+            <p className="mt-0.5 truncate text-[17px] font-semibold tracking-[-0.04em] text-navy">{formatTzs(Number(value))}</p>
+          </article>
+        ))}
       </section>
 
       {fund.canManage ? (
