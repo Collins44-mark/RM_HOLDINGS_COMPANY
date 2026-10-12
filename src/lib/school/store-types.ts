@@ -121,6 +121,7 @@ export type SchoolEmergencyFundEntry = {
   kind: "OPENING" | "REPLENISH" | "SPEND";
   amount: number;
   occurredOn: string;
+  createdAt: string;
   reference: string;
   notes: string;
   expenseId: string | null;

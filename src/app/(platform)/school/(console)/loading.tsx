@@ -12,6 +12,7 @@ import { SchoolExamsPage } from "@/components/school/SchoolExamsPage";
 import { SchoolFeesPage } from "@/components/school/SchoolFeesPage";
 import { SchoolStudentFeeProfilePage } from "@/components/school/SchoolStudentFeeProfilePage";
 import { SchoolExpensesPage } from "@/components/school/SchoolExpensesPage";
+import { SchoolEmergencyFundPage } from "@/components/school/SchoolEmergencyFundPage";
 import { SchoolSalaryPage } from "@/components/school/SchoolSalaryPage";
 import { SchoolParentsPage } from "@/components/school/SchoolParentsPage";
 import { SchoolReportsPage } from "@/components/school/SchoolReportsPage";
@@ -127,6 +128,9 @@ export default function SchoolConsoleLoading() {
   }
   if (pathname === "/school/expenses/salaries") {
     return <SchoolSalaryPage initial={null} pending />;
+  }
+  if (pathname === "/school/expenses/emergency-fund") {
+    return <SchoolEmergencyFundPage initial={null} pending />;
   }
   if (pathname === "/school/expenses") {
     return <SchoolExpensesPage initial={null} pending />;

@@ -4,7 +4,6 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { Plus, Wallet } from "lucide-react";
 import {
-  creditSchoolEmergencyFundAction,
   loadSchoolExpenseListAction,
   loadSchoolExpensesWorkspaceAction,
   recordSchoolExpenseAction,
@@ -258,7 +257,20 @@ export function SchoolExpensesPage({
         <SummaryCard label="Expense Types Used" value={String(summary.typesUsed)} hint="Active types with activity" />
       </section>
 
-      <EmergencyFundPanel fund={fund} onChanged={() => load({ page: 1 })} />
+      <Link
+        href="/school/expenses/emergency-fund"
+        aria-label={`Emergency Fund, ${formatTzs(fund.balance)} available`}
+        className={cn(
+          glassCard,
+          "flex w-full max-w-sm items-center gap-3.5 px-4 py-3.5 transition duration-200 hover:bg-white/88 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#5b82c4]/15",
+        )}
+      >
+        <SchoolIconWell icon={Wallet} />
+        <div className="min-w-0">
+          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">Emergency Fund</p>
+          <p className="mt-0.5 truncate text-[20px] font-semibold tracking-[-0.04em] text-navy">{formatTzs(fund.balance)}</p>
+        </div>
+      </Link>
 
       <form
         className="flex flex-wrap items-center gap-2"
@@ -839,133 +851,3 @@ function ExpenseTypesDrawer({
   );
 }
 
-function EmergencyFundPanel({ fund, onChanged }: { fund: SchoolEmergencyFund; onChanged: () => void }) {
-  const [kind, setKind] = useState<"OPENING" | "REPLENISH">(fund.hasOpening ? "REPLENISH" : "OPENING");
-  const [amount, setAmount] = useState("");
-  const [occurredOn, setOccurredOn] = useState(todayIso());
-  const [reference, setReference] = useState("");
-  const [notes, setNotes] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [requestId, setRequestId] = useState(newRequestId);
-
-  return (
-    <section className={cn(glassPanel, "space-y-4 px-5 py-5")}>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Emergency Fund</h2>
-          <p className="mt-1 text-[13px] text-slate-500">Opening balances and replenishments are not revenue. Spending posts one school expense.</p>
-        </div>
-        <p className="text-[22px] font-semibold tracking-[-0.04em] text-navy">{formatTzs(fund.balance)}</p>
-      </div>
-      <p className="text-[12.5px] text-slate-500">
-        Opening {formatTzs(fund.opening)} + replenishments {formatTzs(fund.replenished)} − spending {formatTzs(fund.spent)} = {formatTzs(fund.balance)}
-      </p>
-      {fund.canManage ? (
-        <form
-          className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-6"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (busy) return;
-            setBusy(true);
-            setError(null);
-            void creditSchoolEmergencyFundAction({
-              kind: fund.hasOpening ? "REPLENISH" : kind,
-              amount,
-              occurredOn,
-              reference,
-              notes,
-              requestId,
-            }).then((result) => {
-              setBusy(false);
-              if (!result.ok) {
-                setError(result.error);
-                return;
-              }
-              setAmount("");
-              setReference("");
-              setNotes("");
-              setRequestId(newRequestId());
-              onChanged();
-            });
-          }}
-        >
-          <select
-            className={inputClass}
-            value={fund.hasOpening ? "REPLENISH" : kind}
-            disabled={fund.hasOpening}
-            onChange={(event) => setKind(event.target.value as typeof kind)}
-          >
-            <option value="OPENING">Opening balance</option>
-            <option value="REPLENISH">Replenish</option>
-          </select>
-          <input className={inputClass} inputMode="decimal" value={amount} placeholder="Amount" onChange={(event) => setAmount(event.target.value)} />
-          <input type="date" className={inputClass} value={occurredOn} onChange={(event) => setOccurredOn(event.target.value)} />
-          <input className={inputClass} value={reference} placeholder="Reference" onChange={(event) => setReference(event.target.value)} />
-          <input className={inputClass} value={notes} placeholder="Notes" onChange={(event) => setNotes(event.target.value)} />
-          <SchoolWorkflowButton
-            className={primaryButton}
-            busy={busy}
-            idleLabel={fund.hasOpening ? "Add funds" : "Record opening"}
-            onClick={() => {
-              if (busy) return;
-              setBusy(true);
-              setError(null);
-              void creditSchoolEmergencyFundAction({
-                kind: fund.hasOpening ? "REPLENISH" : kind,
-                amount,
-                occurredOn,
-                reference,
-                notes,
-                requestId,
-              }).then((result) => {
-                setBusy(false);
-                if (!result.ok) {
-                  setError(result.error);
-                  return;
-                }
-                setAmount("");
-                setReference("");
-                setNotes("");
-                setRequestId(newRequestId());
-                onChanged();
-              });
-            }}
-          />
-        </form>
-      ) : null}
-      {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
-      {fund.entries.length ? (
-        <div className={tableScrollClass}>
-          <table className="w-full min-w-[640px] text-left">
-            <thead>
-              <tr className={tableHead}>
-                {["Date", "Type", "Amount", "Reference", "Notes", "Status"].map((heading) => (
-                  <th key={heading} className="px-4 py-2 font-semibold">
-                    {heading}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {fund.entries.map((entry) => (
-                <tr key={entry.id} className="border-t border-navy/5 text-[13px] text-navy">
-                  <td className="px-4 py-2">{entry.occurredOn}</td>
-                  <td className="px-4 py-2">{entry.kind === "OPENING" ? "Opening" : entry.kind === "REPLENISH" ? "Replenish" : "Expense"}</td>
-                  <td className="px-4 py-2">{formatAmount(entry.amount)}</td>
-                  <td className="px-4 py-2">{entry.reference || "—"}</td>
-                  <td className="px-4 py-2">{entry.notes || "—"}</td>
-                  <td className="px-4 py-2">
-                    <StatusPill value={entry.isActive ? "Posted" : "Reversed"} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p className="text-[13px] text-slate-500">No emergency fund entries yet.</p>
-      )}
-    </section>
-  );
-}

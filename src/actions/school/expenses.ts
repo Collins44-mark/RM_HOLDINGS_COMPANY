@@ -129,6 +129,7 @@ function mapFund(
     expense_id?: unknown;
     is_active?: unknown;
     recorded_by?: unknown;
+    created_at?: unknown;
   }>,
   canManage: boolean,
 ): SchoolEmergencyFund {
@@ -149,6 +150,7 @@ function mapFund(
       kind: mappedKind,
       amount,
       occurredOn: str(row.occurred_on),
+      createdAt: str(row.created_at),
       reference: str(row.reference),
       notes: str(row.notes),
       expenseId: row.expense_id ? str(row.expense_id) : null,
@@ -409,11 +411,10 @@ export async function loadSchoolExpensesWorkspaceAction(input: ExpenseLoadInput 
         .lte("expense_date", bounds.to),
       supabase
         .from("sch_emergency_fund_entries")
-        .select("id, entry_kind, amount, occurred_on, reference, notes, expense_id, is_active, recorded_by")
+        .select("id, entry_kind, amount, occurred_on, reference, notes, expense_id, is_active, recorded_by, created_at")
         .eq("business_unit_id", businessUnitId)
         .order("occurred_on", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(40),
+        .order("created_at", { ascending: false }),
     ]);
 
     if (typesRes.error && !isSchoolUnconfiguredRead(typesRes.error)) mapSchoolDbError(typesRes.error, "load");
@@ -508,6 +509,7 @@ export type SchoolExpensesWorkspaceResult = Awaited<ReturnType<typeof loadSchool
 
 function refreshFinance() {
   revalidatePath("/school/expenses");
+  revalidatePath("/school/expenses/emergency-fund");
   revalidatePath("/school");
   revalidatePath("/owner/finance");
   revalidatePath("/owner/reports");
@@ -698,6 +700,41 @@ export async function reverseSchoolExpenseAction(input: { id: string }) {
     return { ok: false as const, error: schoolActionError(error) };
   }
 }
+
+export async function loadSchoolEmergencyFundAction(input: { period?: string; from?: string; to?: string } = {}) {
+  try {
+    const user = await requireAuth();
+    const ctx = await requireAnySchoolPermission(VIEW_ANY);
+    const { supabase, businessUnitId } = ctx;
+    const capabilities = caps(user);
+    const bounds = periodBounds(input.period ? input : { period: "this-month", from: input.from, to: input.to });
+    const [fundRes, profileRes, buRes] = await Promise.all([
+      supabase
+        .from("sch_emergency_fund_entries")
+        .select("id, entry_kind, amount, occurred_on, reference, notes, expense_id, is_active, recorded_by, created_at")
+        .eq("business_unit_id", businessUnitId)
+        .order("occurred_on", { ascending: false })
+        .order("created_at", { ascending: false }),
+      supabase.from("sch_school_profiles").select("name").eq("business_unit_id", businessUnitId).maybeSingle(),
+      supabase.from("business_units").select("name").eq("id", businessUnitId).maybeSingle(),
+    ]);
+    if (fundRes.error && !isSchoolUnconfiguredRead(fundRes.error)) mapSchoolDbError(fundRes.error, "load");
+    const missing = Boolean(fundRes.error && isSchoolUnconfiguredRead(fundRes.error));
+    const fund = missing ? emptyFund(capabilities.canManageFund) : mapFund(fundRes.data ?? [], capabilities.canManageFund);
+    return {
+      ok: true as const,
+      schoolName: str(profileRes.data?.name) || str(buRes.data?.name) || "School Management",
+      period: bounds.period,
+      from: bounds.from,
+      to: bounds.to,
+      fund,
+    };
+  } catch (error) {
+    return { ok: false as const, error: schoolActionError(error) };
+  }
+}
+
+export type SchoolEmergencyFundResult = Awaited<ReturnType<typeof loadSchoolEmergencyFundAction>>;
 
 export async function creditSchoolEmergencyFundAction(input: {
   kind: "OPENING" | "REPLENISH";
