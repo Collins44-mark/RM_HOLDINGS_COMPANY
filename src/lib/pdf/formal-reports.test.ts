@@ -341,47 +341,46 @@ test("school, supermarket, document and receipt builders share the formal layout
     }),
   );
 
-  writeFileSync(
-    `${out}/fee-receipt.pdf`,
-    buildFeeReceiptPdf({
-      schoolName: "Muhuga Nursery & Primary School",
-      studentName: "Candy Joseph Sanga With Extra Middle Names",
-      studentNumber: "STU-000001",
-      admissionNumber: "ADM-000001",
-      academicYearName: "2026",
-      levelName: "PRIMARY",
-      className: "STANDARD-3",
-      streamName: "A",
-      feeContext: "Tuition Term 1",
-      paymentNumber: "FEE-00088",
-      paymentDate: "2026-10-05",
-      amount: 250_000,
-      methodLabel: "Cash",
-      reference: "REF-LONG-REFERENCE-VALUE",
-      recordedByName: "Accounts Clerk",
-      verifiedByName: "Head Teacher",
-      outstandingAmount: 50_000,
-    }),
-  );
-  assertFormal(decode(buildFeeReceiptPdf({
+  const feeReceipt = {
     schoolName: "Muhuga Nursery & Primary School",
-    studentName: "Candy Joseph Sanga",
+    schoolAddress: "P.O. Box 123",
+    schoolCity: "Dodoma",
+    schoolPhone: "+255 000 000 000",
+    schoolEmail: "info@school.example",
+    logoUrl: "",
+    logoJpegBase64: "",
+    studentName: "Candy Joseph Sanga With Extra Middle Names",
     studentNumber: "STU-000001",
     admissionNumber: "ADM-000001",
     academicYearName: "2026",
     levelName: "PRIMARY",
     className: "STANDARD-3",
     streamName: "A",
-    feeContext: "Tuition Term 1",
-    paymentNumber: "FEE-00088",
+    paymentCategory: "School Fees",
+    feeContext: "Annual School Fees",
+    paymentNumber: "PAY-00088",
     paymentDate: "2026-10-05",
-    amount: 250_000,
+    recordedAt: "2026-10-05T14:52:00.000Z",
+    amount: 80_000,
     methodLabel: "Cash",
     reference: "REF-01",
     recordedByName: "Accounts Clerk",
     verifiedByName: "Head Teacher",
-    outstandingAmount: 50_000,
-  })), "Fee Payment Receipt");
+    status: "posted",
+    billedAmount: 2_000_000,
+    previouslyPaid: 1_920_000,
+    outstandingAmount: 0,
+    signatoryName: "",
+  };
+  writeFileSync(`${out}/fee-receipt.pdf`, buildFeeReceiptPdf(feeReceipt));
+  const receiptPdf = decode(buildFeeReceiptPdf(feeReceipt));
+  assert.match(receiptPdf, /PAYMENT RECEIPT/);
+  assert.match(receiptPdf, /RCPT-088/);
+  assert.match(receiptPdf, /Tanzanian Shillings Eighty Thousand Only/);
+  assert.match(receiptPdf, /Previously Paid/);
+  assert.doesNotMatch(receiptPdf, /RM Holdings Ltd/);
+  assert.doesNotMatch(receiptPdf, /A Greater Tomorrow/);
+  assert.doesNotMatch(receiptPdf, /One Vision/);
 
   const examDetail: SchoolExamDetail = {
     exam: {

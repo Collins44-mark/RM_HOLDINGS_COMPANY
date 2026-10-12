@@ -22,7 +22,9 @@ import {
 } from "@/components/supermarket/purchasing-ui";
 import { cn } from "@/lib/cn";
 import { formatAmount, formatTzs } from "@/lib/format/currency";
+import { SchoolFeeReceiptPreview } from "@/components/school/SchoolFeeReceiptPreview";
 import { downloadFeeReceiptPdf, type FeeReceiptPayload } from "@/lib/school/fee-receipt-pdf";
+import { formatSchoolReceiptNumber } from "@/lib/school/fee-receipt";
 import { compactFeeChargeLabel, isPayableObligation, payableSelectorId } from "@/lib/school/fee-allocation";
 import { applyRecordedFeePayment } from "@/lib/school/apply-fee-payment";
 import { SchoolDrawerSelect } from "@/components/school/SchoolDrawerSelect";
@@ -551,8 +553,8 @@ export function SchoolStudentFeeProfilePage({
 
       {receipt ? (
         <ContainedDrawer
-          title="Fee receipt"
-          subtitle={receipt.paymentNumber}
+          title="Payment receipt"
+          subtitle={formatSchoolReceiptNumber(receipt.paymentNumber)}
           onClose={() => setReceipt(null)}
           footer={
             <>
@@ -563,21 +565,8 @@ export function SchoolStudentFeeProfilePage({
             </>
           }
         >
-          <div className="space-y-2 pb-4 text-[13.5px] text-navy">
-            <p>{receipt.schoolName}</p>
-            <p>
-              {receipt.studentName} · {formatCompactStudentNumber(receipt.studentNumber)}
-            </p>
-            <p>
-              {receipt.academicYearName} · {receipt.levelName} · {receipt.className}
-            </p>
-            <p>
-              {formatTzs(receipt.amount)} · {receipt.methodLabel}
-            </p>
-            <p>Reference: {receipt.reference}</p>
-            <p>Recorded by {receipt.recordedByName || "—"}</p>
-            <p>Verified by {receipt.verifiedByName || "—"}</p>
-            <p>Outstanding: {receipt.outstandingAmount == null ? "—" : formatTzs(receipt.outstandingAmount)}</p>
+          <div className="pb-4">
+            <SchoolFeeReceiptPreview receipt={receipt} />
           </div>
         </ContainedDrawer>
       ) : null}

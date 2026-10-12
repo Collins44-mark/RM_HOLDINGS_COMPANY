@@ -13,7 +13,8 @@ import {
 } from "@/lib/school/access";
 import { revalidatePath } from "next/cache";
 import { getStudentFeeAccount } from "@/lib/school/fee-account";
-import { parsePayableSelectorId } from "@/lib/school/fee-allocation";
+import { isAllocatedFeePayment, parsePayableSelectorId } from "@/lib/school/fee-allocation";
+import { receiptPaymentCategory } from "@/lib/school/fee-receipt";
 import {
   asFeeStatus,
   paymentMethodLabel,
@@ -39,6 +40,22 @@ function str(value: unknown) {
 function num(value: unknown) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+async function jpegFromLogoUrl(url: string) {
+  const next = str(url);
+  if (!next) return "";
+  if (/^data:image\/jpeg/i.test(next)) return next.replace(/^data:image\/jpeg[^,]*,/i, "");
+  if (next.startsWith("data:")) return "";
+  try {
+    const result = await fetch(next);
+    if (!result.ok) return "";
+    const bytes = Buffer.from(await result.arrayBuffer());
+    if (bytes.length > 1 && bytes[0] === 0xff && bytes[1] === 0xd8) return bytes.toString("base64");
+  } catch {
+    return "";
+  }
+  return "";
 }
 
 function hasPerm(user: Awaited<ReturnType<typeof requireAuth>>, permission: string) {
@@ -498,7 +515,7 @@ export async function getSchoolFeeReceiptAction(paymentId: string, options?: { a
     const payment = await supabase
       .from("sch_fee_payments")
       .select(
-        "id, payment_number, amount, method, payment_date, reference, status, recorded_by, verified_by, enrollment_id",
+        "id, payment_number, amount, method, payment_date, created_at, reference, status, recorded_by, verified_by, enrollment_id, charge_id",
       )
       .eq("business_unit_id", businessUnitId)
       .eq("id", id)
@@ -507,24 +524,96 @@ export async function getSchoolFeeReceiptAction(paymentId: string, options?: { a
     if (String(payment.data.status) !== "posted") {
       throw new SchoolError("A receipt is available after the payment is verified.", "VALIDATION");
     }
-    const account = await getStudentFeeAccount({
-      supabase,
-      businessUnitId,
-      enrollmentId: String(payment.data.enrollment_id),
-    });
+    const chargeId = str(payment.data.charge_id);
+    const [account, school, chargeRes, siblingsRes] = await Promise.all([
+      getStudentFeeAccount({
+        supabase,
+        businessUnitId,
+        enrollmentId: String(payment.data.enrollment_id),
+      }),
+      supabase
+        .from("sch_school_profiles")
+        .select("name, address, city, phone, email, logo_url, principal_name")
+        .eq("business_unit_id", businessUnitId)
+        .maybeSingle(),
+      chargeId
+        ? supabase
+            .from("sch_fee_charges")
+            .select("id, annual_amount, charge_kind, route_id, store_sale_id, billing_period")
+            .eq("business_unit_id", businessUnitId)
+            .eq("id", chargeId)
+            .maybeSingle()
+        : Promise.resolve({ data: null as Record<string, unknown> | null }),
+      chargeId
+        ? supabase
+            .from("sch_fee_payments")
+            .select("id, amount, status")
+            .eq("business_unit_id", businessUnitId)
+            .eq("charge_id", chargeId)
+        : Promise.resolve({ data: [] as Array<{ id: string; amount: number; status: string }> }),
+    ]);
     if (!account) throw new SchoolError("Fee account was not found.", "NOT_FOUND");
-    const school = await supabase
-      .from("sch_school_profiles")
-      .select("name")
-      .eq("business_unit_id", businessUnitId)
-      .maybeSingle();
+    const charge = (chargeRes.data ?? null) as Record<string, unknown> | null;
+    const kind = str(charge?.charge_kind) || "TUITION";
+    let description = kind === "TRANSPORT" ? "School bus" : kind === "STORE" ? "School store" : "Annual School Fees";
+    let storeCategory = "";
+    const routeId = str(charge?.route_id);
+    const saleId = str(charge?.store_sale_id);
+    if (routeId) {
+      const route = await supabase
+        .from("sch_transport_routes")
+        .select("name")
+        .eq("business_unit_id", businessUnitId)
+        .eq("id", routeId)
+        .maybeSingle();
+      const routeName = str(route.data?.name);
+      const period = str(charge?.billing_period);
+      if (routeName && period) description = `${routeName} · ${period}`;
+      else if (routeName) description = routeName;
+      else if (period) description = `School bus · ${period}`;
+    }
+    if (saleId) {
+      const lines = await supabase
+        .from("sch_store_sale_lines")
+        .select("line_total, sch_store_items(name, category)")
+        .eq("business_unit_id", businessUnitId)
+        .eq("sale_id", saleId);
+      const names: string[] = [];
+      const categories = new Set<string>();
+      for (const row of lines.data ?? []) {
+        const item = (row as { sch_store_items?: { name?: string; category?: string } | { name?: string; category?: string }[] | null }).sch_store_items;
+        const profile = Array.isArray(item) ? item[0] : item;
+        const name = str(profile?.name);
+        if (name) names.push(name);
+        const category = str(profile?.category);
+        if (category) categories.add(category);
+      }
+      if (names.length) description = names.join(", ");
+      storeCategory = categories.size === 1 ? [...categories][0] : "";
+    }
+    const billed = charge?.annual_amount == null || charge?.annual_amount === "" ? null : num(charge.annual_amount);
+    const allocated = (siblingsRes.data ?? []).filter((row) => isAllocatedFeePayment(row.status));
+    const thisAmount = num(payment.data.amount);
+    const previouslyPaid = allocated.reduce((sum, row) => {
+      if (String(row.id) === id) return sum;
+      return sum + num(row.amount);
+    }, 0);
+    const allocatedTotal = allocated.reduce((sum, row) => sum + num(row.amount), 0);
+    const outstanding = billed == null ? null : Math.max(0, billed - allocatedTotal);
     const namesNeeded = [payment.data.recorded_by, payment.data.verified_by].filter(Boolean).map(String);
     const profiles = namesNeeded.length
       ? await supabase.from("profiles").select("id, full_name").in("id", namesNeeded)
       : { data: [] as Array<{ id: string; full_name: string }> };
     const nameMap = new Map((profiles.data ?? []).map((row) => [String(row.id), String(row.full_name ?? "")]));
+    const logoUrl = str(school.data?.logo_url);
     const receipt: FeeReceiptPayload = {
       schoolName: str(school.data?.name) || "School Management",
+      schoolAddress: str(school.data?.address),
+      schoolCity: str(school.data?.city),
+      schoolPhone: str(school.data?.phone),
+      schoolEmail: str(school.data?.email),
+      logoUrl,
+      logoJpegBase64: await jpegFromLogoUrl(logoUrl),
       studentName: account.studentName,
       studentNumber: account.studentNumber,
       admissionNumber: account.admissionNumber,
@@ -532,15 +621,21 @@ export async function getSchoolFeeReceiptAction(paymentId: string, options?: { a
       levelName: account.levelName,
       className: account.className,
       streamName: account.streamName,
-      feeContext: "Annual school fees",
+      paymentCategory: receiptPaymentCategory(kind, storeCategory),
+      feeContext: description,
       paymentNumber: String(payment.data.payment_number),
       paymentDate: String(payment.data.payment_date ?? ""),
-      amount: num(payment.data.amount),
+      recordedAt: String(payment.data.created_at ?? ""),
+      amount: thisAmount,
       methodLabel: paymentMethodLabel(String(payment.data.method)),
-      reference: str(payment.data.reference) || "—",
+      reference: str(payment.data.reference),
       recordedByName: payment.data.recorded_by ? nameMap.get(String(payment.data.recorded_by)) ?? "" : "",
       verifiedByName: payment.data.verified_by ? nameMap.get(String(payment.data.verified_by)) ?? "" : "",
-      outstandingAmount: account.outstandingAmount,
+      status: String(payment.data.status ?? "posted"),
+      billedAmount: billed,
+      previouslyPaid,
+      outstandingAmount: outstanding,
+      signatoryName: str(school.data?.principal_name),
     };
     if (options?.audit !== false) {
       await audit({

@@ -520,7 +520,7 @@ export async function saveSchoolProfileAction(input: SchoolProfile) {
       email: email.slice(0, 160),
       website: str(input.website).slice(0, 160),
       principal_name: str(input.principalName).slice(0, 120),
-      logo_url: str(input.logoUrl).slice(0, 240),
+      logo_url: str(input.logoUrl).slice(0, 400000),
       is_active: Boolean(input.isActive),
     };
     const { error } = await supabase.from("sch_school_profiles").upsert(payload, { onConflict: "business_unit_id" });

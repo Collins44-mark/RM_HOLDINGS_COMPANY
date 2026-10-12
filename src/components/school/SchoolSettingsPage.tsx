@@ -326,8 +326,44 @@ export function SchoolSettingsPage({
                 <Field label="Principal / Head">
                   <input className={inputClass} value={profileDraft.principalName} onChange={(e) => setProfileDraft((p) => ({ ...p, principalName: e.target.value }))} />
                 </Field>
-                <Field label="Logo URL">
-                  <input className={inputClass} value={profileDraft.logoUrl} onChange={(e) => setProfileDraft((p) => ({ ...p, logoUrl: e.target.value }))} />
+                <Field label="School logo">
+                  <div className="flex items-center gap-3">
+                    {profileDraft.logoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={profileDraft.logoUrl} alt="" className="h-12 w-12 rounded-[10px] object-contain bg-white/80" />
+                    ) : null}
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <input
+                        className={inputClass}
+                        value={profileDraft.logoUrl.startsWith("data:") ? "" : profileDraft.logoUrl}
+                        placeholder="https://…"
+                        onChange={(e) => setProfileDraft((p) => ({ ...p, logoUrl: e.target.value }))}
+                      />
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="block w-full text-[12.5px] text-slate-500 file:mr-2 file:rounded-full file:border-0 file:bg-navy file:px-3 file:py-1.5 file:text-[12px] file:font-semibold file:text-white"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (!file) return;
+                          const image = new Image();
+                          const url = URL.createObjectURL(file);
+                          image.onload = () => {
+                            const canvas = document.createElement("canvas");
+                            const scale = Math.min(160 / image.width, 160 / image.height, 1);
+                            canvas.width = Math.max(1, Math.round(image.width * scale));
+                            canvas.height = Math.max(1, Math.round(image.height * scale));
+                            const ctx = canvas.getContext("2d");
+                            if (!ctx) return;
+                            ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+                            setProfileDraft((p) => ({ ...p, logoUrl: canvas.toDataURL("image/jpeg", 0.82) }));
+                            URL.revokeObjectURL(url);
+                          };
+                          image.src = url;
+                        }}
+                      />
+                    </div>
+                  </div>
                 </Field>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -382,7 +418,7 @@ export function SchoolSettingsPage({
                   ["Email", profile.email],
                   ["Website", profile.website],
                   ["Principal / Head", profile.principalName],
-                  ["Logo URL", profile.logoUrl],
+                  ["Logo", profile.logoUrl ? "Uploaded" : ""],
                 ] as const
               ).map(([label, value]) => (
                 <div key={label} className="flex items-baseline justify-between gap-4 border-b border-black/[0.04] py-2.5">
