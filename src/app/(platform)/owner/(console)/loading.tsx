@@ -3,7 +3,7 @@ export default function OwnerDashboardLoading() {
     <div className="relative">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[32rem] overflow-hidden bg-[#c5d4e4] sm:h-[36rem]"
+        className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[32rem] overflow-hidden bg-[#c5d4e4] sm:h-[36rem] lg:left-[calc(var(--sidebar-width)*-1)]"
       >
         <div className="absolute inset-x-0 bottom-0 h-[58%] bg-gradient-to-b from-transparent via-[#eef3f8]/45 to-[#eef3f8]" />
       </div>

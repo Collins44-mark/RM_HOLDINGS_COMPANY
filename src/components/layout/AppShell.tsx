@@ -69,7 +69,11 @@ export function AppShell({
       ) : null}
 
       <div
-        className="relative flex min-h-screen flex-col overflow-x-hidden transition-[padding-left] duration-300 ease-out lg:pl-[var(--sidebar-width)]"
+        className={
+          isOwnerHome
+            ? "relative flex min-h-screen flex-col overflow-x-visible transition-[padding-left] duration-300 ease-out lg:pl-[var(--sidebar-width)]"
+            : "relative flex min-h-screen flex-col overflow-x-hidden transition-[padding-left] duration-300 ease-out lg:pl-[var(--sidebar-width)]"
+        }
         style={{ ["--sidebar-width" as string]: `${sidebarWidth + 12}px` }}
       >
         <Header
@@ -83,7 +87,7 @@ export function AppShell({
         <main
           className={
             isOwnerHome
-              ? "relative z-10 min-w-0 flex-1 overflow-x-clip px-0 pt-0 pb-6 -mt-14 sm:-mt-[72px] sm:pb-7 lg:pb-8"
+              ? "relative z-10 min-w-0 flex-1 overflow-x-visible px-0 pt-0 pb-6 -mt-14 sm:-mt-[72px] sm:pb-7 lg:pb-8"
               : "relative z-10 min-w-0 flex-1 overflow-x-clip px-4 py-4 sm:px-5 sm:py-5 md:px-6 lg:px-7 lg:py-6"
           }
         >

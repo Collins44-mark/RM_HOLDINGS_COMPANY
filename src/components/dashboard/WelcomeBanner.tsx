@@ -83,7 +83,7 @@ export function WelcomeBanner({
     <>
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[32rem] overflow-hidden sm:h-[36rem] lg:h-[38rem]"
+        className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[32rem] overflow-hidden sm:h-[36rem] lg:left-[calc(var(--sidebar-width)*-1)] lg:h-[38rem]"
       >
         <HeroBackground src={heroSrc} />
         <div className="absolute inset-0 bg-gradient-to-r from-[#071422]/58 via-[#0b1f3a]/22 to-transparent" />
