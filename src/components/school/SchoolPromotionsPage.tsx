@@ -65,6 +65,59 @@ function rowValidation(row: DraftRow) {
   return "";
 }
 
+type PreviewBundle = {
+  rows: DraftRow[];
+  destClasses: DestClass[];
+  streams: Array<{ id: string; name: string; classId: string }>;
+  levels: Array<{ id: string; name: string }>;
+  fromYearName: string;
+  toYearName: string;
+  alreadyInTarget: number;
+};
+
+function previewKey(fromYearId: string, toYearId: string, classId: string) {
+  return `${fromYearId}|${toYearId}|${classId}`;
+}
+
+function SkeletonBar({ className }: { className: string }) {
+  return (
+    <span
+      className={cn("inline-block rounded-md bg-slate-200/75 motion-safe:animate-pulse motion-reduce:animate-none", className)}
+      aria-hidden
+    />
+  );
+}
+
+function PromotionStudentSkeletonRows() {
+  return (
+    <>
+      {Array.from({ length: 6 }, (_, index) => (
+        <tr key={index} className="border-t border-navy/5">
+          <td className="px-3 py-3">
+            <SkeletonBar className="h-3.5 w-36" />
+            <SkeletonBar className="mt-1.5 h-3 w-16" />
+          </td>
+          <td className="px-3 py-3">
+            <SkeletonBar className="h-3.5 w-40" />
+          </td>
+          <td className="px-3 py-3">
+            <SkeletonBar className="h-12 w-full rounded-[14px]" />
+          </td>
+          <td className="px-3 py-3">
+            <div className="flex min-w-[16rem] flex-col gap-2">
+              <SkeletonBar className="h-12 w-full rounded-[14px]" />
+              <SkeletonBar className="h-12 w-full rounded-[14px]" />
+            </div>
+          </td>
+          <td className="px-3 py-3">
+            <SkeletonBar className="h-12 w-full rounded-[14px]" />
+          </td>
+        </tr>
+      ))}
+    </>
+  );
+}
+
 export function SchoolPromotionsPage({
   years: initialYears,
   today,
@@ -98,11 +151,16 @@ export function SchoolPromotionsPage({
   const [saveError, setSaveError] = useState<string | null>(error);
   const [success, setSuccess] = useState<string | null>(null);
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [historyBusy, setHistoryBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const requestId = useRef(crypto.randomUUID());
   const lock = useRef(false);
+  const previewSeq = useRef(0);
+  const previewCache = useRef(new Map<string, PreviewBundle>());
   const selectedClassId = selectedClass?.id ?? "";
+  const selectedKey = selectedClass ? previewKey(fromYearId, toYearId, selectedClass.id) : "";
 
   function loadBoard(nextFrom = fromYearId, nextTo = toYearId) {
     if (!nextFrom) return;
@@ -147,38 +205,84 @@ export function SchoolPromotionsPage({
     setRows((current) => current.map((item) => (item.studentId === studentId ? { ...item, ...patch } : item)));
   }
 
-  function openClass(card: PromotionClassCard) {
-    if (!fromYearId || !toYearId || busy || saving || lock.current) return;
-    lock.current = true;
-    setBusy(true);
-    setSaveError(null);
-    setSuccess(null);
+  function applyBundle(bundle: PreviewBundle) {
+    setRows(bundle.rows);
+    setDestClasses(bundle.destClasses);
+    setStreams(bundle.streams);
+    setLevels(bundle.levels);
+    setFromYearName(bundle.fromYearName);
+    setToYearName(bundle.toYearName);
+    setAlreadyInTarget(bundle.alreadyInTarget);
+  }
+
+  function storeBundle(key: string, bundle: PreviewBundle) {
+    previewCache.current.set(key, bundle);
+    applyBundle(bundle);
+  }
+
+  function fetchPreview(card: PromotionClassCard, force = false) {
+    if (!fromYearId || !toYearId) return;
+    const key = previewKey(fromYearId, toYearId, card.id);
+    previewSeq.current += 1;
+    const seq = previewSeq.current;
+    const cached = !force ? previewCache.current.get(key) : undefined;
+    setLoadError(null);
     setRowErrors({});
-    setSelectedClass(card);
-    setPanel("students");
-    setRows([]);
     setPage(1);
+    requestId.current = crypto.randomUUID();
+    if (cached) {
+      applyBundle(cached);
+      setLoadingPreview(false);
+      return;
+    }
+    setRows([]);
+    setLoadingPreview(true);
     void previewSchoolPromotionsAction({ fromYearId, toYearId, classId: card.id }).then((next) => {
-      lock.current = false;
-      setBusy(false);
+      if (seq !== previewSeq.current) return;
+      setLoadingPreview(false);
       if (!next.ok) {
-        setSaveError(next.error);
+        setLoadError(next.error);
         return;
       }
-      setFromYearName(next.fromYearName);
-      setToYearName(next.toYearName);
-      setDestClasses(next.classes);
-      setStreams(next.streams);
-      setLevels(next.levels);
-      setAlreadyInTarget(next.alreadyInTarget);
-      setRows(next.students.map(toDraft));
-      requestId.current = crypto.randomUUID();
+      storeBundle(key, {
+        rows: next.students.map(toDraft),
+        destClasses: next.classes,
+        streams: next.streams,
+        levels: next.levels,
+        fromYearName: next.fromYearName,
+        toYearName: next.toYearName,
+        alreadyInTarget: next.alreadyInTarget,
+      });
     });
+  }
+
+  function openClass(card: PromotionClassCard) {
+    if (!fromYearId || !toYearId || saving) return;
+    setSaveError(null);
+    setSuccess(null);
+    setSelectedClass(card);
+    setPanel("students");
+    setHistory([]);
+    fetchPreview(card);
   }
 
   function closeClass() {
     if (saving) return;
+    previewSeq.current += 1;
+    if (selectedClass && !loadingPreview && !loadError) {
+      previewCache.current.set(selectedKey, {
+        rows,
+        destClasses,
+        streams,
+        levels,
+        fromYearName,
+        toYearName,
+        alreadyInTarget,
+      });
+    }
     setSelectedClass(null);
+    setLoadingPreview(false);
+    setLoadError(null);
     setRows([]);
     setHistory([]);
     setPanel("students");
@@ -205,10 +309,10 @@ export function SchoolPromotionsPage({
   }
 
   function loadHistory() {
-    if (!selectedClass || !fromYearId) return;
-    setBusy(true);
+    if (!selectedClass || !fromYearId || historyBusy) return;
+    setHistoryBusy(true);
     void loadSchoolPromotionHistoryAction({ fromYearId, classId: selectedClass.id }).then((next) => {
-      setBusy(false);
+      setHistoryBusy(false);
       if (!next.ok) {
         setSaveError(next.error);
         return;
@@ -219,7 +323,7 @@ export function SchoolPromotionsPage({
   }
 
   function validateAndSave() {
-    if (saving || lock.current || !canManage || !selectedClass || !rows.length) return;
+    if (saving || lock.current || loadingPreview || loadError || !canManage || !selectedClass || !rows.length) return;
     const nextErrors: Record<string, string> = {};
     for (const row of rows) {
       const message = rowValidation(row);
@@ -261,6 +365,7 @@ export function SchoolPromotionsPage({
       }
       requestId.current = crypto.randomUUID();
       loadBoard();
+      previewCache.current.delete(previewKey(fromYearId, toYearId, selectedClass.id));
       if (next.duplicate) {
         setSaveError("This save was already processed. Review the class and try again if students remain.");
         return;
@@ -280,12 +385,7 @@ export function SchoolPromotionsPage({
       }
       setRowErrors({});
       setSuccess(summary);
-      void previewSchoolPromotionsAction({ fromYearId, toYearId, classId: selectedClass.id }).then((preview) => {
-        if (!preview.ok) return;
-        setRows(preview.students.map(toDraft));
-        setAlreadyInTarget(preview.alreadyInTarget);
-        setPage(1);
-      });
+      fetchPreview(selectedClass, true);
     });
   }
 
@@ -358,14 +458,14 @@ export function SchoolPromotionsPage({
       {!selectedClass ? (
         <section className="space-y-4">
           {cards.length ? (
-            <div className={cn("grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3", busy && "pointer-events-none opacity-60")}>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {cards.map((card) => {
                 const processed = Boolean(toYearId) && card.enrolled > 0 && card.awaiting === 0;
                 return (
                   <button
                     key={card.id}
                     type="button"
-                    disabled={!toYearId || busy}
+                    disabled={!toYearId || saving}
                     onClick={() => openClass(card)}
                     className={cn(glassCard, "px-4 py-4 text-left transition duration-200 hover:bg-white/88 disabled:cursor-not-allowed disabled:opacity-60")}
                   >
@@ -408,12 +508,18 @@ export function SchoolPromotionsPage({
                 {fromYearName} → {toYearName}
               </p>
               <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">{selectedClass.name}</h2>
-              <p className="mt-1 text-[13px] text-slate-500">
-                {busy && !rows.length ? "Loading students…" : `${rows.length} students in this class`}
-                {alreadyInTarget ? ` · ${alreadyInTarget} already enrolled in the target year` : ""}
+              <p className="mt-1 min-h-[1.25rem] text-[13px] text-slate-500">
+                {loadingPreview ? (
+                  <SkeletonBar className="h-3.5 w-44 align-middle" />
+                ) : (
+                  <>
+                    {rows.length} {rows.length === 1 ? "student" : "students"} in this class
+                    {alreadyInTarget ? ` · ${alreadyInTarget} already enrolled in the target year` : ""}
+                  </>
+                )}
               </p>
             </div>
-            <button type="button" className={panel === "history" ? primaryButton : secondaryButton} onClick={loadHistory} disabled={busy || saving}>
+            <button type="button" className={panel === "history" ? primaryButton : secondaryButton} onClick={loadHistory} disabled={historyBusy || saving || loadingPreview}>
               Class history
             </button>
           </div>
@@ -455,10 +561,32 @@ export function SchoolPromotionsPage({
             ) : (
               <p className="text-[13.5px] text-slate-500">No confirmed progression history for this class yet.</p>
             )
+          ) : loadError ? (
+            <div className="space-y-3">
+              <p className="text-[13.5px] text-[#c45b66]">{loadError}</p>
+              <button type="button" className={secondaryButton} onClick={() => fetchPreview(selectedClass, true)}>
+                Retry
+              </button>
+            </div>
+          ) : loadingPreview ? (
+            <div className={tableScrollClass} aria-busy="true" aria-label="Loading students">
+              <table className="w-full min-w-[1100px] text-left">
+                <thead>
+                  <tr className={tableHead}>
+                    <th className="px-3 py-3 font-semibold">Student</th>
+                    <th className="px-3 py-3 font-semibold">Current</th>
+                    <th className="px-3 py-3 font-semibold">Outcome</th>
+                    <th className="px-3 py-3 font-semibold">Destination</th>
+                    <th className="px-3 py-3 font-semibold">Stream</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <PromotionStudentSkeletonRows />
+                </tbody>
+              </table>
+            </div>
           ) : rows.length === 0 ? (
-            <p className="text-[13.5px] text-slate-500">
-              {busy ? "Loading this class…" : "No enrolled students are waiting in this class for the selected years."}
-            </p>
+            <p className="text-[13.5px] text-slate-500">No enrolled students are waiting in this class for the selected years.</p>
           ) : (
             <>
               <div className={cn(tableScrollClass, saving && "opacity-60")}>
@@ -598,7 +726,7 @@ export function SchoolPromotionsPage({
                 busy={saving}
                 idleLabel="Validate & Save"
                 busyLabel="Saving"
-                disabled={!canManage || !rows.length || busy}
+                disabled={!canManage || !rows.length || loadingPreview || Boolean(loadError)}
                 onClick={validateAndSave}
               />
             </div>
