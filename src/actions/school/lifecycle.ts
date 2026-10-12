@@ -22,6 +22,8 @@ const STUDENTS_WITHDRAW = "school.students.withdraw";
 const STUDENTS_TRANSFER = "school.students.transfer";
 const PROMOTIONS_VIEW = "school.promotions.view";
 const PROMOTIONS_MANAGE = "school.promotions.manage";
+const CLASSES_VIEW = "school.classes.view";
+const CLASSES_MANAGE = "school.classes.manage";
 
 export type ProgressionOutcome = "PROMOTE" | "RETAIN" | "TRANSFER" | "GRADUATE" | "EXCLUDE";
 
@@ -577,9 +579,10 @@ export async function loadSchoolPromotionYearsAction() {
       years: catalog.years,
       today: new Date().toISOString().slice(0, 10),
       canManage: hasPerm(user, PROMOTIONS_MANAGE) || hasPerm(user, STUDENTS_MANAGE),
+      canViewClasses: hasPerm(user, CLASSES_VIEW) || hasPerm(user, CLASSES_MANAGE),
     };
   } catch (error) {
-    return { ok: false as const, error: schoolActionError(error), years: [] as Array<{ id: string; name: string; isCurrent: boolean }>, canManage: false };
+    return { ok: false as const, error: schoolActionError(error), years: [] as Array<{ id: string; name: string; isCurrent: boolean }>, canManage: false, canViewClasses: false };
   }
 }
 

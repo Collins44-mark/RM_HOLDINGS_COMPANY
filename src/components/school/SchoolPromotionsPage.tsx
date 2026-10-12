@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { GraduationCap, LayoutGrid } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { GraduationCap, LayoutGrid, School } from "lucide-react";
 import {
   confirmSchoolPromotionsAction,
   loadSchoolPromotionBoardAction,
@@ -122,12 +123,14 @@ export function SchoolPromotionsPage({
   years: initialYears,
   today,
   canManage,
+  canViewClasses = false,
   error,
   pending = false,
 }: {
   years: YearOption[];
   today: string;
   canManage: boolean;
+  canViewClasses?: boolean;
   error: string | null;
   pending?: boolean;
 }) {
@@ -137,6 +140,8 @@ export function SchoolPromotionsPage({
   const [toYearId, setToYearId] = useState(initialYears.find((row) => !row.isCurrent)?.id ?? "");
   const [effectiveOn, setEffectiveOn] = useState(today);
   const [cards, setCards] = useState<PromotionClassCard[]>([]);
+  const [boardStatus, setBoardStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [boardError, setBoardError] = useState<string | null>(null);
   const [selectedClass, setSelectedClass] = useState<PromotionClassCard | null>(null);
   const [rows, setRows] = useState<DraftRow[]>([]);
   const [page, setPage] = useState(1);
@@ -159,41 +164,48 @@ export function SchoolPromotionsPage({
   const lock = useRef(false);
   const previewSeq = useRef(0);
   const previewCache = useRef(new Map<string, PreviewBundle>());
+  const boardSeq = useRef(0);
+  const boardLoadedKey = useRef("");
   const selectedClassId = selectedClass?.id ?? "";
   const selectedKey = selectedClass ? previewKey(fromYearId, toYearId, selectedClass.id) : "";
 
-  function loadBoard(nextFrom = fromYearId, nextTo = toYearId) {
-    if (!nextFrom) return;
-    void loadSchoolPromotionBoardAction({ fromYearId: nextFrom, toYearId: nextTo }).then((next) => {
+  const loadBoard = useCallback((silent = false, nextFrom = fromYearId, nextTo = toYearId) => {
+    const from = nextFrom;
+    const to = nextTo;
+    if (!from) return;
+    const key = `${from}|${to}`;
+    const seq = ++boardSeq.current;
+    const keepExisting = silent && boardLoadedKey.current === key;
+    if (!keepExisting) {
+      setBoardStatus("loading");
+      setBoardError(null);
+    }
+    void loadSchoolPromotionBoardAction({ fromYearId: from, toYearId: to }).then((next) => {
+      if (seq !== boardSeq.current) return;
       if (!next.ok) {
-        setSaveError(next.error);
+        setBoardError(next.error);
+        if (!keepExisting) {
+          setCards([]);
+          setBoardStatus("error");
+        }
         return;
       }
+      boardLoadedKey.current = key;
       setCards(next.classes);
       setFromYearName(next.fromYearName);
       setToYearName(next.toYearName);
-      setSaveError(null);
+      setBoardError(null);
+      setBoardStatus("ready");
     });
-  }
+  }, [fromYearId, toYearId]);
 
   useEffect(() => {
     if (pending || !fromYearId) return;
-    let cancelled = false;
-    void loadSchoolPromotionBoardAction({ fromYearId, toYearId }).then((next) => {
-      if (cancelled) return;
-      if (!next.ok) {
-        setSaveError(next.error);
-        return;
-      }
-      setCards(next.classes);
-      setFromYearName(next.fromYearName);
-      setToYearName(next.toYearName);
-      setSaveError(null);
-    });
+    loadBoard(false, fromYearId, toYearId);
     return () => {
-      cancelled = true;
+      boardSeq.current += 1;
     };
-  }, [pending, fromYearId, toYearId]);
+  }, [pending, fromYearId, toYearId, loadBoard]);
 
   function patchRow(studentId: string, patch: Partial<DraftRow>) {
     setRowErrors((current) => {
@@ -287,7 +299,7 @@ export function SchoolPromotionsPage({
     setHistory([]);
     setPanel("students");
     setRowErrors({});
-    loadBoard();
+    loadBoard(true);
   }
 
   const pageMeta = schoolPageMeta(page, rows.length, pageSize);
@@ -364,7 +376,7 @@ export function SchoolPromotionsPage({
         return;
       }
       requestId.current = crypto.randomUUID();
-      loadBoard();
+      loadBoard(true);
       previewCache.current.delete(previewKey(fromYearId, toYearId, selectedClass.id));
       if (next.duplicate) {
         setSaveError("This save was already processed. Review the class and try again if students remain.");
@@ -457,7 +469,27 @@ export function SchoolPromotionsPage({
 
       {!selectedClass ? (
         <section className="space-y-4">
-          {cards.length ? (
+          {boardError && boardStatus !== "loading" ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-[13px] text-[#c45b66]">{boardError}</p>
+              <button type="button" className={secondaryButton} onClick={() => loadBoard(false)}>
+                Retry
+              </button>
+            </div>
+          ) : null}
+          {boardStatus === "loading" ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-busy="true" aria-label="Loading classes">
+              {Array.from({ length: 6 }, (_, index) => (
+                <div key={index} className={cn(glassCard, "px-4 py-4")}>
+                  <SkeletonBar className="h-2.5 w-16" />
+                  <SkeletonBar className="mt-3 h-4 w-32" />
+                  <SkeletonBar className="mt-3 h-3 w-24" />
+                  <SkeletonBar className="mt-4 h-6 w-12" />
+                  <SkeletonBar className="mt-2 h-3 w-40" />
+                </div>
+              ))}
+            </div>
+          ) : boardStatus === "ready" && cards.length ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {cards.map((card) => {
                 const processed = Boolean(toYearId) && card.enrolled > 0 && card.awaiting === 0;
@@ -481,9 +513,20 @@ export function SchoolPromotionsPage({
                 );
               })}
             </div>
-          ) : (
-            <p className="text-[13.5px] text-slate-500">No classes are configured for this school yet.</p>
-          )}
+          ) : boardStatus === "ready" ? (
+            <div className="flex max-w-md flex-col items-start gap-3 py-4">
+              <SchoolIconWell icon={School} />
+              <div>
+                <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">No classes yet</h2>
+                <p className="mt-1 text-[13.5px] text-slate-500">Classes will appear here once they are configured for this school.</p>
+              </div>
+              {canViewClasses ? (
+                <Link href="/school/classes" className={secondaryButton}>
+                  Go to Classes
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
         </section>
       ) : (
         <section className={`${glassPanel} page-enter space-y-4`}>

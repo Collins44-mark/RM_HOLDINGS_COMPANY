@@ -11,6 +11,7 @@ export default async function SchoolPromotionsRoute() {
       years={result.years}
       today={result.ok ? result.today : new Date().toISOString().slice(0, 10)}
       canManage={result.ok ? result.canManage : false}
+      canViewClasses={result.ok ? result.canViewClasses : false}
       error={result.ok ? null : result.error}
     />
   );
