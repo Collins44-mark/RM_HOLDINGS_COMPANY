@@ -252,26 +252,25 @@ export function SchoolExpensesPage({
 
       {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <section className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard label="Total Expenses" value={formatTzs(summary.totalPosted)} hint="Posted in this period" />
         <SummaryCard label="Transactions" value={String(summary.postedCount)} hint="Posted expense records" />
         <SummaryCard label="Expense Types Used" value={String(summary.typesUsed)} hint="Active types with activity" />
+        <Link
+          href="/school/expenses/emergency-fund"
+          aria-label={`Emergency Fund, ${formatTzs(fund.balance)} available`}
+          className={cn(
+            glassCard,
+            "flex min-w-0 items-center gap-3 px-3.5 py-2.5 transition duration-200 hover:bg-white/88 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#5b82c4]/15",
+          )}
+        >
+          <SchoolIconWell icon={Wallet} />
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">Emergency Fund</p>
+            <p className="mt-0.5 truncate text-[17px] font-semibold tracking-[-0.04em] text-navy">{formatTzs(fund.balance)}</p>
+          </div>
+        </Link>
       </section>
-
-      <Link
-        href="/school/expenses/emergency-fund"
-        aria-label={`Emergency Fund, ${formatTzs(fund.balance)} available`}
-        className={cn(
-          glassCard,
-          "flex w-full max-w-sm items-center gap-3.5 px-4 py-3.5 transition duration-200 hover:bg-white/88 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#5b82c4]/15",
-        )}
-      >
-        <SchoolIconWell icon={Wallet} />
-        <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">Emergency Fund</p>
-          <p className="mt-0.5 truncate text-[20px] font-semibold tracking-[-0.04em] text-navy">{formatTzs(fund.balance)}</p>
-        </div>
-      </Link>
 
       <form
         className="flex flex-wrap items-center gap-2"
@@ -517,10 +516,10 @@ export function SchoolExpensesPage({
 
 function SummaryCard({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className={cn(glassCard, "px-5 py-4")}>
+    <div className={cn(glassCard, "min-w-0 px-3.5 py-2.5")}>
       <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</p>
-      <p className="mt-1.5 text-[22px] font-semibold tracking-[-0.04em] text-navy">{value}</p>
-      <p className="mt-1 text-[12px] text-slate-400">{hint}</p>
+      <p className="mt-0.5 truncate text-[17px] font-semibold tracking-[-0.04em] text-navy">{value}</p>
+      <p className="mt-0.5 truncate text-[12px] text-slate-400">{hint}</p>
     </div>
   );
 }
