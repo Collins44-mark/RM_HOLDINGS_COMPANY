@@ -38,12 +38,35 @@ export type PromotionPreviewStudent = {
   streamId: string;
   streamName: string;
   suggestedOutcome: ProgressionOutcome;
+  canPromote: boolean;
   needsSelection: boolean;
   suggestedLevelId: string;
   suggestedClassId: string;
   suggestedClassName: string;
   suggestedLevelName: string;
   suggestionNote: string;
+};
+
+export type PromotionClassCard = {
+  id: string;
+  name: string;
+  levelId: string;
+  levelName: string;
+  enrolled: number;
+  awaiting: number;
+};
+
+export type PromotionHistoryRow = {
+  id: string;
+  studentName: string;
+  studentNumber: string;
+  outcome: string;
+  fromYearName: string;
+  toYearName: string;
+  sourceClassName: string;
+  destinationClassName: string;
+  confirmedOn: string;
+  confirmedBy: string;
 };
 
 function str(value: unknown) {
@@ -182,48 +205,50 @@ function suggestNextClass(
     const next = levelClasses[index + 1];
     return {
       suggestedOutcome: "PROMOTE" as const,
+      canPromote: true,
       needsSelection: false,
       suggestedLevelId: levelId,
       suggestedClassId: next.id,
       suggestedClassName: next.name,
       suggestedLevelName: levelName,
-      suggestionNote: `Suggested next class in ${levelName || "this level"}.`,
+      suggestionNote: "",
     };
   }
-  const levelIndex = catalog.levels.findIndex((row) => row.id === levelId);
-  const hasNextLevel = levelIndex >= 0 && levelIndex < catalog.levels.length - 1;
   return {
-    suggestedOutcome: (hasNextLevel ? "EXCLUDE" : "GRADUATE") as ProgressionOutcome,
-    needsSelection: true,
-    suggestedLevelId: "",
-    suggestedClassId: "",
-    suggestedClassName: "",
-    suggestedLevelName: hasNextLevel ? catalog.levels[levelIndex + 1]?.name ?? "" : "",
-    suggestionNote: hasNextLevel
-      ? "This is the last class in the current level. Choose a destination or exclude the student."
-      : "This is the last class in the school structure. Mark as graduated/completed or exclude.",
+    suggestedOutcome: "RETAIN" as const,
+    canPromote: false,
+    needsSelection: false,
+    suggestedLevelId: levelId,
+    suggestedClassId: classId,
+    suggestedClassName: catalog.classes.find((row) => row.id === classId)?.name ?? "",
+    suggestedLevelName: levelName,
+    suggestionNote: "",
   };
 }
 
-export async function previewSchoolPromotionsAction(input: { fromYearId: string; toYearId: string }) {
+export async function previewSchoolPromotionsAction(input: { fromYearId: string; toYearId: string; classId: string }) {
   try {
     const ctx = await requireAnySchoolPermission([PROMOTIONS_VIEW, PROMOTIONS_MANAGE, STUDENTS_MANAGE]);
     const { supabase, businessUnitId } = ctx;
     const fromYearId = str(input.fromYearId);
     const toYearId = str(input.toYearId);
+    const classIdFilter = str(input.classId);
     if (!fromYearId || !toYearId) throw new SchoolError("Select current and target academic years.", "VALIDATION");
     if (fromYearId === toYearId) throw new SchoolError("Target academic year must be different from the current year.", "VALIDATION");
+    if (!classIdFilter) throw new SchoolError("Select a class.", "VALIDATION");
     const catalog = await loadSchoolStructureCatalog(ctx);
     const lookup = catalogLookup(catalog);
     if (!catalog.years.some((row) => row.id === fromYearId)) throw new SchoolError("The current academic year was not found.", "NOT_FOUND");
     const toYear = catalog.years.find((row) => row.id === toYearId);
     if (!toYear) throw new SchoolError("The target academic year is not active.", "VALIDATION");
+    if (!catalog.classes.some((row) => row.id === classIdFilter)) throw new SchoolError("That class was not found.", "NOT_FOUND");
 
     const enrollments = await supabase
       .from("sch_student_enrollments")
       .select("id, student_id, class_id, stream_id, sch_students!inner(id, student_number, admission_number, first_name, middle_name, last_name, status)")
       .eq("business_unit_id", businessUnitId)
       .eq("academic_year_id", fromYearId)
+      .eq("class_id", classIdFilter)
       .eq("status", "active")
       .eq("sch_students.status", "active");
     if (enrollments.error && !isSchoolUnconfiguredRead(enrollments.error)) mapSchoolDbError(enrollments.error, "load");
@@ -236,7 +261,7 @@ export async function previewSchoolPromotionsAction(input: { fromYearId: string;
       .eq("status", "active");
     const alreadyPromoted = new Set((existingTarget.data ?? []).map((row) => String(row.student_id)));
 
-    const classIds = [...new Set((enrollments.data ?? []).map((row) => str(row.class_id)).filter(Boolean))];
+    const classIds = [...new Set(catalog.classes.map((row) => row.id))];
     const streamIds = [...new Set((enrollments.data ?? []).map((row) => str(row.stream_id)).filter(Boolean))];
     const [byClass, byStream, subjectRes, feeRes] = await Promise.all([
       loadPlacementByClassIds(ctx, classIds),
@@ -323,6 +348,8 @@ export async function previewSchoolPromotionsAction(input: { fromYearId: string;
       ok: true as const,
       fromYearId,
       toYearId,
+      classId: classIdFilter,
+      className: catalog.classes.find((row) => row.id === classIdFilter)?.name ?? "",
       fromYearName: lookup.yearName(fromYearId),
       toYearName: toYear.name,
       students,
@@ -415,6 +442,128 @@ export async function confirmSchoolPromotionsAction(input: {
     };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };
+  }
+}
+
+export async function loadSchoolPromotionBoardAction(input: { fromYearId: string; toYearId: string }) {
+  try {
+    const ctx = await requireAnySchoolPermission([PROMOTIONS_VIEW, PROMOTIONS_MANAGE, STUDENTS_MANAGE]);
+    const { supabase, businessUnitId } = ctx;
+    const fromYearId = str(input.fromYearId);
+    const toYearId = str(input.toYearId);
+    if (!fromYearId) throw new SchoolError("Select the current academic year.", "VALIDATION");
+    const catalog = await loadSchoolStructureCatalog(ctx);
+    if (!catalog.years.some((row) => row.id === fromYearId)) throw new SchoolError("The current academic year was not found.", "NOT_FOUND");
+    const enrollments = await supabase
+      .from("sch_student_enrollments")
+      .select("student_id, class_id, sch_students!inner(status)")
+      .eq("business_unit_id", businessUnitId)
+      .eq("academic_year_id", fromYearId)
+      .eq("status", "active")
+      .eq("sch_students.status", "active");
+    if (enrollments.error && !isSchoolUnconfiguredRead(enrollments.error)) mapSchoolDbError(enrollments.error, "load");
+    const already = new Set<string>();
+    if (toYearId && toYearId !== fromYearId) {
+      const existingTarget = await supabase
+        .from("sch_student_enrollments")
+        .select("student_id")
+        .eq("business_unit_id", businessUnitId)
+        .eq("academic_year_id", toYearId)
+        .eq("status", "active");
+      for (const row of existingTarget.data ?? []) already.add(str(row.student_id));
+    }
+    const enrolled = new Map<string, number>();
+    const awaiting = new Map<string, number>();
+    for (const row of enrollments.data ?? []) {
+      const classId = str(row.class_id);
+      if (!classId) continue;
+      enrolled.set(classId, (enrolled.get(classId) ?? 0) + 1);
+      const student = row.sch_students as { status?: string } | { status?: string }[] | null;
+      const profile = Array.isArray(student) ? student[0] : student;
+      const studentId = str((row as { student_id?: string }).student_id);
+      if (profile && !already.has(studentId)) awaiting.set(classId, (awaiting.get(classId) ?? 0) + 1);
+    }
+    const classes: PromotionClassCard[] = catalog.classes.map((row) => ({
+      id: row.id,
+      name: row.name,
+      levelId: row.levelId,
+      levelName: catalog.levels.find((level) => level.id === row.levelId)?.name ?? "",
+      enrolled: enrolled.get(row.id) ?? 0,
+      awaiting: awaiting.get(row.id) ?? 0,
+    }));
+    return {
+      ok: true as const,
+      fromYearId,
+      toYearId,
+      fromYearName: catalog.years.find((row) => row.id === fromYearId)?.name ?? "",
+      toYearName: catalog.years.find((row) => row.id === toYearId)?.name ?? "",
+      classes,
+    };
+  } catch (error) {
+    return { ok: false as const, error: schoolActionError(error), classes: [] as PromotionClassCard[] };
+  }
+}
+
+export async function loadSchoolPromotionHistoryAction(input: { fromYearId: string; classId: string }) {
+  try {
+    const ctx = await requireAnySchoolPermission([PROMOTIONS_VIEW, PROMOTIONS_MANAGE, STUDENTS_MANAGE]);
+    const { supabase, businessUnitId } = ctx;
+    const fromYearId = str(input.fromYearId);
+    const classId = str(input.classId);
+    if (!fromYearId || !classId) throw new SchoolError("Select a class and academic year.", "VALIDATION");
+    const catalog = await loadSchoolStructureCatalog(ctx);
+    const events = await supabase
+      .from("sch_placement_events")
+      .select("id, event_kind, student_id, from_year_id, to_year_id, from_class_id, to_class_id, effective_on, created_at, recorded_by")
+      .eq("business_unit_id", businessUnitId)
+      .eq("from_year_id", fromYearId)
+      .eq("from_class_id", classId)
+      .in("event_kind", ["PROMOTE", "RETAIN", "TRANSFER", "GRADUATE"])
+      .order("created_at", { ascending: false });
+    if (events.error && !isSchoolUnconfiguredRead(events.error)) mapSchoolDbError(events.error, "load");
+    const rows = events.data ?? [];
+    const studentIds = [...new Set(rows.map((row) => str(row.student_id)).filter(Boolean))];
+    const actorIds = [...new Set(rows.map((row) => str(row.recorded_by)).filter(Boolean))];
+    const [studentsRes, actorsRes] = await Promise.all([
+      studentIds.length
+        ? supabase
+            .from("sch_students")
+            .select("id, student_number, first_name, middle_name, last_name")
+            .eq("business_unit_id", businessUnitId)
+            .in("id", studentIds)
+        : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+      actorIds.length
+        ? supabase.from("profiles").select("id, full_name").in("id", actorIds)
+        : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+    ]);
+    const students = new Map(
+      (studentsRes.data ?? []).map((row) => [
+        str(row.id),
+        {
+          name: [str(row.first_name), str(row.middle_name), str(row.last_name)].filter(Boolean).join(" "),
+          studentNumber: str(row.student_number),
+        },
+      ]),
+    );
+    const actors = new Map((actorsRes.data ?? []).map((row) => [str(row.id), str(row.full_name)]));
+    const history: PromotionHistoryRow[] = rows.map((row) => {
+      const student = students.get(str(row.student_id));
+      return {
+        id: str(row.id),
+        studentName: student?.name || "—",
+        studentNumber: student?.studentNumber || "",
+        outcome: str(row.event_kind),
+        fromYearName: catalog.years.find((item) => item.id === str(row.from_year_id))?.name ?? "",
+        toYearName: catalog.years.find((item) => item.id === str(row.to_year_id))?.name ?? "",
+        sourceClassName: catalog.classes.find((item) => item.id === str(row.from_class_id))?.name ?? "",
+        destinationClassName: catalog.classes.find((item) => item.id === str(row.to_class_id))?.name ?? "",
+        confirmedOn: str(row.created_at).slice(0, 10),
+        confirmedBy: actors.get(str(row.recorded_by)) || "—",
+      };
+    });
+    return { ok: true as const, history };
+  } catch (error) {
+    return { ok: false as const, error: schoolActionError(error), history: [] as PromotionHistoryRow[] };
   }
 }
 
