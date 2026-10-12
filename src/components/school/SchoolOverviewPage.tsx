@@ -17,10 +17,9 @@ import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import { glassCard, glassPanel } from "@/components/supermarket/purchasing-ui";
 
-function metricDisplay(metric: OverviewMetric<number>) {
-  if (metric.status === "unavailable") return { value: "—", hint: "Not available" };
-  if (metric.status === "error") return { value: "—", hint: "Not available" };
-  return { value: String(metric.value), hint: null as string | null };
+function metricValue(metric: OverviewMetric<number>, format?: (value: number) => string) {
+  if (metric.status !== "ok") return "—";
+  return format ? format(metric.value) : String(metric.value);
 }
 
 function yearLabel(overview: SchoolOverviewView) {
@@ -71,25 +70,21 @@ function StatusBadge({ status }: { status: ConfigStatus }) {
 function KpiCard({
   label,
   value,
-  hint,
-  icon,
+  icon: Icon,
 }: {
   label: string;
   value: string;
-  hint: string | null;
   icon: LucideIcon;
 }) {
   return (
-    <div
-      className={cn(
-        glassCard,
-        "px-5 py-5 transition duration-200 hover:-translate-y-px hover:shadow-[0_14px_32px_rgba(15,35,64,0.08)]",
-      )}
-    >
-      <IconWell icon={icon} />
-      <p className="mt-3 text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</p>
-      <p className="mt-1.5 min-h-7 text-[22px] font-semibold tracking-[-0.04em] text-navy">{value}</p>
-      <p className="mt-1 min-h-4 text-[12px] text-slate-400">{hint ?? "\u00a0"}</p>
+    <div className={cn(glassCard, "flex min-h-[88px] items-center gap-3.5 px-4 py-3.5 sm:px-5 sm:py-4")}>
+      <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-white/75 bg-white/50 text-navy shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(15,35,64,0.04)] backdrop-blur-md">
+        <Icon className="h-[18px] w-[18px]" strokeWidth={1.7} aria-hidden />
+      </span>
+      <div className="min-w-0">
+        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</p>
+        <p className="mt-0.5 truncate text-[20px] font-semibold tracking-[-0.04em] text-navy sm:text-[22px]">{value}</p>
+      </div>
     </div>
   );
 }
@@ -119,36 +114,12 @@ export function SchoolOverviewPage({
   overview: SchoolOverviewView | null;
   error: string | null;
 }) {
-  const students = overview
-    ? overview.students.status === "ok"
-      ? { value: String(overview.students.value), hint: "Active enrollments" }
-      : metricDisplay(overview.students)
-    : { value: "—", hint: "Not available" };
-  const collected = overview
-    ? overview.feesCollected.status === "ok"
-      ? { value: formatTzs(overview.feesCollected.value), hint: "Posted payments" }
-      : metricDisplay(overview.feesCollected)
-    : { value: "—", hint: "Not available" };
-  const outstanding = overview
-    ? overview.outstandingFees.status === "ok"
-      ? { value: formatTzs(overview.outstandingFees.value), hint: "Due minus posted payments" }
-      : metricDisplay(overview.outstandingFees)
-    : { value: "—", hint: "Not available" };
-  const expenses = overview
-    ? overview.operatingExpenses.status === "ok"
-      ? { value: formatTzs(overview.operatingExpenses.value), hint: "Posted this year" }
-      : metricDisplay(overview.operatingExpenses)
-    : { value: "—", hint: "Not available" };
-  const teachers = overview
-    ? overview.teachers.status === "ok"
-      ? { value: String(overview.teachers.value), hint: "Active academic staff" }
-      : metricDisplay(overview.teachers)
-    : { value: "—", hint: "Not available" };
-  const classes = overview
-    ? overview.classLevels.status === "ok"
-      ? { value: String(overview.classLevels.value), hint: "Active class levels" }
-      : metricDisplay(overview.classLevels)
-    : { value: "—", hint: "Not available" };
+  const students = overview ? metricValue(overview.students) : "—";
+  const collected = overview ? metricValue(overview.feesCollected, formatTzs) : "—";
+  const outstanding = overview ? metricValue(overview.outstandingFees, formatTzs) : "—";
+  const expenses = overview ? metricValue(overview.operatingExpenses, formatTzs) : "—";
+  const teachers = overview ? metricValue(overview.teachers) : "—";
+  const classes = overview ? metricValue(overview.classLevels) : "—";
 
   const academicLine =
     overview && overview.academicYear.status === "ok" ? `${yearLabel(overview)} · ${termLabel(overview)}` : null;
@@ -164,12 +135,12 @@ export function SchoolOverviewPage({
       {error ? <p className="text-[13px] text-[#c45b66]">Couldn&apos;t load school overview.</p> : null}
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <KpiCard label="Total Students" value={students.value} hint={students.hint} icon={Users} />
-        <KpiCard label="Fees Collected" value={collected.value} hint={collected.hint} icon={Wallet} />
-        <KpiCard label="Outstanding Fees" value={outstanding.value} hint={outstanding.hint} icon={Clock3} />
-        <KpiCard label="Operating Expenses" value={expenses.value} hint={expenses.hint} icon={Receipt} />
-        <KpiCard label="Teachers" value={teachers.value} hint={teachers.hint} icon={GraduationCap} />
-        <KpiCard label="Class Levels" value={classes.value} hint={classes.hint} icon={Layers} />
+        <KpiCard label="Total Students" value={students} icon={Users} />
+        <KpiCard label="Fees Collected" value={collected} icon={Wallet} />
+        <KpiCard label="Outstanding Fees" value={outstanding} icon={Clock3} />
+        <KpiCard label="Operating Expenses" value={expenses} icon={Receipt} />
+        <KpiCard label="Teachers" value={teachers} icon={GraduationCap} />
+        <KpiCard label="Class Levels" value={classes} icon={Layers} />
       </section>
 
       {overview ? (
