@@ -24,7 +24,10 @@ export function downloadRiceReportsPdf(workspace: RiceReportsWorkspace) {
     { label: "Purchases", value: formatTzs(workspace.summary.purchasesTotal) },
     { label: "Sales", value: formatTzs(workspace.summary.salesTotal) },
     { label: "Service income", value: formatTzs(workspace.summary.serviceIncome) },
-    { label: "Expenses", value: formatTzs(workspace.summary.expenses) },
+    { label: "Cost of goods sold", value: formatTzs(workspace.summary.cogs) },
+    { label: "Production loss", value: formatTzs(workspace.summary.productionLoss) },
+    { label: "Operating expenses", value: formatTzs(workspace.summary.expenses) },
+    { label: "Inventory value", value: formatTzs(workspace.summary.inventoryValue) },
     { label: "Net profit", value: formatTzs(workspace.summary.netProfit) },
   ]);
   doc.addSectionTable(
@@ -72,11 +75,12 @@ export function downloadRiceReportsPdf(workspace: RiceReportsWorkspace) {
   doc.addSectionTable(
     "Current inventory",
     [
-      { key: "name", label: "Item", width: 220 },
-      { key: "kind", label: "Kind", width: 120 },
-      { key: "qty", label: "Quantity", width: 120 },
+      { key: "name", label: "Item", width: 180 },
+      { key: "kind", label: "Kind", width: 100 },
+      { key: "qty", label: "Quantity", width: 100 },
+      { key: "value", label: "Value", width: 120 },
     ],
-    workspace.items.map((row) => ({ name: row.name, kind: row.kind, qty: kg(row.qtyKg) })),
+    workspace.items.map((row) => ({ name: row.name, kind: row.kind, qty: kg(row.qtyKg), value: formatTzs(row.valueTzs) })),
     { emptyMessage: "No inventory items configured." },
   );
   doc.addSectionTable(

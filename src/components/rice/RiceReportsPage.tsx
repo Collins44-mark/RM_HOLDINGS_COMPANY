@@ -44,7 +44,10 @@ export function RiceReportsPage({
               <Row label="Purchases" value={formatTzs(workspace.summary.purchasesTotal)} />
               <Row label="Sales" value={formatTzs(workspace.summary.salesTotal)} />
               <Row label="Service income" value={formatTzs(workspace.summary.serviceIncome)} />
-              <Row label="Expenses" value={formatTzs(workspace.summary.expenses)} />
+              <Row label="Cost of goods sold" value={formatTzs(workspace.summary.cogs)} />
+              <Row label="Production loss" value={formatTzs(workspace.summary.productionLoss)} />
+              <Row label="Operating expenses" value={formatTzs(workspace.summary.expenses)} />
+              <Row label="Inventory value" value={formatTzs(workspace.summary.inventoryValue)} />
               <Row label="Payables" value={formatTzs(workspace.summary.payables)} />
               <Row label="Receivables" value={formatTzs(workspace.summary.receivables)} />
               <Row label="Net profit" value={formatTzs(workspace.summary.netProfit)} />
@@ -59,6 +62,7 @@ export function RiceReportsPage({
                     <th className="px-3 py-2">Item</th>
                     <th className="px-3 py-2">Kind</th>
                     <th className="px-3 py-2">Quantity</th>
+                    <th className="px-3 py-2">Value</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -67,6 +71,7 @@ export function RiceReportsPage({
                       <td className="px-3 py-2.5">{row.name}</td>
                       <td className="px-3 py-2.5">{row.kind}</td>
                       <td className="px-3 py-2.5">{formatKg(row.qtyKg)}</td>
+                      <td className="px-3 py-2.5">{formatTzs(row.valueTzs)}</td>
                     </tr>
                   ))}
                 </tbody>

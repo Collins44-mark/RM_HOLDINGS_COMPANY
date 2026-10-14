@@ -35,7 +35,7 @@ export function RiceFinancePage({
       <RicePageHeader
         icon={Landmark}
         title="Finance"
-        subtitle="Rice Mill & Warehouse only. Purchases are not also posted as operating expenses."
+        subtitle="Rice Mill & Warehouse only. Unsold inventory is not treated as an expense."
         period={period}
         periodLabel={workspace?.periodLabel ?? ""}
       />
@@ -44,8 +44,10 @@ export function RiceFinancePage({
       <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Stat label="Sales" value={formatTzs(summary?.salesTotal ?? 0)} />
         <Stat label="Service income" value={formatTzs(summary?.serviceIncome ?? 0)} />
-        <Stat label="Purchases" value={formatTzs(summary?.purchasesTotal ?? 0)} />
-        <Stat label="Expenses" value={formatTzs(summary?.expenses ?? 0)} />
+        <Stat label="Cost of goods sold" value={formatTzs(summary?.cogs ?? 0)} />
+        <Stat label="Production loss" value={formatTzs(summary?.productionLoss ?? 0)} />
+        <Stat label="Operating expenses" value={formatTzs(summary?.expenses ?? 0)} />
+        <Stat label="Inventory value" value={formatTzs(summary?.inventoryValue ?? 0)} />
         <Stat label="Payables" value={formatTzs(summary?.payables ?? 0)} />
         <Stat label="Receivables" value={formatTzs(summary?.receivables ?? 0)} />
         <Stat label="Net profit" value={formatTzs(summary?.netProfit ?? 0)} />

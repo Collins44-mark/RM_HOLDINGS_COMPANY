@@ -14,7 +14,8 @@ import {
   loadRiceServiceIncome,
   loadRiceStorage,
   riceCaps,
-  riceFinanceSummary,
+  applyRiceInventoryValues,
+  loadRiceLedgerSummary,
 } from "@/lib/rice/queries";
 import type {
   RiceCaps,
@@ -145,8 +146,16 @@ export async function loadRiceWarehouseWorkspaceAction() {
   try {
     const ctx = await requireAnyRicePermission(["rice.warehouse.view", "rice.stock.view", "rice.stock.edit"]);
     const user = await requireAuth();
-    const [items, movements] = await Promise.all([loadRiceItems(ctx), loadRiceMovements(ctx)]);
-    return { ok: true as const, workspace: { items, movements, caps: riceCaps(user) } satisfies RiceWarehouseWorkspace };
+    const to = dateIso(new Date());
+    const [items, movements, ledger] = await Promise.all([
+      loadRiceItems(ctx),
+      loadRiceMovements(ctx),
+      loadRiceLedgerSummary(ctx, "2000-01-01", to),
+    ]);
+    return {
+      ok: true as const,
+      workspace: { items: applyRiceInventoryValues(items, ledger), movements, caps: riceCaps(user) } satisfies RiceWarehouseWorkspace,
+    };
   } catch (error) {
     return { ok: false as const, error: riceActionError(error) };
   }
@@ -220,16 +229,17 @@ export async function loadRiceFinanceWorkspaceAction(input: { period?: string; f
     ]);
     const user = await requireAuth();
     const { range, from, to } = rangeFrom(input);
-    const [purchases, sales, services, expenses] = await Promise.all([
+    const [purchases, sales, services, expenses, ledger] = await Promise.all([
       loadRicePurchases(ctx, from, to),
       loadRiceSales(ctx, from, to),
       loadRiceServiceIncome(ctx, from, to),
       loadRiceExpenses(ctx, from, to),
+      loadRiceLedgerSummary(ctx, from, to),
     ]);
     return {
       ok: true as const,
       workspace: {
-        summary: riceFinanceSummary(purchases, sales, services, expenses),
+        summary: ledger,
         purchases,
         sales,
         services,
@@ -248,7 +258,7 @@ export async function loadRiceReportsWorkspaceAction(input: { period?: string; f
     const ctx = await requireAnyRicePermission(["rice.reports.view", "rice.sales.view", "rice.purchases.view", "rice.finance.view"]);
     const user = await requireAuth();
     const { range, from, to } = rangeFrom(input);
-    const [items, purchases, batches, sales, services, expenses, storage] = await Promise.all([
+    const [items, purchases, batches, sales, services, expenses, storage, ledger] = await Promise.all([
       loadRiceItems(ctx),
       loadRicePurchases(ctx, from, to),
       loadRiceBatches(ctx, from, to),
@@ -256,11 +266,12 @@ export async function loadRiceReportsWorkspaceAction(input: { period?: string; f
       loadRiceServiceIncome(ctx, from, to),
       loadRiceExpenses(ctx, from, to),
       loadRiceStorage(ctx),
+      loadRiceLedgerSummary(ctx, from, to),
     ]);
     return {
       ok: true as const,
       workspace: {
-        items,
+        items: applyRiceInventoryValues(items, ledger),
         purchases,
         batches,
         sales,
@@ -268,7 +279,7 @@ export async function loadRiceReportsWorkspaceAction(input: { period?: string; f
         expenses,
         accounts: storage.accounts,
         storageMovements: storage.movements,
-        summary: riceFinanceSummary(purchases, sales, services, expenses),
+        summary: ledger,
         caps: riceCaps(user),
         periodLabel: range.label,
       } satisfies RiceReportsWorkspace,

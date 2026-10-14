@@ -6,6 +6,7 @@ import { loadRiceWarehouseWorkspaceAction, type RiceWarehouseWorkspace } from "@
 import { adjustRiceStockAction } from "@/actions/rice/posting";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassCard, glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
+import { formatTzs } from "@/lib/format/currency";
 import { formatKg, RiceField, RiceNotice, RicePageHeader, todayIso } from "@/components/rice/rice-ui";
 
 const KIND_LABEL: Record<string, string> = {
@@ -57,15 +58,20 @@ export function RiceWarehousePage({
         {groups.map((kind) => {
           const rows = items.filter((row) => row.kind === kind);
           const qty = rows.reduce((sum, row) => sum + row.qtyKg, 0);
+          const value = rows.reduce((sum, row) => sum + row.valueTzs, 0);
           return (
             <article key={kind} className={`${glassCard} px-5 py-5`}>
               <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{KIND_LABEL[kind]}</p>
               <p className="mt-2 text-[22px] font-semibold text-navy">{formatKg(qty)}</p>
+              <p className="mt-1 text-[13px] text-slate-500">{formatTzs(value)}</p>
               <ul className="mt-3 space-y-1 text-[13px] text-slate-600">
                 {rows.length ? rows.map((row) => (
                   <li key={row.id} className="flex justify-between gap-2">
                     <span>{row.name}</span>
-                    <span>{formatKg(row.qtyKg)}</span>
+                    <span className="text-right">
+                      {formatKg(row.qtyKg)}
+                      <span className="block text-[12px] text-slate-400">{formatTzs(row.valueTzs)}</span>
+                    </span>
                   </li>
                 )) : <li>None on hand.</li>}
               </ul>

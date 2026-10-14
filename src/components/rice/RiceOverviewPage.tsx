@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { CircleDollarSign, Factory, Package, Wheat, Landmark } from "lucide-react";
 import { OverviewPeriodSelector } from "@/components/dashboard/OverviewPeriodSelector";
@@ -7,6 +8,7 @@ import { StatusPill, glassCard, glassPanel } from "@/components/supermarket/purc
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import type { ReportPeriod } from "@/lib/data/report-period";
+import { rememberRiceOverview } from "@/lib/rice/overview-flash";
 import type { RiceGradeShare, RiceMetric, RiceOverviewView } from "@/lib/rice/overview";
 
 const NAVY_SLATE = ["#0b2244", "#3d5a80", "#5b7fa6", "#8aa0b8", "#c5d0dc"];
@@ -90,14 +92,16 @@ function GradeDonut({ rows }: { rows: RiceGradeShare[] }) {
   );
 }
 
-function UnavailablePanel({ title, hint }: { title: string; hint: string }) {
+function PanelShell({ title, hint }: { title: string; hint?: string }) {
   return (
     <section className={cn(glassPanel, "flex min-h-[22rem] flex-col")}>
       <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">{title}</h2>
-      <p className="mt-8 flex-1 text-[13.5px] leading-6 text-slate-500">{hint}</p>
+      {hint ? <p className="mt-8 flex-1 text-[13.5px] leading-6 text-slate-500">{hint}</p> : null}
     </section>
   );
 }
+
+const PENDING_KPI: RiceMetric<number> = { status: "unavailable", value: null, hint: "" };
 
 export function RiceOverviewPage({
   overview,
@@ -112,9 +116,19 @@ export function RiceOverviewPage({
   error: string | null;
   pending?: boolean;
 }) {
-  const grades = overview?.stockByGrade.status === "ok" ? overview.stockByGrade.value ?? [] : [];
-  const stock = overview?.currentStock.status === "ok" ? overview.currentStock.value ?? [] : [];
-  const services = overview?.serviceIncome.status === "ok" ? overview.serviceIncome.value ?? [] : [];
+  const [held, setHeld] = useState(overview);
+  const matched = Boolean(overview && overview.periodLabel === periodLabel);
+  if (matched && overview) {
+    rememberRiceOverview({ overview, period, periodLabel });
+    if (held !== overview) setHeld(overview);
+  }
+  const view = matched ? overview : held;
+  const loadError = pending ? null : error;
+
+  const grades = view?.stockByGrade.status === "ok" ? view.stockByGrade.value ?? [] : [];
+  const stock = view?.currentStock.status === "ok" ? view.currentStock.value ?? [] : [];
+  const services = view?.serviceIncome.status === "ok" ? view.serviceIncome.value ?? [] : [];
+  const waiting = pending && !view;
 
   return (
     <div className="min-w-0 max-w-full space-y-5 pb-10">
@@ -135,34 +149,33 @@ export function RiceOverviewPage({
             <div className="flex flex-wrap items-center gap-2">
               <IconWell icon={Wheat} />
               <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">
-                {overview?.unitName ?? "Rice Mill & Warehouse"}
+                {view?.unitName ?? "Rice Mill & Warehouse"}
               </h1>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-[13.5px] text-slate-500">
-              {overview?.location ? <span>{overview.location}</span> : null}
-              {overview?.isActive != null ? <StatusPill value={overview.isActive ? "Active" : "Inactive"} /> : null}
+              {view?.location ? <span>{view.location}</span> : null}
+              {view?.isActive != null ? <StatusPill value={view.isActive ? "Active" : "Inactive"} /> : null}
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <p className="text-[12.5px] text-slate-500">{overview?.todayLabel ?? ""}</p>
+            <p className="text-[12.5px] text-slate-500">{view?.todayLabel ?? ""}</p>
             <OverviewPeriodSelector period={period} label={periodLabel} />
           </div>
         </div>
       </header>
 
-      {error ? <p className="text-[13px] text-[#c45b66]">{error}</p> : null}
-      {pending && !overview ? <p className="text-[13px] text-slate-500">Loading live Rice Mill figures…</p> : null}
+      {loadError && !pending ? <p className="text-[13px] text-[#c45b66]">{loadError}</p> : null}
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <KpiCard label="Company Paddy Stock" metric={overview?.companyPaddyKg ?? { status: "unavailable", value: null, hint: "" }} kind="kg" icon={Wheat} />
-        <KpiCard label="Rice Stock" metric={overview?.riceStockKg ?? { status: "unavailable", value: null, hint: "" }} kind="kg" icon={Package} />
-        <KpiCard label="Total Sales" metric={overview?.totalSales ?? { status: "unavailable", value: null, hint: "" }} kind="money" icon={CircleDollarSign} />
-        <KpiCard label="Milled Today" metric={overview?.milledTodayKg ?? { status: "unavailable", value: null, hint: "" }} kind="kg" icon={Factory} />
-        <KpiCard label="Net Profit" metric={overview?.netProfit ?? { status: "unavailable", value: null, hint: "" }} kind="money" icon={Landmark} />
+        <KpiCard label="Company Paddy Stock" metric={view?.companyPaddyKg ?? PENDING_KPI} kind="kg" icon={Wheat} />
+        <KpiCard label="Rice Stock" metric={view?.riceStockKg ?? PENDING_KPI} kind="kg" icon={Package} />
+        <KpiCard label="Total Sales" metric={view?.totalSales ?? PENDING_KPI} kind="money" icon={CircleDollarSign} />
+        <KpiCard label="Milled Today" metric={view?.milledTodayKg ?? PENDING_KPI} kind="kg" icon={Factory} />
+        <KpiCard label="Net Profit" metric={view?.netProfit ?? PENDING_KPI} kind="money" icon={Landmark} />
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        {overview?.stockByGrade.status === "ok" && grades.length ? (
+        {view?.stockByGrade.status === "ok" && grades.length ? (
           <section className={cn(glassPanel, "min-h-[22rem]")}>
             <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Stock by Grade</h2>
             <div className="mt-5">
@@ -180,10 +193,13 @@ export function RiceOverviewPage({
             </ul>
           </section>
         ) : (
-          <UnavailablePanel title="Stock by Grade" hint={overview?.stockByGrade.hint ?? "Rice grade quantities are not available."} />
+          <PanelShell
+            title="Stock by Grade"
+            hint={waiting ? undefined : view?.stockByGrade.hint ?? "Rice grade quantities are not available."}
+          />
         )}
 
-        {overview?.currentStock.status === "ok" && stock.length ? (
+        {view?.currentStock.status === "ok" && stock.length ? (
           <section className={cn(glassPanel, "min-h-[22rem]")}>
             <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">Current Stock</h2>
             <ul className="mt-5 space-y-3">
@@ -202,13 +218,16 @@ export function RiceOverviewPage({
             </ul>
           </section>
         ) : (
-          <UnavailablePanel title="Current Stock" hint={overview?.currentStock.hint ?? "Current rice inventory is not available."} />
+          <PanelShell
+            title="Current Stock"
+            hint={waiting ? undefined : view?.currentStock.hint ?? "Current rice inventory is not available."}
+          />
         )}
 
-        {overview?.serviceIncome.status === "ok" && services.length ? (
+        {view?.serviceIncome.status === "ok" && services.length ? (
           <section className={cn(glassPanel, "min-h-[22rem]")}>
             <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">
-              Service Income ({overview.periodLabel})
+              Service Income ({periodLabel})
             </h2>
             <ul className="mt-5 space-y-3">
               {services.map((row, index) => (
@@ -222,15 +241,15 @@ export function RiceOverviewPage({
             </ul>
             <p className="mt-6 border-t border-navy/5 pt-4 text-[14px] font-semibold text-navy">
               Total Service Income{" "}
-              {overview.serviceIncomeTotal.status === "ok" && overview.serviceIncomeTotal.value != null
-                ? formatTzs(overview.serviceIncomeTotal.value)
+              {view.serviceIncomeTotal.status === "ok" && view.serviceIncomeTotal.value != null
+                ? formatTzs(view.serviceIncomeTotal.value)
                 : "—"}
             </p>
           </section>
         ) : (
-          <UnavailablePanel
-            title={`Service Income (${overview?.periodLabel ?? periodLabel})`}
-            hint={overview?.serviceIncome.hint ?? "No posted service income this period."}
+          <PanelShell
+            title={`Service Income (${periodLabel})`}
+            hint={waiting ? undefined : view?.serviceIncome.hint ?? "No posted service income this period."}
           />
         )}
       </section>

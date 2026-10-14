@@ -3,7 +3,7 @@
 import { getBusinessUnitByCode } from "@/lib/data/business-units";
 import { parseReportPeriod, reportPeriodRange, type ReportPeriod } from "@/lib/data/report-period";
 import { isRiceEmptyRead, isRiceMissingRelation, requireRiceContext, RiceError, riceActionError } from "@/lib/rice/access";
-import { loadRiceExpenses, loadRiceItems, loadRicePurchases, loadRiceSales, loadRiceServiceIncome } from "@/lib/rice/queries";
+import { loadRiceItems, loadRiceLedgerSummary, loadRiceServiceIncome } from "@/lib/rice/queries";
 import { RICE_LEDGER_UNAVAILABLE, type RiceMetric, type RiceOverviewView } from "@/lib/rice/overview";
 
 function ok<T>(value: T, hint = ""): RiceMetric<T> {
@@ -56,22 +56,18 @@ export async function getRiceOverviewAction(input: {
     };
 
     try {
-      const [items, purchases, sales, services, expenses] = await Promise.all([
+      const [items, services, ledger] = await Promise.all([
         loadRiceItems(ctx),
-        loadRicePurchases(ctx, from, to),
-        loadRiceSales(ctx, from, to),
         loadRiceServiceIncome(ctx, from, to),
-        loadRiceExpenses(ctx, from, to),
+        loadRiceLedgerSummary(ctx, from, to),
       ]);
 
       const paddyKg = items.filter((row) => row.kind === "PADDY").reduce((sum, row) => sum + row.qtyKg, 0);
       const riceItems = items.filter((row) => row.kind === "RICE" || row.kind === "BROKEN");
       const riceKg = riceItems.reduce((sum, row) => sum + row.qtyKg, 0);
-      const salesTotal = sales.reduce((sum, row) => sum + row.total, 0);
-      const serviceTotal = services.reduce((sum, row) => sum + row.amount, 0);
-      const purchaseTotal = purchases.reduce((sum, row) => sum + row.total, 0);
-      const expenseTotal = expenses.reduce((sum, row) => sum + row.amount, 0);
-      const net = salesTotal + serviceTotal - purchaseTotal - expenseTotal;
+      const salesTotal = ledger.salesTotal;
+      const serviceTotal = ledger.serviceIncome;
+      const net = ledger.netProfit;
 
       const { data: milledRows, error: milledError } = await ctx.supabase
         .from("rice_mill_batches")

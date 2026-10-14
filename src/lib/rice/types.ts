@@ -10,6 +10,7 @@ export type RiceItem = {
   sortOrder: number;
   isActive: boolean;
   qtyKg: number;
+  valueTzs: number;
 };
 
 export type RiceParty = {
@@ -129,6 +130,9 @@ export type RiceFinanceSummary = {
   receivables: number;
   serviceIncome: number;
   expenses: number;
+  cogs: number;
+  productionLoss: number;
+  inventoryValue: number;
   netProfit: number;
 };
 

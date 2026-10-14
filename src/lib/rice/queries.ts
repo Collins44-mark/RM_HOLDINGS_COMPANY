@@ -1,9 +1,9 @@
 import type { RiceContext } from "@/lib/rice/access";
 import { isRiceEmptyRead, isRiceMissingRelation, riceHasPermission, RiceError } from "@/lib/rice/access";
+import { summarizeRiceLedgers, type RiceLedgerSummary } from "@/lib/rice/accounting";
 import type {
   RiceCaps,
   RiceExpense,
-  RiceFinanceSummary,
   RiceItem,
   RiceMillBatch,
   RiceParty,
@@ -61,6 +61,7 @@ export async function loadRiceItems(ctx: RiceContext, includeInactive = false): 
     sortOrder: n(row.sort_order),
     isActive: Boolean(row.is_active),
     qtyKg: qty.get(s(row.id)) ?? 0,
+    valueTzs: 0,
   }));
 }
 
@@ -337,27 +338,123 @@ export async function loadRiceExpenses(ctx: RiceContext, from: string, to: strin
   }));
 }
 
-export function riceFinanceSummary(
-  purchases: RicePurchase[],
-  sales: RiceSale[],
-  services: RiceServiceIncome[],
-  expenses: RiceExpense[],
-): RiceFinanceSummary {
-  const purchasesTotal = purchases.reduce((sum, row) => sum + row.total, 0);
-  const purchasePaid = purchases.reduce((sum, row) => sum + row.paid, 0);
-  const salesTotal = sales.reduce((sum, row) => sum + row.total, 0);
-  const salePaid = sales.reduce((sum, row) => sum + row.paid, 0);
-  const serviceIncome = services.reduce((sum, row) => sum + row.amount, 0);
-  const expenseTotal = expenses.reduce((sum, row) => sum + row.amount, 0);
-  return {
-    purchasesTotal,
-    purchasePaid,
-    payables: Math.max(0, purchasesTotal - purchasePaid),
-    salesTotal,
-    salePaid,
-    receivables: Math.max(0, salesTotal - salePaid),
-    serviceIncome,
-    expenses: expenseTotal,
-    netProfit: salesTotal + serviceIncome - purchasesTotal - expenseTotal,
-  };
+export async function loadRiceLedgerSummary(ctx: RiceContext, from: string, to: string): Promise<RiceLedgerSummary> {
+  const [
+    purchasesRes,
+    movementsRes,
+    batchesRes,
+    outputsRes,
+    salesRes,
+    linesRes,
+    servicesRes,
+    expensesRes,
+  ] = await Promise.all([
+    ctx.supabase
+      .from("rice_purchases")
+      .select("id, occurred_on, item_id, qty_kg, total_amount, amount_paid, is_active")
+      .eq("business_unit_id", ctx.businessUnitId),
+    ctx.supabase
+      .from("rice_stock_movements")
+      .select("id, item_id, source_type, source_id, qty_kg, occurred_on, is_active")
+      .eq("business_unit_id", ctx.businessUnitId),
+    ctx.supabase
+      .from("rice_mill_batches")
+      .select("id, produced_on, wastage_kg, is_active")
+      .eq("business_unit_id", ctx.businessUnitId),
+    ctx.supabase.from("rice_mill_outputs").select("batch_id, item_id, qty_kg").eq("business_unit_id", ctx.businessUnitId),
+    ctx.supabase
+      .from("rice_sales")
+      .select("id, occurred_on, total_amount, amount_paid, is_active")
+      .eq("business_unit_id", ctx.businessUnitId),
+    ctx.supabase.from("rice_sale_lines").select("sale_id, item_id, qty_kg").eq("business_unit_id", ctx.businessUnitId),
+    ctx.supabase
+      .from("rice_service_income")
+      .select("occurred_on, amount, is_active")
+      .eq("business_unit_id", ctx.businessUnitId),
+    ctx.supabase.from("rice_expenses").select("occurred_on, amount, is_active").eq("business_unit_id", ctx.businessUnitId),
+  ]);
+
+  const firstError = [purchasesRes, movementsRes, batchesRes, outputsRes, salesRes, linesRes, servicesRes, expensesRes].find(
+    (row) => row.error,
+  )?.error;
+  if (firstError) {
+    if (isRiceMissingRelation(firstError) || isRiceEmptyRead(firstError)) {
+      return summarizeRiceLedgers({
+        from,
+        to,
+        purchases: [],
+        movements: [],
+        batches: [],
+        millOutputs: [],
+        sales: [],
+        services: [],
+        expenses: [],
+      });
+    }
+    throw new RiceError("Couldn't load rice mill ledgers.", "DATABASE");
+  }
+
+  const linesBySale = new Map<string, { itemId: string; qtyKg: number }[]>();
+  for (const row of linesRes.data ?? []) {
+    const list = linesBySale.get(s(row.sale_id)) ?? [];
+    list.push({ itemId: s(row.item_id), qtyKg: n(row.qty_kg) });
+    linesBySale.set(s(row.sale_id), list);
+  }
+
+  return summarizeRiceLedgers({
+    from,
+    to,
+    purchases: (purchasesRes.data ?? []).map((row) => ({
+      id: s(row.id),
+      occurredOn: s(row.occurred_on),
+      itemId: s(row.item_id),
+      qtyKg: n(row.qty_kg),
+      total: n(row.total_amount),
+      paid: n(row.amount_paid),
+      isActive: Boolean(row.is_active),
+    })),
+    movements: (movementsRes.data ?? []).map((row) => ({
+      id: s(row.id),
+      itemId: s(row.item_id),
+      sourceType: row.source_type as "PURCHASE" | "MILL_IN" | "MILL_OUT" | "SALE" | "ADJUST",
+      sourceId: s(row.source_id),
+      qtyKg: n(row.qty_kg),
+      occurredOn: s(row.occurred_on),
+      isActive: Boolean(row.is_active),
+    })),
+    batches: (batchesRes.data ?? []).map((row) => ({
+      id: s(row.id),
+      producedOn: s(row.produced_on),
+      wastageKg: n(row.wastage_kg),
+      isActive: Boolean(row.is_active),
+    })),
+    millOutputs: (outputsRes.data ?? []).map((row) => ({
+      batchId: s(row.batch_id),
+      itemId: s(row.item_id),
+      qtyKg: n(row.qty_kg),
+    })),
+    sales: (salesRes.data ?? []).map((row) => ({
+      id: s(row.id),
+      occurredOn: s(row.occurred_on),
+      total: n(row.total_amount),
+      paid: n(row.amount_paid),
+      isActive: Boolean(row.is_active),
+      lines: linesBySale.get(s(row.id)) ?? [],
+    })),
+    services: (servicesRes.data ?? []).map((row) => ({
+      occurredOn: s(row.occurred_on),
+      amount: n(row.amount),
+      isActive: Boolean(row.is_active),
+    })),
+    expenses: (expensesRes.data ?? []).map((row) => ({
+      occurredOn: s(row.occurred_on),
+      amount: n(row.amount),
+      isActive: Boolean(row.is_active),
+    })),
+  });
+}
+
+export function applyRiceInventoryValues<T extends { id: string; valueTzs: number }>(items: T[], summary: RiceLedgerSummary) {
+  const values = new Map(summary.inventory.map((row) => [row.itemId, row.value]));
+  return items.map((row) => ({ ...row, valueTzs: values.get(row.id) ?? 0 }));
 }
