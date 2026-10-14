@@ -5,14 +5,23 @@ import { OverviewPeriodSelector } from "@/components/dashboard/OverviewPeriodSel
 import { cn } from "@/lib/cn";
 import type { ReportPeriod } from "@/lib/data/report-period";
 import type { LucideIcon } from "lucide-react";
+import type { Locale, MessageKey } from "@/lib/i18n";
 
 export function todayIso() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
-export function formatKg(value: number) {
-  return `${new Intl.NumberFormat("en-TZ", { maximumFractionDigits: 2 }).format(value)} kg`;
+export function formatKg(value: number, locale: Locale = "en") {
+  const formatted = new Intl.NumberFormat(locale === "sw" ? "sw-TZ" : "en-TZ", { maximumFractionDigits: 2 }).format(value);
+  return `${formatted} kg`;
+}
+
+export function riceMethodKey(value: string): MessageKey {
+  if (value === "CASH" || value === "MOBILE_MONEY" || value === "BANK" || value === "CREDIT") {
+    return `rice.method.${value}`;
+  }
+  return "rice.method.CASH";
 }
 
 export const RICE_METHODS = [

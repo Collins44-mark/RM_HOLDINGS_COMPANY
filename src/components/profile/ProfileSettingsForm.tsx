@@ -5,6 +5,8 @@ import { Lock } from "lucide-react";
 import { updateProfileAction, type ProfileState } from "@/actions/profile";
 import { useAuth } from "@/components/auth/AuthProvider";
 import type { AuthUser } from "@/lib/auth/types";
+import { LanguagePreference } from "@/components/i18n/LanguagePreference";
+import { useT } from "@/components/i18n/LocaleProvider";
 import { TYPE } from "@/lib/theme/tokens";
 import { cn } from "@/lib/cn";
 
@@ -28,6 +30,7 @@ const readOnlyClass =
 export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
   const { user: authUser } = useAuth();
   const user = userProp ?? authUser;
+  const t = useT();
   const [state, action, pending] = useActionState<ProfileState, FormData>(
     updateProfileAction,
     null,
@@ -38,9 +41,9 @@ export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
   return (
     <div className="w-full max-w-none space-y-4 sm:space-y-5">
       <header>
-        <h1 className={TYPE.sectionTitle}>Profile Settings</h1>
+        <h1 className={TYPE.sectionTitle}>{t("profile.title")}</h1>
         <p className={`mt-1 ${TYPE.sectionSubtitle}`}>
-          Manage your personal information and account details.
+          {t("profile.subtitle")}
         </p>
       </header>
 
@@ -71,15 +74,15 @@ export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
 
       <section className="glass-card rounded-card px-4 py-4 sm:px-6 sm:py-5">
         <h2 className="text-[16px] font-bold tracking-[-0.02em] text-navy sm:text-[18px]">
-          Personal Information
+          {t("profile.personal")}
         </h2>
         <p className="mt-1 text-[13px] text-slate-500">
-          Your name is used in the account menu and dashboard greeting.
+          {t("profile.personalHint")}
         </p>
 
         <form action={action} className="mt-5 space-y-4">
           <label className="grid gap-1.5 sm:grid-cols-[168px_1fr] sm:items-center sm:gap-5">
-            <span className="text-[13px] font-medium text-slate-500">Full Name</span>
+            <span className="text-[13px] font-medium text-slate-500">{t("profile.fullName")}</span>
             <input
               name="name"
               type="text"
@@ -90,8 +93,8 @@ export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
             />
           </label>
 
-          <ReadOnlyRow label="Email Address" value={user.email} />
-          <ReadOnlyRow label="Role" value={user.roleName} />
+          <ReadOnlyRow label={t("profile.email")} value={user.email} />
+          <ReadOnlyRow label={t("profile.role")} value={user.roleName} />
 
           {state?.error ? (
             <p className="rounded-[14px] border border-red-200/70 bg-red-50/80 px-3 py-2.5 text-sm text-[#9b2c2c]" role="alert">
@@ -100,7 +103,7 @@ export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
           ) : null}
           {state?.success ? (
             <p className="rounded-[14px] border border-emerald-200/70 bg-emerald-50/80 px-3 py-2.5 text-sm text-[#1f8a4c]">
-              Your name has been saved.
+              {t("profile.nameSaved")}
             </p>
           ) : null}
 
@@ -110,11 +113,12 @@ export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
               disabled={pending}
               className="inline-flex h-12 w-full items-center justify-center rounded-[14px] bg-navy px-5 text-[15px] font-semibold text-white transition hover:bg-[#132844] disabled:opacity-70 sm:w-auto"
             >
-              {pending ? "Saving..." : "Save Changes"}
+              {pending ? t("common.saving") : t("common.save")}
             </button>
           </div>
         </form>
       </section>
+      <LanguagePreference />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { formatTzs } from "@/lib/format/currency";
 import type { ReportPeriod } from "@/lib/data/report-period";
+import { PaginationBar } from "@/components/ui/PaginationBar";
 import { formatKg, RiceField, RiceNotice, RicePageHeader, RICE_METHODS, todayIso } from "@/components/rice/rice-ui";
 
 export function RiceStoragePage({
@@ -41,8 +42,8 @@ export function RiceStoragePage({
     notes: "",
   });
 
-  async function refresh() {
-    const next = await loadRiceStorageWorkspaceAction({ period });
+  async function refresh(page = workspace?.listPage.page ?? 1, pageSize = workspace?.listPage.pageSize ?? 10) {
+    const next = await loadRiceStorageWorkspaceAction({ period, page, pageSize });
     if (next.ok) setWorkspace(next.workspace);
     else setError(next.error);
   }
@@ -274,6 +275,13 @@ export function RiceStoragePage({
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          page={workspace?.listPage.page ?? 1}
+          total={workspace?.listPage.total ?? 0}
+          pageSize={workspace?.listPage.pageSize ?? 10}
+          onPage={(page) => void refresh(page, workspace?.listPage.pageSize)}
+          onPageSize={(pageSize) => void refresh(1, pageSize)}
+        />
       </section>
 
       <section className={glassPanel}>

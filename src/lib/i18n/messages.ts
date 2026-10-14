@@ -1,9 +1,11 @@
+import { extraEn, extraSw } from "@/lib/i18n/extra";
+
 export const LOCALES = ["en", "sw"] as const;
 export type Locale = (typeof LOCALES)[number];
 
 export const DEFAULT_LOCALE: Locale = "en";
 
-export const en = {
+const enCore = {
   "nav./dashboard": "Dashboard",
   "nav./owner/business-units": "Business Units",
   "nav./owner/finance": "Finance",
@@ -184,9 +186,11 @@ export const en = {
   "settings.unitsEmpty": "No business units were returned from Supabase.",
 } as const;
 
+export const en = { ...enCore, ...extraEn };
+
 export type MessageKey = keyof typeof en;
 
-export const sw: Record<MessageKey, string> = {
+const swCore = {
   "nav./dashboard": "Dashibodi",
   "nav./owner/business-units": "Vitengo vya Biashara",
   "nav./owner/finance": "Fedha",
@@ -366,6 +370,8 @@ export const sw: Record<MessageKey, string> = {
   "settings.locationError": "Imeshindwa kuhifadhi eneo.",
   "settings.unitsEmpty": "Hakuna vitengo vya biashara vilivyopatikana kutoka Supabase.",
 };
+
+export const sw: Record<MessageKey, string> = { ...swCore, ...extraSw };
 
 export const dictionaries: Record<Locale, Record<MessageKey, string>> = {
   en,

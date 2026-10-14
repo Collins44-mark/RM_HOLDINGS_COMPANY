@@ -6,6 +6,8 @@ import { loadRiceSettingsWorkspaceAction, type RiceSettingsWorkspace } from "@/a
 import { saveRiceItemAction } from "@/actions/rice/posting";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
+import { LanguagePreference } from "@/components/i18n/LanguagePreference";
+import { useT } from "@/components/i18n/LocaleProvider";
 import { formatKg, RiceField, RiceNotice, RicePageHeader } from "@/components/rice/rice-ui";
 
 export function RiceSettingsPage({
@@ -13,6 +15,7 @@ export function RiceSettingsPage({
 }: {
   initial: { ok: true; workspace: RiceSettingsWorkspace } | { ok: false; error: string };
 }) {
+  const t = useT();
   const [workspace, setWorkspace] = useState(initial.ok ? initial.workspace : null);
   const [error, setError] = useState(initial.ok ? null : initial.error);
   const [busy, setBusy] = useState(false);
@@ -20,7 +23,8 @@ export function RiceSettingsPage({
 
   return (
     <div className="space-y-5 pb-10">
-      <RicePageHeader icon={Settings} title="Settings" subtitle="Rice grades and by-product catalog. Adding an item does not create stock." />
+      <RicePageHeader icon={Settings} title={t("rice.settings.title")} subtitle={t("rice.settings.subtitle")} />
+      <LanguagePreference />
       {error ? <RiceNotice>{error}</RiceNotice> : null}
 
       {workspace?.caps.canSettings ? (

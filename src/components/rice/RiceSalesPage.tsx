@@ -8,6 +8,7 @@ import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, StatusPill, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { formatTzs } from "@/lib/format/currency";
 import type { ReportPeriod } from "@/lib/data/report-period";
+import { PaginationBar } from "@/components/ui/PaginationBar";
 import { formatKg, RiceField, RiceNotice, RicePageHeader, RICE_METHODS, todayIso } from "@/components/rice/rice-ui";
 
 export function RiceSalesPage({
@@ -39,8 +40,8 @@ export function RiceSalesPage({
   const selected = useMemo(() => items.find((row) => row.id === (form.itemId || items[0]?.id)), [form.itemId, items]);
   const total = (Number(form.qtyKg) || 0) * (Number(form.unitPrice) || 0);
 
-  async function refresh() {
-    const next = await loadRiceSalesWorkspaceAction({ period });
+  async function refresh(page = workspace?.listPage.page ?? 1, pageSize = workspace?.listPage.pageSize ?? 10) {
+    const next = await loadRiceSalesWorkspaceAction({ period, page, pageSize });
     if (next.ok) setWorkspace(next.workspace);
     else setError(next.error);
   }
@@ -208,6 +209,13 @@ export function RiceSalesPage({
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          page={workspace?.listPage.page ?? 1}
+          total={workspace?.listPage.total ?? 0}
+          pageSize={workspace?.listPage.pageSize ?? 10}
+          onPage={(page) => void refresh(page, workspace?.listPage.pageSize)}
+          onPageSize={(pageSize) => void refresh(1, pageSize)}
+        />
       </section>
     </div>
   );

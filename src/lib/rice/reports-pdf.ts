@@ -3,32 +3,34 @@ import { formatTzs } from "@/lib/format/currency";
 import { downloadPdfBytes, formatPdfGeneratedAt } from "@/lib/pdf/report-document";
 import { FormalReportDocument } from "@/lib/pdf/formal-layout";
 import type { RiceReportsWorkspace } from "@/actions/rice/workspace";
+import { createTranslator, type Locale } from "@/lib/i18n";
 
 function kg(value: number) {
   return `${new Intl.NumberFormat("en-TZ", { maximumFractionDigits: 2 }).format(value)} kg`;
 }
 
-export function downloadRiceReportsPdf(workspace: RiceReportsWorkspace) {
+export function downloadRiceReportsPdf(workspace: RiceReportsWorkspace, locale: Locale = "en") {
+  const t = createTranslator(locale);
   const doc = new FormalReportDocument({
     orientation: "landscape",
     brandName: APP_NAME,
-    businessUnit: "Rice Mill & Warehouse",
-    title: "Rice Mill & Warehouse Report",
-    subtitle: "Posted purchases, production, inventory, customer storage, sales, service income, and expenses.",
+    businessUnit: t("rice.unit"),
+    title: t("rice.pdf.title"),
+    subtitle: t("rice.pdf.subtitle"),
     periodLabel: workspace.periodLabel,
     periodDates: workspace.periodLabel,
     generatedAt: formatPdfGeneratedAt(),
-    footerLeft: "Rice Mill & Warehouse",
+    footerLeft: t("rice.unit"),
   });
   doc.addMetrics([
-    { label: "Purchases", value: formatTzs(workspace.summary.purchasesTotal) },
-    { label: "Sales", value: formatTzs(workspace.summary.salesTotal) },
-    { label: "Service income", value: formatTzs(workspace.summary.serviceIncome) },
-    { label: "Cost of goods sold", value: formatTzs(workspace.summary.cogs) },
-    { label: "Production loss", value: formatTzs(workspace.summary.productionLoss) },
-    { label: "Operating expenses", value: formatTzs(workspace.summary.expenses) },
-    { label: "Inventory value", value: formatTzs(workspace.summary.inventoryValue) },
-    { label: "Net profit", value: formatTzs(workspace.summary.netProfit) },
+    { label: t("rice.purchases.title"), value: formatTzs(workspace.summary.purchasesTotal) },
+    { label: t("rice.finance.sales"), value: formatTzs(workspace.summary.salesTotal) },
+    { label: t("rice.finance.service"), value: formatTzs(workspace.summary.serviceIncome) },
+    { label: t("rice.finance.cogs"), value: formatTzs(workspace.summary.cogs) },
+    { label: t("rice.finance.loss"), value: formatTzs(workspace.summary.productionLoss) },
+    { label: t("rice.finance.expenses"), value: formatTzs(workspace.summary.expenses) },
+    { label: t("rice.finance.inventory"), value: formatTzs(workspace.summary.inventoryValue) },
+    { label: t("rice.finance.net"), value: formatTzs(workspace.summary.netProfit) },
   ]);
   doc.addSectionTable(
     "Purchases",
@@ -150,32 +152,4 @@ export function downloadRiceReportsPdf(workspace: RiceReportsWorkspace) {
     { emptyMessage: "No expenses in this period." },
   );
   downloadPdfBytes(doc.build(), `rice-mill-report-${workspace.periodLabel.replace(/\s+/g, "-").toLowerCase()}.pdf`);
-}
-
-export function downloadRiceReportsCsv(workspace: RiceReportsWorkspace) {
-  const lines = [
-    ["Purchases"],
-    ["Date", "Number", "Supplier", "Qty kg", "Total", "Paid", "Payable"],
-    ...workspace.purchases.map((row) => [row.occurredOn, row.number, row.partyName, row.qtyKg, row.total, row.paid, row.balance]),
-    [],
-    ["Sales"],
-    ["Date", "Number", "Buyer", "Total", "Paid", "Receivable"],
-    ...workspace.sales.map((row) => [row.occurredOn, row.number, row.partyName, row.total, row.paid, row.balance]),
-    [],
-    ["Service income"],
-    ["Date", "Number", "Type", "Amount"],
-    ...workspace.services.map((row) => [row.occurredOn, row.number, row.kind, row.amount]),
-    [],
-    ["Expenses"],
-    ["Date", "Number", "Type", "Amount"],
-    ...workspace.expenses.map((row) => [row.occurredOn, row.number, row.kind, row.amount]),
-  ];
-  const csv = lines.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "rice-mill-report.csv";
-  link.click();
-  URL.revokeObjectURL(url);
 }

@@ -15,6 +15,15 @@ import type {
   RiceStorageMovement,
 } from "@/lib/rice/types";
 import type { AuthUser } from "@/lib/auth/types";
+import { EMPTY_PAGE, pageMeta, pageRange, parsePageSize, type PageMeta } from "@/lib/pagination";
+
+export type RicePaging = { page?: number; pageSize?: number } | "all";
+
+function resolvePaging(paging: RicePaging = "all") {
+  if (paging === "all") return null;
+  const pageSize = parsePageSize(paging.pageSize);
+  return pageRange(paging.page ?? 1, pageSize);
+}
 
 const n = (value: unknown) => Number(value ?? 0) || 0;
 const s = (value: unknown) => String(value ?? "");
@@ -86,21 +95,31 @@ export async function loadRiceParties(ctx: RiceContext): Promise<RiceParty[]> {
   }));
 }
 
-export async function loadRicePurchases(ctx: RiceContext, from: string, to: string): Promise<RicePurchase[]> {
-  const { data, error } = await ctx.supabase
+export async function loadRicePurchases(
+  ctx: RiceContext,
+  from: string,
+  to: string,
+  paging: RicePaging = "all",
+): Promise<{ rows: RicePurchase[]; page: PageMeta }> {
+  const range = resolvePaging(paging);
+  let query = ctx.supabase
     .from("rice_purchases")
-    .select("id, purchase_number, occurred_on, bags, qty_kg, unit_price, total_amount, amount_paid, payment_method, payment_reference, notes, rice_parties(name), rice_items(name)")
+    .select("id, purchase_number, occurred_on, bags, qty_kg, unit_price, total_amount, amount_paid, payment_method, payment_reference, notes, rice_parties(name), rice_items(name)", {
+      count: "exact",
+    })
     .eq("business_unit_id", ctx.businessUnitId)
     .eq("is_active", true)
     .gte("occurred_on", from)
     .lte("occurred_on", to)
     .order("occurred_on", { ascending: false })
-    .limit(300);
+    .order("id", { ascending: false });
+  query = range ? query.range(range.from, range.to) : query.limit(500);
+  const { data, error, count } = await query;
   if (error) {
-    if (isRiceMissingRelation(error)) return [];
+    if (isRiceMissingRelation(error)) return { rows: [], page: EMPTY_PAGE };
     throw new RiceError("Couldn't load purchases.", "DATABASE");
   }
-  return (data ?? []).map((row) => {
+  const rows = (data ?? []).map((row) => {
     const total = n(row.total_amount);
     const paid = n(row.amount_paid);
     const party = row.rice_parties as { name?: string } | { name?: string }[] | null;
@@ -124,20 +143,29 @@ export async function loadRicePurchases(ctx: RiceContext, from: string, to: stri
       notes: row.notes ? s(row.notes) : null,
     };
   });
+  return { rows, page: pageMeta(range?.page ?? 1, count ?? rows.length, range?.pageSize ?? Math.max(rows.length, 1)) };
 }
 
-export async function loadRiceBatches(ctx: RiceContext, from: string, to: string): Promise<RiceMillBatch[]> {
-  const { data, error } = await ctx.supabase
+export async function loadRiceBatches(
+  ctx: RiceContext,
+  from: string,
+  to: string,
+  paging: RicePaging = "all",
+): Promise<{ rows: RiceMillBatch[]; page: PageMeta }> {
+  const range = resolvePaging(paging);
+  let query = ctx.supabase
     .from("rice_mill_batches")
-    .select("id, batch_number, produced_on, machine, shift, input_qty_kg, wastage_kg, processing_cost, notes")
+    .select("id, batch_number, produced_on, machine, shift, input_qty_kg, wastage_kg, processing_cost, notes", { count: "exact" })
     .eq("business_unit_id", ctx.businessUnitId)
     .eq("is_active", true)
     .gte("produced_on", from)
     .lte("produced_on", to)
     .order("produced_on", { ascending: false })
-    .limit(200);
+    .order("id", { ascending: false });
+  query = range ? query.range(range.from, range.to) : query.limit(500);
+  const { data, error, count } = await query;
   if (error) {
-    if (isRiceMissingRelation(error)) return [];
+    if (isRiceMissingRelation(error)) return { rows: [], page: EMPTY_PAGE };
     throw new RiceError("Couldn't load milling batches.", "DATABASE");
   }
   const ids = (data ?? []).map((row) => s(row.id));
@@ -152,7 +180,7 @@ export async function loadRiceBatches(ctx: RiceContext, from: string, to: string
     list.push({ itemId: s(rec?.id), itemName: s(rec?.name), qtyKg: n(row.qty_kg) });
     byBatch.set(s(row.batch_id), list);
   }
-  return (data ?? []).map((row) => ({
+  const rows = (data ?? []).map((row) => ({
     id: s(row.id),
     number: s(row.batch_number),
     producedOn: s(row.produced_on),
@@ -164,21 +192,28 @@ export async function loadRiceBatches(ctx: RiceContext, from: string, to: string
     notes: row.notes ? s(row.notes) : null,
     outputs: byBatch.get(s(row.id)) ?? [],
   }));
+  return { rows, page: pageMeta(range?.page ?? 1, count ?? rows.length, range?.pageSize ?? Math.max(rows.length, 1)) };
 }
 
-export async function loadRiceMovements(ctx: RiceContext, limit = 120): Promise<RiceStockMovement[]> {
-  const { data, error } = await ctx.supabase
+export async function loadRiceMovements(
+  ctx: RiceContext,
+  paging: RicePaging = { page: 1, pageSize: 10 },
+): Promise<{ rows: RiceStockMovement[]; page: PageMeta }> {
+  const range = resolvePaging(paging === "all" ? "all" : paging);
+  let query = ctx.supabase
     .from("rice_stock_movements")
-    .select("id, occurred_on, source_type, qty_kg, notes, rice_items(name)")
+    .select("id, occurred_on, source_type, qty_kg, notes, rice_items(name)", { count: "exact" })
     .eq("business_unit_id", ctx.businessUnitId)
     .eq("is_active", true)
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .order("id", { ascending: false });
+  query = range ? query.range(range.from, range.to) : query.limit(500);
+  const { data, error, count } = await query;
   if (error) {
-    if (isRiceMissingRelation(error)) return [];
+    if (isRiceMissingRelation(error)) return { rows: [], page: EMPTY_PAGE };
     throw new RiceError("Couldn't load stock movements.", "DATABASE");
   }
-  return (data ?? []).map((row) => {
+  const rows = (data ?? []).map((row) => {
     const item = row.rice_items as { name?: string } | { name?: string }[] | null;
     const name = Array.isArray(item) ? item[0]?.name : item?.name;
     return {
@@ -190,20 +225,31 @@ export async function loadRiceMovements(ctx: RiceContext, limit = 120): Promise<
       notes: row.notes ? s(row.notes) : null,
     };
   });
+  return { rows, page: pageMeta(range?.page ?? 1, count ?? rows.length, range?.pageSize ?? Math.max(rows.length, 1)) };
 }
 
-export async function loadRiceSales(ctx: RiceContext, from: string, to: string): Promise<RiceSale[]> {
-  const { data, error } = await ctx.supabase
+export async function loadRiceSales(
+  ctx: RiceContext,
+  from: string,
+  to: string,
+  paging: RicePaging = "all",
+): Promise<{ rows: RiceSale[]; page: PageMeta }> {
+  const range = resolvePaging(paging);
+  let query = ctx.supabase
     .from("rice_sales")
-    .select("id, sale_number, occurred_on, total_amount, amount_paid, payment_method, dispatch_on, dispatch_qty_kg, notes, rice_parties(name)")
+    .select("id, sale_number, occurred_on, total_amount, amount_paid, payment_method, dispatch_on, dispatch_qty_kg, notes, rice_parties(name)", {
+      count: "exact",
+    })
     .eq("business_unit_id", ctx.businessUnitId)
     .eq("is_active", true)
     .gte("occurred_on", from)
     .lte("occurred_on", to)
     .order("occurred_on", { ascending: false })
-    .limit(200);
+    .order("id", { ascending: false });
+  query = range ? query.range(range.from, range.to) : query.limit(500);
+  const { data, error, count } = await query;
   if (error) {
-    if (isRiceMissingRelation(error)) return [];
+    if (isRiceMissingRelation(error)) return { rows: [], page: EMPTY_PAGE };
     throw new RiceError("Couldn't load sales.", "DATABASE");
   }
   const ids = (data ?? []).map((row) => s(row.id));
@@ -218,7 +264,7 @@ export async function loadRiceSales(ctx: RiceContext, from: string, to: string):
     list.push({ itemName: s(name), qtyKg: n(row.qty_kg), unitPrice: n(row.unit_price), lineTotal: n(row.line_total) });
     bySale.set(s(row.sale_id), list);
   }
-  return (data ?? []).map((row) => {
+  const rows = (data ?? []).map((row) => {
     const total = n(row.total_amount);
     const paid = n(row.amount_paid);
     const party = row.rice_parties as { name?: string } | { name?: string }[] | null;
@@ -238,16 +284,20 @@ export async function loadRiceSales(ctx: RiceContext, from: string, to: string):
       lines: bySale.get(s(row.id)) ?? [],
     };
   });
+  return { rows, page: pageMeta(range?.page ?? 1, count ?? rows.length, range?.pageSize ?? Math.max(rows.length, 1)) };
 }
 
-export async function loadRiceStorage(ctx: RiceContext): Promise<{ accounts: RiceStorageAccount[]; movements: RiceStorageMovement[] }> {
+export async function loadRiceStorage(
+  ctx: RiceContext,
+  paging: RicePaging = "all",
+): Promise<{ accounts: RiceStorageAccount[]; movements: RiceStorageMovement[]; page: PageMeta }> {
   const { data: accounts, error } = await ctx.supabase
     .from("rice_v_storage_balances")
     .select("account_id, account_number, party_id, party_name, phone, qty_kg")
     .eq("business_unit_id", ctx.businessUnitId)
     .order("party_name");
   if (error) {
-    if (isRiceMissingRelation(error)) return { accounts: [], movements: [] };
+    if (isRiceMissingRelation(error)) return { accounts: [], movements: [], page: EMPTY_PAGE };
     throw new RiceError("Couldn't load customer storage.", "DATABASE");
   }
   const mappedAccounts = (accounts ?? []).map((row) => ({
@@ -259,16 +309,17 @@ export async function loadRiceStorage(ctx: RiceContext): Promise<{ accounts: Ric
     qtyKg: n(row.qty_kg),
   }));
   const accountMap = new Map(mappedAccounts.map((row) => [row.id, row]));
-  const { data: moves } = await ctx.supabase
+  const range = resolvePaging(paging);
+  let moveQuery = ctx.supabase
     .from("rice_storage_movements")
-    .select("id, account_id, occurred_on, movement_type, bags, qty_kg, reference, notes")
+    .select("id, account_id, occurred_on, movement_type, bags, qty_kg, reference, notes", { count: "exact" })
     .eq("business_unit_id", ctx.businessUnitId)
     .eq("is_active", true)
     .order("occurred_on", { ascending: false })
-    .limit(200);
-  return {
-    accounts: mappedAccounts,
-    movements: (moves ?? []).map((row) => {
+    .order("id", { ascending: false });
+  moveQuery = range ? moveQuery.range(range.from, range.to) : moveQuery.limit(500);
+  const { data: moves, count } = await moveQuery;
+  const movements = (moves ?? []).map((row) => {
       const account = accountMap.get(s(row.account_id));
       return {
         id: s(row.id),
@@ -281,7 +332,11 @@ export async function loadRiceStorage(ctx: RiceContext): Promise<{ accounts: Ric
         reference: row.reference ? s(row.reference) : null,
         notes: row.notes ? s(row.notes) : null,
       };
-    }),
+    });
+  return {
+    accounts: mappedAccounts,
+    movements,
+    page: pageMeta(range?.page ?? 1, count ?? movements.length, range?.pageSize ?? Math.max(movements.length, 1)),
   };
 }
 
@@ -314,21 +369,29 @@ export async function loadRiceServiceIncome(ctx: RiceContext, from: string, to: 
   });
 }
 
-export async function loadRiceExpenses(ctx: RiceContext, from: string, to: string): Promise<RiceExpense[]> {
-  const { data, error } = await ctx.supabase
+export async function loadRiceExpenses(
+  ctx: RiceContext,
+  from: string,
+  to: string,
+  paging: RicePaging = "all",
+): Promise<{ rows: RiceExpense[]; page: PageMeta }> {
+  const range = resolvePaging(paging);
+  let query = ctx.supabase
     .from("rice_expenses")
-    .select("id, expense_number, occurred_on, kind, amount, notes")
+    .select("id, expense_number, occurred_on, kind, amount, notes", { count: "exact" })
     .eq("business_unit_id", ctx.businessUnitId)
     .eq("is_active", true)
     .gte("occurred_on", from)
     .lte("occurred_on", to)
     .order("occurred_on", { ascending: false })
-    .limit(200);
+    .order("id", { ascending: false });
+  query = range ? query.range(range.from, range.to) : query.limit(500);
+  const { data, error, count } = await query;
   if (error) {
-    if (isRiceMissingRelation(error)) return [];
+    if (isRiceMissingRelation(error)) return { rows: [], page: EMPTY_PAGE };
     throw new RiceError("Couldn't load expenses.", "DATABASE");
   }
-  return (data ?? []).map((row) => ({
+  const rows = (data ?? []).map((row) => ({
     id: s(row.id),
     number: s(row.expense_number),
     occurredOn: s(row.occurred_on),
@@ -336,6 +399,7 @@ export async function loadRiceExpenses(ctx: RiceContext, from: string, to: strin
     amount: n(row.amount),
     notes: row.notes ? s(row.notes) : null,
   }));
+  return { rows, page: pageMeta(range?.page ?? 1, count ?? rows.length, range?.pageSize ?? Math.max(rows.length, 1)) };
 }
 
 export async function loadRiceLedgerSummary(ctx: RiceContext, from: string, to: string): Promise<RiceLedgerSummary> {

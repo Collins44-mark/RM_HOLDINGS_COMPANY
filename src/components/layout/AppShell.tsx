@@ -55,7 +55,7 @@ export function AppShell({
           <button
             type="button"
             className="absolute inset-0 bg-navy/40"
-            aria-label="Close navigation"
+            aria-label={t("chrome.closeNav")}
             onClick={() => setMobileOpen(false)}
           />
           <div className="relative h-full max-w-[85vw] overflow-hidden rounded-r-[28px] shadow-2xl" style={{ width: SIDEBAR_WIDTH.expanded }}>

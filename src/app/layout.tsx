@@ -5,6 +5,7 @@ import { LocaleProvider } from "@/components/i18n/LocaleProvider";
 import { getOrganizationSettings } from "@/lib/data/organization-settings";
 import { hydrateRuntimeSettings } from "@/lib/config/runtime-settings";
 import { htmlLang } from "@/lib/i18n";
+import { resolveRequestLocale } from "@/lib/i18n/server";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -32,15 +33,16 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const settings = await getOrganizationSettings();
   hydrateRuntimeSettings(settings);
+  const locale = await resolveRequestLocale(settings.language);
 
   return (
     <html
-      lang={htmlLang(settings.language)}
+      lang={htmlLang(locale)}
       className={`${inter.variable} ${cormorant.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-canvas font-sans text-navy">
         <LocaleProvider
-          locale={settings.language}
+          locale={locale}
           organisationName={settings.organisationName}
           timezone={settings.timezone}
           currency={settings.currency}

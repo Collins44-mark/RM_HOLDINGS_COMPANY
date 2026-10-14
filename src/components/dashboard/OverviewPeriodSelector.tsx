@@ -3,6 +3,8 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Calendar, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useT } from "@/components/i18n/LocaleProvider";
+import type { MessageKey } from "@/lib/i18n";
 import {
   REPORT_PERIOD_OPTIONS,
   type ReportPeriod,
@@ -10,7 +12,7 @@ import {
 
 export function OverviewPeriodSelector({
   period,
-  label,
+  label: _label,
   variant = "default",
 }: {
   period: ReportPeriod;
@@ -19,6 +21,7 @@ export function OverviewPeriodSelector({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const t = useT();
 
   function update(next: Record<string, string | undefined>) {
     const params = new URLSearchParams(searchParams.toString());
@@ -32,7 +35,7 @@ export function OverviewPeriodSelector({
   return (
     <div className="flex flex-wrap items-center gap-2">
       <label className="relative inline-flex items-center">
-        <span className="sr-only">Overview period</span>
+        <span className="sr-only">{t("period.sr")}</span>
         <Calendar className="pointer-events-none absolute left-3.5 h-4 w-4 text-slate-500" strokeWidth={1.85} />
         <select
           value={period}
@@ -53,7 +56,7 @@ export function OverviewPeriodSelector({
         >
           {REPORT_PERIOD_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
-              {option.value === period ? label : option.label}
+              {t(`period.${option.value}` as MessageKey)}
             </option>
           ))}
         </select>
@@ -72,7 +75,7 @@ export function OverviewPeriodSelector({
               })
             }
             className="h-11 rounded-[12px] border border-slate-200 bg-white px-3 text-sm text-navy outline-none focus:border-[#9bb6e0] focus:ring-4 focus:ring-[#5b82c4]/10"
-            aria-label="From date"
+            aria-label={t("period.from")}
           />
           <input
             type="date"
@@ -85,7 +88,7 @@ export function OverviewPeriodSelector({
               })
             }
             className="h-11 rounded-[12px] border border-slate-200 bg-white px-3 text-sm text-navy outline-none focus:border-[#9bb6e0] focus:ring-4 focus:ring-[#5b82c4]/10"
-            aria-label="To date"
+            aria-label={t("period.to")}
           />
         </>
       ) : null}

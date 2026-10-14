@@ -8,6 +8,7 @@ import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { formatTzs } from "@/lib/format/currency";
 import type { ReportPeriod } from "@/lib/data/report-period";
+import { PaginationBar } from "@/components/ui/PaginationBar";
 import { formatKg, RiceField, RiceNotice, RicePageHeader, todayIso } from "@/components/rice/rice-ui";
 
 export function RiceMillingPage({
@@ -56,7 +57,7 @@ export function RiceMillingPage({
       setError(result.error);
       return;
     }
-    const next = await loadRiceMillingWorkspaceAction({ period });
+    const next = await loadRiceMillingWorkspaceAction({ period, page: 1, pageSize: workspace?.listPage.pageSize });
     if (next.ok) setWorkspace(next.workspace);
     setForm((current) => ({ ...current, inputQtyKg: "", wastageKg: "", processingCost: "", notes: "", outputQty: Object.fromEntries(outputs.map((row) => [row.id, ""])) }));
   }
@@ -153,6 +154,21 @@ export function RiceMillingPage({
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          page={workspace?.listPage.page ?? 1}
+          total={workspace?.listPage.total ?? 0}
+          pageSize={workspace?.listPage.pageSize ?? 10}
+          onPage={(page) => {
+            void loadRiceMillingWorkspaceAction({ period, page, pageSize: workspace?.listPage.pageSize }).then((next) => {
+              if (next.ok) setWorkspace(next.workspace);
+            });
+          }}
+          onPageSize={(pageSize) => {
+            void loadRiceMillingWorkspaceAction({ period, page: 1, pageSize }).then((next) => {
+              if (next.ok) setWorkspace(next.workspace);
+            });
+          }}
+        />
       </section>
     </div>
   );

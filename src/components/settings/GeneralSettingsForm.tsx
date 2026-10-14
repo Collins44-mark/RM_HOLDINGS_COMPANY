@@ -9,6 +9,7 @@ import {
   TIMEZONE_OPTIONS,
   timezoneOptionLabel,
 } from "@/lib/config/regional";
+import { LanguagePreference } from "@/components/i18n/LanguagePreference";
 import { useT } from "@/components/i18n/LocaleProvider";
 import type { OrganizationSettings } from "@/lib/data/organization-settings";
 
@@ -36,6 +37,7 @@ export function GeneralSettingsForm({
   }, [state?.ok, router]);
 
   return (
+    <div className="space-y-4">
     <section className="rounded-[24px] border border-white/70 bg-white/72 shadow-[0_10px_30px_rgba(15,35,64,0.06)] backdrop-blur-xl">
       <div className="px-5 pt-5 sm:px-6 sm:pt-6">
         <div className="flex items-start gap-3">
@@ -104,7 +106,7 @@ export function GeneralSettingsForm({
           </label>
           <label className="block min-w-0">
             <span className="mb-1.5 block text-[13px] text-slate-500">
-              {t("settings.language")}
+              {t("settings.languageOrg")}
             </span>
             <select
               name="language"
@@ -115,6 +117,7 @@ export function GeneralSettingsForm({
               <option value="en">{t("settings.language.en")}</option>
               <option value="sw">{t("settings.language.sw")}</option>
             </select>
+            <span className="mt-1.5 block text-[12px] text-slate-400">{t("settings.languageOrgHint")}</span>
           </label>
         </div>
 
@@ -141,5 +144,7 @@ export function GeneralSettingsForm({
         ) : null}
       </form>
     </section>
+    <LanguagePreference />
+    </div>
   );
 }

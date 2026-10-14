@@ -30,6 +30,7 @@ import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu"
 import { formatTzs } from "@/lib/format/currency";
 import { ContainedDrawer, DrawerCancel } from "@/components/ui/ContainedDrawer";
 import { SchoolConfirmDialog, SchoolIconWell, SchoolWorkflowButton } from "@/components/school/school-ui";
+import { LanguagePreference } from "@/components/i18n/LanguagePreference";
 import { SchoolPagination } from "@/components/school/SchoolPagination";
 import { schoolPageMeta, type SchoolPageMeta } from "@/lib/school/pagination";
 import { cn } from "@/lib/cn";
@@ -280,6 +281,7 @@ export function SchoolSettingsPage({
 
       {tab === "general" ? (
         <section className={`${glassPanel} space-y-4`}>
+          <LanguagePreference className="rounded-[18px] border border-navy/5 bg-white/60 p-4" />
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-[15px] font-semibold tracking-[-0.03em] text-navy">School Information</h2>
             {canManage && !editingProfile ? (

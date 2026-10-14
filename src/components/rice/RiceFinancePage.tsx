@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Landmark } from "lucide-react";
 import { loadRiceFinanceWorkspaceAction, type RiceFinanceWorkspace } from "@/actions/rice/workspace";
 import { recordRiceExpenseAction } from "@/actions/rice/posting";
@@ -8,7 +8,9 @@ import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassCard, glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { formatTzs } from "@/lib/format/currency";
 import type { ReportPeriod } from "@/lib/data/report-period";
-import { RiceField, RiceNotice, RicePageHeader, RICE_METHODS, todayIso } from "@/components/rice/rice-ui";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useT } from "@/components/i18n/LocaleProvider";
+import { RiceField, RiceNotice, RicePageHeader, RICE_METHODS, riceMethodKey, todayIso } from "@/components/rice/rice-ui";
 
 export function RiceFinancePage({
   initial,
@@ -17,6 +19,8 @@ export function RiceFinancePage({
   initial: { ok: true; workspace: RiceFinanceWorkspace } | { ok: false; error: string };
   period: ReportPeriod;
 }) {
+  const t = useT();
+  const requestId = useRef(0);
   const [workspace, setWorkspace] = useState(initial.ok ? initial.workspace : null);
   const [error, setError] = useState(initial.ok ? null : initial.error);
   const [busy, setBusy] = useState(false);
@@ -34,28 +38,28 @@ export function RiceFinancePage({
     <div className="space-y-5 pb-10">
       <RicePageHeader
         icon={Landmark}
-        title="Finance"
-        subtitle="Rice Mill & Warehouse only. Unsold inventory is not treated as an expense."
+        title={t("rice.finance.title")}
+        subtitle={t("rice.finance.subtitle")}
         period={period}
         periodLabel={workspace?.periodLabel ?? ""}
       />
       {error ? <RiceNotice>{error}</RiceNotice> : null}
 
       <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <Stat label="Sales" value={formatTzs(summary?.salesTotal ?? 0)} />
-        <Stat label="Service income" value={formatTzs(summary?.serviceIncome ?? 0)} />
-        <Stat label="Cost of goods sold" value={formatTzs(summary?.cogs ?? 0)} />
-        <Stat label="Production loss" value={formatTzs(summary?.productionLoss ?? 0)} />
-        <Stat label="Operating expenses" value={formatTzs(summary?.expenses ?? 0)} />
-        <Stat label="Inventory value" value={formatTzs(summary?.inventoryValue ?? 0)} />
-        <Stat label="Payables" value={formatTzs(summary?.payables ?? 0)} />
-        <Stat label="Receivables" value={formatTzs(summary?.receivables ?? 0)} />
-        <Stat label="Net profit" value={formatTzs(summary?.netProfit ?? 0)} />
+        <Stat label={t("rice.finance.sales")} value={formatTzs(summary?.salesTotal ?? 0)} />
+        <Stat label={t("rice.finance.service")} value={formatTzs(summary?.serviceIncome ?? 0)} />
+        <Stat label={t("rice.finance.cogs")} value={formatTzs(summary?.cogs ?? 0)} />
+        <Stat label={t("rice.finance.loss")} value={formatTzs(summary?.productionLoss ?? 0)} />
+        <Stat label={t("rice.finance.expenses")} value={formatTzs(summary?.expenses ?? 0)} />
+        <Stat label={t("rice.finance.inventory")} value={formatTzs(summary?.inventoryValue ?? 0)} />
+        <Stat label={t("rice.finance.payables")} value={formatTzs(summary?.payables ?? 0)} />
+        <Stat label={t("rice.finance.receivables")} value={formatTzs(summary?.receivables ?? 0)} />
+        <Stat label={t("rice.finance.net")} value={formatTzs(summary?.netProfit ?? 0)} />
       </section>
 
       {workspace?.caps.canExpense ? (
         <section className={glassPanel}>
-          <h2 className="text-[16px] font-semibold text-navy">Record operating expense</h2>
+          <h2 className="text-[16px] font-semibold text-navy">{t("rice.finance.recordExpense")}</h2>
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
             <RiceField label="Type">
               <select className={inputClass} value={form.kind} onChange={(event) => setForm({ ...form, kind: event.target.value })}>
@@ -76,7 +80,7 @@ export function RiceFinancePage({
               <select className={inputClass} value={form.paymentMethod} onChange={(event) => setForm({ ...form, paymentMethod: event.target.value })}>
                 {RICE_METHODS.filter((row) => row.value !== "CREDIT").map((row) => (
                   <option key={row.value} value={row.value}>
-                    {row.label}
+                    {t(riceMethodKey(row.value))}
                   </option>
                 ))}
               </select>
@@ -92,7 +96,7 @@ export function RiceFinancePage({
             <SchoolWorkflowButton
               className={primaryButton}
               busy={busy}
-              idleLabel="Post expense"
+              idleLabel={t("rice.finance.postExpense")}
               busyLabel="Posting…"
               onClick={async () => {
                 setBusy(true);
@@ -104,7 +108,9 @@ export function RiceFinancePage({
                 setBusy(false);
                 if (!result.ok) setError(result.error);
                 else {
-                  const next = await loadRiceFinanceWorkspaceAction({ period });
+                  const id = ++requestId.current;
+                  const next = await loadRiceFinanceWorkspaceAction({ period, page: 1, pageSize: workspace?.listPage.pageSize });
+                  if (id !== requestId.current) return;
                   if (next.ok) setWorkspace(next.workspace);
                   setForm((current) => ({ ...current, amount: "", notes: "" }));
                 }
@@ -115,7 +121,7 @@ export function RiceFinancePage({
       ) : null}
 
       <section className={glassPanel}>
-        <h2 className="text-[16px] font-semibold text-navy">Expenses</h2>
+        <h2 className="text-[16px] font-semibold text-navy">{t("rice.finance.expenseList")}</h2>
         <div className={`${tableScrollClass} mt-4`}>
           <table className="min-w-full text-left text-[13.5px]">
             <thead className={tableHead}>
@@ -131,7 +137,7 @@ export function RiceFinancePage({
               {(workspace?.expenses ?? []).length === 0 ? (
                 <tr>
                   <td className="px-3 py-6 text-slate-500" colSpan={5}>
-                    No expenses in this period.
+                    {t("rice.finance.empty")}
                   </td>
                 </tr>
               ) : (
@@ -148,6 +154,25 @@ export function RiceFinancePage({
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          page={workspace?.listPage.page ?? 1}
+          total={workspace?.listPage.total ?? 0}
+          pageSize={workspace?.listPage.pageSize ?? 10}
+          onPage={(page) => {
+            const id = ++requestId.current;
+            void loadRiceFinanceWorkspaceAction({ period, page, pageSize: workspace?.listPage.pageSize }).then((next) => {
+              if (id !== requestId.current) return;
+              if (next.ok) setWorkspace(next.workspace);
+            });
+          }}
+          onPageSize={(pageSize) => {
+            const id = ++requestId.current;
+            void loadRiceFinanceWorkspaceAction({ period, page: 1, pageSize }).then((next) => {
+              if (id !== requestId.current) return;
+              if (next.ok) setWorkspace(next.workspace);
+            });
+          }}
+        />
       </section>
     </div>
   );

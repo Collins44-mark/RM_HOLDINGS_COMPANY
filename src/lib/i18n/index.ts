@@ -10,7 +10,12 @@ import type { NavItem } from "@/lib/config/navigation";
 export type { Locale, MessageKey };
 export { DEFAULT_LOCALE, LOCALES };
 
-export type Translator = (key: MessageKey, fallback?: string) => string;
+export type TranslateVars = Record<string, string | number>;
+
+export type Translator = {
+  (key: MessageKey, fallback?: string): string;
+  (key: MessageKey, vars: TranslateVars): string;
+};
 
 export function isLocale(value: string | null | undefined): value is Locale {
   return value === "en" || value === "sw";
@@ -26,7 +31,16 @@ export function htmlLang(locale: Locale) {
 
 export function createTranslator(locale: Locale): Translator {
   const table = dictionaries[locale] ?? dictionaries.en;
-  return (key, fallback) => table[key] ?? dictionaries.en[key] ?? fallback ?? key;
+  return ((key: MessageKey, second?: string | TranslateVars) => {
+    const fallback = typeof second === "string" ? second : undefined;
+    let text = table[key] ?? dictionaries.en[key] ?? fallback ?? String(key);
+    if (second && typeof second === "object") {
+      for (const [name, value] of Object.entries(second)) {
+        text = text.replaceAll(`{${name}}`, String(value));
+      }
+    }
+    return text;
+  }) as Translator;
 }
 
 export function navKeyForHref(href: string): MessageKey | null {
