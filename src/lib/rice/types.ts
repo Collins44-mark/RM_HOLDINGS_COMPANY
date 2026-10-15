@@ -66,6 +66,13 @@ export type RiceStockMovement = {
   notes: string | null;
 };
 
+export type RiceWarehouseMovement = RiceStockMovement & {
+  itemId: string;
+  itemCode: string;
+  sourceNumber: string | null;
+  partyName: string | null;
+};
+
 export type RiceSale = {
   id: string;
   number: string;

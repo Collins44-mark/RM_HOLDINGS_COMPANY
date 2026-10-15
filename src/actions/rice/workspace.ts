@@ -16,6 +16,7 @@ import {
   riceCaps,
   applyRiceInventoryValues,
   loadRiceLedgerSummary,
+  loadRiceKindMovements,
 } from "@/lib/rice/queries";
 import type {
   RiceCaps,
@@ -30,7 +31,10 @@ import type {
   RiceStockMovement,
   RiceStorageAccount,
   RiceStorageMovement,
+  RiceWarehouseMovement,
+  RiceItemKind,
 } from "@/lib/rice/types";
+import { parseRiceWarehouseKind } from "@/lib/rice/warehouse-kind";
 import type { PageMeta } from "@/lib/pagination";
 
 function dateIso(value: Date) {
@@ -64,6 +68,15 @@ export type RiceWarehouseWorkspace = {
   items: RiceItem[];
   movements: RiceStockMovement[];
   caps: RiceCaps;
+  listPage: PageMeta;
+};
+
+export type RiceWarehouseKindWorkspace = {
+  kind: RiceItemKind;
+  items: RiceItem[];
+  movements: RiceWarehouseMovement[];
+  totalQtyKg: number;
+  totalValueTzs: number;
   listPage: PageMeta;
 };
 
@@ -181,6 +194,40 @@ export async function loadRiceWarehouseWorkspaceAction(input: { page?: number; p
         caps: riceCaps(user),
         listPage: movements.page,
       } satisfies RiceWarehouseWorkspace,
+    };
+  } catch (error) {
+    return { ok: false as const, error: riceActionError(error) };
+  }
+}
+
+export async function loadRiceWarehouseKindWorkspaceAction(
+  input: { kind: string; page?: number; pageSize?: number },
+): Promise<{ ok: true; workspace: RiceWarehouseKindWorkspace } | { ok: false; error: string }> {
+  try {
+    const kind = parseRiceWarehouseKind(input.kind);
+    if (!kind) return { ok: false as const, error: "Unknown warehouse category." };
+    const ctx = await requireAnyRicePermission(["rice.warehouse.view", "rice.stock.view", "rice.stock.edit"]);
+    const to = dateIso(new Date());
+    const [allItems, ledger] = await Promise.all([
+      loadRiceItems(ctx),
+      loadRiceLedgerSummary(ctx, "2000-01-01", to),
+    ]);
+    const items = applyRiceInventoryValues(allItems, ledger).filter((row) => row.kind === kind);
+    const movements = await loadRiceKindMovements(
+      ctx,
+      items.map((row) => row.id),
+      { page: input.page, pageSize: input.pageSize },
+    );
+    return {
+      ok: true as const,
+      workspace: {
+        kind,
+        items,
+        movements: movements.rows,
+        totalQtyKg: items.reduce((sum, row) => sum + row.qtyKg, 0),
+        totalValueTzs: items.reduce((sum, row) => sum + row.valueTzs, 0),
+        listPage: movements.page,
+      } satisfies RiceWarehouseKindWorkspace,
     };
   } catch (error) {
     return { ok: false as const, error: riceActionError(error) };

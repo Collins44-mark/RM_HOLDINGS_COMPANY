@@ -13,6 +13,7 @@ import type {
   RiceStockMovement,
   RiceStorageAccount,
   RiceStorageMovement,
+  RiceWarehouseMovement,
 } from "@/lib/rice/types";
 import type { AuthUser } from "@/lib/auth/types";
 import { EMPTY_PAGE, pageMeta, pageRange, parsePageSize, type PageMeta } from "@/lib/pagination";
@@ -223,6 +224,84 @@ export async function loadRiceMovements(
       sourceType: s(row.source_type),
       qtyKg: n(row.qty_kg),
       notes: row.notes ? s(row.notes) : null,
+    };
+  });
+  return { rows, page: pageMeta(range?.page ?? 1, count ?? rows.length, range?.pageSize ?? Math.max(rows.length, 1)) };
+}
+
+export async function loadRiceKindMovements(
+  ctx: RiceContext,
+  itemIds: string[],
+  paging: RicePaging = { page: 1, pageSize: 10 },
+): Promise<{ rows: RiceWarehouseMovement[]; page: PageMeta }> {
+  if (!itemIds.length) return { rows: [], page: EMPTY_PAGE };
+  const range = resolvePaging(paging === "all" ? "all" : paging);
+  let query = ctx.supabase
+    .from("rice_stock_movements")
+    .select("id, item_id, source_type, source_id, qty_kg, occurred_on, notes, rice_items(name, code)", { count: "exact" })
+    .eq("business_unit_id", ctx.businessUnitId)
+    .eq("is_active", true)
+    .in("item_id", itemIds)
+    .order("occurred_on", { ascending: false })
+    .order("created_at", { ascending: false });
+  query = range ? query.range(range.from, range.to) : query.limit(500);
+  const { data, error, count } = await query;
+  if (error) {
+    if (isRiceMissingRelation(error)) return { rows: [], page: EMPTY_PAGE };
+    throw new RiceError("Couldn't load stock movements.", "DATABASE");
+  }
+
+  const purchaseIds = [...new Set((data ?? []).filter((row) => row.source_type === "PURCHASE").map((row) => s(row.source_id)))];
+  const batchIds = [
+    ...new Set((data ?? []).filter((row) => row.source_type === "MILL_IN" || row.source_type === "MILL_OUT").map((row) => s(row.source_id))),
+  ];
+  const saleIds = [...new Set((data ?? []).filter((row) => row.source_type === "SALE").map((row) => s(row.source_id)))];
+
+  const [purchasesRes, batchesRes, salesRes] = await Promise.all([
+    purchaseIds.length
+      ? ctx.supabase.from("rice_purchases").select("id, purchase_number, rice_parties(name)").in("id", purchaseIds)
+      : Promise.resolve({ data: [] as { id: string; purchase_number: string; rice_parties: unknown }[] }),
+    batchIds.length
+      ? ctx.supabase.from("rice_mill_batches").select("id, batch_number").in("id", batchIds)
+      : Promise.resolve({ data: [] as { id: string; batch_number: string }[] }),
+    saleIds.length
+      ? ctx.supabase.from("rice_sales").select("id, sale_number, rice_parties(name)").in("id", saleIds)
+      : Promise.resolve({ data: [] as { id: string; sale_number: string; rice_parties: unknown }[] }),
+  ]);
+
+  function partyName(value: unknown) {
+    const party = value as { name?: string } | { name?: string }[] | null;
+    const name = Array.isArray(party) ? party[0]?.name : party?.name;
+    return name ? s(name) : null;
+  }
+
+  const purchases = new Map(
+    (purchasesRes.data ?? []).map((row) => [s(row.id), { number: s(row.purchase_number), partyName: partyName(row.rice_parties) }]),
+  );
+  const batches = new Map((batchesRes.data ?? []).map((row) => [s(row.id), s(row.batch_number)]));
+  const sales = new Map(
+    (salesRes.data ?? []).map((row) => [s(row.id), { number: s(row.sale_number), partyName: partyName(row.rice_parties) }]),
+  );
+
+  const rows = (data ?? []).map((row) => {
+    const item = row.rice_items as { name?: string; code?: string } | { name?: string; code?: string }[] | null;
+    const rec = Array.isArray(item) ? item[0] : item;
+    const sourceId = s(row.source_id);
+    const sourceType = s(row.source_type);
+    const purchase = sourceType === "PURCHASE" ? purchases.get(sourceId) : undefined;
+    const sale = sourceType === "SALE" ? sales.get(sourceId) : undefined;
+    const batch = sourceType === "MILL_IN" || sourceType === "MILL_OUT" ? batches.get(sourceId) : undefined;
+    return {
+      id: s(row.id),
+      occurredOn: s(row.occurred_on),
+      itemName: s(rec?.name),
+      sourceType,
+      qtyKg: n(row.qty_kg),
+      notes: row.notes ? s(row.notes) : null,
+      itemId: s(row.item_id),
+      itemCode: s(rec?.code),
+      sourceNumber: purchase?.number ?? sale?.number ?? batch ?? null,
+      partyName: purchase?.partyName ?? sale?.partyName ?? null,
     };
   });
   return { rows, page: pageMeta(range?.page ?? 1, count ?? rows.length, range?.pageSize ?? Math.max(rows.length, 1)) };
