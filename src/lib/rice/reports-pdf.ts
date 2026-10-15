@@ -5,8 +5,8 @@ import { FormalReportDocument } from "@/lib/pdf/formal-layout";
 import type { RiceReportsWorkspace } from "@/actions/rice/workspace";
 import { createTranslator, type Locale } from "@/lib/i18n";
 
-function kg(value: number) {
-  return `${new Intl.NumberFormat("en-TZ", { maximumFractionDigits: 2 }).format(value)} kg`;
+function kg(value: number, locale: Locale) {
+  return `${new Intl.NumberFormat(locale === "sw" ? "sw-TZ" : "en-TZ", { maximumFractionDigits: 2 }).format(value)} kg`;
 }
 
 export function downloadRiceReportsPdf(workspace: RiceReportsWorkspace, locale: Locale = "en") {
@@ -33,77 +33,77 @@ export function downloadRiceReportsPdf(workspace: RiceReportsWorkspace, locale: 
     { label: t("rice.finance.net"), value: formatTzs(workspace.summary.netProfit) },
   ]);
   doc.addSectionTable(
-    "Purchases",
+    t("rice.pdf.purchases"),
     [
-      { key: "date", label: "Date", width: 80 },
-      { key: "number", label: "No.", width: 80 },
-      { key: "party", label: "Supplier", width: 140 },
-      { key: "qty", label: "Qty", width: 80 },
-      { key: "total", label: "Total", width: 90 },
-      { key: "paid", label: "Paid", width: 90 },
-      { key: "balance", label: "Payable", width: 90 },
+      { key: "date", label: t("common.date"), width: 80 },
+      { key: "number", label: t("rice.purchases.no"), width: 80 },
+      { key: "party", label: t("rice.purchases.supplier"), width: 140 },
+      { key: "qty", label: t("rice.purchases.qty"), width: 80 },
+      { key: "total", label: t("common.total"), width: 90 },
+      { key: "paid", label: t("common.paid"), width: 90 },
+      { key: "balance", label: t("rice.pdf.payable"), width: 90 },
     ],
     workspace.purchases.map((row) => ({
       date: row.occurredOn,
       number: row.number,
       party: row.partyName,
-      qty: kg(row.qtyKg),
+      qty: kg(row.qtyKg, locale),
       total: formatTzs(row.total),
       paid: formatTzs(row.paid),
       balance: formatTzs(row.balance),
     })),
-    { emptyMessage: "No purchases in this period." },
+    { emptyMessage: t("rice.purchases.empty") },
   );
   doc.addSectionTable(
-    "Production",
+    t("rice.pdf.production"),
     [
-      { key: "date", label: "Date", width: 80 },
-      { key: "number", label: "Batch", width: 80 },
-      { key: "input", label: "Paddy in", width: 90 },
-      { key: "output", label: "Outputs", width: 260 },
-      { key: "waste", label: "Wastage", width: 80 },
-      { key: "cost", label: "Cost", width: 90 },
+      { key: "date", label: t("common.date"), width: 80 },
+      { key: "number", label: t("rice.milling.batch"), width: 80 },
+      { key: "input", label: t("rice.pdf.paddyIn"), width: 90 },
+      { key: "output", label: t("rice.milling.outputs"), width: 260 },
+      { key: "waste", label: t("rice.milling.wastage"), width: 80 },
+      { key: "cost", label: t("rice.milling.cost"), width: 90 },
     ],
     workspace.batches.map((row) => ({
       date: row.producedOn,
       number: row.number,
-      input: kg(row.inputQtyKg),
-      output: row.outputs.map((item) => `${item.itemName} ${kg(item.qtyKg)}`).join("; ") || "—",
-      waste: kg(row.wastageKg),
+      input: kg(row.inputQtyKg, locale),
+      output: row.outputs.map((item) => `${item.itemName} ${kg(item.qtyKg, locale)}`).join("; ") || "—",
+      waste: kg(row.wastageKg, locale),
       cost: formatTzs(row.processingCost),
     })),
-    { emptyMessage: "No milling batches in this period." },
+    { emptyMessage: t("rice.milling.empty") },
   );
   doc.addSectionTable(
-    "Current inventory",
+    t("rice.pdf.inventory"),
     [
-      { key: "name", label: "Item", width: 180 },
-      { key: "kind", label: "Kind", width: 100 },
-      { key: "qty", label: "Quantity", width: 100 },
-      { key: "value", label: "Value", width: 120 },
+      { key: "name", label: t("common.item"), width: 180 },
+      { key: "kind", label: t("rice.settings.kind"), width: 100 },
+      { key: "qty", label: t("common.quantity"), width: 100 },
+      { key: "value", label: t("common.value"), width: 120 },
     ],
-    workspace.items.map((row) => ({ name: row.name, kind: row.kind, qty: kg(row.qtyKg), value: formatTzs(row.valueTzs) })),
-    { emptyMessage: "No inventory items configured." },
+    workspace.items.map((row) => ({ name: row.name, kind: row.kind, qty: kg(row.qtyKg, locale), value: formatTzs(row.valueTzs) })),
+    { emptyMessage: t("rice.pdf.inventoryEmpty") },
   );
   doc.addSectionTable(
-    "Customer storage balances",
+    t("rice.reports.storage"),
     [
-      { key: "account", label: "Account", width: 100 },
-      { key: "party", label: "Customer", width: 200 },
-      { key: "qty", label: "Balance", width: 120 },
+      { key: "account", label: t("rice.storage.account"), width: 100 },
+      { key: "party", label: t("rice.storage.customer"), width: 200 },
+      { key: "qty", label: t("rice.storage.balance"), width: 120 },
     ],
-    workspace.accounts.map((row) => ({ account: row.accountNumber, party: row.partyName, qty: kg(row.qtyKg) })),
-    { emptyMessage: "No customer storage accounts." },
+    workspace.accounts.map((row) => ({ account: row.accountNumber, party: row.partyName, qty: kg(row.qtyKg, locale) })),
+    { emptyMessage: t("rice.storage.balancesEmpty") },
   );
   doc.addSectionTable(
-    "Sales",
+    t("rice.finance.sales"),
     [
-      { key: "date", label: "Date", width: 80 },
-      { key: "number", label: "No.", width: 80 },
-      { key: "party", label: "Buyer", width: 160 },
-      { key: "total", label: "Total", width: 90 },
-      { key: "paid", label: "Paid", width: 90 },
-      { key: "balance", label: "Receivable", width: 100 },
+      { key: "date", label: t("common.date"), width: 80 },
+      { key: "number", label: t("rice.purchases.no"), width: 80 },
+      { key: "party", label: t("rice.sales.buyer"), width: 160 },
+      { key: "total", label: t("common.total"), width: 90 },
+      { key: "paid", label: t("common.paid"), width: 90 },
+      { key: "balance", label: t("rice.pdf.receivable"), width: 100 },
     ],
     workspace.sales.map((row) => ({
       date: row.occurredOn,
@@ -113,16 +113,16 @@ export function downloadRiceReportsPdf(workspace: RiceReportsWorkspace, locale: 
       paid: formatTzs(row.paid),
       balance: formatTzs(row.balance),
     })),
-    { emptyMessage: "No sales in this period." },
+    { emptyMessage: t("rice.sales.empty") },
   );
   doc.addSectionTable(
-    "Service income",
+    t("rice.finance.service"),
     [
-      { key: "date", label: "Date", width: 80 },
-      { key: "number", label: "No.", width: 90 },
-      { key: "kind", label: "Type", width: 100 },
-      { key: "party", label: "Customer", width: 180 },
-      { key: "amount", label: "Amount", width: 100 },
+      { key: "date", label: t("common.date"), width: 80 },
+      { key: "number", label: t("rice.purchases.no"), width: 90 },
+      { key: "kind", label: t("common.type"), width: 100 },
+      { key: "party", label: t("rice.storage.customer"), width: 180 },
+      { key: "amount", label: t("common.amount"), width: 100 },
     ],
     workspace.services.map((row) => ({
       date: row.occurredOn,
@@ -131,16 +131,16 @@ export function downloadRiceReportsPdf(workspace: RiceReportsWorkspace, locale: 
       party: row.partyName ?? "—",
       amount: formatTzs(row.amount),
     })),
-    { emptyMessage: "No service income in this period." },
+    { emptyMessage: t("rice.storage.serviceEmpty") },
   );
   doc.addSectionTable(
-    "Operating expenses",
+    t("rice.finance.expenses"),
     [
-      { key: "date", label: "Date", width: 80 },
-      { key: "number", label: "No.", width: 90 },
-      { key: "kind", label: "Type", width: 120 },
-      { key: "amount", label: "Amount", width: 100 },
-      { key: "notes", label: "Notes", width: 250 },
+      { key: "date", label: t("common.date"), width: 80 },
+      { key: "number", label: t("rice.purchases.no"), width: 90 },
+      { key: "kind", label: t("common.type"), width: 120 },
+      { key: "amount", label: t("common.amount"), width: 100 },
+      { key: "notes", label: t("common.notes"), width: 250 },
     ],
     workspace.expenses.map((row) => ({
       date: row.occurredOn,
@@ -149,7 +149,7 @@ export function downloadRiceReportsPdf(workspace: RiceReportsWorkspace, locale: 
       amount: formatTzs(row.amount),
       notes: row.notes ?? "—",
     })),
-    { emptyMessage: "No expenses in this period." },
+    { emptyMessage: t("rice.finance.empty") },
   );
   downloadPdfBytes(doc.build(), `rice-mill-report-${workspace.periodLabel.replace(/\s+/g, "-").toLowerCase()}.pdf`);
 }

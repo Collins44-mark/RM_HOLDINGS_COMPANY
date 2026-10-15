@@ -13,6 +13,7 @@ import { useLocale, useT } from "@/components/i18n/LocaleProvider";
 import type { MessageKey } from "@/lib/i18n";
 import { formatTzs } from "@/lib/format/currency";
 import { glassCard, glassPanel, secondaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
+import { translateRiceCopy } from "@/lib/rice/error-copy";
 import { formatKg, RiceNotice, RicePageHeader } from "@/components/rice/rice-ui";
 import type { RiceWarehouseKindSlug } from "@/lib/rice/warehouse-kind";
 
@@ -67,7 +68,7 @@ export function RiceWarehouseKindPage({
         title={t(`rice.kindGroup.${kind}` as MessageKey)}
         subtitle={t("rice.warehouse.detailSubtitle")}
       />
-      {error ? <RiceNotice>{error}</RiceNotice> : null}
+      {error ? <RiceNotice>{translateRiceCopy(t, error)}</RiceNotice> : null}
 
       <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <article className={`${glassCard} px-5 py-5`}>

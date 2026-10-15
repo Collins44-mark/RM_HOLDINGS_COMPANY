@@ -24,6 +24,40 @@ export function riceMethodKey(value: string): MessageKey {
   return "rice.method.CASH";
 }
 
+export function riceKindKey(value: string): MessageKey {
+  if (value === "PADDY" || value === "RICE" || value === "BROKEN" || value === "BYPRODUCT") {
+    return `rice.kind.${value}`;
+  }
+  return "common.type";
+}
+
+export function riceFeeKindKey(value: string): MessageKey {
+  if (value === "STORAGE" || value === "MILLING" || value === "GRADING" || value === "HANDLING") {
+    return `rice.storage.fee.${value}`;
+  }
+  return "common.type";
+}
+
+export function riceExpenseKindKey(value: string): MessageKey {
+  if (value === "OPERATING" || value === "UTILITIES" || value === "LABOUR" || value === "MILLING" || value === "OTHER") {
+    return `rice.finance.expense.${value}`;
+  }
+  return "common.type";
+}
+
+export function riceMoveTypeKey(value: string): MessageKey {
+  return value === "RELEASE" ? "rice.storage.release" : "rice.storage.deposit";
+}
+
+export function riceWarehouseSourceKey(type: string): MessageKey {
+  if (type === "PURCHASE") return "rice.warehouse.source.purchase";
+  if (type === "MILL_IN") return "rice.warehouse.source.millIn";
+  if (type === "MILL_OUT") return "rice.warehouse.source.millOut";
+  if (type === "SALE") return "rice.warehouse.source.sale";
+  if (type === "ADJUST") return "rice.warehouse.source.adjust";
+  return "common.type";
+}
+
 export const RICE_METHODS = [
   { value: "CASH", label: "Cash" },
   { value: "MOBILE_MONEY", label: "Mobile money" },

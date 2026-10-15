@@ -93,16 +93,23 @@ export function ModuleDashboard({
 export function ModuleSectionPage({
   title,
   description,
+  emptyTitle,
+  emptyDescription,
 }: {
   title: string;
   description: string;
+  emptyTitle?: string;
+  emptyDescription?: string;
 }) {
   return (
     <div>
       <PageHeader title={title} description={description} />
       <EmptyState
-        title={`${title} workspace`}
-        description="This section is connected to the RM Holdings data model and permission system. Operational records will be managed here in the next implementation phase."
+        title={emptyTitle ?? `${title} workspace`}
+        description={
+          emptyDescription ??
+          "This section is connected to the RM Holdings data model and permission system. Operational records will be managed here in the next implementation phase."
+        }
       />
     </div>
   );

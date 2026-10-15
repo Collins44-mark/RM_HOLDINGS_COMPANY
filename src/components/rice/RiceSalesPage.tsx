@@ -9,7 +9,10 @@ import { glassPanel, inputClass, primaryButton, StatusPill, tableHead, tableScro
 import { formatTzs } from "@/lib/format/currency";
 import type { ReportPeriod } from "@/lib/data/report-period";
 import { PaginationBar } from "@/components/ui/PaginationBar";
-import { formatKg, RiceField, RiceNotice, RicePageHeader, RICE_METHODS, todayIso } from "@/components/rice/rice-ui";
+import { useLocale, useT } from "@/components/i18n/LocaleProvider";
+import { translateRiceCopy } from "@/lib/rice/error-copy";
+import type { Translator } from "@/lib/i18n";
+import { formatKg, RiceField, RiceNotice, RicePageHeader, RICE_METHODS, riceMethodKey, todayIso } from "@/components/rice/rice-ui";
 
 export function RiceSalesPage({
   initial,
@@ -18,6 +21,8 @@ export function RiceSalesPage({
   initial: { ok: true; workspace: RiceSalesWorkspace } | { ok: false; error: string };
   period: ReportPeriod;
 }) {
+  const t = useT();
+  const { locale } = useLocale();
   const [workspace, setWorkspace] = useState(initial.ok ? initial.workspace : null);
   const [error, setError] = useState(initial.ok ? null : initial.error);
   const [busy, setBusy] = useState(false);
@@ -46,24 +51,30 @@ export function RiceSalesPage({
     else setError(next.error);
   }
 
+  function statusLabel(row: { balance: number; paid: number }) {
+    if (row.balance <= 0) return t("status.paid");
+    if (row.paid > 0) return t("status.partial");
+    return t("status.unpaid");
+  }
+
   return (
     <div className="space-y-5 pb-10">
       <RicePageHeader
         icon={CircleDollarSign}
-        title="Sales & Dispatch"
-        subtitle="Company-owned rice and by-products only. Customer-stored paddy is not a company sale."
+        title={t("rice.sales.title")}
+        subtitle={t("rice.sales.subtitle")}
         period={period}
         periodLabel={workspace?.periodLabel ?? ""}
       />
-      {error ? <RiceNotice>{error}</RiceNotice> : null}
+      {error ? <RiceNotice>{translateRiceCopy(t, error)}</RiceNotice> : null}
 
       {workspace?.caps.canSell ? (
         <section className={glassPanel}>
-          <h2 className="text-[16px] font-semibold text-navy">Record sale</h2>
+          <h2 className="text-[16px] font-semibold text-navy">{t("rice.sales.record")}</h2>
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-            <RiceField label="Buyer">
+            <RiceField label={t("rice.sales.buyer")}>
               <select className={inputClass} value={form.partyId} onChange={(event) => setForm({ ...form, partyId: event.target.value })}>
-                <option value="">New buyer</option>
+                <option value="">{t("rice.sales.newBuyer")}</option>
                 {(workspace?.parties ?? []).map((row) => (
                   <option key={row.id} value={row.id}>
                     {row.name}
@@ -73,65 +84,65 @@ export function RiceSalesPage({
             </RiceField>
             {!form.partyId ? (
               <>
-                <RiceField label="Buyer name">
+                <RiceField label={t("rice.sales.buyerName")}>
                   <input className={inputClass} value={form.partyName} onChange={(event) => setForm({ ...form, partyName: event.target.value })} />
                 </RiceField>
-                <RiceField label="Phone">
+                <RiceField label={t("common.phone")}>
                   <input className={inputClass} value={form.partyPhone} onChange={(event) => setForm({ ...form, partyPhone: event.target.value })} />
                 </RiceField>
               </>
             ) : null}
-            <RiceField label="Date">
+            <RiceField label={t("common.date")}>
               <input type="date" className={inputClass} value={form.occurredOn} onChange={(event) => setForm({ ...form, occurredOn: event.target.value })} />
             </RiceField>
-            <RiceField label="Dispatch date">
+            <RiceField label={t("rice.sales.dispatch")}>
               <input type="date" className={inputClass} value={form.dispatchOn} onChange={(event) => setForm({ ...form, dispatchOn: event.target.value })} />
             </RiceField>
-            <RiceField label="Product">
+            <RiceField label={t("rice.sales.product")}>
               <select className={inputClass} value={form.itemId} onChange={(event) => setForm({ ...form, itemId: event.target.value })}>
                 {items.map((row) => (
                   <option key={row.id} value={row.id}>
-                    {row.name} · {formatKg(row.qtyKg)}
+                    {row.name} · {formatKg(row.qtyKg, locale)}
                   </option>
                 ))}
               </select>
             </RiceField>
-            <RiceField label="Quantity (kg)">
+            <RiceField label={t("rice.sales.qty")}>
               <input className={inputClass} value={form.qtyKg} onChange={(event) => setForm({ ...form, qtyKg: event.target.value })} />
             </RiceField>
-            <RiceField label="Selling price / kg">
+            <RiceField label={t("rice.sales.unitPrice")}>
               <input className={inputClass} value={form.unitPrice} onChange={(event) => setForm({ ...form, unitPrice: event.target.value })} />
             </RiceField>
-            <RiceField label="Total">
+            <RiceField label={t("common.total")}>
               <input className={inputClass} readOnly value={formatTzs(total)} />
             </RiceField>
-            <RiceField label="Payment method">
+            <RiceField label={t("rice.purchases.method")}>
               <select className={inputClass} value={form.paymentMethod} onChange={(event) => setForm({ ...form, paymentMethod: event.target.value })}>
                 {RICE_METHODS.map((row) => (
                   <option key={row.value} value={row.value}>
-                    {row.label}
+                    {t(riceMethodKey(row.value))}
                   </option>
                 ))}
               </select>
             </RiceField>
             {form.paymentMethod !== "CREDIT" ? (
               <>
-                <RiceField label="Amount paid">
+                <RiceField label={t("rice.purchases.amountPaid")}>
                   <input className={inputClass} value={form.amountPaid} onChange={(event) => setForm({ ...form, amountPaid: event.target.value })} />
                 </RiceField>
-                <RiceField label="Reference">
+                <RiceField label={t("common.reference")}>
                   <input className={inputClass} value={form.paymentReference} onChange={(event) => setForm({ ...form, paymentReference: event.target.value })} />
                 </RiceField>
               </>
             ) : null}
           </div>
-          <p className="mt-2 text-[12.5px] text-slate-500">Available: {formatKg(selected?.qtyKg ?? 0)}</p>
+          <p className="mt-2 text-[12.5px] text-slate-500">{t("rice.sales.available", { qty: formatKg(selected?.qtyKg ?? 0, locale) })}</p>
           <div className="mt-4">
             <SchoolWorkflowButton
               className={primaryButton}
               busy={busy}
-              idleLabel="Post sale"
-              busyLabel="Posting…"
+              idleLabel={t("rice.sales.post")}
+              busyLabel={t("common.posting")}
               onClick={async () => {
                 setBusy(true);
                 setError(null);
@@ -161,25 +172,25 @@ export function RiceSalesPage({
       ) : null}
 
       <section className={glassPanel}>
-        <h2 className="text-[16px] font-semibold text-navy">Posted sales</h2>
+        <h2 className="text-[16px] font-semibold text-navy">{t("rice.sales.posted")}</h2>
         <div className={`${tableScrollClass} mt-4`}>
           <table className="min-w-full text-left text-[13.5px]">
             <thead className={tableHead}>
               <tr>
-                <th className="px-3 py-2">Date</th>
-                <th className="px-3 py-2">No.</th>
-                <th className="px-3 py-2">Buyer</th>
-                <th className="px-3 py-2">Items</th>
-                <th className="px-3 py-2">Total</th>
-                <th className="px-3 py-2">Balance</th>
-                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">{t("common.date")}</th>
+                <th className="px-3 py-2">{t("rice.purchases.no")}</th>
+                <th className="px-3 py-2">{t("rice.sales.buyer")}</th>
+                <th className="px-3 py-2">{t("rice.sales.items")}</th>
+                <th className="px-3 py-2">{t("common.total")}</th>
+                <th className="px-3 py-2">{t("common.balance")}</th>
+                <th className="px-3 py-2">{t("common.status")}</th>
               </tr>
             </thead>
             <tbody>
               {(workspace?.sales ?? []).length === 0 ? (
                 <tr>
                   <td className="px-3 py-6 text-slate-500" colSpan={7}>
-                    No sales in this period.
+                    {t("rice.sales.empty")}
                   </td>
                 </tr>
               ) : (
@@ -188,13 +199,14 @@ export function RiceSalesPage({
                     <td className="px-3 py-2.5">{row.occurredOn}</td>
                     <td className="px-3 py-2.5">{row.number}</td>
                     <td className="px-3 py-2.5">{row.partyName}</td>
-                    <td className="px-3 py-2.5">{row.lines.map((line) => `${line.itemName} ${formatKg(line.qtyKg)}`).join(", ")}</td>
+                    <td className="px-3 py-2.5">{row.lines.map((line) => `${line.itemName} ${formatKg(line.qtyKg, locale)}`).join(", ")}</td>
                     <td className="px-3 py-2.5">{formatTzs(row.total)}</td>
                     <td className="px-3 py-2.5">{formatTzs(row.balance)}</td>
                     <td className="px-3 py-2.5">
-                      <StatusPill value={row.balance <= 0 ? "Paid" : row.paid > 0 ? "Partial" : "Unpaid"} />
+                      <StatusPill value={statusLabel(row)} />
                       {row.balance > 0 && workspace?.caps.canSell ? (
                         <SalePay
+                          t={t}
                           onPay={async (amount) => {
                             const result = await recordRiceSalePaymentAction({ saleId: row.id, amount });
                             if (!result.ok) setError(result.error);
@@ -221,13 +233,13 @@ export function RiceSalesPage({
   );
 }
 
-function SalePay({ onPay }: { onPay: (amount: string) => Promise<void> }) {
+function SalePay({ t, onPay }: { t: Translator; onPay: (amount: string) => Promise<void> }) {
   const [amount, setAmount] = useState("");
   return (
     <span className="ml-2 inline-flex items-center gap-1">
-      <input className="h-8 w-24 rounded-full border border-[#dbe4ef] px-2 text-[12px]" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="Pay" />
+      <input className="h-8 w-24 rounded-full border border-[#dbe4ef] px-2 text-[12px]" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder={t("common.pay")} />
       <button type="button" className="text-[12px] font-semibold text-navy" onClick={() => void onPay(amount).then(() => setAmount(""))}>
-        Record
+        {t("common.record")}
       </button>
     </span>
   );

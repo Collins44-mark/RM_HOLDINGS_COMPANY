@@ -236,7 +236,7 @@ const swCore = {
   "nav./rice/stock": "Hisa",
   "nav./rice/milling": "Usagaji na Uzalishaji",
   "nav./rice/grading": "Upangaji daraja",
-  "nav./rice/customer-storage": "Uhifadhi wa Wateja",
+  "nav./rice/customer-storage": "Hifadhi ya Wateja",
   "nav./rice/sales": "Mauzo na Usambazaji",
   "nav./rice/payments": "Malipo",
   "nav./rice/finance": "Fedha",

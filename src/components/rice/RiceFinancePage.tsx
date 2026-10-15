@@ -10,7 +10,8 @@ import { formatTzs } from "@/lib/format/currency";
 import type { ReportPeriod } from "@/lib/data/report-period";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useT } from "@/components/i18n/LocaleProvider";
-import { RiceField, RiceNotice, RicePageHeader, RICE_METHODS, riceMethodKey, todayIso } from "@/components/rice/rice-ui";
+import { translateRiceCopy } from "@/lib/rice/error-copy";
+import { RiceField, RiceNotice, RicePageHeader, RICE_METHODS, riceExpenseKindKey, riceMethodKey, todayIso } from "@/components/rice/rice-ui";
 
 export function RiceFinancePage({
   initial,
@@ -43,7 +44,7 @@ export function RiceFinancePage({
         period={period}
         periodLabel={workspace?.periodLabel ?? ""}
       />
-      {error ? <RiceNotice>{error}</RiceNotice> : null}
+      {error ? <RiceNotice>{translateRiceCopy(t, error)}</RiceNotice> : null}
 
       <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Stat label={t("rice.finance.sales")} value={formatTzs(summary?.salesTotal ?? 0)} />
@@ -61,22 +62,22 @@ export function RiceFinancePage({
         <section className={glassPanel}>
           <h2 className="text-[16px] font-semibold text-navy">{t("rice.finance.recordExpense")}</h2>
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-            <RiceField label="Type">
+            <RiceField label={t("rice.finance.expenseType")}>
               <select className={inputClass} value={form.kind} onChange={(event) => setForm({ ...form, kind: event.target.value })}>
-                <option value="OPERATING">Operating</option>
-                <option value="UTILITIES">Utilities</option>
-                <option value="LABOUR">Labour</option>
-                <option value="MILLING">Milling</option>
-                <option value="OTHER">Other</option>
+                <option value="OPERATING">{t("rice.finance.expense.OPERATING")}</option>
+                <option value="UTILITIES">{t("rice.finance.expense.UTILITIES")}</option>
+                <option value="LABOUR">{t("rice.finance.expense.LABOUR")}</option>
+                <option value="MILLING">{t("rice.finance.expense.MILLING")}</option>
+                <option value="OTHER">{t("rice.finance.expense.OTHER")}</option>
               </select>
             </RiceField>
-            <RiceField label="Date">
+            <RiceField label={t("common.date")}>
               <input type="date" className={inputClass} value={form.occurredOn} onChange={(event) => setForm({ ...form, occurredOn: event.target.value })} />
             </RiceField>
-            <RiceField label="Amount">
+            <RiceField label={t("common.amount")}>
               <input className={inputClass} value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} />
             </RiceField>
-            <RiceField label="Payment method">
+            <RiceField label={t("rice.purchases.method")}>
               <select className={inputClass} value={form.paymentMethod} onChange={(event) => setForm({ ...form, paymentMethod: event.target.value })}>
                 {RICE_METHODS.filter((row) => row.value !== "CREDIT").map((row) => (
                   <option key={row.value} value={row.value}>
@@ -85,10 +86,10 @@ export function RiceFinancePage({
                 ))}
               </select>
             </RiceField>
-            <RiceField label="Reference">
+            <RiceField label={t("common.reference")}>
               <input className={inputClass} value={form.paymentReference} onChange={(event) => setForm({ ...form, paymentReference: event.target.value })} />
             </RiceField>
-            <RiceField label="Notes">
+            <RiceField label={t("common.notes")}>
               <input className={inputClass} value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
             </RiceField>
           </div>
@@ -97,7 +98,7 @@ export function RiceFinancePage({
               className={primaryButton}
               busy={busy}
               idleLabel={t("rice.finance.postExpense")}
-              busyLabel="Posting…"
+              busyLabel={t("common.posting")}
               onClick={async () => {
                 setBusy(true);
                 setError(null);
@@ -126,11 +127,11 @@ export function RiceFinancePage({
           <table className="min-w-full text-left text-[13.5px]">
             <thead className={tableHead}>
               <tr>
-                <th className="px-3 py-2">Date</th>
-                <th className="px-3 py-2">No.</th>
-                <th className="px-3 py-2">Type</th>
-                <th className="px-3 py-2">Amount</th>
-                <th className="px-3 py-2">Notes</th>
+                <th className="px-3 py-2">{t("common.date")}</th>
+                <th className="px-3 py-2">{t("rice.purchases.no")}</th>
+                <th className="px-3 py-2">{t("common.type")}</th>
+                <th className="px-3 py-2">{t("common.amount")}</th>
+                <th className="px-3 py-2">{t("common.notes")}</th>
               </tr>
             </thead>
             <tbody>
@@ -145,7 +146,7 @@ export function RiceFinancePage({
                   <tr key={row.id} className="border-t border-navy/5 text-navy">
                     <td className="px-3 py-2.5">{row.occurredOn}</td>
                     <td className="px-3 py-2.5">{row.number}</td>
-                    <td className="px-3 py-2.5">{row.kind}</td>
+                    <td className="px-3 py-2.5">{t(riceExpenseKindKey(row.kind))}</td>
                     <td className="px-3 py-2.5">{formatTzs(row.amount)}</td>
                     <td className="px-3 py-2.5 text-slate-500">{row.notes ?? "—"}</td>
                   </tr>

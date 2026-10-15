@@ -9,6 +9,8 @@ import { glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } fr
 import { formatTzs } from "@/lib/format/currency";
 import type { ReportPeriod } from "@/lib/data/report-period";
 import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useLocale, useT } from "@/components/i18n/LocaleProvider";
+import { translateRiceCopy } from "@/lib/rice/error-copy";
 import { formatKg, RiceField, RiceNotice, RicePageHeader, todayIso } from "@/components/rice/rice-ui";
 
 export function RiceMillingPage({
@@ -18,6 +20,8 @@ export function RiceMillingPage({
   initial: { ok: true; workspace: RiceMillingWorkspace } | { ok: false; error: string };
   period: ReportPeriod;
 }) {
+  const t = useT();
+  const { locale } = useLocale();
   const [workspace, setWorkspace] = useState(initial.ok ? initial.workspace : null);
   const [error, setError] = useState(initial.ok ? null : initial.error);
   const [busy, setBusy] = useState(false);
@@ -68,38 +72,38 @@ export function RiceMillingPage({
     <div className="space-y-5 pb-10">
       <RicePageHeader
         icon={Factory}
-        title="Milling & Production"
-        subtitle="Enter actual output quantities. Conversion ratios are not assumed."
+        title={t("rice.milling.title")}
+        subtitle={t("rice.milling.subtitle")}
         period={period}
         periodLabel={workspace?.periodLabel ?? ""}
       />
-      {error ? <RiceNotice>{error}</RiceNotice> : null}
+      {error ? <RiceNotice>{translateRiceCopy(t, error)}</RiceNotice> : null}
 
       {workspace?.caps.canMill ? (
         <section className={glassPanel}>
-          <h2 className="text-[16px] font-semibold text-navy">Post milling batch</h2>
-          <p className="mt-1 text-[13px] text-slate-500">Company paddy available: {formatKg(available)}</p>
+          <h2 className="text-[16px] font-semibold text-navy">{t("rice.milling.post")}</h2>
+          <p className="mt-1 text-[13px] text-slate-500">{t("rice.milling.available", { qty: formatKg(available, locale) })}</p>
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-            <RiceField label="Production date">
+            <RiceField label={t("rice.milling.productionDate")}>
               <input type="date" className={inputClass} value={form.producedOn} onChange={(event) => setForm({ ...form, producedOn: event.target.value })} />
             </RiceField>
-            <RiceField label="Paddy input (kg)">
+            <RiceField label={t("rice.milling.paddyInput")}>
               <input className={inputClass} inputMode="decimal" value={form.inputQtyKg} onChange={(event) => setForm({ ...form, inputQtyKg: event.target.value })} />
             </RiceField>
-            <RiceField label="Machine">
+            <RiceField label={t("rice.milling.machine")}>
               <input className={inputClass} value={form.machine} onChange={(event) => setForm({ ...form, machine: event.target.value })} />
             </RiceField>
-            <RiceField label="Shift">
+            <RiceField label={t("rice.milling.shift")}>
               <input className={inputClass} value={form.shift} onChange={(event) => setForm({ ...form, shift: event.target.value })} />
             </RiceField>
-            <RiceField label="Wastage (kg)">
+            <RiceField label={t("rice.milling.wastage")}>
               <input className={inputClass} inputMode="decimal" value={form.wastageKg} onChange={(event) => setForm({ ...form, wastageKg: event.target.value })} />
             </RiceField>
-            <RiceField label="Processing cost">
+            <RiceField label={t("rice.milling.processingCost")}>
               <input className={inputClass} inputMode="decimal" value={form.processingCost} onChange={(event) => setForm({ ...form, processingCost: event.target.value })} />
             </RiceField>
             {outputs.map((row) => (
-              <RiceField key={row.id} label={`${row.name} output (kg)`}>
+              <RiceField key={row.id} label={t("rice.milling.outputKg", { name: row.name })}>
                 <input
                   className={inputClass}
                   inputMode="decimal"
@@ -108,35 +112,35 @@ export function RiceMillingPage({
                 />
               </RiceField>
             ))}
-            <RiceField label="Notes">
+            <RiceField label={t("common.notes")}>
               <input className={inputClass} value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
             </RiceField>
           </div>
           <div className="mt-4">
-            <SchoolWorkflowButton className={primaryButton} busy={busy} idleLabel="Post batch" busyLabel="Posting…" onClick={() => void save()} />
+            <SchoolWorkflowButton className={primaryButton} busy={busy} idleLabel={t("rice.milling.postBatch")} busyLabel={t("common.posting")} onClick={() => void save()} />
           </div>
         </section>
       ) : null}
 
       <section className={glassPanel}>
-        <h2 className="text-[16px] font-semibold text-navy">Posted batches</h2>
+        <h2 className="text-[16px] font-semibold text-navy">{t("rice.milling.posted")}</h2>
         <div className={`${tableScrollClass} mt-4`}>
           <table className="min-w-full text-left text-[13.5px]">
             <thead className={tableHead}>
               <tr>
-                <th className="px-3 py-2">Date</th>
-                <th className="px-3 py-2">Batch</th>
-                <th className="px-3 py-2">Input</th>
-                <th className="px-3 py-2">Outputs</th>
-                <th className="px-3 py-2">Wastage</th>
-                <th className="px-3 py-2">Cost</th>
+                <th className="px-3 py-2">{t("common.date")}</th>
+                <th className="px-3 py-2">{t("rice.milling.batch")}</th>
+                <th className="px-3 py-2">{t("rice.milling.input")}</th>
+                <th className="px-3 py-2">{t("rice.milling.outputs")}</th>
+                <th className="px-3 py-2">{t("rice.milling.wastage")}</th>
+                <th className="px-3 py-2">{t("rice.milling.cost")}</th>
               </tr>
             </thead>
             <tbody>
               {(workspace?.batches ?? []).length === 0 ? (
                 <tr>
                   <td className="px-3 py-6 text-slate-500" colSpan={6}>
-                    No milling batches in this period.
+                    {t("rice.milling.empty")}
                   </td>
                 </tr>
               ) : (
@@ -144,9 +148,9 @@ export function RiceMillingPage({
                   <tr key={row.id} className="border-t border-navy/5 text-navy">
                     <td className="px-3 py-2.5">{row.producedOn}</td>
                     <td className="px-3 py-2.5">{row.number}</td>
-                    <td className="px-3 py-2.5">{formatKg(row.inputQtyKg)}</td>
-                    <td className="px-3 py-2.5">{row.outputs.map((item) => `${item.itemName} ${formatKg(item.qtyKg)}`).join(", ") || "—"}</td>
-                    <td className="px-3 py-2.5">{formatKg(row.wastageKg)}</td>
+                    <td className="px-3 py-2.5">{formatKg(row.inputQtyKg, locale)}</td>
+                    <td className="px-3 py-2.5">{row.outputs.map((item) => `${item.itemName} ${formatKg(item.qtyKg, locale)}`).join(", ") || "—"}</td>
+                    <td className="px-3 py-2.5">{formatKg(row.wastageKg, locale)}</td>
                     <td className="px-3 py-2.5">{formatTzs(row.processingCost)}</td>
                   </tr>
                 ))

@@ -10,7 +10,8 @@ import { glassCard, glassPanel, inputClass, primaryButton, tableHead, tableScrol
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useT } from "@/components/i18n/LocaleProvider";
 import type { MessageKey } from "@/lib/i18n";
-import { formatKg, RiceField, RiceNotice, RicePageHeader, todayIso } from "@/components/rice/rice-ui";
+import { translateRiceCopy } from "@/lib/rice/error-copy";
+import { formatKg, RiceField, RiceNotice, RicePageHeader, riceWarehouseSourceKey, todayIso } from "@/components/rice/rice-ui";
 import { RICE_WAREHOUSE_KIND_ORDER, riceWarehouseKindSlug } from "@/lib/rice/warehouse-kind";
 
 export function RiceWarehousePage({
@@ -56,7 +57,7 @@ export function RiceWarehousePage({
   return (
     <div className="space-y-5 pb-10">
       <RicePageHeader icon={Warehouse} title={t("rice.warehouse.title")} subtitle={t("rice.warehouse.subtitle")} />
-      {error ? <RiceNotice>{error}</RiceNotice> : null}
+      {error ? <RiceNotice>{translateRiceCopy(t, error)}</RiceNotice> : null}
 
       <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
         {RICE_WAREHOUSE_KIND_ORDER.map((kind) => {
@@ -81,7 +82,7 @@ export function RiceWarehousePage({
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
             <RiceField label={t("common.item")}>
               <select className={inputClass} value={form.itemId} onChange={(event) => setForm({ ...form, itemId: event.target.value })}>
-                <option value="">Select item</option>
+                <option value="">{t("common.selectItem")}</option>
                 {items.map((row) => (
                   <option key={row.id} value={row.id}>
                     {row.name}
@@ -130,7 +131,7 @@ export function RiceWarehousePage({
                   <tr key={row.id} className="border-t border-navy/5 text-navy">
                     <td className="px-3 py-2.5">{row.occurredOn}</td>
                     <td className="px-3 py-2.5">{row.itemName}</td>
-                    <td className="px-3 py-2.5">{row.sourceType.replaceAll("_", " ")}</td>
+                    <td className="px-3 py-2.5">{t(riceWarehouseSourceKey(row.sourceType))}</td>
                     <td className="px-3 py-2.5">{formatKg(row.qtyKg)}</td>
                     <td className="px-3 py-2.5 text-slate-500">{row.notes ?? "—"}</td>
                   </tr>

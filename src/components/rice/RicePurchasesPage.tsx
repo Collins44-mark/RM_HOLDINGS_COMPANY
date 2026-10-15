@@ -10,6 +10,7 @@ import { formatTzs } from "@/lib/format/currency";
 import type { ReportPeriod } from "@/lib/data/report-period";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useT } from "@/components/i18n/LocaleProvider";
+import { translateRiceCopy } from "@/lib/rice/error-copy";
 import { formatKg, RiceField, RiceNotice, RicePageHeader, RICE_METHODS, riceMethodKey, todayIso } from "@/components/rice/rice-ui";
 import { StatusPill } from "@/components/supermarket/purchasing-ui";
 
@@ -88,7 +89,7 @@ export function RicePurchasesPage({
         period={period}
         periodLabel={workspace?.periodLabel ?? ""}
       />
-      {error ? <RiceNotice>{error}</RiceNotice> : null}
+      {error ? <RiceNotice>{translateRiceCopy(t, error)}</RiceNotice> : null}
 
       {canCreate ? (
         <section className={glassPanel}>
@@ -231,11 +232,12 @@ export function RicePurchasesPage({
 }
 
 function PayButton({ onPay }: { onPay: (amount: string) => Promise<void> }) {
+  const t = useT();
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
   return (
     <span className="ml-2 inline-flex items-center gap-1">
-      <input className="h-8 w-24 rounded-full border border-[#dbe4ef] px-2 text-[12px]" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="Pay" />
+      <input className="h-8 w-24 rounded-full border border-[#dbe4ef] px-2 text-[12px]" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder={t("common.pay")} />
       <button
         type="button"
         className="text-[12px] font-semibold text-navy"
@@ -247,7 +249,7 @@ function PayButton({ onPay }: { onPay: (amount: string) => Promise<void> }) {
           setAmount("");
         }}
       >
-        Record
+        {t("common.record")}
       </button>
     </span>
   );
