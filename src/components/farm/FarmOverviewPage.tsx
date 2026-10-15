@@ -40,13 +40,11 @@ function metricText(metric: FarmMetric<number>, kind: "count" | "money") {
 function KpiCard({
   label,
   value,
-  hint,
   icon,
   tone,
 }: {
   label: string;
   value: string;
-  hint?: string;
   icon: LucideIcon;
   tone: string;
 }) {
@@ -55,7 +53,6 @@ function KpiCard({
       <IconWell icon={icon} tone={tone} />
       <p className="mt-3 text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</p>
       <p className="mt-1.5 min-h-7 text-[22px] font-semibold tracking-[-0.04em] text-navy">{value}</p>
-      {hint ? <p className="mt-1 text-[12px] leading-4 text-slate-400">{hint}</p> : null}
     </article>
   );
 }
@@ -117,35 +114,30 @@ export function FarmOverviewPage({
         <KpiCard
           label={t("farm.kpi.tractors")}
           value={metricText(view?.tractorCount ?? { status: "unavailable", value: null, hint: "" }, "count")}
-          hint={view?.tractorCount.status === "ok" ? t("farm.kpi.tractorHint", { inUse: view.tractorInUse, rest: view.tractorAvailable }) : translateFarmCopy(t, view?.tractorCount.hint)}
           icon={Tractor}
           tone="bg-sky-50 text-sky-700"
         />
         <KpiCard
           label={t("farm.kpi.completed")}
           value={metricText(view?.completedJobs ?? { status: "unavailable", value: null, hint: "" }, "count")}
-          hint={t("farm.kpi.forPeriod")}
           icon={CheckCircle2}
           tone="bg-emerald-50 text-emerald-700"
         />
         <KpiCard
           label={t("farm.kpi.customers")}
           value={metricText(view?.customersServed ?? { status: "unavailable", value: null, hint: "" }, "count")}
-          hint={periodLabel}
           icon={Users}
           tone="bg-orange-50 text-orange-700"
         />
         <KpiCard
           label={t("farm.kpi.income")}
           value={metricText(view?.serviceIncome ?? { status: "unavailable", value: null, hint: "" }, "money")}
-          hint={periodLabel}
           icon={CircleDollarSign}
           tone="bg-violet-50 text-violet-700"
         />
         <KpiCard
           label={t("farm.kpi.spend")}
           value={metricText(view?.tractorSpend ?? { status: "unavailable", value: null, hint: "" }, "money")}
-          hint={periodLabel}
           icon={Wrench}
           tone="bg-rose-50 text-rose-700"
         />
