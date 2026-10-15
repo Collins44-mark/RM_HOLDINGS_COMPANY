@@ -119,6 +119,12 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "jobs", actions: ["view", "create", "edit"] },
       { resource: "fuel", actions: ["view", "create"] },
       { resource: "maintenance", actions: ["view", "create"] },
+      { resource: "finance", actions: ["view"] },
+      { resource: "expenses", actions: ["view", "create"] },
+      { resource: "reports", actions: ["view"] },
+      { resource: "settings", actions: ["view", "manage"] },
+      { resource: "customers", actions: [...CRUD] },
+      { resource: "staff", actions: [...CRUD] },
     ]).map((code) => ({ module: "farm", code, name: titleize(code) })),
     ...expand("supermarket", [
       { resource: "products", actions: [...CRUD] },

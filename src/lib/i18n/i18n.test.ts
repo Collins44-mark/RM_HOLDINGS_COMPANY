@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { extraEn, extraSw } from "./extra";
-import { dictionaries } from "./messages";
+import { dictionaries, type MessageKey } from "./messages";
 
 function createTranslator(locale: "en" | "sw") {
   const table = dictionaries[locale];
-  return (key: keyof typeof extraEn | `nav./rice/customer-storage`, vars?: Record<string, string>) => {
+  return (key: MessageKey, vars?: Record<string, string>) => {
     let text = table[key] ?? dictionaries.en[key] ?? String(key);
     if (vars) {
       for (const [name, value] of Object.entries(vars)) {
@@ -70,4 +70,16 @@ test("nav Customer Storage matches the page title in Kiswahili", () => {
 test("core dictionaries cover every English key in Kiswahili", () => {
   const missing = Object.keys(dictionaries.en).filter((key) => !(key in dictionaries.sw));
   assert.deepEqual(missing, []);
+});
+
+test("Farm Overview glossary is Kiswahili when sw is selected", () => {
+  const t = createTranslator("sw");
+  assert.equal(t("farm.kpi.tractors"), "Matrekta yote");
+  assert.equal(t("farm.kpi.completed"), "Kazi zilizokamilika");
+  assert.equal(t("farm.kpi.customers"), "Wateja waliopatiwa huduma");
+  assert.equal(t("farm.kpi.income"), "Mapato ya huduma");
+  assert.equal(t("farm.kpi.spend"), "Matumizi ya matrekta");
+  assert.equal(t("farm.overview.viewAll"), "Tazama yote");
+  assert.equal(t("farm.kpi.tractorHint", { inUse: "2", rest: "1" }), "2 kazini · 1 mapumziko");
+  assert.equal(t("nav./farm/jobs"), "Huduma za Kulimia");
 });

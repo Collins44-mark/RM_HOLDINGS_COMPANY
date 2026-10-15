@@ -15,7 +15,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const FINANCE_DETAIL_HREF: Record<string, string> = {
   rice: "/rice/sales",
-  farm: "/farm/reports",
+  farm: "/farm/finance",
   supermarket: "/supermarket/sales",
   property: "/property/invoices",
   livestock: "/livestock/sales",
@@ -136,9 +136,18 @@ type PeriodPoints = {
   expenses: ExpensePoint[];
   schoolCollections: SalePoint[];
   schoolExpenses: ExpensePoint[];
+  farmCollections: SalePoint[];
+  farmExpenses: ExpensePoint[];
 };
 
-const EMPTY_POINTS: PeriodPoints = { sales: [], expenses: [], schoolCollections: [], schoolExpenses: [] };
+const EMPTY_POINTS: PeriodPoints = {
+  sales: [],
+  expenses: [],
+  schoolCollections: [],
+  schoolExpenses: [],
+  farmCollections: [],
+  farmExpenses: [],
+};
 
 export type SchoolPeriodLedger = {
   revenue: number;
@@ -148,6 +157,8 @@ export type SchoolPeriodLedger = {
 };
 
 const EMPTY_SCHOOL: SchoolPeriodLedger = { revenue: 0, expenses: 0, netProfit: 0, collectionCount: 0 };
+export type FarmPeriodLedger = SchoolPeriodLedger;
+const EMPTY_FARM: FarmPeriodLedger = { revenue: 0, expenses: 0, netProfit: 0, collectionCount: 0 };
 
 function formatLocalDate(date: Date) {
   const y = date.getFullYear();
@@ -244,8 +255,19 @@ function schoolLedgerFromPoints(points: PeriodPoints): SchoolPeriodLedger {
 
 function combinedPoints(points: PeriodPoints): { sales: SalePoint[]; expenses: ExpensePoint[] } {
   return {
-    sales: [...points.sales, ...points.schoolCollections],
-    expenses: [...points.expenses, ...points.schoolExpenses],
+    sales: [...points.sales, ...points.schoolCollections, ...points.farmCollections],
+    expenses: [...points.expenses, ...points.schoolExpenses, ...points.farmExpenses],
+  };
+}
+
+function farmLedgerFromPoints(points: PeriodPoints): FarmPeriodLedger {
+  const revenue = points.farmCollections.reduce((sum, row) => sum + row.total, 0);
+  const expenses = points.farmExpenses.reduce((sum, row) => sum + row.amount, 0);
+  return {
+    revenue,
+    expenses,
+    netProfit: revenue - expenses,
+    collectionCount: points.farmCollections.length,
   };
 }
 
@@ -319,9 +341,10 @@ function buildTrendRows(
 function buildCategoryRows(points: PeriodPoints): FinanceCategoryRow[] {
   const revenue = points.sales.reduce((sum, row) => sum + row.total, 0);
   const schoolRevenue = points.schoolCollections.reduce((sum, row) => sum + row.total, 0);
+  const farmRevenue = points.farmCollections.reduce((sum, row) => sum + row.total, 0);
   const cogs = points.sales.reduce((sum, row) => sum + row.cogs, 0);
   const expenseGroups = new Map<string, number>();
-  for (const expense of [...points.expenses, ...points.schoolExpenses]) {
+  for (const expense of [...points.expenses, ...points.schoolExpenses, ...points.farmExpenses]) {
     const name = expense.category.trim() || "Uncategorized";
     expenseGroups.set(name, (expenseGroups.get(name) ?? 0) + expense.amount);
   }
@@ -330,6 +353,9 @@ function buildCategoryRows(points: PeriodPoints): FinanceCategoryRow[] {
     { category: "Sales", type: "Revenue", amount: revenue, share: 0 },
     ...(schoolRevenue > 0
       ? [{ category: "School fees", type: "Revenue" as const, amount: schoolRevenue, share: 0 }]
+      : []),
+    ...(farmRevenue > 0
+      ? [{ category: "Farm services", type: "Revenue" as const, amount: farmRevenue, share: 0 }]
       : []),
     { category: "COGS", type: "Cost", amount: cogs, share: 0 },
     ...[...expenseGroups.entries()]
@@ -443,6 +469,8 @@ async function loadSupermarketPeriodPoints(from: Date, to: Date): Promise<Period
       })),
       schoolCollections: [],
       schoolExpenses: [],
+      farmCollections: [],
+      farmExpenses: [],
     };
   } catch (error) {
     console.error(
@@ -571,15 +599,65 @@ async function loadSchoolPeriodSlice(from: Date, to: Date): Promise<Pick<PeriodP
   }
 }
 
+async function loadFarmPeriodSlice(from: Date, to: Date): Promise<Pick<PeriodPoints, "farmCollections" | "farmExpenses">> {
+  const empty = { farmCollections: [] as SalePoint[], farmExpenses: [] as ExpensePoint[] };
+  try {
+    const supabase = await createSupabaseServerClient();
+    if (!supabase) return empty;
+    const { data: bu } = await supabase.from("business_units").select("id").eq("code", "farm").maybeSingle();
+    if (!bu?.id) return empty;
+    const fromDate = formatLocalDate(from);
+    const toDate = formatLocalDate(to);
+    const [jobsRes, expensesRes] = await Promise.all([
+      supabase
+        .from("farm_jobs")
+        .select("occurred_on, completed_on, agreed_price, status, is_active")
+        .eq("business_unit_id", bu.id)
+        .eq("is_active", true)
+        .eq("status", "COMPLETED"),
+      supabase
+        .from("farm_expenses")
+        .select("occurred_on, amount, kind, is_active")
+        .eq("business_unit_id", bu.id)
+        .eq("is_active", true)
+        .gte("occurred_on", fromDate)
+        .lte("occurred_on", toDate),
+    ]);
+    if (jobsRes.error || expensesRes.error) return empty;
+    return {
+      farmCollections: (jobsRes.data ?? [])
+        .filter((row) => {
+          const day = dayKey(String(row.completed_on || row.occurred_on || ""));
+          return day >= fromDate && day <= toDate;
+        })
+        .map((row) => ({
+          saleDate: dayKey(String(row.completed_on || row.occurred_on || "")),
+          total: Number(row.agreed_price || 0),
+          cogs: 0,
+        })),
+      farmExpenses: (expensesRes.data ?? []).map((row) => ({
+        expenseDate: dayKey(String(row.occurred_on ?? "")),
+        amount: Number(row.amount || 0),
+        category: String(row.kind ?? "Farm"),
+      })),
+    };
+  } catch {
+    return empty;
+  }
+}
+
 async function loadConsolidatedPeriodPoints(from: Date, to: Date): Promise<PeriodPoints> {
-  const [supermarket, school] = await Promise.all([
+  const [supermarket, school, farm] = await Promise.all([
     loadSupermarketPeriodPoints(from, to),
     loadSchoolPeriodSlice(from, to),
+    loadFarmPeriodSlice(from, to),
   ]);
   return {
     ...supermarket,
     schoolCollections: school.schoolCollections,
     schoolExpenses: school.schoolExpenses,
+    farmCollections: farm.farmCollections,
+    farmExpenses: farm.farmExpenses,
   };
 }
 
@@ -589,9 +667,19 @@ function buildUnitRow(
   previousSupermarket: SupermarketPeriodLedger,
   school: SchoolPeriodLedger,
   previousSchool: SchoolPeriodLedger,
+  farm: FarmPeriodLedger = EMPTY_FARM,
+  previousFarm: FarmPeriodLedger = EMPTY_FARM,
 ): UnitFinanceRow {
-  const current = unit.code === "supermarket" ? supermarket : unit.code === "school" ? school : EMPTY_SCHOOL;
-  const previous = unit.code === "supermarket" ? previousSupermarket : unit.code === "school" ? previousSchool : EMPTY_SCHOOL;
+  const current =
+    unit.code === "supermarket" ? supermarket : unit.code === "school" ? school : unit.code === "farm" ? farm : EMPTY_SCHOOL;
+  const previous =
+    unit.code === "supermarket"
+      ? previousSupermarket
+      : unit.code === "school"
+        ? previousSchool
+        : unit.code === "farm"
+          ? previousFarm
+          : EMPTY_SCHOOL;
   const revenue = current.revenue;
   const expenses = current.expenses;
   const operatingPosition = "netProfit" in current ? current.netProfit : 0;
@@ -635,10 +723,12 @@ async function consolidateLedgers(
   const previousLedger = ledgerFromPoints(previousPoints);
   const currentSchool = schoolLedgerFromPoints(currentPoints);
   const previousSchool = schoolLedgerFromPoints(previousPoints);
+  const currentFarm = farmLedgerFromPoints(currentPoints);
+  const previousFarm = farmLedgerFromPoints(previousPoints);
   const trendSource = combinedPoints(currentPoints);
 
   const rows: UnitFinanceRow[] = units.map((unit) =>
-    buildUnitRow(unit, currentLedger, previousLedger, currentSchool, previousSchool),
+    buildUnitRow(unit, currentLedger, previousLedger, currentSchool, previousSchool, currentFarm, previousFarm),
   );
 
   const totals = snapshot(
@@ -648,9 +738,9 @@ async function consolidateLedgers(
   );
 
   const previousTotals = snapshot(
-    previousLedger.revenue + previousSchool.revenue,
-    previousLedger.expenses + previousSchool.expenses,
-    previousLedger.netProfit + previousSchool.netProfit,
+    previousLedger.revenue + previousSchool.revenue + previousFarm.revenue,
+    previousLedger.expenses + previousSchool.expenses + previousFarm.expenses,
+    previousLedger.netProfit + previousSchool.netProfit + previousFarm.netProfit,
   );
 
   const comparison: FinanceDelta = {

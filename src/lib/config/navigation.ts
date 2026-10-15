@@ -103,15 +103,17 @@ export const RICE_NAV: NavItem[] = [
 ];
 
 export const FARM_NAV: NavItem[] = [
-  { href: "/farm", label: "Farm Dashboard", icon: "dashboard", exact: true },
-  { href: "/farm/plots", label: "Plots", icon: "map" },
-  { href: "/farm/seasons", label: "Seasons", icon: "flower" },
-  { href: "/farm/operations", label: "Operations", icon: "clipboard" },
-  { href: "/farm/harvests", label: "Harvests", icon: "wheat" },
-  { href: "/farm/tractors", label: "Tractors", icon: "tractor" },
-  { href: "/farm/jobs", label: "Tractor Jobs", icon: "wrench" },
-  { href: "/farm/fuel", label: "Fuel", icon: "fuel" },
+  { href: "/farm", label: "Overview", icon: "dashboard", exact: true },
+  { href: "/farm/tractors", label: "Tractors & Equipment", icon: "tractor" },
+  { href: "/farm/jobs", label: "Farm Services", icon: "wrench" },
+  { href: "/farm/operations", label: "Company Farm", icon: "wheat" },
+  { href: "/farm/fuel", label: "Fuel & Maintenance", icon: "fuel" },
+  { href: "/farm/finance", label: "Finance", icon: "finance" },
   { href: "/farm/reports", label: "Reports", icon: "reports" },
+  { href: "/farm/customers", label: "Customers", icon: "user" },
+  { href: "/farm/suppliers", label: "Suppliers", icon: "users-round" },
+  { href: "/farm/staff", label: "Employees", icon: "users" },
+  { href: "/farm/settings", label: "Settings", icon: "settings" },
 ];
 
 export const SUPERMARKET_NAV: NavItem[] = [

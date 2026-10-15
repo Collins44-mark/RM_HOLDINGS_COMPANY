@@ -133,6 +133,16 @@ const ROUTE_PERMISSION_RULES: RoutePermissionRule[] = [
   },
   { prefix: "/rice/reports", any: ["rice.reports.view", "rice.sales.view", "rice.purchases.view", "rice.finance.view"] },
   { prefix: "/rice/settings", any: ["rice.settings.view", "rice.settings.manage"] },
+  { prefix: "/farm/tractors", any: ["farm.tractors.view", "farm.tractors.create", "farm.jobs.view"] },
+  { prefix: "/farm/jobs", any: ["farm.jobs.view", "farm.jobs.create"] },
+  { prefix: "/farm/fuel", any: ["farm.fuel.view", "farm.maintenance.view", "farm.tractors.view"] },
+  { prefix: "/farm/operations", any: ["farm.operations.view", "farm.plots.view", "farm.harvests.view"] },
+  { prefix: "/farm/finance", any: ["farm.finance.view", "farm.jobs.view", "farm.expenses.view"] },
+  { prefix: "/farm/reports", any: ["farm.reports.view", "farm.jobs.view", "farm.finance.view"] },
+  { prefix: "/farm/customers", any: ["farm.customers.view", "farm.jobs.view"] },
+  { prefix: "/farm/suppliers", any: ["farm.customers.view", "farm.jobs.view"] },
+  { prefix: "/farm/staff", any: ["farm.staff.view", "farm.jobs.view"] },
+  { prefix: "/farm/settings", any: ["farm.settings.view", "farm.settings.manage"] },
 ];
 
 const SORTED_RULES = [...ROUTE_PERMISSION_RULES].sort((a, b) => b.prefix.length - a.prefix.length);
