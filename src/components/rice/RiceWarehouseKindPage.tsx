@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Warehouse } from "lucide-react";
 import {
@@ -16,6 +16,7 @@ import { glassCard, glassPanel, secondaryButton, tableHead, tableScrollClass } f
 import { translateRiceCopy } from "@/lib/rice/error-copy";
 import { formatKg, RiceNotice, RicePageHeader } from "@/components/rice/rice-ui";
 import type { RiceWarehouseKindSlug } from "@/lib/rice/warehouse-kind";
+import { loadWorkspaceWithCache, writeOfflineSnapshot } from "@/lib/offline";
 
 function sourceKey(type: string): MessageKey {
   if (type === "PURCHASE") return "rice.warehouse.source.purchase";
@@ -39,9 +40,19 @@ export function RiceWarehouseKindPage({
   const [workspace, setWorkspace] = useState(initial.ok ? initial.workspace : null);
   const [error, setError] = useState(initial.ok ? null : initial.error);
 
+  useEffect(() => {
+    if (workspace) {
+      void writeOfflineSnapshot({ kind: `rice.warehouse.${slug}`, businessUnitCode: "rice", payload: workspace });
+    }
+  }, [workspace, slug]);
+
   async function reload(page = workspace?.listPage.page ?? 1, pageSize = workspace?.listPage.pageSize ?? 10) {
     const id = ++requestId.current;
-    const next = await loadRiceWarehouseKindWorkspaceAction({ kind: slug, page, pageSize });
+    const next = await loadWorkspaceWithCache({
+      kind: `rice.warehouse.${slug}`,
+      businessUnitCode: "rice",
+      load: () => loadRiceWarehouseKindWorkspaceAction({ kind: slug, page, pageSize }),
+    });
     if (id !== requestId.current) return;
     if (next.ok) {
       setWorkspace(next.workspace);

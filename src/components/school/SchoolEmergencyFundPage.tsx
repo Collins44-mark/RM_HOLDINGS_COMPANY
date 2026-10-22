@@ -10,6 +10,7 @@ import {
 } from "@/actions/school/expenses";
 import { SchoolField, SchoolWorkflowButton } from "@/components/school/school-ui";
 import { cn } from "@/lib/cn";
+import { saveWithOutbox } from "@/lib/offline";
 import { formatTzs } from "@/lib/format/currency";
 import {
   downloadEmergencyFundReportCsv,
@@ -124,24 +125,28 @@ export function SchoolEmergencyFundPage({
     }
     setFormBusy(true);
     setFormError(null);
-    void creditSchoolEmergencyFundAction({
-      kind: fund.hasOpening ? "REPLENISH" : "OPENING",
+    const payload = {
+      kind: fund.hasOpening ? ("REPLENISH" as const) : ("OPENING" as const),
       amount: value,
       occurredOn,
       reference,
       notes,
       requestId,
-    }).then((result) => {
+    };
+    void saveWithOutbox(
+      { id: requestId, type: "school.record_emergency_fund", businessUnitCode: "school", payload },
+      () => creditSchoolEmergencyFundAction(payload),
+    ).then((saved) => {
       setFormBusy(false);
-      if (!result.ok) {
-        setFormError(result.error);
+      if (saved.error) {
+        setFormError(saved.error);
         return;
       }
       setAmount("");
       setReference("");
       setNotes("");
       setRequestId(newRequestId());
-      load();
+      if (!saved.queued) load();
     });
   }
 

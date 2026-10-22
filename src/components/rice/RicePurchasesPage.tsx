@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Wheat } from "lucide-react";
 import { loadRicePurchasesWorkspaceAction, type RicePurchasesWorkspace } from "@/actions/rice/workspace";
 import { recordRicePurchaseAction, recordRicePurchasePaymentAction } from "@/actions/rice/posting";
+import { isLikelyOffline, loadWorkspaceWithCache, saveWithOutbox, writeOfflineSnapshot } from "@/lib/offline";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { formatTzs } from "@/lib/format/currency";
@@ -42,9 +43,19 @@ export function RicePurchasesPage({
     notes: "",
   });
 
+  useEffect(() => {
+    if (workspace) {
+      void writeOfflineSnapshot({ kind: "rice.purchases", businessUnitCode: "rice", payload: workspace });
+    }
+  }, [workspace]);
+
   async function refresh(page = workspace?.listPage.page ?? 1, pageSize = workspace?.listPage.pageSize ?? 10) {
     const id = ++requestId.current;
-    const result = await loadRicePurchasesWorkspaceAction({ period, page, pageSize });
+    const result = await loadWorkspaceWithCache({
+      kind: "rice.purchases",
+      businessUnitCode: "rice",
+      load: () => loadRicePurchasesWorkspaceAction({ period, page, pageSize }),
+    });
     if (id !== requestId.current) return;
     if (result.ok) setWorkspace(result.workspace);
     else setError(result.error);
@@ -53,8 +64,9 @@ export function RicePurchasesPage({
   async function save() {
     setBusy(true);
     setError(null);
-    const result = await recordRicePurchaseAction({
-      requestId: crypto.randomUUID(),
+    const requestId = crypto.randomUUID();
+    const payload = {
+      requestId,
       itemId: form.itemId || paddyItems[0]?.id || "",
       partyId: form.partyId || undefined,
       partyName: form.partyName,
@@ -67,14 +79,18 @@ export function RicePurchasesPage({
       paymentMethod: form.paymentMethod,
       paymentReference: form.paymentReference,
       notes: form.notes,
-    });
+    };
+    const saved = await saveWithOutbox(
+      { id: requestId, type: "rice.record_purchase", businessUnitCode: "rice", payload },
+      () => recordRicePurchaseAction(payload),
+    );
     setBusy(false);
-    if (!result.ok) {
-      setError(result.error);
+    if (saved.error) {
+      setError(saved.error);
       return;
     }
     setForm((current) => ({ ...current, qtyKg: "", bags: "", amountPaid: "", paymentReference: "", notes: "" }));
-    await refresh();
+    if (!saved.queued) await refresh();
   }
 
   const canCreate = workspace?.caps.canPurchase;
@@ -206,6 +222,10 @@ export function RicePurchasesPage({
                       {row.balance > 0 && canCreate ? (
                         <PayButton
                           onPay={async (amount) => {
+                            if (isLikelyOffline()) {
+                              setError(t("offline.onlineOnly"));
+                              return;
+                            }
                             const result = await recordRicePurchasePaymentAction({ purchaseId: row.id, amount });
                             if (!result.ok) setError(result.error);
                             else await refresh();

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Factory } from "lucide-react";
 import { loadRiceMillingWorkspaceAction, type RiceMillingWorkspace } from "@/actions/rice/workspace";
 import { recordRiceMillBatchAction } from "@/actions/rice/posting";
+import { saveWithOutbox } from "@/lib/offline";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { formatTzs } from "@/lib/format/currency";
@@ -42,8 +43,9 @@ export function RiceMillingPage({
   async function save() {
     setBusy(true);
     setError(null);
-    const result = await recordRiceMillBatchAction({
-      requestId: crypto.randomUUID(),
+    const requestId = crypto.randomUUID();
+    const payload = {
+      requestId,
       inputItemId: form.inputItemId || paddy[0]?.id || "",
       producedOn: form.producedOn,
       machine: form.machine,
@@ -55,15 +57,21 @@ export function RiceMillingPage({
       outputs: outputs
         .map((row) => ({ itemId: row.id, qtyKg: form.outputQty[row.id] ?? "" }))
         .filter((row) => Number(row.qtyKg) > 0),
-    });
+    };
+    const saved = await saveWithOutbox(
+      { id: requestId, type: "rice.record_mill_batch", businessUnitCode: "rice", payload },
+      () => recordRiceMillBatchAction(payload),
+    );
     setBusy(false);
-    if (!result.ok) {
-      setError(result.error);
+    if (saved.error) {
+      setError(saved.error);
       return;
     }
-    const next = await loadRiceMillingWorkspaceAction({ period, page: 1, pageSize: workspace?.listPage.pageSize });
-    if (next.ok) setWorkspace(next.workspace);
     setForm((current) => ({ ...current, inputQtyKg: "", wastageKg: "", processingCost: "", notes: "", outputQty: Object.fromEntries(outputs.map((row) => [row.id, ""])) }));
+    if (!saved.queued) {
+      const next = await loadRiceMillingWorkspaceAction({ period, page: 1, pageSize: workspace?.listPage.pageSize });
+      if (next.ok) setWorkspace(next.workspace);
+    }
   }
 
   const available = paddy.find((row) => row.id === (form.inputItemId || paddy[0]?.id))?.qtyKg ?? 0;

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { NavGlyph } from "@/components/icons/nav-icons";
+import { OfflineModuleNote } from "@/components/offline/OfflineModuleNote";
 import { cn } from "@/lib/cn";
 
 export function PageHeader({
@@ -69,6 +70,9 @@ export function ModuleDashboard({
         title={title}
         description={`${location}. ${description}`}
       />
+      <OfflineModuleNote>
+        This module has no offline posting APIs yet. Visited screens can reopen from cache after an online visit; writes stay online-only.
+      </OfflineModuleNote>
       <div className="grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-3">
         {links.map((item) => {
           return (
@@ -104,11 +108,14 @@ export function ModuleSectionPage({
   return (
     <div>
       <PageHeader title={title} description={description} />
+      <OfflineModuleNote>
+        This workspace has no posting API yet, so nothing is queued. Open it online first to cache the shell.
+      </OfflineModuleNote>
       <EmptyState
         title={emptyTitle ?? `${title} workspace`}
         description={
           emptyDescription ??
-          "This section is connected to the RM Holdings data model and permission system. Operational records will be managed here in the next implementation phase."
+          "This section is a navigation placeholder. There are no tables, RPCs, or authorized write actions for Properties, Livestock, or Beekeeping yet, so offline posting is not implemented."
         }
       />
     </div>

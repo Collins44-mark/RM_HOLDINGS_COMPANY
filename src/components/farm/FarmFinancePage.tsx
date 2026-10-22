@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Landmark } from "lucide-react";
 import { loadFarmFinanceWorkspaceAction, type FarmFinanceWorkspace } from "@/actions/farm/workspace";
 import { recordFarmExpenseAction } from "@/actions/farm/posting";
+import { saveWithOutbox } from "@/lib/offline";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassCard, glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { formatTzs } from "@/lib/format/currency";
@@ -66,13 +67,20 @@ export function FarmFinancePage({
           <div className="mt-4">
             <SchoolWorkflowButton className={primaryButton} busy={busy} idleLabel={t("rice.finance.postExpense")} busyLabel={t("common.posting")} onClick={async () => {
               setBusy(true); setError(null);
-              const result = await recordFarmExpenseAction({ requestId: crypto.randomUUID(), ...form });
+              const requestId = crypto.randomUUID();
+              const payload = { requestId, ...form };
+              const saved = await saveWithOutbox(
+                { id: requestId, type: "farm.record_expense", businessUnitCode: "farm", payload },
+                () => recordFarmExpenseAction(payload),
+              );
               setBusy(false);
-              if (!result.ok) setError(result.error);
+              if (saved.error) setError(saved.error);
               else {
-                const next = await loadFarmFinanceWorkspaceAction({ period, page: 1, pageSize: workspace?.listPage.pageSize });
-                if (next.ok) setWorkspace(next.workspace);
                 setForm((current) => ({ ...current, amount: "", notes: "" }));
+                if (!saved.queued) {
+                  const next = await loadFarmFinanceWorkspaceAction({ period, page: 1, pageSize: workspace?.listPage.pageSize });
+                  if (next.ok) setWorkspace(next.workspace);
+                }
               }
             }} />
           </div>

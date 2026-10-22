@@ -122,6 +122,14 @@ export function NewPurchaseOrderPage() {
         buyingPrice: line.buyingPrice,
       })),
     });
+    if ("queued" in result && result.queued) {
+      setSaving("");
+      setSaved(status);
+      setErrors({
+        lines: "Saved on this device. It will post when the connection is verified. Do not treat this as a posted purchase order yet.",
+      });
+      return;
+    }
     if (result.error || !result.order) {
       setSaving("");
       setErrors({ lines: result.error || "Unable to save this purchase order." });

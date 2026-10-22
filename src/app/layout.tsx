@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Cormorant_Garamond, Inter } from "next/font/google";
 import "./globals.css";
 import { LocaleProvider } from "@/components/i18n/LocaleProvider";
+import { ServiceWorkerRegister } from "@/components/offline/ServiceWorkerRegister";
 import { getOrganizationSettings } from "@/lib/data/organization-settings";
 import { hydrateRuntimeSettings } from "@/lib/config/runtime-settings";
 import { htmlLang } from "@/lib/i18n";
@@ -28,6 +29,8 @@ export const metadata: Metadata = {
   },
   description:
     "RM Holdings Management System — one platform for agriculture, education, trade and investments.",
+  manifest: "/manifest.webmanifest",
+  applicationName: "RM Holdings Ltd",
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
@@ -47,6 +50,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           timezone={settings.timezone}
           currency={settings.currency}
         >
+          <ServiceWorkerRegister />
           {children}
         </LocaleProvider>
       </body>

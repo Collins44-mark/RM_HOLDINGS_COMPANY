@@ -18,6 +18,7 @@ import {
   paymentDisplayType,
 } from "@/lib/supermarket/payment-display";
 import { formatMobileMoneyLabel } from "@/lib/supermarket/pos-payments";
+import { buildPosSaleRpcArgs, posIdempotencyRpcMissing } from "@/lib/supermarket/pos-idempotency";
 import { mapExpense, mapPayment, mapPromotion, mapSale } from "@/lib/supermarket/mappers";
 import type {
   ExpenseRecord,
@@ -57,6 +58,7 @@ function paymentMethodFromDb(method: string) {
 }
 
 export async function completeSaleAction(input: {
+  requestId?: string;
   customerName?: string;
   discount?: number;
   tax?: number;
@@ -121,27 +123,24 @@ export async function completeSaleAction(input: {
       }
     }
 
-    const { data, error } = await supabase.rpc("sm_complete_sale", {
-      p_items: input.items.map((item) => ({
-        product_id: item.productId,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-        discount: item.discount ?? 0,
-        promotion_id: item.promotionId ?? null,
-      })),
-      p_payments: payments.map((payment) => ({
-        method: payment.method,
-        amount: payment.amount,
-        provider_id: payment.providerId,
-        provider: payment.provider,
-        reference: payment.reference,
-      })),
-      p_customer_name: input.customerName ?? "Walk-in Customer",
-      p_discount: input.discount ?? 0,
-      p_tax: 0,
-      p_notes: input.notes ?? "",
+    const rpcArgs = buildPosSaleRpcArgs({
+      requestId: input.requestId,
+      customerName: input.customerName,
+      discount: input.discount,
+      notes: input.notes,
+      items: input.items,
+      payments,
     });
-    if (error) mapDbError(error);
+    const { data, error } = await supabase.rpc("sm_complete_sale", rpcArgs);
+    if (error) {
+      if (input.requestId && posIdempotencyRpcMissing(error.message)) {
+        throw new SupermarketError(
+          "POS duplicate protection is not installed on the database yet. This sale was not posted.",
+          "VALIDATION",
+        );
+      }
+      mapDbError(error);
+    }
     const saleId = data as string;
     const { data: saleRow, error: saleLookupError } = await supabase
       .from("sm_sales")

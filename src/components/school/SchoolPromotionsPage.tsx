@@ -19,6 +19,7 @@ import { SchoolPagination } from "@/components/school/SchoolPagination";
 import { SCHOOL_PAGE_SIZE, schoolPageMeta } from "@/lib/school/pagination";
 import { formatCompactStudentNumber } from "@/lib/school/student-number";
 import { cn } from "@/lib/cn";
+import { enqueueOrExecute } from "@/lib/offline";
 
 type YearOption = { id: string; name: string; isCurrent: boolean };
 type DestClass = { id: string; name: string; levelId: string; feeConfigured: boolean; annualAmount: number | null; subjects: string[] };
@@ -355,7 +356,7 @@ export function SchoolPromotionsPage({
     setSaving(true);
     setSaveError(null);
     setSuccess(null);
-    void confirmSchoolPromotionsAction({
+    const payload = {
       fromYearId,
       toYearId,
       effectiveOn,
@@ -368,30 +369,38 @@ export function SchoolPromotionsPage({
         streamId: row.destStreamId,
         reason: row.reason,
       })),
-    }).then((next) => {
+    };
+    void enqueueOrExecute(
+      { id: requestId.current, type: "school.confirm_promotions", businessUnitCode: "school", payload },
+      () => confirmSchoolPromotionsAction(payload),
+    ).then((result) => {
       lock.current = false;
       setSaving(false);
-      if (!next.ok) {
-        setSaveError(next.error);
+      loadBoard(true);
+      previewCache.current.delete(previewKey(fromYearId, toYearId, selectedClass.id));
+      if (result.queued) {
+        setSuccess("Saved locally. It will post when this device is online.");
+        return;
+      }
+      if (!result.ok) {
+        setSaveError(result.error);
         return;
       }
       requestId.current = crypto.randomUUID();
-      loadBoard(true);
-      previewCache.current.delete(previewKey(fromYearId, toYearId, selectedClass.id));
-      if (next.duplicate) {
+      if (result.duplicate) {
         setSaveError("This save was already processed. Review the class and try again if students remain.");
         return;
       }
-      const summary = `Saved ${selectedClass.name}: ${next.promoted} promoted · ${next.retained} kept · ${next.transferred} transferred · ${next.graduated} graduated · ${next.excluded} excluded.`;
-      if (next.failed) {
-        const failedIds = new Set(next.failures.map((item) => item.studentId).filter(Boolean));
+      const summary = `Saved ${selectedClass.name}: ${result.promoted} promoted · ${result.retained} kept · ${result.transferred} transferred · ${result.graduated} graduated · ${result.excluded} excluded.`;
+      if (result.failed) {
+        const failedIds = new Set(result.failures.map((item) => item.studentId).filter(Boolean));
         const mapped: Record<string, string> = {};
-        for (const item of next.failures) {
+        for (const item of result.failures) {
           if (item.studentId) mapped[item.studentId] = item.error || "Could not save this student.";
         }
         setRowErrors(mapped);
         setRows((current) => (failedIds.size ? current.filter((row) => failedIds.has(row.studentId)) : current));
-        setSaveError(`${next.failed} student${next.failed === 1 ? "" : "s"} could not be saved. Your other selections were kept.`);
+        setSaveError(`${result.failed} student${result.failed === 1 ? "" : "s"} could not be saved. Your other selections were kept.`);
         setSuccess(null);
         return;
       }

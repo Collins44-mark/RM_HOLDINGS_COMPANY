@@ -1,3 +1,4 @@
+import { probeServerReachable } from "./connectivity";
 import { backoffMs } from "./errors";
 import {
   bindOfflineSession,
@@ -26,10 +27,13 @@ export function subscribeToSyncStatus(listener: (status: SyncStatusSnapshot) => 
   };
 }
 
+let lastReachable = true;
+
 async function emit() {
   const snapshot = await getSyncStatus();
-  for (const listener of listeners) listener(snapshot);
-  return snapshot;
+  const merged: SyncStatusSnapshot = { ...snapshot, reachable: lastReachable };
+  for (const listener of listeners) listener(merged);
+  return merged;
 }
 
 function ready(op: QueuedOperation, byId: Map<string, QueuedOperation>, now: number) {
@@ -99,6 +103,8 @@ async function processOne(op: QueuedOperation, dispatch: OperationDispatcher) {
 export async function syncPendingOperations(now = Date.now()): Promise<SyncStatusSnapshot> {
   if (inflight) return inflight;
   inflight = (async () => {
+    lastReachable = await probeServerReachable();
+    if (!lastReachable) return emit();
     await resetStuckSyncing();
     const dispatch = dispatcher;
     if (!dispatch || !currentOfflineSession()) return emit();

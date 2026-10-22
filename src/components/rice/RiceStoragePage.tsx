@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Package } from "lucide-react";
 import { loadRiceStorageWorkspaceAction, type RiceStorageWorkspace } from "@/actions/rice/workspace";
 import { recordRiceServiceIncomeAction, recordRiceStorageMovementAction } from "@/actions/rice/posting";
+import { saveWithOutbox } from "@/lib/offline";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { formatTzs } from "@/lib/format/currency";
@@ -126,8 +127,9 @@ export function RiceStoragePage({
                 onClick={async () => {
                   setBusy(true);
                   setError(null);
-                  const result = await recordRiceStorageMovementAction({
-                    requestId: crypto.randomUUID(),
+                  const requestId = crypto.randomUUID();
+                  const payload = {
+                    requestId,
                     accountId: move.accountId || undefined,
                     partyName: move.partyName,
                     partyPhone: move.partyPhone,
@@ -137,12 +139,16 @@ export function RiceStoragePage({
                     qtyKg: move.qtyKg,
                     reference: move.reference,
                     notes: move.notes,
-                  });
+                  };
+                  const saved = await saveWithOutbox(
+                    { id: requestId, type: "rice.record_storage_movement", businessUnitCode: "rice", payload },
+                    () => recordRiceStorageMovementAction(payload),
+                  );
                   setBusy(false);
-                  if (!result.ok) setError(result.error);
+                  if (saved.error) setError(saved.error);
                   else {
                     setMove((current) => ({ ...current, qtyKg: "", bags: "", reference: "" }));
-                    await refresh();
+                    if (!saved.queued) await refresh();
                   }
                 }}
               />
@@ -198,8 +204,9 @@ export function RiceStoragePage({
                 onClick={async () => {
                   setBusy(true);
                   setError(null);
-                  const result = await recordRiceServiceIncomeAction({
-                    requestId: crypto.randomUUID(),
+                  const requestId = crypto.randomUUID();
+                  const payload = {
+                    requestId,
                     accountId: fee.accountId,
                     kind: fee.kind,
                     occurredOn: fee.occurredOn,
@@ -207,12 +214,16 @@ export function RiceStoragePage({
                     paymentMethod: fee.paymentMethod,
                     paymentReference: fee.paymentReference,
                     notes: fee.notes,
-                  });
+                  };
+                  const saved = await saveWithOutbox(
+                    { id: requestId, type: "rice.record_service_income", businessUnitCode: "rice", payload },
+                    () => recordRiceServiceIncomeAction(payload),
+                  );
                   setBusy(false);
-                  if (!result.ok) setError(result.error);
+                  if (saved.error) setError(saved.error);
                   else {
                     setFee((current) => ({ ...current, amount: "" }));
-                    await refresh();
+                    if (!saved.queued) await refresh();
                   }
                 }}
               />

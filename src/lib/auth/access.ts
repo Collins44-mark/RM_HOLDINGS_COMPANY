@@ -67,6 +67,8 @@ export function loginPathForRequest(_pathname?: string) {
 export function isPublicPath(pathname: string) {
   if (pathname === "/forbidden") return true;
   if (pathname === LOGIN_PATH) return true;
+  if (pathname === "/offline" || pathname === "/offline-probe") return true;
+  if (pathname === "/sw.js" || pathname === "/manifest.webmanifest") return true;
   return pathname.endsWith("/login");
 }
 

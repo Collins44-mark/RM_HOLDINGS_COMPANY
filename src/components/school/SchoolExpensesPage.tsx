@@ -32,6 +32,7 @@ import {
 import { SchoolPagination } from "@/components/school/SchoolPagination";
 import { ContainedDrawer, DrawerCancel } from "@/components/ui/ContainedDrawer";
 import { cn } from "@/lib/cn";
+import { isLikelyOffline, saveWithOutbox } from "@/lib/offline";
 import { REPORT_PERIOD_OPTIONS, type ReportPeriod } from "@/lib/data/report-period";
 import { formatAmount, formatTzs } from "@/lib/format/currency";
 import {
@@ -498,6 +499,10 @@ export function SchoolExpensesPage({
         onCancel={() => setReverseRow(null)}
         onConfirm={() => {
           if (!reverseRow || reverseBusy) return;
+          if (isLikelyOffline()) {
+            setError("This step needs an internet connection. It was not saved.");
+            return;
+          }
           setReverseBusy(true);
           void reverseSchoolExpenseAction({ id: reverseRow.id }).then((result) => {
             setReverseBusy(false);
@@ -606,6 +611,11 @@ function RecordExpenseDrawer({
     setError(null);
     let nextCategoryId = categoryId;
     if (!nextCategoryId && canManageTypes && newTypeName.trim()) {
+      if (isLikelyOffline()) {
+        setBusy(false);
+        setError("Creating an expense type needs an internet connection.");
+        return;
+      }
       const created = await saveSchoolExpenseTypeAction({ name: newTypeName.trim() });
       if (!created.ok) {
         setBusy(false);
@@ -614,7 +624,7 @@ function RecordExpenseDrawer({
       }
       nextCategoryId = created.id;
     }
-    const result = await recordSchoolExpenseAction({
+    const payload = {
       categoryId: nextCategoryId,
       amount,
       expenseDate,
@@ -625,10 +635,14 @@ function RecordExpenseDrawer({
       busId,
       fundingSource,
       requestId,
-    });
+    };
+    const saved = await saveWithOutbox(
+      { id: requestId, type: "school.record_expense", businessUnitCode: "school", payload },
+      () => recordSchoolExpenseAction(payload),
+    );
     setBusy(false);
-    if (!result.ok) {
-      setError(result.error);
+    if (saved.error) {
+      setError(saved.error);
       return;
     }
     onSaved();

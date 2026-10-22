@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Wrench } from "lucide-react";
 import { loadFarmJobsWorkspaceAction, type FarmJobsWorkspace } from "@/actions/farm/workspace";
 import { recordFarmJobAction, recordFarmJobPaymentAction } from "@/actions/farm/posting";
@@ -13,7 +13,7 @@ import { useT } from "@/components/i18n/LocaleProvider";
 import { FARM_METHODS, FarmField, FarmNotice, FarmPageHeader, farmJobStatusKey, farmMethodKey, todayIso } from "@/components/farm/farm-ui";
 import { translateFarmCopy } from "@/lib/farm/error-copy";
 import { jobBalance } from "@/lib/farm/accounting";
-import { enqueueOrExecute } from "@/lib/offline";
+import { loadWorkspaceWithCache, saveWithOutbox, writeOfflineSnapshot } from "@/lib/offline";
 
 export function FarmJobsPage({
   initial,
@@ -44,8 +44,18 @@ export function FarmJobsPage({
     notes: "",
   });
 
+  useEffect(() => {
+    if (workspace) {
+      void writeOfflineSnapshot({ kind: "farm.jobs", businessUnitCode: "farm", payload: workspace });
+    }
+  }, [workspace]);
+
   async function refresh(page = workspace?.listPage.page ?? 1, pageSize = workspace?.listPage.pageSize ?? 10) {
-    const next = await loadFarmJobsWorkspaceAction({ period, page, pageSize });
+    const next = await loadWorkspaceWithCache({
+      kind: "farm.jobs",
+      businessUnitCode: "farm",
+      load: () => loadFarmJobsWorkspaceAction({ period, page, pageSize }),
+    });
     if (next.ok) setWorkspace(next.workspace);
     else setError(next.error);
   }
@@ -158,19 +168,15 @@ export function FarmJobsPage({
                 setError(null);
                 const requestId = crypto.randomUUID();
                 const payload = { requestId, ...form, serviceTypeId: serviceId };
-                const result = await enqueueOrExecute(
+                const saved = await saveWithOutbox(
                   { id: requestId, type: "farm.record_job", businessUnitCode: "farm", payload: { ...payload } },
                   () => recordFarmJobAction(payload),
                 );
                 setBusy(false);
-                if (result.queued) {
-                  setForm((current) => ({ ...current, agreedPrice: "", amountPaid: "", location: "", areaHa: "" }));
-                  return;
-                }
-                if (!result.ok) setError(result.error);
+                if (saved.error) setError(saved.error);
                 else {
                   setForm((current) => ({ ...current, agreedPrice: "", amountPaid: "", location: "", areaHa: "" }));
-                  await refresh(1, workspace?.listPage.pageSize);
+                  if (!saved.queued) await refresh(1, workspace?.listPage.pageSize);
                 }
               }}
             />
@@ -214,9 +220,14 @@ export function FarmJobsPage({
                         {bal.receivable > 0 && workspace?.caps.canJobs ? (
                           <JobPay
                             onPay={async (amount) => {
-                              const result = await recordFarmJobPaymentAction({ requestId: crypto.randomUUID(), jobId: row.id, amount });
-                              if (!result.ok) setError(result.error);
-                              else await refresh();
+                              const requestId = crypto.randomUUID();
+                              const payload = { requestId, jobId: row.id, amount };
+                              const saved = await saveWithOutbox(
+                                { id: requestId, type: "farm.record_job_payment", businessUnitCode: "farm", payload, entityId: row.id, dependsOn: [] },
+                                () => recordFarmJobPaymentAction(payload),
+                              );
+                              if (saved.error) setError(saved.error);
+                              else if (!saved.queued) await refresh();
                             }}
                           />
                         ) : null}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Fuel } from "lucide-react";
 import { loadFarmFuelWorkspaceAction, type FarmFuelWorkspace } from "@/actions/farm/workspace";
 import { recordFarmFuelAction, recordFarmMaintenanceAction } from "@/actions/farm/posting";
+import { saveWithOutbox } from "@/lib/offline";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { formatTzs } from "@/lib/format/currency";
@@ -112,12 +113,17 @@ export function FarmFuelPage({
                 onClick={async () => {
                   setBusy(true);
                   setError(null);
-                  const result = await recordFarmFuelAction({ requestId: crypto.randomUUID(), ...fuel });
+                  const requestId = crypto.randomUUID();
+                  const payload = { requestId, ...fuel };
+                  const saved = await saveWithOutbox(
+                    { id: requestId, type: "farm.record_fuel", businessUnitCode: "farm", payload },
+                    () => recordFarmFuelAction(payload),
+                  );
                   setBusy(false);
-                  if (!result.ok) setError(result.error);
+                  if (saved.error) setError(saved.error);
                   else {
                     setFuel((current) => ({ ...current, litres: "", unitPrice: "", notes: "" }));
-                    await refresh();
+                    if (!saved.queued) await refresh();
                   }
                 }}
               />
@@ -169,12 +175,17 @@ export function FarmFuelPage({
                 onClick={async () => {
                   setBusy(true);
                   setError(null);
-                  const result = await recordFarmMaintenanceAction({ requestId: crypto.randomUUID(), ...maint });
+                  const requestId = crypto.randomUUID();
+                  const payload = { requestId, ...maint };
+                  const saved = await saveWithOutbox(
+                    { id: requestId, type: "farm.record_maintenance", businessUnitCode: "farm", payload },
+                    () => recordFarmMaintenanceAction(payload),
+                  );
                   setBusy(false);
-                  if (!result.ok) setError(result.error);
+                  if (saved.error) setError(saved.error);
                   else {
                     setMaint((current) => ({ ...current, description: "", partsCost: "", labourCost: "" }));
-                    await refresh();
+                    if (!saved.queued) await refresh();
                   }
                 }}
               />

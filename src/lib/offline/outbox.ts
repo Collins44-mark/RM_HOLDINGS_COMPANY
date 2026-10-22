@@ -67,7 +67,7 @@ export async function resolveConflict(id: string, action: "retry" | "discard") {
   const op = await store.get(id);
   if (!op) return;
   if (action === "discard") {
-    await store.put({ ...op, status: "failed", lastError: op.lastError ?? "Discarded locally." });
+    await store.delete(id);
     return;
   }
   await store.put({ ...op, status: "pending", nextRetryAt: Date.now(), lastError: undefined });
@@ -89,6 +89,7 @@ export async function getSyncStatus(userId?: string): Promise<SyncStatusSnapshot
   else if (conflicts || failed) phase = "attention";
   else if (pending) phase = "queued";
   else if (lastSynced) phase = "synced";
+  const browserOnline = typeof navigator === "undefined" ? true : navigator.onLine;
   return {
     phase,
     pending,
@@ -98,7 +99,17 @@ export async function getSyncStatus(userId?: string): Promise<SyncStatusSnapshot
     lastSyncedAt: lastSynced || null,
     lastError,
     foreignPending: foreign.length,
+    reachable: browserOnline,
+    browserOnline,
   };
+}
+
+export async function listUserOperations(userId?: string) {
+  const rows = await store.list();
+  const uid = userId ?? session?.userId;
+  return rows
+    .filter((row) => !uid || row.userId === uid)
+    .sort((a, b) => b.createdAt - a.createdAt);
 }
 
 export async function resetStuckSyncing() {

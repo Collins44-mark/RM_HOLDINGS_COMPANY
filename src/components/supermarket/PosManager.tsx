@@ -57,6 +57,7 @@ import { createPosCustomerAction, getPosCheckoutOptionsAction } from "@/actions/
 import { getApplicableTaxesAction } from "@/actions/supermarket/tax";
 import { taxLineLabel, type TaxPricingMode } from "@/lib/supermarket/tax";
 import { APP_TIMEZONE } from "@/lib/config/app";
+import { isLikelyOffline } from "@/lib/offline";
 import { normalizeBarcode } from "@/lib/supermarket/barcode";
 import { BarcodeScanButton } from "@/components/supermarket/barcode/BarcodeScannerModal";
 import { useHardwareBarcodeScan } from "@/components/supermarket/barcode/useHardwareBarcodeScan";
@@ -431,6 +432,10 @@ export function PosManager() {
 
   async function completeSale() {
     if (!canComplete || completing) return;
+    if (isLikelyOffline()) {
+      setSaleError("This step needs an internet connection. It was not saved.");
+      return;
+    }
     setCompleting(true);
     setSaleError("");
     const snapshotItems = items.map((item) => ({ ...item }));

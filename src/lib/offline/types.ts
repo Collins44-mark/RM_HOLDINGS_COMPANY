@@ -1,5 +1,5 @@
 export const OFFLINE_DB_NAME = "rm-holdings-offline";
-export const OFFLINE_DB_VERSION = 1;
+export const OFFLINE_DB_VERSION = 2;
 
 export const OFFLINE_STATUSES = ["pending", "syncing", "synced", "conflict", "failed"] as const;
 export type OfflineStatus = (typeof OFFLINE_STATUSES)[number];
@@ -10,6 +10,29 @@ export const OFFLINE_OPERATION_TYPES = [
   "farm.record_fuel",
   "farm.record_maintenance",
   "farm.record_expense",
+  "farm.record_operation",
+  "farm.record_harvest",
+  "rice.record_purchase",
+  "rice.record_mill_batch",
+  "rice.record_sale",
+  "rice.record_storage_movement",
+  "rice.record_service_income",
+  "rice.record_expense",
+  "rice.adjust_stock",
+  "school.record_expense",
+  "school.record_fee_payment",
+  "school.record_salary_payment",
+  "school.record_fuel",
+  "school.record_maintenance",
+  "school.record_emergency_fund",
+  "school.store_receive",
+  "school.store_issue",
+  "school.store_sale",
+  "school.withdraw_student",
+  "school.change_class",
+  "school.confirm_promotions",
+  "supermarket.create_purchase_order",
+  "supermarket.complete_sale",
 ] as const;
 export type OfflineOperationType = (typeof OFFLINE_OPERATION_TYPES)[number];
 
@@ -51,6 +74,8 @@ export type SyncStatusSnapshot = {
   lastError: string | null;
   /** True when queued work belongs to a different signed-in user. */
   foreignPending: number;
+  reachable: boolean;
+  browserOnline: boolean;
 };
 
 export type EnqueueInput = {

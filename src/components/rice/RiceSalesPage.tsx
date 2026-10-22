@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { CircleDollarSign } from "lucide-react";
 import { loadRiceSalesWorkspaceAction, type RiceSalesWorkspace } from "@/actions/rice/workspace";
 import { recordRiceSaleAction, recordRiceSalePaymentAction } from "@/actions/rice/posting";
+import { isLikelyOffline, saveWithOutbox } from "@/lib/offline";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, StatusPill, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { formatTzs } from "@/lib/format/currency";
@@ -146,8 +147,9 @@ export function RiceSalesPage({
               onClick={async () => {
                 setBusy(true);
                 setError(null);
-                const result = await recordRiceSaleAction({
-                  requestId: crypto.randomUUID(),
+                const requestId = crypto.randomUUID();
+                const payload = {
+                  requestId,
                   partyId: form.partyId || undefined,
                   partyName: form.partyName,
                   partyPhone: form.partyPhone,
@@ -158,12 +160,16 @@ export function RiceSalesPage({
                   paymentMethod: form.paymentMethod,
                   paymentReference: form.paymentReference,
                   notes: form.notes,
-                });
+                };
+                const saved = await saveWithOutbox(
+                  { id: requestId, type: "rice.record_sale", businessUnitCode: "rice", payload },
+                  () => recordRiceSaleAction(payload),
+                );
                 setBusy(false);
-                if (!result.ok) setError(result.error);
+                if (saved.error) setError(saved.error);
                 else {
                   setForm((current) => ({ ...current, qtyKg: "", amountPaid: "", paymentReference: "" }));
-                  await refresh();
+                  if (!saved.queued) await refresh();
                 }
               }}
             />
@@ -208,6 +214,10 @@ export function RiceSalesPage({
                         <SalePay
                           t={t}
                           onPay={async (amount) => {
+                            if (isLikelyOffline()) {
+                              setError(t("offline.onlineOnly"));
+                              return;
+                            }
                             const result = await recordRiceSalePaymentAction({ saleId: row.id, amount });
                             if (!result.ok) setError(result.error);
                             else await refresh();

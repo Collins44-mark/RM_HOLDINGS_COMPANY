@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Wheat } from "lucide-react";
 import { loadFarmOperationsWorkspaceAction, type FarmOperationsWorkspace } from "@/actions/farm/workspace";
 import { recordFarmHarvestAction, recordFarmOperationAction, saveFarmPlotAction, saveFarmSeasonAction } from "@/actions/farm/posting";
+import { isLikelyOffline, saveWithOutbox } from "@/lib/offline";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { formatTzs } from "@/lib/format/currency";
@@ -54,6 +55,7 @@ export function FarmOperationsPage({
             <div className="mt-4">
               <SchoolWorkflowButton className={primaryButton} busy={busy} idleLabel={t("farm.ops.savePlot")} busyLabel={t("common.posting")} onClick={async () => {
                 setBusy(true); setError(null);
+                if (isLikelyOffline()) { setBusy(false); setError(t("offline.onlineOnly")); return; }
                 const result = await saveFarmPlotAction(plot);
                 setBusy(false);
                 if (!result.ok) setError(result.error); else { setPlot({ name: "", hectares: "", crop: "" }); await refresh(); }
@@ -79,6 +81,7 @@ export function FarmOperationsPage({
             <div className="mt-4">
               <SchoolWorkflowButton className={primaryButton} busy={busy} idleLabel={t("farm.ops.saveSeason")} busyLabel={t("common.posting")} onClick={async () => {
                 setBusy(true); setError(null);
+                if (isLikelyOffline()) { setBusy(false); setError(t("offline.onlineOnly")); return; }
                 const result = await saveFarmSeasonAction(season);
                 setBusy(false);
                 if (!result.ok) setError(result.error); else await refresh();
@@ -111,9 +114,15 @@ export function FarmOperationsPage({
           <div className="mt-4">
             <SchoolWorkflowButton className={primaryButton} busy={busy} idleLabel={t("farm.ops.post")} busyLabel={t("common.posting")} onClick={async () => {
               setBusy(true); setError(null);
-              const result = await recordFarmOperationAction({ requestId: crypto.randomUUID(), ...op });
+              const requestId = crypto.randomUUID();
+              const payload = { requestId, ...op };
+              const saved = await saveWithOutbox(
+                { id: requestId, type: "farm.record_operation", businessUnitCode: "farm", payload },
+                () => recordFarmOperationAction(payload),
+              );
               setBusy(false);
-              if (!result.ok) setError(result.error); else { setOp((current) => ({ ...current, activity: "", cost: "" })); await refresh(); }
+              if (saved.error) setError(saved.error);
+              else { setOp((current) => ({ ...current, activity: "", cost: "" })); if (!saved.queued) await refresh(); }
             }} />
           </div>
         </section>
@@ -139,9 +148,15 @@ export function FarmOperationsPage({
           <div className="mt-4">
             <SchoolWorkflowButton className={primaryButton} busy={busy} idleLabel={t("farm.ops.postHarvest")} busyLabel={t("common.posting")} onClick={async () => {
               setBusy(true); setError(null);
-              const result = await recordFarmHarvestAction({ requestId: crypto.randomUUID(), ...harvest });
+              const requestId = crypto.randomUUID();
+              const payload = { requestId, ...harvest };
+              const saved = await saveWithOutbox(
+                { id: requestId, type: "farm.record_harvest", businessUnitCode: "farm", payload },
+                () => recordFarmHarvestAction(payload),
+              );
               setBusy(false);
-              if (!result.ok) setError(result.error); else { setHarvest((current) => ({ ...current, quantity: "" })); await refresh(); }
+              if (saved.error) setError(saved.error);
+              else { setHarvest((current) => ({ ...current, quantity: "" })); if (!saved.queued) await refresh(); }
             }} />
           </div>
         </section>

@@ -23,6 +23,7 @@ import { formatTzs } from "@/lib/format/currency";
 import { transportSelectClass } from "@/lib/school/transport-ui";
 import type { TransportCaps, TransportPeriod } from "@/lib/school/transport-types";
 import { schoolPageMeta, type SchoolPageMeta } from "@/lib/school/pagination";
+import { saveWithOutbox } from "@/lib/offline";
 
 const PERIODS: Array<[TransportPeriod, string]> = [
   ["today", "Today"],
@@ -100,15 +101,19 @@ export function SchoolTransportServicePage({ initial }: { initial: TransportServ
     if (lock.current) return;
     lock.current = true;
     setBusy(true);
-    void recordTransportFuelAction({ ...fuelForm, requestId }).then((result) => {
+    const payload = { ...fuelForm, requestId };
+    void saveWithOutbox(
+      { id: requestId, type: "school.record_fuel", businessUnitCode: "school", payload },
+      () => recordTransportFuelAction(payload),
+    ).then((saved) => {
       lock.current = false;
       setBusy(false);
-      if (!result.ok) {
-        setError(result.error);
+      if (saved.error) {
+        setError(saved.error);
         return;
       }
       setSaved(true);
-      load({ tab: "fuel" });
+      if (!saved.queued) load({ tab: "fuel" });
     });
   }
 
@@ -116,15 +121,19 @@ export function SchoolTransportServicePage({ initial }: { initial: TransportServ
     if (lock.current) return;
     lock.current = true;
     setBusy(true);
-    void recordTransportMaintenanceAction({ ...maintForm, requestId }).then((result) => {
+    const payload = { ...maintForm, requestId };
+    void saveWithOutbox(
+      { id: requestId, type: "school.record_maintenance", businessUnitCode: "school", payload },
+      () => recordTransportMaintenanceAction(payload),
+    ).then((saved) => {
       lock.current = false;
       setBusy(false);
-      if (!result.ok) {
-        setError(result.error);
+      if (saved.error) {
+        setError(saved.error);
         return;
       }
       setSaved(true);
-      load({ tab: "maintenance" });
+      if (!saved.queued) load({ tab: "maintenance" });
     });
   }
 

@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Warehouse } from "lucide-react";
 import { loadRiceWarehouseWorkspaceAction, type RiceWarehouseWorkspace } from "@/actions/rice/workspace";
 import { adjustRiceStockAction } from "@/actions/rice/posting";
+import { loadWorkspaceWithCache, saveWithOutbox, writeOfflineSnapshot } from "@/lib/offline";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassCard, glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { PaginationBar } from "@/components/ui/PaginationBar";
@@ -26,9 +27,19 @@ export function RiceWarehousePage({
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ itemId: "", qtyKg: "", reason: "", occurredOn: todayIso() });
 
+  useEffect(() => {
+    if (workspace) {
+      void writeOfflineSnapshot({ kind: "rice.warehouse", businessUnitCode: "rice", payload: workspace });
+    }
+  }, [workspace]);
+
   async function reload(page = workspace?.listPage.page ?? 1, pageSize = workspace?.listPage.pageSize ?? 10) {
     const id = ++requestId.current;
-    const next = await loadRiceWarehouseWorkspaceAction({ page, pageSize });
+    const next = await loadWorkspaceWithCache({
+      kind: "rice.warehouse",
+      businessUnitCode: "rice",
+      load: () => loadRiceWarehouseWorkspaceAction({ page, pageSize }),
+    });
     if (id !== requestId.current) return;
     if (next.ok) setWorkspace(next.workspace);
   }
@@ -36,16 +47,21 @@ export function RiceWarehousePage({
   async function save() {
     setBusy(true);
     setError(null);
-    const result = await adjustRiceStockAction({
-      requestId: crypto.randomUUID(),
+    const requestUuid = crypto.randomUUID();
+    const payload = {
+      requestId: requestUuid,
       itemId: form.itemId,
       qtyKg: form.qtyKg,
       reason: form.reason,
       occurredOn: form.occurredOn,
-    });
+    };
+    const saved = await saveWithOutbox(
+      { id: requestUuid, type: "rice.adjust_stock", businessUnitCode: "rice", payload },
+      () => adjustRiceStockAction(payload),
+    );
     setBusy(false);
-    if (!result.ok) {
-      setError(result.error);
+    if (saved.error) {
+      setError(saved.error);
       return;
     }
     await reload(1, workspace?.listPage.pageSize ?? 10);

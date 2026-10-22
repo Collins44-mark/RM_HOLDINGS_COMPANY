@@ -21,6 +21,7 @@ import {
   tableScrollClass,
 } from "@/components/supermarket/purchasing-ui";
 import { cn } from "@/lib/cn";
+import { enqueueOrExecute, isLikelyOffline } from "@/lib/offline";
 import { formatAmount, formatTzs } from "@/lib/format/currency";
 import { SchoolFeeReceiptPreview } from "@/components/school/SchoolFeeReceiptPreview";
 import { downloadFeeReceiptPdf, type FeeReceiptPayload } from "@/lib/school/fee-receipt-pdf";
@@ -209,7 +210,7 @@ export function SchoolStudentFeeProfilePage({
     setError(null);
     const enrollmentId = payEnrollmentId || viewEnrollmentId;
     const selectorId = payChargeId;
-    return recordSchoolFeePaymentAction({
+    const payload = {
       enrollmentId,
       studentId: viewStudentId,
       chargeId: selectorId,
@@ -219,9 +220,14 @@ export function SchoolStudentFeeProfilePage({
       reference: payReference,
       notes: payNotes,
       requestId,
-    }).then((result) => {
+    };
+    return enqueueOrExecute(
+      { id: requestId, type: "school.record_fee_payment", businessUnitCode: "school", payload },
+      () => recordSchoolFeePaymentAction(payload),
+    ).then((result) => {
       lock.current = false;
       setSaveBusy(false);
+      if (result.queued) return true;
       if (!result.ok) {
         setError(result.error);
         return false;
@@ -260,6 +266,10 @@ export function SchoolStudentFeeProfilePage({
 
   function runVerify(paymentId: string) {
     if (lock.current) return;
+    if (isLikelyOffline()) {
+      setError("This step needs an internet connection. It was not saved.");
+      return;
+    }
     lock.current = true;
     setVerifyBusy(paymentId);
     setVerifiedId(null);

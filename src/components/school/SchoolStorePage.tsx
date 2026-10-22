@@ -13,6 +13,7 @@ import {
   type SchoolStoreWorkspaceResult,
 } from "@/actions/school/store";
 import { recordSchoolFeePaymentAction } from "@/actions/school/fees";
+import { saveWithOutbox } from "@/lib/offline";
 import { SchoolField, SchoolIconWell, SchoolWorkflowButton } from "@/components/school/school-ui";
 import { SchoolPagination } from "@/components/school/SchoolPagination";
 import { ContainedDrawer, DrawerCancel } from "@/components/ui/ContainedDrawer";
@@ -559,10 +560,14 @@ function ReceiveDrawer({ item, onClose, onSaved }: { item: SchoolStoreItem; onCl
             onClick={() => {
               if (busy) return;
               setBusy(true);
-              void receiveSchoolStoreStockAction({ itemId: item.id, quantity, unitCost, occurredOn, supplier, reference, requestId }).then((result) => {
+              const payload = { itemId: item.id, quantity, unitCost, occurredOn, supplier, reference, requestId };
+              void saveWithOutbox(
+                { id: requestId, type: "school.store_receive", businessUnitCode: "school", payload },
+                () => receiveSchoolStoreStockAction(payload),
+              ).then((saved) => {
                 setBusy(false);
-                if (!result.ok) {
-                  setError(result.error);
+                if (saved.error) {
+                  setError(saved.error);
                   return;
                 }
                 onSaved();
@@ -619,10 +624,14 @@ function IssueDrawer({ item, onClose, onSaved }: { item: SchoolStoreItem; onClos
             onClick={() => {
               if (busy) return;
               setBusy(true);
-              void issueSchoolStoreStockAction({ itemId: item.id, quantity, occurredOn, recipient, reason, location, requestId }).then((result) => {
+              const payload = { itemId: item.id, quantity, occurredOn, recipient, reason, location, requestId };
+              void saveWithOutbox(
+                { id: requestId, type: "school.store_issue", businessUnitCode: "school", payload },
+                () => issueSchoolStoreStockAction(payload),
+              ).then((saved) => {
                 setBusy(false);
-                if (!result.ok) {
-                  setError(result.error);
+                if (saved.error) {
+                  setError(saved.error);
                   return;
                 }
                 onSaved();
@@ -698,7 +707,7 @@ function SaleDrawer({
                 return;
               }
               setBusy(true);
-              void createSchoolStoreSaleAction({
+              const payload = {
                 studentId: student.id,
                 lines: lines.map((line) => ({ itemId: line.itemId, qty: Number(line.qty) })),
                 saleDate,
@@ -706,10 +715,14 @@ function SaleDrawer({
                 method,
                 reference,
                 requestId,
-              }).then((result) => {
+              };
+              void saveWithOutbox(
+                { id: requestId, type: "school.store_sale", businessUnitCode: "school", payload },
+                () => createSchoolStoreSaleAction(payload),
+              ).then((saved) => {
                 setBusy(false);
-                if (!result.ok) {
-                  setError(result.error);
+                if (saved.error) {
+                  setError(saved.error);
                   return;
                 }
                 onSaved();
@@ -852,7 +865,7 @@ function PayDrawer({ sale, onClose, onSaved }: { sale: SchoolStoreSale; onClose:
             onClick={() => {
               if (busy) return;
               setBusy(true);
-              void recordSchoolFeePaymentAction({
+              const payload = {
                 enrollmentId: sale.enrollmentId,
                 chargeId: sale.chargeId,
                 amount,
@@ -861,10 +874,14 @@ function PayDrawer({ sale, onClose, onSaved }: { sale: SchoolStoreSale; onClose:
                 reference,
                 notes: "Store sale",
                 requestId,
-              }).then((result) => {
+              };
+              void saveWithOutbox(
+                { id: requestId, type: "school.record_fee_payment", businessUnitCode: "school", payload },
+                () => recordSchoolFeePaymentAction(payload).then((result) => (result.ok ? { ok: true as const, id: result.paymentId ?? requestId, duplicate: result.duplicate } : result)),
+              ).then((saved) => {
                 setBusy(false);
-                if (!result.ok) {
-                  setError(result.error);
+                if (saved.error) {
+                  setError(saved.error);
                   return;
                 }
                 onSaved();

@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Landmark } from "lucide-react";
 import { loadRiceFinanceWorkspaceAction, type RiceFinanceWorkspace } from "@/actions/rice/workspace";
 import { recordRiceExpenseAction } from "@/actions/rice/posting";
+import { saveWithOutbox } from "@/lib/offline";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassCard, glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { formatTzs } from "@/lib/format/currency";
@@ -102,18 +103,22 @@ export function RiceFinancePage({
               onClick={async () => {
                 setBusy(true);
                 setError(null);
-                const result = await recordRiceExpenseAction({
-                  requestId: crypto.randomUUID(),
-                  ...form,
-                });
+                const opId = crypto.randomUUID();
+                const payload = { requestId: opId, ...form };
+                const saved = await saveWithOutbox(
+                  { id: opId, type: "rice.record_expense", businessUnitCode: "rice", payload },
+                  () => recordRiceExpenseAction(payload),
+                );
                 setBusy(false);
-                if (!result.ok) setError(result.error);
+                if (saved.error) setError(saved.error);
                 else {
-                  const id = ++requestId.current;
-                  const next = await loadRiceFinanceWorkspaceAction({ period, page: 1, pageSize: workspace?.listPage.pageSize });
-                  if (id !== requestId.current) return;
-                  if (next.ok) setWorkspace(next.workspace);
                   setForm((current) => ({ ...current, amount: "", notes: "" }));
+                  if (!saved.queued) {
+                    const id = ++requestId.current;
+                    const next = await loadRiceFinanceWorkspaceAction({ period, page: 1, pageSize: workspace?.listPage.pageSize });
+                    if (id !== requestId.current) return;
+                    if (next.ok) setWorkspace(next.workspace);
+                  }
                 }
               }}
             />

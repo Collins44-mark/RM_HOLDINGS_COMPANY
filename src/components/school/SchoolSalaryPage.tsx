@@ -16,6 +16,7 @@ import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import { schoolPageMeta, type SchoolPageMeta } from "@/lib/school/pagination";
 import { formatCompactStaffNumber } from "@/lib/school/student-number";
+import { saveWithOutbox } from "@/lib/offline";
 import {
   SALARY_METHODS,
   type SalaryCaps,
@@ -521,7 +522,7 @@ function SalaryPayDrawer({
     }
     setBusy(true);
     setError(null);
-    void recordSchoolSalaryPaymentAction({
+    const payload = {
       staffId: selected.id,
       costBusinessUnitId: selected.costBusinessUnitId,
       periodYear: year,
@@ -532,10 +533,14 @@ function SalaryPayDrawer({
       reference,
       notes,
       requestId: requestId.current,
-    }).then((result) => {
+    };
+    void saveWithOutbox(
+      { id: requestId.current, type: "school.record_salary_payment", businessUnitCode: "school", payload },
+      () => recordSchoolSalaryPaymentAction(payload),
+    ).then((saved) => {
       setBusy(false);
-      if (!result.ok) {
-        setError(result.error);
+      if (saved.error) {
+        setError(saved.error);
         return;
       }
       onSaved();

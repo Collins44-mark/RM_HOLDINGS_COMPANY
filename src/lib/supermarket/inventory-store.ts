@@ -18,6 +18,7 @@ import {
   verifySupplierInvoiceAction,
   type PurchasingCaps,
 } from "@/actions/supermarket/purchasing-payables";
+import { enqueueOrExecute } from "@/lib/offline";
 import {
   adjustStockAction,
   createCategoryAction,
@@ -521,7 +522,8 @@ export function nextPurchaseNumber() {
 }
 
 export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
-  const result = await createPurchaseOrderAction({
+  const requestId = input.requestId || crypto.randomUUID();
+  const actionInput = {
     supplierId: input.supplierId,
     orderDate: input.orderDate,
     expectedDate: input.expectedDate,
@@ -529,14 +531,19 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
     tax: input.tax,
     notes: input.notes,
     submit: input.status === "Submitted",
-    requestId: input.requestId,
+    requestId,
     lines: input.lines.map((line) => ({
       productId: line.productId,
       quantityOrdered: line.quantity,
       buyingPrice: line.buyingPrice,
     })),
-  });
-  if (!result.ok) return { error: result.error, order: null as PurchaseOrder | null };
+  };
+  const result = await enqueueOrExecute(
+    { id: requestId, type: "supermarket.create_purchase_order", businessUnitCode: "supermarket", payload: actionInput },
+    () => createPurchaseOrderAction(actionInput),
+  );
+  if (result.queued) return { error: null, order: null as PurchaseOrder | null, queued: true as const };
+  if (!result.ok) return { error: result.error, order: null as PurchaseOrder | null, queued: false as const };
 
   const supplier = snapshot.suppliers.find((item) => item.id === input.supplierId);
   const order: PurchaseOrder = {
@@ -567,7 +574,7 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
     }),
   };
   upsertPurchaseOrder(order);
-  return { error: null, order };
+  return { error: null, order, queued: false as const };
 }
 
 export async function submitPurchaseOrder(orderId: string) {

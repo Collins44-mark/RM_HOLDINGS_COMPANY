@@ -1,5 +1,6 @@
 import { defaultOfflineDispatcher } from "./dispatch";
 import { isLikelyOffline, isTransportError } from "./errors";
+import { publishOfflineIdentity } from "./identity";
 import {
   bindOfflineSession,
   bindOfflineStore,
@@ -7,6 +8,7 @@ import {
   getConflicts,
   getPendingOperations,
   getSyncStatus,
+  listUserOperations,
   resolveConflict,
 } from "./outbox";
 import { setOfflineDispatcher, startOfflineCoordinator, subscribeToSyncStatus, syncPendingOperations } from "./coordinator";
@@ -17,6 +19,7 @@ export {
   getConflicts,
   getPendingOperations,
   getSyncStatus,
+  listUserOperations,
   resolveConflict,
   subscribeToSyncStatus,
   syncPendingOperations,
@@ -27,6 +30,8 @@ export {
   isLikelyOffline,
   isTransportError,
 };
+export { writeOfflineSnapshot, readOfflineSnapshot, loadWorkspaceWithCache } from "./snapshots";
+export { publishOfflineIdentity } from "./identity";
 export type {
   EnqueueInput,
   OfflineOperationType,
@@ -37,8 +42,14 @@ export type {
 
 export function configureBrowserOfflineEngine(session: OfflineSession) {
   bindOfflineSession(session);
+  publishOfflineIdentity(session.userId);
   setOfflineDispatcher(defaultOfflineDispatcher);
-  return startOfflineCoordinator();
+  const stop = startOfflineCoordinator();
+  return () => {
+    stop();
+    publishOfflineIdentity(null);
+    bindOfflineSession(null);
+  };
 }
 
 export async function enqueueOrExecute<T extends { ok: boolean }>(
@@ -58,5 +69,19 @@ export async function enqueueOrExecute<T extends { ok: boolean }>(
     const op = await enqueueOperation(input);
     void syncPendingOperations();
     return { queued: true, id: op.id };
+  }
+}
+
+export async function saveWithOutbox(
+  input: EnqueueInput,
+  execute: () => Promise<{ ok: true; id?: string; duplicate?: boolean } | { ok: false; error: string }>,
+): Promise<{ queued: boolean; error?: string }> {
+  try {
+    const result = await enqueueOrExecute(input, execute);
+    if (result.queued) return { queued: true };
+    if (!result.ok) return { queued: false, error: result.error };
+    return { queued: false };
+  } catch (error) {
+    return { queued: false, error: error instanceof Error ? error.message : "Couldn't save." };
   }
 }

@@ -7,6 +7,7 @@ import {
   withdrawSchoolStudentAction,
 } from "@/actions/school/lifecycle";
 import { SchoolField, SchoolGlassModal, SchoolWorkflowButton } from "@/components/school/school-ui";
+import { saveWithOutbox } from "@/lib/offline";
 import { inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
 
 type Catalog = {
@@ -141,7 +142,7 @@ export function SchoolChangeClassDialog({
               if (busy) return;
               setBusy(true);
               setError(null);
-              void changeSchoolStudentClassAction({
+              const payload = {
                 studentId,
                 academicYearId: yearId,
                 levelId,
@@ -150,9 +151,13 @@ export function SchoolChangeClassDialog({
                 effectiveOn,
                 reason,
                 requestId: requestId.current,
-              }).then((result) => {
+              };
+              void saveWithOutbox(
+                { id: requestId.current, type: "school.change_class", businessUnitCode: "school", payload, entityId: studentId },
+                () => changeSchoolStudentClassAction(payload),
+              ).then((result) => {
                 setBusy(false);
-                if (!result.ok) {
+                if (result.error) {
                   setError(result.error);
                   return;
                 }
@@ -246,9 +251,18 @@ export function runWithdrawStudent(
   handlers: { onDone: () => void; onError: (message: string) => void; onBusy: (busy: boolean) => void },
 ) {
   handlers.onBusy(true);
-  void withdrawSchoolStudentAction(input).then((result) => {
+  void saveWithOutbox(
+    {
+      id: input.requestId,
+      type: "school.withdraw_student",
+      businessUnitCode: "school",
+      payload: input,
+      entityId: input.studentId,
+    },
+    () => withdrawSchoolStudentAction(input),
+  ).then((result) => {
     handlers.onBusy(false);
-    if (!result.ok) {
+    if (result.error) {
       handlers.onError(result.error);
       return;
     }
