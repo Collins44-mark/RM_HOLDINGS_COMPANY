@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Bell, ChevronDown, LogOut, Search, UserRound } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
+import { SyncStatusIndicator } from "@/components/offline/SyncStatusIndicator";
 import { searchIndexForUser } from "@/lib/auth/nav";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import type { AuthUser } from "@/lib/auth/types";
@@ -218,6 +219,7 @@ export function Header({
       </div>
 
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+        <SyncStatusIndicator />
         <div
           className="relative"
           onBlurCapture={(event) => closeIfOutside(event, () => setAlertsOpen(false))}

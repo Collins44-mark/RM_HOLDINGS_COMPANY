@@ -14,6 +14,7 @@ import { SIDEBAR_WIDTH } from "@/lib/config/app";
 import type { AuthUser } from "@/lib/auth/types";
 import { useT } from "@/components/i18n/LocaleProvider";
 import { localizeNavItems } from "@/lib/i18n";
+import { OfflineSyncHost } from "@/components/offline/OfflineSyncHost";
 
 export function AppShell({
   user,
@@ -76,6 +77,7 @@ export function AppShell({
         }
         style={{ ["--sidebar-width" as string]: `${sidebarWidth + 12}px` }}
       >
+        <OfflineSyncHost user={user} />
         <Header
           user={user}
           notifications={notifications}

@@ -414,6 +414,10 @@ export const extraEn = {
   "farm.error.pay": "Payment amount must be greater than zero.",
   "farm.error.load": "Couldn't load this page.",
   "farm.error.save": "Couldn't save. Please try again.",
+  "offline.queued": "Saved locally · {count} waiting",
+  "offline.syncing": "Syncing",
+  "offline.synced": "Synced",
+  "offline.attention": "Needs attention · {count}",
 } as const;
 
 export const extraSw: Record<keyof typeof extraEn, string> = {
@@ -832,4 +836,8 @@ export const extraSw: Record<keyof typeof extraEn, string> = {
   "farm.error.pay": "Kiasi cha malipo lazima kiwe zaidi ya sifuri.",
   "farm.error.load": "Imeshindwa kupakia ukurasa huu.",
   "farm.error.save": "Imeshindwa kuhifadhi. Tafadhali jaribu tena.",
+  "offline.queued": "Imehifadhiwa hapa · {count} zinasubiri",
+  "offline.syncing": "Inasawazisha",
+  "offline.synced": "Imesawazishwa",
+  "offline.attention": "Inahitaji uangalizi · {count}",
 };

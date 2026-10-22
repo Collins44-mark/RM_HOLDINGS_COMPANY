@@ -13,6 +13,7 @@ import { useT } from "@/components/i18n/LocaleProvider";
 import { FARM_METHODS, FarmField, FarmNotice, FarmPageHeader, farmJobStatusKey, farmMethodKey, todayIso } from "@/components/farm/farm-ui";
 import { translateFarmCopy } from "@/lib/farm/error-copy";
 import { jobBalance } from "@/lib/farm/accounting";
+import { enqueueOrExecute } from "@/lib/offline";
 
 export function FarmJobsPage({
   initial,
@@ -155,8 +156,17 @@ export function FarmJobsPage({
               onClick={async () => {
                 setBusy(true);
                 setError(null);
-                const result = await recordFarmJobAction({ requestId: crypto.randomUUID(), ...form, serviceTypeId: serviceId });
+                const requestId = crypto.randomUUID();
+                const payload = { requestId, ...form, serviceTypeId: serviceId };
+                const result = await enqueueOrExecute(
+                  { id: requestId, type: "farm.record_job", businessUnitCode: "farm", payload: { ...payload } },
+                  () => recordFarmJobAction(payload),
+                );
                 setBusy(false);
+                if (result.queued) {
+                  setForm((current) => ({ ...current, agreedPrice: "", amountPaid: "", location: "", areaHa: "" }));
+                  return;
+                }
                 if (!result.ok) setError(result.error);
                 else {
                   setForm((current) => ({ ...current, agreedPrice: "", amountPaid: "", location: "", areaHa: "" }));
