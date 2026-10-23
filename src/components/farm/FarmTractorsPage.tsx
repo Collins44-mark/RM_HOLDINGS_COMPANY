@@ -225,6 +225,7 @@ export function FarmTractorsPage({
                 <th className="px-3 py-2">{t("farm.tractor.hours")}</th>
 
                 <th className="px-3 py-2">{t("farm.tractor.cost")}</th>
+                <th className="px-3 py-2">Actions</th>
               </tr>
             </thead>
             <tbody>
