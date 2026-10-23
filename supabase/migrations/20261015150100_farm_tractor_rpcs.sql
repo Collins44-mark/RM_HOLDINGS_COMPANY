@@ -180,6 +180,14 @@ begin
       updated_at = now()
     where id = v_id;
   else
+    -- Atomic sequential code generation
+    IF p_code IS NULL OR trim(btrim(p_code)) = '' THEN
+      SELECT last_code INTO v_code FROM public.tractor_sequence WHERE id = 1 FOR UPDATE;
+      SELECT CASE WHEN v_code ~ '^TRC-([0-9]+)$' THEN 'TRC-' || LPAD(((substring(v_code from '^TRC-([0-9]+)$'))::int + 1)::text, 3, '0') ELSE 'TRC-001' END INTO v_code FROM public.tractor_sequence WHERE id = 1;
+      UPDATE public.tractor_sequence SET last_code = v_code, updated_at = now() WHERE id = 1;
+    ELSE
+      v_code := upper(btrim(coalesce(p_code, '')));
+    END IF;
     insert into public.farm_tractors (
       business_unit_id, code, name, registration_number, manufacturer, model, acquired_on,
       acquisition_cost, status, hour_meter, notes, is_active

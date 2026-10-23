@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Tractor } from "lucide-react";
 import {
   loadFarmTractorsWorkspaceAction,
@@ -40,11 +40,23 @@ export function FarmTractorsPage({
   );
   const [error, setError] = useState(initial.ok ? null : initial.error);
   const [busy, setBusy] = useState(false);
+  const [savedOk, setSavedOk] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [selected, setSelected] = useState<
     FarmTractorsWorkspace["tractors"][0] | null
   >(null);
+  const nextCode = useMemo(() => {
+    const nums = (workspace?.tractors ?? [])
+      .map((t: any) => {
+        const m = t.code?.match(/TRC-(\d+)/);
+        return m ? parseInt(m[1], 10) : 0;
+      })
+      .filter(Boolean);
+    const max = nums.length ? Math.max(...nums) : 0;
+    return `TRC-${String(max + 1).padStart(3, "0")}`;
+  }, [workspace?.tractors]);
+
   const [form, setForm] = useState({
     code: "",
     name: "",
@@ -168,11 +180,9 @@ export function FarmTractorsPage({
             </FarmField>
           </div>
           <div className="mt-4">
-            <SchoolWorkflowButton
-              className={primaryButton}
-              busy={busy}
-              idleLabel={t("farm.tractor.save")}
-              busyLabel={t("common.posting")}
+            <button
+              className={primaryButton + " flex items-center justify-center gap-2 min-w-[140px]"}
+              disabled={busy}
               onClick={async () => {
                 setBusy(true);
                 setError(null);
