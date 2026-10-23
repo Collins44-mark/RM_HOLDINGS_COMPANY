@@ -91,11 +91,12 @@ export function FarmTractorsPage({
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
             <FarmField label={t("farm.tractor.code")}>
               <input
-                className={inputClass}
-                value={form.code}
-                onChange={(event) =>
-                  setForm({ ...form, code: event.target.value })
-                }
+                readOnly
+                aria-label="Preview only — server generates final ID"
+                className={inputClass + " bg-slate-50"}
+                value={nextCode}
+                placeholder="Auto-generated (preview)"
+                title="Next available ID (preview only; server authoritative)"
               />
             </FarmField>
             <FarmField label={t("farm.tractor.name")}>
