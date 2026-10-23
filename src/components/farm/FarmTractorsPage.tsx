@@ -18,6 +18,7 @@ export function FarmTractorsPage({ initial }: { initial: { ok: true; workspace: 
   const [workspace, setWorkspace] = useState(initial.ok ? initial.workspace : null);
   const [error, setError] = useState(initial.ok ? null : initial.error);
   const [busy, setBusy] = useState(false);
+  const [selected, setSelected] = useState<FarmTractorsWorkspace["tractors"][0] | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [form, setForm] = useState({
@@ -72,10 +73,10 @@ export function FarmTractorsPage({ initial }: { initial: { ok: true; workspace: 
             <FarmField label={t("farm.tractor.hours")}>
               <input className={inputClass} value={form.hourMeter} onChange={(event) => setForm({ ...form, hourMeter: event.target.value })} />
             </FarmField>
-            <FarmField label={t("farm.tractor.acquired")}>
+            <FarmField label={t("farm.tractor.buyingDate")}>
               <input type="date" className={inputClass} value={form.acquiredOn} onChange={(event) => setForm({ ...form, acquiredOn: event.target.value })} />
             </FarmField>
-            <FarmField label={t("farm.tractor.cost")}>
+            <FarmField label={t("farm.tractor.buyingPrice")}>
               <input className={inputClass} value={form.acquisitionCost} onChange={(event) => setForm({ ...form, acquisitionCost: event.target.value })} />
             </FarmField>
           </div>
@@ -94,7 +95,7 @@ export function FarmTractorsPage({ initial }: { initial: { ok: true; workspace: 
                 else {
                   const next = await loadFarmTractorsWorkspaceAction();
                   if (next.ok) setWorkspace(next.workspace);
-                  setForm({ ...form, code: "", name: "", registrationNumber: "", notes: "" });
+                  setForm({ code: "", name: "", registrationNumber: "", manufacturer: "", model: "", acquiredOn: "", acquisitionCost: "", status: "AVAILABLE", hourMeter: "0", notes: "" });
                 }
               }}
             />
@@ -112,7 +113,7 @@ export function FarmTractorsPage({ initial }: { initial: { ok: true; workspace: 
                 <th className="px-3 py-2">{t("common.status")}</th>
                 <th className="px-3 py-2">{t("farm.tractor.hours")}</th>
                 <th className="px-3 py-2">{t("farm.tractor.fuel")}</th>
-                <th className="px-3 py-2">{t("farm.tractor.cost")}</th>
+                <th className="px-3 py-2">{t("farm.tractor.buyingPrice")}</th>
               </tr>
             </thead>
             <tbody>
@@ -126,12 +127,13 @@ export function FarmTractorsPage({ initial }: { initial: { ok: true; workspace: 
                 slice.map((row) => (
                   <tr key={row.id} className="border-t border-navy/5 text-navy">
                     <td className="px-3 py-2.5">
-                      {row.name} · {row.code}
+                      <div className="font-medium">{row.name}</div>
+                      <div className="text-[11px] text-slate-500">{row.code}</div>
                     </td>
                     <td className="px-3 py-2.5">{t(farmTractorStatusKey(row.status))}</td>
                     <td className="px-3 py-2.5">{row.hourMeter} h</td>
-                    <td className="px-3 py-2.5">{row.fuelLitres} L</td>
                     <td className="px-3 py-2.5">{row.acquisitionCost != null ? formatTzs(row.acquisitionCost) : "—"}</td>
+                    <td className="px-3 py-2.5"><button onClick={() => setSelected(row)} aria-label="View">⋮</button></td>
                   </tr>
                 ))
               )}
@@ -141,5 +143,23 @@ export function FarmTractorsPage({ initial }: { initial: { ok: true; workspace: 
         <PaginationBar page={meta.page} total={rows.length} pageSize={pageSize} onPage={setPage} onPageSize={(size) => { setPageSize(size); setPage(1); }} />
       </section>
     </div>
+
+  {selected ? (
+    <div className="fixed top-0 right-0 h-full w-96 bg-white shadow-2xl border-l border-navy/10 z-50 p-6 overflow-y-auto">
+      <button onClick={() => setSelected(null)} className="absolute top-4 right-4 text-slate-400 hover:text-navy" aria-label="Close">✕</button>
+      <h3 className="text-lg font-semibold text-navy mb-4">Tractor Details</h3>
+      <div className="space-y-2 text-sm text-navy">
+        <div><span className="text-slate-500">Internal ID</span><div>{selected.id}</div></div>
+        <div><span className="text-slate-500">Name</span><div>{selected.name}</div></div>
+        <div><span className="text-slate-500">Registration</span><div>{selected.code}</div></div>
+        <div><span className="text-slate-500">Manufacturer</span><div>{selected.manufacturer}</div></div>
+        <div><span className="text-slate-500">Model</span><div>{selected.model}</div></div>
+        <div><span className="text-slate-500">Status</span><div>{selected.status}</div></div>
+        <div><span className="text-slate-500">Engine Hours</span><div>{selected.hourMeter} h</div></div>
+        <div><span className="text-slate-500">Buying Date</span><div>{selected.acquiredOn}</div></div>
+        <div><span className="text-slate-500">Buying Price</span><div>{selected.acquisitionCost != null ? formatTzs(selected.acquisitionCost) : "—"}</div></div>
+      </div>
+    </div>
+  ) : null}
   );
 }
