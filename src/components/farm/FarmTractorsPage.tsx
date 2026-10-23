@@ -181,8 +181,9 @@ export function FarmTractorsPage({
           </div>
           <div className="mt-4">
             <button
-              className={primaryButton + " flex items-center justify-center gap-2 min-w-[140px]"}
+              className={primaryButton + " flex items-center justify-center gap-2 min-w-[140px]" + (savedOk ? " bg-green-600" : "")}
               disabled={busy}
+              aria-label={busy ? "Saving..." : savedOk ? "Saved" : "Save tractor"}
               onClick={async () => {
                 setBusy(true);
                 setError(null);
