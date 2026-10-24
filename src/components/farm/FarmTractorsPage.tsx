@@ -209,7 +209,8 @@ export function FarmTractorsPage({
                   });
                 }
               }}
-            />
+              {busy ? <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" /> : savedOk ? <span className="flex items-center gap-1"><span>✓</span> Saved</span> : <span className="flex items-center gap-2"><Tractor className="w-4 h-4" /> Save tractor</span>}
+            </button>
           </div>
         </section>
       ) : null}
