@@ -133,8 +133,7 @@ export function FarmJobsPage({
             <FarmField label={t("common.date")}>
               <input type="date" className={inputClass} value={form.occurredOn} onChange={(event) => setForm({ ...form, occurredOn: event.target.value })} />
             </FarmField>
-            <FarmField label={t("farm.tractor.hours")}>
-            </FarmField>
+            <FarmField label={t("farm.tractor.hours")}><input className={inputClass} value={form.duration || ""} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="Hours / Days" /></FarmField>
             <FarmField label={t("farm.job.price")}>
               <input className={inputClass} value={form.agreedPrice} onChange={(event) => setForm({ ...form, agreedPrice: event.target.value })} />
             </FarmField>
