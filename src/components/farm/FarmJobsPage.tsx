@@ -40,6 +40,7 @@ export function FarmJobsPage({
     amountPaid: "",
     paymentMethod: "CASH",
     status: "PENDING",
+    duration: "",
     notes: "",
   });
 
