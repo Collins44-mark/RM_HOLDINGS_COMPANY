@@ -284,3 +284,4 @@ export function FarmTractorsPage({
       </section>
     </div>
   );
+}
