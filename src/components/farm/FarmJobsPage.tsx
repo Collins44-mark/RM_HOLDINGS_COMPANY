@@ -40,7 +40,6 @@ export function FarmJobsPage({
     amountPaid: "",
     paymentMethod: "CASH",
     status: "PENDING",
-    hourMeter: "",
     notes: "",
   });
 
@@ -101,6 +100,9 @@ export function FarmJobsPage({
                 ))}
               </select>
             </FarmField>
+            <FarmField label={t("farm.job.duration")}>
+              <input className={inputClass} value={form.duration || ""} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="Hours / Days" />
+            </FarmField>
             <FarmField label={t("farm.job.location")}>
               <input className={inputClass} value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} />
             </FarmField>
@@ -131,7 +133,6 @@ export function FarmJobsPage({
               <input type="date" className={inputClass} value={form.occurredOn} onChange={(event) => setForm({ ...form, occurredOn: event.target.value })} />
             </FarmField>
             <FarmField label={t("farm.tractor.hours")}>
-              <input className={inputClass} value={form.hourMeter} onChange={(event) => setForm({ ...form, hourMeter: event.target.value })} />
             </FarmField>
             <FarmField label={t("farm.job.price")}>
               <input className={inputClass} value={form.agreedPrice} onChange={(event) => setForm({ ...form, agreedPrice: event.target.value })} />
