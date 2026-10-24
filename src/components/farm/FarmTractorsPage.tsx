@@ -186,9 +186,6 @@ export function FarmTractorsPage({
               className={primaryButton + " flex items-center justify-center gap-2 min-w-[140px]" + (savedOk ? " bg-green-600" : "")}
               disabled={busy}
               aria-label={busy ? "Saving..." : savedOk ? "Saved" : "Save tractor"}
-              >
-              {busy ? <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" /> : savedOk ? <span className="flex items-center gap-1"><span>✓</span> Saved</span> : <span className="flex items-center gap-2"><Tractor className="w-4 h-4" /> Save tractor</span>}
-              <button
               onClick={async () => {
                 setBusy(true);
                 setError(null);
