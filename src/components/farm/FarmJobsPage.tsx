@@ -101,8 +101,7 @@ export function FarmJobsPage({
                 ))}
               </select>
             </FarmField>
-            <FarmField label={t("farm.job.duration")}>
-              <input className={inputClass} value={form.duration || ""} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="Hours / Days" />
+            <FarmField label="Duration (Hours / Days)">
               <input className={inputClass} value={form.duration || ""} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="Hours / Days" />
             </FarmField>
             <FarmField label={t("farm.job.location")}>
