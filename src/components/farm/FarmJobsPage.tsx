@@ -103,6 +103,8 @@ export function FarmJobsPage({
             </FarmField>
             <FarmField label={t("farm.job.duration")} children={
               <input className={inputClass} value={form.duration || ""} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="Hours / Days" />
+            }
+              <input className={inputClass} value={form.duration || ""} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="Hours / Days" />
             }>
               <input className={inputClass} value={form.duration || ""} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="Hours / Days" />
             </FarmField>
