@@ -243,7 +243,7 @@ export function FarmTractorsPage({
                 </tr>
               ) : (
                 slice.map((row) => (
-                  <tr key={row.id} className="border-t border-navy/5 text-navy">
+                  <tr key={row.id} className="border-t border-navy text-navy">
                     <td className="px-3 py-2.5">
                       <div className="font-medium">{row.name}</div>
                       <div className="text-[11px] text-slate-500">
@@ -297,12 +297,13 @@ export function FarmTractorsPage({
                 </div>
               </div>
               <div className="px-6 overflow-y-auto flex-1 min-h-0">
+                {/* drawer content */}
                 {drawerTab === "edit" ? (
                   <><div className="mb-4"><label className="text-xs font-medium text-slate-600 block mb-1">Name</label><input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" defaultValue={selected.name || ""} /></div><div className="mb-4"><label className="text-xs font-medium text-slate-600 block mb-1">Manufacturer</label><input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" defaultValue={selected.manufacturer || ""} /></div><div className="mb-4"><label className="text-xs font-medium text-slate-600 block mb-1">Model</label><input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" defaultValue={selected.model || ""} /></div><div className="mb-4"><label className="text-xs font-medium text-slate-600 block mb-1">Status</label><select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"><option>Available</option><option>In use</option><option>Maintenance</option></select></div></>
                 ) : drawerTab === "history" ? (
                   <div className="text-sm text-slate-500">No activity history available yet.</div>
                 ) : (
-                  <><h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Basic information</h3><div className="grid grid-cols-2 gap-3 mb-6"><div className="bg-blue-50 rounded-xl p-3 border border-blue-100"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Name</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.name || "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-blue-100"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Internal ID</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.code || selected.id || "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-blue-100"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Registration number</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.registrationNumber || "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-blue-100"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Manufacturer</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.manufacturer || "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-blue-100"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Model</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.model || "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-blue-100"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Engine hours</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.hourMeter != null ? selected.hourMeter + " h" : "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-blue-100"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Date of purchase</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.acquiredOn ? new Date(selected.acquiredOn).toLocaleDateString() : "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-blue-100"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Buying price (TZS)</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.acquisitionCost != null ? ("TZS " + selected.acquisitionCost.toLocaleString()) : "—"}</div></div></div></>
+                  <><h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Basic information</h3><div className="grid grid-cols-2 gap-3 mb-6"><div className="bg-blue-50 rounded-xl p-3 border border-blue-100"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Name</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.name || "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-blue-100"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Internal ID</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.code || selected.id || "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-blue-100"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Registration number</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.registrationNumber || "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-blue-100"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Manufacturer</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.manufacturer || "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-blue-100"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Model</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.model || "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-blue-100"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Engine hours</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.hourMeter != null ? selected.hourMeter + " h" : "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-blue-100"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Date of purchase</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.acquiredOn ? new Date(selected.acquiredOn).toLocaleDateString() : "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-blue-100"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Buying price (TZS)</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.acquisitionCost != null ? `TZS ${selected.acquisitionCost}` : "—"}</div></div></div></>
                 </div>
               </>
             </aside>
@@ -321,23 +322,6 @@ export function FarmTractorsPage({
         />
       </section>
     </div>
-  );
-}
 
-        )}
-        )}
-        </>, document.body)
-        <PaginationBar
-          page={meta.page}
-          total={rows.length}
-          pageSize={pageSize}
-          onPage={setPage}
-          onPageSize={(size) => {
-            setPageSize(size);
-            setPage(1);
-          }}
-        />
-      </section>
-    </div>
   );
 }
