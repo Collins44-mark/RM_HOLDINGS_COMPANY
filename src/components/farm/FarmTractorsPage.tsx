@@ -189,7 +189,7 @@ export function FarmTractorsPage({
               onClick={async () => {
                 setBusy(true);
                 setError(null);
-                const result = await saveFarmTractorAction(form);
+                const result = await saveFarmTractorAction({ ...form, code: nextCode || form.code || "" });
                 setBusy(false);
                 if (!result.ok) setError(result.error);
                 else {
