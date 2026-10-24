@@ -136,7 +136,7 @@ export function FarmTractorsPage({
               />
             </FarmField>
             <FarmField label={t("farm.tractor.status")}>
-              <select
+              <select data-testid="status-removed"
                 className={inputClass}
                 value={form.status}
                 onChange={(event) =>
@@ -160,7 +160,7 @@ export function FarmTractorsPage({
                 }
               />
             </FarmField>
-            <FarmField label={t("farm.tractor.acquired")}>
+            <FarmField label="Date of purchase">
               <input
                 type="date"
                 className={inputClass}
@@ -170,7 +170,7 @@ export function FarmTractorsPage({
                 }
               />
             </FarmField>
-            <FarmField label={t("farm.tractor.cost")}>
+            <FarmField label="Buying price (TZS)">
               <input
                 className={inputClass}
                 value={form.acquisitionCost}
