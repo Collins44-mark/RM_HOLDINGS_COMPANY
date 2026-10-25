@@ -24,7 +24,10 @@ export function FarmFuelPage({
   const t = useT();
   const [workspace, setWorkspace] = useState(initial.ok ? initial.workspace : null);
   const [error, setError] = useState(initial.ok ? null : initial.error);
-  const [busy, setBusy] = useState(false);
+  const [isSavingFuel, setIsSavingFuel] = useState(false);
+  const [isSavingMaint, setIsSavingMaint] = useState(false);
+  const [fuelError, setFuelError] = useState("");
+  const [maintError, setMaintError] = useState("");
   const [fuel, setFuel] = useState({
     tractorId: "",
     supplierId: "",
@@ -107,20 +110,20 @@ export function FarmFuelPage({
             <div className="mt-4">
               <SchoolWorkflowButton
                 className={primaryButton}
-                busy={busy}
-                idleLabel={t("farm.fuel.post")}
-                busyLabel={t("common.posting")}
+                busy={isSavingFuel}
+                idleLabel={isSavingFuel ? "Saving..." : t("farm.fuel.post")}
+                busyLabel="Saving..."
                 onClick={async () => {
-                  setBusy(true);
-                  setError(null);
+                  setIsSavingFuel(true);
+                  setFuelError("");
                   const requestId = crypto.randomUUID();
                   const payload = { requestId, ...fuel };
                   const saved = await saveWithOutbox(
                     { id: requestId, type: "farm.record_fuel", businessUnitCode: "farm", payload },
                     () => recordFarmFuelAction(payload),
                   );
-                  setBusy(false);
-                  if (saved.error) setError(saved.error);
+                  setIsSavingFuel(false);
+                  if (saved.error) setFuelError(saved.error);
                   else {
                     setFuel((current) => ({ ...current, litres: "", unitPrice: "", notes: "" }));
                     if (!saved.queued) await refresh();
@@ -169,20 +172,20 @@ export function FarmFuelPage({
             <div className="mt-4">
               <SchoolWorkflowButton
                 className={primaryButton}
-                busy={busy}
-                idleLabel={t("farm.maint.post")}
-                busyLabel={t("common.posting")}
+                busy={isSavingMaint}
+                idleLabel={isSavingMaint ? "Saving..." : t("farm.maint.post")}
+                busyLabel="Saving..."
                 onClick={async () => {
-                  setBusy(true);
-                  setError(null);
+                  setIsSavingMaint(true);
+                  setMaintError("");
                   const requestId = crypto.randomUUID();
                   const payload = { requestId, ...maint };
                   const saved = await saveWithOutbox(
                     { id: requestId, type: "farm.record_maintenance", businessUnitCode: "farm", payload },
                     () => recordFarmMaintenanceAction(payload),
                   );
-                  setBusy(false);
-                  if (saved.error) setError(saved.error);
+                  setIsSavingMaint(false);
+                  if (saved.error) setMaintError(saved.error);
                   else {
                     setMaint((current) => ({ ...current, description: "", partsCost: "", labourCost: "" }));
                     if (!saved.queued) await refresh();
