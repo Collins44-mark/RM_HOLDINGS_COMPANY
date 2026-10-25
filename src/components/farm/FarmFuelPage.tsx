@@ -26,7 +26,6 @@ export function FarmFuelPage({
   const [error, setError] = useState(initial.ok ? null : initial.error);
   const [isSavingFuel, setIsSavingFuel] = useState(false);
   const [savedFuel, setSavedFuel] = useState(false);
-  const [savedFuel, setSavedFuel] = useState(false);
   const [isSavingMaint, setIsSavingMaint] = useState(false);
   const [fuelFilter, setFuelFilter] = useState("week");
   const [fuelCustomFrom, setFuelCustomFrom] = useState("");
