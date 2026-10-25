@@ -298,7 +298,12 @@ export function FarmTractorsPage({
               </div>
               <div className="px-6 overflow-y-auto flex-1 min-h-0">
                 {/* drawer content */}
-                <TractorDrawer selected={selected} drawerTab={drawerTab} setDrawerTab={setDrawerTab} />        </>, document.body)
+                <TractorDrawer selected={selected} drawerTab={drawerTab} setDrawerTab={setDrawerTab} />
+              </div>
+            </aside>
+          </>
+        )}
+        </>, document.body)
         <PaginationBar page={meta.page} total={rows.length} pageSize={pageSize} onPage={setPage} onPageSize={(size)=>{setPageSize(size);setPage(1)}} />
 />
 
