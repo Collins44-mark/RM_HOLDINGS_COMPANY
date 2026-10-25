@@ -8,7 +8,7 @@ function JobDrawer({ job, tab, setTab, onClose, onRefresh, workspace }: any) {
   const bal = jobBalance(job);
   const payments = job.payments ?? [];
   return (
-    <aside className="fixed top-4 right-4 bottom-4 w-[480px] max-w-[92vw] bg-white rounded-[24px] shadow-2xl z-50 overflow-hidden flex flex-col border border-slate-200" role="dialog" aria-modal="true">
+    <aside className="fixed top-4 right-4 w-[480px] max-w-[92vw] bg-white rounded-[24px] shadow-2xl z-50 overflow-hidden flex flex-col border border-slate-200" style={{ height: "calc(100dvh - 32px)", maxHeight: "calc(100dvh - 32px)" }} role="dialog" aria-modal="true">
       <div className="px-6 pt-6 pb-4 shrink-0">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -24,7 +24,7 @@ function JobDrawer({ job, tab, setTab, onClose, onRefresh, workspace }: any) {
           <button onClick={()=>setTab("edit")} className={`pb-3 -mb-3.5 border-b-2 transition ${tab==="edit"?"text-navy border-navy":"text-slate-500 border-transparent hover:text-navy hover:border-slate-300"}`}>Edit</button>
         </div>
       </div>
-      <div className="px-6 overflow-y-auto flex-1 min-h-0">
+      <div className="px-6 overflow-y-auto flex-1 min-h-0" style={{ overflowY: "auto" }}>
         {tab === "overview" && <OverviewTab job={job} bal={bal} />}
         {tab === "payments" && <PaymentsTab job={job} onRefresh={onRefresh} />}
         {tab === "edit" && <EditTab job={job} onRefresh={onRefresh} workspace={workspace} />}
