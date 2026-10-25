@@ -35,7 +35,7 @@ export function FarmFuelPage({
     occurredOn: todayIso(),
     litres: "",
     unitPrice: "",
-    hourMeter: "",
+    fuelType: "Diesel",
     stationName: "",
     paymentMethod: "CASH",
     paymentReference: "",
@@ -50,7 +50,7 @@ export function FarmFuelPage({
     description: "",
     partsCost: "",
     labourCost: "",
-    hourMeter: "",
+    fuelType: "Diesel",
     paymentMethod: "CASH",
     paymentReference: "",
     markUnderService: false,
@@ -94,8 +94,12 @@ export function FarmFuelPage({
               <FarmField label={t("farm.fuel.unitPrice")}>
                 <input className={inputClass} value={fuel.unitPrice} onChange={(event) => setFuel({ ...fuel, unitPrice: event.target.value })} />
               </FarmField>
-              <FarmField label={t("farm.tractor.hours")}>
-                <input className={inputClass} value={fuel.hourMeter} onChange={(event) => setFuel({ ...fuel, hourMeter: event.target.value })} />
+              <FarmField label="Fuel type">
+                <select className={inputClass} value={fuel.fuelType} onChange={(event) => setFuel({ ...fuel, fuelType: event.target.value })}>
+                  <option>Diesel</option>
+                  <option>Petrol</option>
+                  <option>Other</option>
+                </select>
               </FarmField>
               <FarmField label={t("rice.purchases.method")}>
                 <select className={inputClass} value={fuel.paymentMethod} onChange={(event) => setFuel({ ...fuel, paymentMethod: event.target.value })}>

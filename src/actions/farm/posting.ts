@@ -190,7 +190,7 @@ export async function recordFarmFuelAction(input: {
   occurredOn: string;
   litres: string;
   unitPrice: string;
-  hourMeter?: string;
+  fuelType?: string;
   stationName?: string;
   paymentMethod?: string;
   paymentReference?: string;
@@ -205,7 +205,7 @@ export async function recordFarmFuelAction(input: {
       p_occurred_on: str(input.occurredOn),
       p_litres: num(input.litres),
       p_unit_price: num(input.unitPrice),
-      p_hour_meter: str(input.hourMeter) ? num(input.hourMeter) : null,
+      p_fuel_type: str(input.fuelType) || "Diesel",
       p_station_name: str(input.stationName) || null,
       p_payment_method: str(input.paymentMethod) || "CASH",
       p_payment_reference: str(input.paymentReference) || null,
