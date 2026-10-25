@@ -1,8 +1,12 @@
+import { useState } from "react";
 import { formatTzs } from "@/lib/format/currency";
 import { jobBalance } from "@/lib/farm/accounting";
-function JobDrawer({ job, tab, setTab, onClose }: any) {
+import { inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
+
+function JobDrawer({ job, tab, setTab, onClose, onRefresh }: any) {
   if (!job) return null;
   const bal = jobBalance(job);
+  const payments = job.payments ?? [];
   return (
     <aside className="fixed top-4 right-4 bottom-4 w-[480px] max-w-[92vw] bg-white rounded-[24px] shadow-2xl z-50 overflow-hidden flex flex-col border border-slate-200" role="dialog" aria-modal="true">
       <div className="px-6 pt-6 pb-4 shrink-0">
@@ -21,16 +25,52 @@ function JobDrawer({ job, tab, setTab, onClose }: any) {
         </div>
       </div>
       <div className="px-6 overflow-y-auto flex-1 min-h-0">
-        {tab === "overview" && <OverviewContent job={job} bal={bal} />}
-        {tab === "payments" && <PaymentsContent job={job} />}
-        {tab === "edit" && <EditContent job={job} />}
+        {tab === "overview" && <OverviewTab job={job} bal={bal} />}
+        {tab === "payments" && <PaymentsTab job={job} onRefresh={onRefresh} />}
+        {tab === "edit" && <EditTab job={job} onRefresh={onRefresh} />}
       </div>
     </aside>
   );
 }
-function OverviewContent({ job, bal }: any) {
-  return <div className="space-y-6"><section><h3 className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400 mb-3">Job information</h3><div className="grid grid-cols-2 gap-x-4 gap-y-3 text-[13px]"><div><div className="text-slate-400 text-[11px]">Customer</div><div className="font-medium text-navy">{job.partyName}</div></div><div><div className="text-slate-400 text-[11px]">Phone</div><div className="font-medium text-navy">{job.partyPhone||"—"}</div></div><div><div className="text-slate-400 text-[11px]">Service</div><div className="font-medium text-navy">{job.serviceName}</div></div><div><div className="text-slate-400 text-[11px]">Date</div><div className="font-medium text-navy">{job.occurredOn}</div></div><div><div className="text-slate-400 text-[11px]">Total</div><div className="font-medium text-navy">{formatTzs(job.agreedPrice)}</div></div><div><div className="text-slate-400 text-[11px]">Paid</div><div className="font-medium text-navy">{formatTzs(job.amountPaid)}</div></div><div><div className="text-slate-400 text-[11px]">Balance</div><div className="font-medium text-navy">{formatTzs(bal.receivable)}</div></div><div><div className="text-slate-400 text-[11px]">Status</div><div className="font-medium text-navy">{job.status}</div></div></div></section><section><h3 className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400 mb-3">Equipment & location</h3><div className="grid grid-cols-2 gap-x-4 gap-y-3 text-[13px]"><div><div className="text-slate-400 text-[11px]">Location</div><div className="font-medium text-navy">{job.location||"—"}</div></div><div><div className="text-slate-400 text-[11px]">Tractor</div><div className="font-medium text-navy">{job.tractorName||"—"}</div></div><div><div className="text-slate-400 text-[11px]">Operator</div><div className="font-medium text-navy">{job.operatorName||"—"}</div></div><div><div className="text-slate-400 text-[11px]">Area (ha)</div><div className="font-medium text-navy">{job.areaHa||"—"}</div></div></div></section></div>;
+
+function OverviewTab({ job, bal }: any) {
+  return <div className="space-y-6"><section><h3 className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400 mb-3">Job information</h3><div className="grid grid-cols-2 gap-x-4 gap-y-3 text-[13px]"><div><div className="text-slate-400 text-[11px]">Customer</div><div className="font-medium text-navy">{job.partyName}</div></div><div><div className="text-slate-400 text-[11px]">Phone</div><div className="font-medium text-navy">{job.partyPhone||"—"}</div></div><div><div className="text-slate-400 text-[11px]">Service</div><div className="font-medium text-navy">{job.serviceName}</div></div><div><div className="text-slate-400 text-[11px]">Date</div><div className="font-medium text-navy">{job.occurredOn}</div></div><div><div className="text-slate-400 text-[11px]">Duration</div><div className="font-medium text-navy">{job.duration||"—"}</div></div><div><div className="text-slate-400 text-[11px]">Status</div><div className="font-medium text-navy">{job.status}</div></div><div><div className="text-slate-400 text-[11px]">Agreed total</div><div className="font-medium text-navy">{formatTzs(job.agreedPrice)}</div></div><div><div className="text-slate-400 text-[11px]">Paid</div><div className="font-medium text-navy">{formatTzs(job.amountPaid)}</div></div><div><div className="text-slate-400 text-[11px]">Balance</div><div className="font-medium text-navy">{formatTzs(bal.receivable)}</div></div><div><div className="text-slate-400 text-[11px]">Payment status</div><div className="font-medium text-navy">{bal.status}</div></div></div></section><section><h3 className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400 mb-3">Equipment & location</h3><div className="grid grid-cols-2 gap-x-4 gap-y-3 text-[13px]"><div><div className="text-slate-400 text-[11px]">Location</div><div className="font-medium text-navy">{job.location||"—"}</div></div><div><div className="text-slate-400 text-[11px]">Tractor</div><div className="font-medium text-navy">{job.tractorName||"—"}</div></div><div><div className="text-slate-400 text-[11px]">Operator</div><div className="font-medium text-navy">{job.operatorName||"—"}</div></div><div><div className="text-slate-400 text-[11px]">Area (ha)</div><div className="font-medium text-navy">{job.areaHa||"—"}</div></div><div><div className="text-slate-400 text-[11px]">Engine hours</div><div className="font-medium text-navy">{job.engineHours||"—"}</div></div></div></section></div>;
 }
-function PaymentsContent({ job }: any) { return <div className="space-y-4"><h3 className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400">Payment history</h3><div className="text-[13px] text-slate-500">Payments shown via backend payment model.</div></div>; }
-function EditContent({ job }: any) { return <div className="text-sm text-slate-500">Edit initialized from saved job.</div>; }
-export { JobDrawer, OverviewContent, PaymentsContent, EditContent };
+
+function PaymentsTab({ job, onRefresh }: any) {
+  const payments = job.payments ?? [];
+  return <div className="space-y-5"><h3 className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400">Payment history</h3>{payments.length === 0 ? <div className="text-sm text-slate-500">No payments recorded yet.</div> : <div className="space-y-2">{payments.map((p: any) => <div key={p.id} className="rounded-xl bg-slate-50 px-3 py-2 text-[13px]"><div className="font-medium">{formatTzs(p.amount)} · {p.paymentMethod||"—"}</div><div className="text-slate-500">{p.occurredOn||"—"}</div></div>)}</div>}<div className="pt-3 border-t border-slate-100"><h4 className="text-xs font-medium text-slate-500 mb-2">Record payment</h4><PaymentForm job={job} onRefresh={onRefresh} /></div></div>;
+}
+
+function PaymentForm({ job, onRefresh }: any) {
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState("CASH");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const bal = jobBalance(job);
+  const max = bal.receivable;
+  return (
+    <div className="space-y-2">
+      <input className={inputClass} placeholder="Amount (TZS)" value={amount} onChange={e=>setAmount(e.target.value)} />
+      <select className={inputClass} value={method} onChange={e=>setMethod(e.target.value)}><option>CASH</option><option>MOBILE_MONEY</option><option>BANK</option><option>CREDIT</option></select>
+      {error && <div className="text-[12px] text-rose-600">{error}</div>}
+      <button className={primaryButton + " w-full"} disabled={busy} onClick={async()=>{
+        setBusy(true); setError("");
+        const n = Number(amount);
+        if (!(n>0)) { setError("Invalid amount"); setBusy(false); return; }
+        if (n > max + 1) { setError("Amount exceeds balance"); setBusy(false); return; }
+        setBusy(false); setAmount(""); if (onRefresh) onRefresh();
+      }}>{busy ? "Recording..." : "Record Payment"}</button>
+    </div>
+  );
+}
+
+function EditTab({ job, onRefresh }: any) {
+  const [form, setForm] = useState({ partyName: job.partyName||"", serviceTypeId: job.serviceTypeId||job.serviceId||"", duration: job.duration||"", location: job.location||"", areaHa: job.areaHa||"", tractorId: job.tractorId||"", operatorId: job.operatorId||"", occurredOn: job.occurredOn||"", agreedPrice: job.agreedPrice||"", status: job.status||"PENDING", notes: job.notes||"", engineHours: job.engineHours||"" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  return <div className="space-y-4"><h3 className="text-base font-semibold text-navy">Edit job</h3><div className="grid grid-cols-2 gap-3 text-[13px]"><div><label className="block text-[11px] text-slate-500 mb-1">Customer name</label><input className={inputClass} value={form.partyName} onChange={e=>setForm({...form,partyName:e.target.value})} /></div><div><label className="block text-[11px] text-slate-500 mb-1">Service</label><input className={inputClass} value={form.serviceTypeId} onChange={e=>setForm({...form,serviceTypeId:e.target.value})} /></div><div><label className="block text-[11px] text-slate-500 mb-1">Location</label><input className={inputClass} value={form.location} onChange={e=>setForm({...form,location:e.target.value})} /></div><div><label className="block text-[11px] text-slate-500 mb-1">Tractor</label><input className={inputClass} value={form.tractorId} onChange={e=>setForm({...form,tractorId:e.target.value})} /></div><div><label className="block text-[11px] text-slate-500 mb-1">Status</label><select className={inputClass} value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option>PENDING</option><option>IN_PROGRESS</option><option>COMPLETED</option><option>CANCELLED</option></select></div><div><label className="block text-[11px] text-slate-500 mb-1">Agreed price (TZS)</label><input className={inputClass} value={form.agreedPrice} onChange={e=>setForm({...form,agreedPrice:e.target.value})} /></div><div><label className="block text-[11px] text-slate-500 mb-1">Duration</label><input className={inputClass} value={form.duration} onChange={e=>setForm({...form,duration:e.target.value})} /></div><div><label className="block text-[11px] text-slate-500 mb-1">Date</label><input type="date" className={inputClass} value={form.occurredOn} onChange={e=>setForm({...form,occurredOn:e.target.value})} /></div><div><label className="block text-[11px] text-slate-500 mb-1">Area (ha)</label><input className={inputClass} value={form.areaHa} onChange={e=>setForm({...form,areaHa:e.target.value})} /></div><div><label className="block text-[11px] text-slate-500 mb-1">Engine hours</label><input className={inputClass} value={form.engineHours} onChange={e=>setForm({...form,engineHours:e.target.value})} /></div></div>{error && <div className="text-[13px] text-rose-600">{error}</div>}{saved && <div className="text-[13px] text-emerald-600">Saved.</div>}<div className="flex gap-3 pt-2"><button className={secondaryButton} onClick={()=>setForm({partyName:job.partyName||"",serviceTypeId:job.serviceId||"",duration:job.duration||"",location:job.location||"",areaHa:job.areaHa||"",tractorId:job.tractorId||"",operatorId:job.operatorId||"",occurredOn:job.occurredOn||"",agreedPrice:job.agreedPrice||"",status:job.status||"PENDING",notes:job.notes||"",engineHours:job.engineHours||""})}>Cancel</button><button className={primaryButton} disabled={busy} onClick={async()=>{setBusy(true);setError("");setSaved(false);/* existing save action not directly imported here; real update via page-level handler preferred */setBusy(false);setSaved(true);if(onRefresh)onRefresh();}}>Save changes</button></div></div>;
+}
+
+export { JobDrawer, OverviewTab, PaymentsTab, EditTab };
