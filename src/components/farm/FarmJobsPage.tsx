@@ -242,6 +242,7 @@ export function FarmJobsPage({
                       <td className="px-3 py-2.5">
                         <span className={`inline-flex h-[22px] items-center rounded-full px-2.5 text-[11.5px] font-medium ${row.status==="COMPLETED"?"bg-emerald-50 text-emerald-700":row.status==="IN_PROGRESS"?"bg-blue-50 text-blue-700":"bg-amber-50 text-amber-700"}`}>{t(farmJobStatusKey(row.status))}</span>
                       </td>
+                      <td className="px-3 py-3"><button onClick={()=>{setSelectedJob(row);setDrawerTab("overview");}} aria-label="Actions" className="inline-flex h-8 w-8 items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400">⋮</button></td>
                     </tr>
                   );
                 })
