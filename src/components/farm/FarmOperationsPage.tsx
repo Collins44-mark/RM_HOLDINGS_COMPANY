@@ -29,6 +29,8 @@ export function FarmOperationsPage({
   const [plotError, setPlotError] = useState("");
   const [seasonError, setSeasonError] = useState("");
   const [fieldError, setFieldError] = useState<string>("");
+  const [isSavingHarvest, setIsSavingHarvest] = useState(false);
+  const [harvestError, setHarvestError] = useState<string>("");
   const [plot, setPlot] = useState({ name: "", hectares: "", crop: "" });
   const [season, setSeason] = useState({ plotId: "", name: "", year: String(new Date().getFullYear()), crop: "" });
   const [op, setOp] = useState({ plotId: "", seasonId: "", tractorId: "", activity: "", occurredOn: todayIso(), areaHa: "", cost: "" });
