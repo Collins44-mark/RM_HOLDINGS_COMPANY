@@ -309,6 +309,7 @@ export function FarmTractorsPage({
   );
 }
 function TractorDrawer({ selected, drawerTab, setDrawerTab }: any) {
+  if (!selected) return null;
   if (drawerTab === "edit") {
     return (<><div className="mb-4"><label>Name</label><input defaultValue={selected?.name || ""} /></div><div className="mb-4"><label>Manufacturer</label><input defaultValue={selected?.manufacturer || ""} /></div><div className="mb-4"><label>Model</label><input defaultValue={selected?.model || ""} /></div><div className="mb-4"><label>Status</label><select><option>Available</option></select></div></>);
   }
