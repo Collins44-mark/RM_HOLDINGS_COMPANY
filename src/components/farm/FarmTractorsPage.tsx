@@ -13,6 +13,7 @@ import {
   glassPanel,
   inputClass,
   primaryButton,
+  secondaryButton,
   tableHead,
   tableScrollClass,
 } from "@/components/supermarket/purchasing-ui";
@@ -243,28 +244,31 @@ export function FarmTractorsPage({
                 </tr>
               ) : (
                 slice.map((row) => (
-                  <tr key={row.id} className="border-t border-navy text-navy">
-                    <td className="px-3 py-2.5">
-                      <div className="font-medium">{row.name}</div>
+                  <tr key={row.id} className="hover:bg-slate-50/70 transition-colors">
+                    <td className="px-3 py-3.5">
+                      <div className="font-medium text-[13px]">{row.name}</div>
                       <div className="text-[11px] text-slate-500">
                         {row.code}
                       </div>
                     </td>
-                    <td className="px-3 py-2.5">
-                      {t(farmTractorStatusKey(row.status))}
+                    <td className="px-3 py-3.5">
+                      <span className={`inline-flex h-[22px] items-center rounded-full px-2.5 text-[11px] font-medium ${row.status === "AVAILABLE" ? "bg-emerald-50 text-emerald-700" : row.status === "IN_USE" ? "bg-amber-50 text-amber-700" : "bg-slate-50 text-slate-500"}`}>
+                        {t(farmTractorStatusKey(row.status))}
+                      </span>
                     </td>
-                    <td className="px-3 py-2.5">{row.hourMeter} h</td>
-                    <td className="px-3 py-2.5">
+                    <td className="px-3 py-3.5">{row.hourMeter} h</td>
+                    <td className="px-3 py-3.5">
                       {row.acquisitionCost != null
                         ? formatTzs(row.acquisitionCost)
                         : "—"}
                     </td>
-                    <td className="px-3 py-2.5">
+                    <td className="px-3 py-3.5">
                       <button
                         onClick={() => setSelected(row)}
                         aria-label="View"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
                       >
-                        ⋮
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
                       </button>
                     </td>
                   </tr>
@@ -286,14 +290,14 @@ export function FarmTractorsPage({
                       <h2 className="text-xl font-bold text-navy leading-none">Tractor details</h2>
                     </div>
                     <div className="text-sm text-slate-500 mt-1">{selected.code || selected.id} · {selected.name}</div>
-                    <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium">● Available</div>
+                    <div className={`mt-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${selected?.status === "IN_USE" ? "bg-amber-50 text-amber-700" : selected?.status === "UNDER_SERVICE" ? "bg-rose-50 text-rose-700" : selected?.status === "INACTIVE" ? "bg-slate-100 text-slate-500" : "bg-emerald-50 text-emerald-700"}`}>{selected?.status === "AVAILABLE" ? "● Available" : selected?.status === "IN_USE" ? "● In use" : selected?.status === "UNDER_SERVICE" ? "● Service" : selected?.status === "INACTIVE" ? "● Inactive" : "● Available"}</div>
                   </div>
                   <button onClick={() => setSelected(null)} aria-label="Close" className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-navy"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
                 </div>
-                <div className="flex gap-6 mt-4 text-[13px] font-medium text-slate-600 border-b border-slate-100 pb-3">
-                  <button onClick={()=>setDrawerTab("overview")} className={`pb-3 -mb-3.5 ${drawerTab==="overview"?"text-navy border-b-2 border-navy":"text-slate-500 hover:text-navy"}`}>Overview</button>
-                  <button onClick={()=>setDrawerTab("edit")} className={`pb-3 -mb-3.5 ${drawerTab==="edit"?"text-navy border-b-2 border-navy":"text-slate-500 hover:text-navy"}`}>Edit</button>
-                  <button onClick={()=>setDrawerTab("history")} className={`pb-3 -mb-3.5 ${drawerTab==="history"?"text-navy border-b-2 border-navy":"text-slate-500 hover:text-navy"}`}>History</button>
+                <div className="flex gap-6 mt-4 text-[13px] font-medium text-slate-600">
+                  <button onClick={()=>setDrawerTab("overview")} className={`pb-3 -mb-3.5 border-b-2 transition ${drawerTab==="overview"?"text-navy border-navy":"text-slate-500 border-transparent hover:text-navy hover:border-slate-300"}`}>Overview</button>
+                  <button onClick={()=>setDrawerTab("edit")} className={`pb-3 -mb-3.5 border-b-2 transition ${drawerTab==="edit"?"text-navy border-navy":"text-slate-500 border-transparent hover:text-navy hover:border-slate-300"}`}>Edit</button>
+                  <button onClick={()=>setDrawerTab("history")} className={`pb-3 -mb-3.5 border-b-2 transition ${drawerTab==="history"?"text-navy border-navy":"text-slate-500 border-transparent hover:text-navy hover:border-slate-300"}`}>History</button>
                 </div>
               </div>
               <div className="px-6 overflow-y-auto flex-1 min-h-0">
@@ -312,10 +316,51 @@ export function FarmTractorsPage({
 function TractorDrawer({ selected, drawerTab, setDrawerTab }: any) {
   if (!selected) return null;
   if (drawerTab === "edit") {
-    return (<><div className="mb-4"><label>Name</label><input defaultValue={selected?.name || ""} /></div><div className="mb-4"><label>Manufacturer</label><input defaultValue={selected?.manufacturer || ""} /></div><div className="mb-4"><label>Model</label><input defaultValue={selected?.model || ""} /></div><div className="mb-4"><label>Status</label><select><option>Available</option></select></div></>);
+    return (
+      <div className="space-y-4">
+        <div>
+          <label className="block text-[11px] font-medium uppercase tracking-wider text-slate-400 mb-1">Name</label>
+          <input className={inputClass} defaultValue={selected?.name || ""} />
+        </div>
+        <div>
+          <label className="block text-[11px] font-medium uppercase tracking-wider text-slate-400 mb-1">Manufacturer</label>
+          <input className={inputClass} defaultValue={selected?.manufacturer || ""} />
+        </div>
+        <div>
+          <label className="block text-[11px] font-medium uppercase tracking-wider text-slate-400 mb-1">Model</label>
+          <input className={inputClass} defaultValue={selected?.model || ""} />
+        </div>
+        <div>
+          <label className="block text-[11px] font-medium uppercase tracking-wider text-slate-400 mb-1">Status</label>
+          <select className={inputClass} defaultValue={selected?.status || "AVAILABLE"}>
+            <option>Available</option><option>In use</option><option>Under service</option><option>Inactive</option>
+          </select>
+        </div>
+        <div className="flex gap-3 pt-2">
+          <button onClick={() => setDrawerTab("overview")} className={secondaryButton}>Cancel</button>
+          <button className={primaryButton}>Save changes</button>
+        </div>
+      </div>
+    );
   }
   if (drawerTab === "history") {
     return <div className="text-sm text-slate-500">No activity history available yet.</div>;
   }
-  return (<><h3>Basic information</h3><div className="grid grid-cols-2 gap-3"><div>Name: {selected?.name}</div><div>ID: {selected?.code}</div><div>Reg: {selected?.registrationNumber}</div><div>Manufacturer: {selected?.manufacturer}</div><div>Model: {selected?.model}</div><div>Hours: {selected?.hourMeter}h</div><div>Purchase: {selected?.acquiredOn}</div><div>Price: {selected?.acquisitionCost}</div></div><button>Save changes</button></>);
+  return (
+    <div className="space-y-6">
+      <section>
+        <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400 mb-3">Basic information</h3>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-[13px]">
+          <div><div className="text-slate-400 text-[11px]">Name</div><div className="font-medium text-navy">{selected?.name}</div></div>
+          <div><div className="text-slate-400 text-[11px]">ID</div><div className="font-medium text-navy">{selected?.code}</div></div>
+          <div><div className="text-slate-400 text-[11px]">Reg</div><div className="font-medium text-navy">{selected?.registrationNumber}</div></div>
+          <div><div className="text-slate-400 text-[11px]">Manufacturer</div><div className="font-medium text-navy">{selected?.manufacturer}</div></div>
+          <div><div className="text-slate-400 text-[11px]">Model</div><div className="font-medium text-navy">{selected?.model}</div></div>
+          <div><div className="text-slate-400 text-[11px]">Hours</div><div className="font-medium text-navy">{selected?.hourMeter}h</div></div>
+          <div><div className="text-slate-400 text-[11px]">Purchase</div><div className="font-medium text-navy">{selected?.acquiredOn}</div></div>
+          <div><div className="text-slate-400 text-[11px]">Price</div><div className="font-medium text-navy">{selected?.acquisitionCost}</div></div>
+        </div>
+      </section>
+    </div>
+  );
 }
