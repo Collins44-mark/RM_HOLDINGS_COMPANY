@@ -13,6 +13,7 @@ import { useT } from "@/components/i18n/LocaleProvider";
 import { FARM_METHODS, FarmField, FarmNotice, FarmPageHeader, farmJobStatusKey, farmMethodKey, todayIso } from "@/components/farm/farm-ui";
 import { translateFarmCopy } from "@/lib/farm/error-copy";
 import { jobBalance } from "@/lib/farm/accounting";
+import { JobDrawer } from "./job-drawer";
 import { loadWorkspaceWithCache, saveWithOutbox, writeOfflineSnapshot } from "@/lib/offline";
 
 export function FarmJobsPage({
@@ -26,6 +27,8 @@ export function FarmJobsPage({
   const [workspace, setWorkspace] = useState(initial.ok ? initial.workspace : null);
   const [error, setError] = useState(initial.ok ? null : initial.error);
   const [busy, setBusy] = useState(false);
+  const [selectedJob, setSelectedJob] = useState<any>(null);
+  const [drawerTab, setDrawerTab] = useState<"overview" | "payments" | "edit">("overview");
   const [form, setForm] = useState({
     partyId: "",
     partyName: "",
@@ -176,8 +179,24 @@ export function FarmJobsPage({
                 setBusy(false);
                 if (saved.error) setError(saved.error);
                 else {
-                  setForm((current) => ({ ...current, agreedPrice: "", amountPaid: "", location: "", areaHa: "" }));
                   if (!saved.queued) await refresh(1, workspace?.listPage.pageSize);
+                  setForm({
+                    partyId: "",
+                    partyName: "",
+                    partyPhone: "",
+                    serviceTypeId: serviceId,
+                    tractorId: "",
+                    operatorId: "",
+                    location: "",
+                    areaHa: "",
+                    occurredOn: todayIso(),
+                    agreedPrice: "",
+                    amountPaid: "",
+                    paymentMethod: "CASH",
+                    status: "PENDING",
+                    duration: "",
+                    notes: "",
+                  });
                 }
               }}
             />
@@ -187,22 +206,26 @@ export function FarmJobsPage({
 
       <section className={glassPanel}>
         <h2 className="text-[16px] font-semibold text-navy">{t("farm.job.list")}</h2>
+        <div className="flex items-center gap-3 mb-3">
+          <input type="text" className={inputClass + " h-10 w-72"} placeholder="Search jobs..." />
+        </div>
         <div className={`${tableScrollClass} mt-4`}>
           <table className="min-w-full text-left text-[13.5px]">
             <thead className={tableHead}>
               <tr>
-                <th className="px-3 py-2">{t("common.date")}</th>
                 <th className="px-3 py-2">{t("farm.job.customer")}</th>
                 <th className="px-3 py-2">{t("farm.job.service")}</th>
+                <th className="px-3 py-2">{t("common.date")}</th>
                 <th className="px-3 py-2">{t("common.total")}</th>
                 <th className="px-3 py-2">{t("common.balance")}</th>
                 <th className="px-3 py-2">{t("common.status")}</th>
+                <th className="px-3 py-2">Actions</th>
               </tr>
             </thead>
             <tbody>
               {(workspace?.jobs ?? []).length === 0 ? (
                 <tr>
-                  <td className="px-3 py-6 text-slate-500" colSpan={6}>
+                  <td className="px-3 py-6 text-slate-500" colSpan={7}>
                     {t("farm.job.empty")}
                   </td>
                 </tr>
@@ -210,10 +233,10 @@ export function FarmJobsPage({
                 (workspace?.jobs ?? []).map((row) => {
                   const bal = jobBalance(row);
                   return (
-                    <tr key={row.id} className="border-t border-navy/5 text-navy">
-                      <td className="px-3 py-2.5">{row.occurredOn}</td>
-                      <td className="px-3 py-2.5">{row.partyName}</td>
-                      <td className="px-3 py-2.5">{row.serviceName}</td>
+                    <tr key={row.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="px-3 py-3">{row.partyName}</td>
+                      <td className="px-3 py-3">{row.serviceName}</td>
+                      <td className="px-3 py-3">{row.occurredOn}</td>
                       <td className="px-3 py-2.5">{formatTzs(row.agreedPrice)}</td>
                       <td className="px-3 py-2.5">{formatTzs(bal.receivable)}</td>
                       <td className="px-3 py-2.5">
@@ -240,6 +263,7 @@ export function FarmJobsPage({
             </tbody>
           </table>
         </div>
+        {selectedJob && <JobDrawer job={selectedJob} tab={drawerTab} setTab={setDrawerTab} onClose={() => { setSelectedJob(null); setDrawerTab("overview"); }} />}
         <PaginationBar
           page={workspace?.listPage.page ?? 1}
           total={workspace?.listPage.total ?? 0}
