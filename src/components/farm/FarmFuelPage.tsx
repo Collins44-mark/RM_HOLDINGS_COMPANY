@@ -26,7 +26,14 @@ export function FarmFuelPage({
   const [error, setError] = useState(initial.ok ? null : initial.error);
   const [isSavingFuel, setIsSavingFuel] = useState(false);
   const [savedFuel, setSavedFuel] = useState(false);
+  const [savedFuel, setSavedFuel] = useState(false);
   const [isSavingMaint, setIsSavingMaint] = useState(false);
+  const [fuelFilter, setFuelFilter] = useState("week");
+  const [fuelCustomFrom, setFuelCustomFrom] = useState("");
+  const [fuelCustomTo, setFuelCustomTo] = useState("");
+  const [maintFilter, setMaintFilter] = useState("week");
+  const [maintCustomFrom, setMaintCustomFrom] = useState("");
+  const [maintCustomTo, setMaintCustomTo] = useState("");
   const [fuelError, setFuelError] = useState("");
   const [maintError, setMaintError] = useState("");
   const [fuel, setFuel] = useState({
@@ -205,7 +212,17 @@ export function FarmFuelPage({
       </section>
 
       <section className={glassPanel}>
-        <h2 className="text-[16px] font-semibold text-navy">{t("farm.fuel.list")}</h2>
+        <div className="flex items-center gap-3 mb-2">
+          <h2 className="text-[16px] font-semibold text-navy">{t("farm.fuel.list")}</h2>
+          <select className={inputClass + " h-8 w-32 text-[12px]"} value={fuelFilter} onChange={e=>setFuelFilter(e.target.value)}>
+            <option value="today">Today</option>
+            <option value="week">This week</option>
+            <option value="month">This month</option>
+            <option value="year">This year</option>
+            <option value="custom">Custom</option>
+          </select>
+          {fuelFilter==="custom" && <><input type="date" className={inputClass+" h-8 w-32 text-[12px]"} value={fuelCustomFrom} onChange={e=>setFuelCustomFrom(e.target.value)} /><input type="date" className={inputClass+" h-8 w-32 text-[12px]"} value={fuelCustomTo} onChange={e=>setFuelCustomTo(e.target.value)} /></>}
+        </div>
         <div className={`${tableScrollClass} mt-4`}>
           <table className="min-w-full text-left text-[13.5px]">
             <thead className={tableHead}>
