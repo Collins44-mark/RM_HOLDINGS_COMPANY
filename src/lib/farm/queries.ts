@@ -210,7 +210,7 @@ export async function loadFarmFuel(ctx: FarmContext, from?: string, to?: string,
   const page = resolvePaging(paging);
   let query = ctx.supabase
     .from("farm_fuel")
-    .select("id, fuel_number, tractor_id, occurred_on, litres, unit_price, total_cost, fuel_type, station_name, notes, farm_tractors(name)", { count: "exact" })
+    .select("id, fuel_number, tractor_id, occurred_on, litres, unit_price, total_cost, station_name, notes, farm_tractors(name)", { count: "exact" })
     .eq("business_unit_id", ctx.businessUnitId)
     .eq("is_active", true)
     .order("occurred_on", { ascending: false });
