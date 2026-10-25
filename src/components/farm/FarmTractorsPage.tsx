@@ -303,17 +303,26 @@ export function FarmTractorsPage({
                 ) : drawerTab === "history" ? (
                   <div className="text-sm text-slate-500">No activity history available yet.</div>
                 ) : (
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Basic information</h3>
-                    <div className="grid grid-cols-2 gap-3 mb-6"><div className="bg-blue-50 rounded-xl p-3 border border-slate-200"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Name</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.name || "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-slate-200"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Internal ID</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.code || selected.id || "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-slate-200"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Registration number</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.registrationNumber || "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-slate-200"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Manufacturer</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.manufacturer || "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-slate-200"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Model</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.model || "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-slate-200"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Engine hours</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.hourMeter != null ? selected.hourMeter + " h" : "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-slate-200"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Date of purchase</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.acquiredOn ? new Date(selected.acquiredOn).toLocaleDateString() : "—"}</div></div><div className="bg-blue-50 rounded-xl p-3 border border-slate-200"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Buying price (TZS)</div><div className="text-[13px] font-medium text-navy mt-0.5">{selected.acquisitionCost != null ? "TZS " + selected.acquisitionCost : "—"}</div></></div></div>
-                </div>
+                                  </div>
               </>
-                </div>
-              </div>
             </aside>
           </>
         )}
         </>, document.body)
+        <PaginationBar
+          page={meta.page}
+          total={rows.length}
+          pageSize={pageSize}
+          onPage={setPage}
+          onPageSize={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+        />
+      </section>
+    </div>
+  );
+}
         <PaginationBar
           page={meta.page}
           total={rows.length}
