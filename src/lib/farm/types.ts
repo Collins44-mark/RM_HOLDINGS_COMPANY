@@ -42,6 +42,7 @@ export type FarmParty = {
   name: string;
   phone: string | null;
   notes: string | null;
+  payments?: Array<{ id: string; amount: number; occurredOn?: string; method?: string; reference?: string | null }>;
 };
 
 export type FarmStaff = {
@@ -78,6 +79,7 @@ export type FarmJob = {
   amountPaid: number;
   status: FarmJobStatus;
   notes: string | null;
+  payments?: Array<{ id: string; amount: number; occurredOn?: string; method?: string; reference?: string | null }>;
 };
 
 export type FarmFuel = {
@@ -91,6 +93,7 @@ export type FarmFuel = {
   totalCost: number;
   stationName: string | null;
   notes: string | null;
+  payments?: Array<{ id: string; amount: number; occurredOn?: string; method?: string; reference?: string | null }>;
 };
 
 export type FarmMaintenance = {
