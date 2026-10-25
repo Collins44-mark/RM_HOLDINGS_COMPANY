@@ -25,6 +25,7 @@ export function FarmFuelPage({
   const [workspace, setWorkspace] = useState(initial.ok ? initial.workspace : null);
   const [error, setError] = useState(initial.ok ? null : initial.error);
   const [isSavingFuel, setIsSavingFuel] = useState(false);
+  const [savedFuel, setSavedFuel] = useState(false);
   const [isSavingMaint, setIsSavingMaint] = useState(false);
   const [fuelError, setFuelError] = useState("");
   const [maintError, setMaintError] = useState("");
@@ -114,23 +115,25 @@ export function FarmFuelPage({
             <div className="mt-4">
               <SchoolWorkflowButton
                 className={primaryButton}
-                busy={isSavingFuel}
-                idleLabel={isSavingFuel ? "Saving..." : t("farm.fuel.post")}
-                busyLabel="Saving..."
+                busy={isSavingFuel || savedFuel}
+                idleLabel={savedFuel ? "Saved" : (isSavingFuel ? "Saving..." : t("farm.fuel.post"))}
+                busyLabel={savedFuel ? "Saved" : (isSavingFuel ? "Saving..." : t("farm.fuel.post"))}
                 onClick={async () => {
                   setIsSavingFuel(true);
+                  setSavedFuel(false);
                   setFuelError("");
                   const requestId = crypto.randomUUID();
-                  const payload = { requestId, ...fuel };
-                  const saved = await saveWithOutbox(
-                    { id: requestId, type: "farm.record_fuel", businessUnitCode: "farm", payload },
-                    () => recordFarmFuelAction(payload),
-                  );
-                  setIsSavingFuel(false);
-                  if (saved.error) setFuelError(saved.error);
-                  else {
-                    setFuel((current) => ({ ...current, litres: "", unitPrice: "", notes: "" }));
-                    if (!saved.queued) await refresh();
+                  const payload = { requestId, ...fuel, fuelType: fuel.fuelType || "Diesel" };
+                  try {
+                    const saved = await saveWithOutbox(
+                      { id: requestId, type: "farm.record_fuel", businessUnitCode: "farm", payload, entityId: fuel.tractorId ?? "" },
+                      () => recordFarmFuelAction({ ...payload }),
+                    );
+                    setIsSavingFuel(false);
+                    if (saved.error) { setFuelError(saved.error); } else { setSavedFuel(true); setTimeout(() => setSavedFuel(false), 2000); setFuel({ ...fuel, litres: "", unitPrice: "", notes: "", occurredOn: todayIso(), fuelType: fuel.fuelType || "Diesel", paymentMethod: "CASH" }); if (!saved.queued) await refresh(); }
+                  } catch (e: any) {
+                    setIsSavingFuel(false);
+                    setFuelError((e as Error)?.message || "Save failed");
                   }
                 }}
               />
