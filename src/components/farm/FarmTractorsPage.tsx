@@ -321,13 +321,22 @@ export function FarmTractorsPage({
                   <div className="text-[13px] font-medium text-navy mt-0.5">{selected.acquisitionCost != null ? ("TZS " + selected.acquisitionCost) : "—"}</div></div></div>
                   
                   <div className="border-t border-slate-200 my-4" /><div><h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Status</h3><div className="flex items-center gap-2"><span className="bg-green-100 text-green-800 text-xs font-medium px-2 py-0.5 rounded-full">{(selected.status || "Available")}</span><button className="text-xs text-blue-600 hover:text-blue-800 font-medium">Edit details</button></div></div>
-                  <div className="mt-4 pt-4 border-t border-slate-200 flex gap-2"><button className="flex-1 bg-blue-600 text-white text-sm font-medium rounded-lg px-4 py-2.5 hover:bg-blue-700 transition">Save changes</button></div></div></></div>
-                  </div>
+                  <div className="mt-4 pt-4 border-t border-slate-200 flex gap-2"><button className="flex-1 bg-blue-600 text-white text-sm font-medium rounded-lg px-4 py-2.5 hover:bg-blue-700 transition">Save changes</button></div></div></>
               </>
             </aside>
           </>
         )}
         </>, document.body)
+        <PaginationBar page={meta.page} total={rows.length} pageSize={pageSize} onPage={setPage} onPageSize={(size)=>{setPageSize(size);setPage(1)}} />
+      </section>
+    </div>
+  );
+}
+        <PaginationBar page={meta.page} total={rows.length} pageSize={pageSize} onPage={setPage} onPageSize={(size)=>{setPageSize(size);setPage(1)}} />
+      </section>
+    </div>
+  );
+}
         <PaginationBar
           page={meta.page}
           total={rows.length}
