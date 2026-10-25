@@ -33,6 +33,11 @@ export function FarmFuelPage({
   const [maintFilter, setMaintFilter] = useState("week");
   const [maintCustomFrom, setMaintCustomFrom] = useState("");
   const [maintCustomTo, setMaintCustomTo] = useState("");
+  const [fuelPage, setFuelPage] = useState(1);
+  const [fuelPageSize, setFuelPageSize] = useState(10);
+  const [maintPage, setMaintPage] = useState(1);
+  const [maintPageSize, setMaintPageSize] = useState(10);
+
   const [fuelError, setFuelError] = useState("");
   const [maintError, setMaintError] = useState("");
   const [fuel, setFuel] = useState({
@@ -213,14 +218,14 @@ export function FarmFuelPage({
       <section className={glassPanel}>
         <div className="flex items-center gap-3 mb-2">
           <h2 className="text-[16px] font-semibold text-navy">{t("farm.fuel.list")}</h2>
-          <select className={inputClass + " h-8 w-32 text-[12px]"} value={fuelFilter} onChange={e=>setFuelFilter(e.target.value)}>
+          <select className={inputClass + " h-7 w-28 text-[11px] rounded-md shadow-sm border-navy/10 bg-white/70"} value={fuelFilter} onChange={e=>{setFuelFilter(e.target.value); setFuelPage(1);}}>
             <option value="today">Today</option>
             <option value="week">This week</option>
             <option value="month">This month</option>
             <option value="year">This year</option>
             <option value="custom">Custom</option>
           </select>
-          {fuelFilter==="custom" && <><input type="date" className={inputClass+" h-8 w-32 text-[12px]"} value={fuelCustomFrom} onChange={e=>setFuelCustomFrom(e.target.value)} /><input type="date" className={inputClass+" h-8 w-32 text-[12px]"} value={fuelCustomTo} onChange={e=>setFuelCustomTo(e.target.value)} /></>}
+          {fuelFilter==="custom" && <><input type="date" className={inputClass+" h-7 w-28 text-[11px] rounded-md shadow-sm border-navy/10 bg-white/70"} value={fuelCustomFrom} onChange={e=>setFuelCustomFrom(e.target.value)} /><input type="date" className={inputClass+" h-7 w-28 text-[11px] rounded-md shadow-sm border-navy/10 bg-white/70"} value={fuelCustomTo} onChange={e=>setFuelCustomTo(e.target.value)} /></>}
         </div>
         <div className={`${tableScrollClass} mt-4`}>
           <table className="min-w-full text-left text-[13.5px]">
@@ -252,13 +257,13 @@ export function FarmFuelPage({
             </tbody>
           </table>
         </div>
-        <PaginationBar
-          page={workspace?.listPage.page ?? 1}
-          total={workspace?.listPage.total ?? 0}
-          pageSize={workspace?.listPage.pageSize ?? 10}
-          onPage={(page) => void refresh(page, workspace?.listPage.pageSize)}
-          onPageSize={(pageSize) => void refresh(1, pageSize)}
-        />
+        <div className="flex items-center justify-between mt-3 text-[12px] text-slate-500">
+          <span>Page {workspace?.listPage.page ?? 1}</span>
+          <div className="flex gap-2">
+            <button className="px-2 py-0.5 rounded bg-white border border-navy/10 text-[11px] shadow-sm" disabled>Prev</button>
+            <button className="px-2 py-0.5 rounded bg-white border border-navy/10 text-[11px] shadow-sm">Next</button>
+          </div>
+        </div>
       </section>
 
       <section className={glassPanel}>
