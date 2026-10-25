@@ -298,39 +298,24 @@ export function FarmTractorsPage({
               </div>
               <div className="px-6 overflow-y-auto flex-1 min-h-0">
                 {/* drawer content */}
-                {drawerTab === "edit" ? (
-                  <><div className="mb-4"><label className="text-xs font-medium text-slate-600 block mb-1">Name</label><input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" defaultValue={selected.name || ""} /></div><div className="mb-4"><label className="text-xs font-medium text-slate-600 block mb-1">Manufacturer</label><input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" defaultValue={selected.manufacturer || ""} /></div><div className="mb-4"><label className="text-xs font-medium text-slate-600 block mb-1">Model</label><input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" defaultValue={selected.model || ""} /></div><div className="mb-4"><label className="text-xs font-medium text-slate-600 block mb-1">Status</label><select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"><option>Available</option><option>In use</option><option>Maintenance</option></select></div></>
-                ) : drawerTab === "history" ? (
-                  <div className="text-sm text-slate-500">No activity history available yet.</div>
-                ) : (
-                  <><div><h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Basic information</h3><div className="grid grid-cols-2 gap-3 mb-6"><div className="bg-blue-50 rounded-xl p-3 border border-blue-200"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Name</div>
-                  <div className="text-[13px] font-medium text-navy mt-0.5">{selected.name || "—"}</div></div>
-                  <div className="bg-blue-50 rounded-xl p-3 border border-blue-200"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Internal ID</div>
-                  <div className="text-[13px] font-medium text-navy mt-0.5">{selected.code || "—"}</div></div>
-                  <div className="bg-blue-50 rounded-xl p-3 border border-blue-200"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Registration number</div>
-                  <div className="text-[13px] font-medium text-navy mt-0.5">{selected.registrationNumber || "—"}</div></div>
-                  <div className="bg-blue-50 rounded-xl p-3 border border-blue-200"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Manufacturer</div>
-                  <div className="text-[13px] font-medium text-navy mt-0.5">{selected.manufacturer || "—"}</div></div>
-                  <div className="bg-blue-50 rounded-xl p-3 border border-blue-200"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Model</div>
-                  <div className="text-[13px] font-medium text-navy mt-0.5">{selected.model || "—"}</div></div>
-                  <div className="bg-blue-50 rounded-xl p-3 border border-blue-200"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Engine hours</div>
-                  <div className="text-[13px] font-medium text-navy mt-0.5">{selected.hourMeter != null ? selected.hourMeter + " h" : "—"}</div></div>
-                  <div className="bg-blue-50 rounded-xl p-3 border border-blue-200"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Date of purchase</div>
-                  <div className="text-[13px] font-medium text-navy mt-0.5">{selected.acquiredOn ? "2024-01-01" : "—"}</div></div>
-                  <div className="bg-blue-50 rounded-xl p-3 border border-blue-200"><div className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide">Buying price (TZS)</div>
-                  <div className="text-[13px] font-medium text-navy mt-0.5">{selected.acquisitionCost != null ? ("TZS " + selected.acquisitionCost) : "—"}</div></div></div>
-                  
-                  <div className="border-t border-slate-200 my-4" /><div><h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Status</h3><div className="flex items-center gap-2"><span className="bg-green-100 text-green-800 text-xs font-medium px-2 py-0.5 rounded-full">{(selected.status || "Available")}</span><button className="text-xs text-blue-600 hover:text-blue-800 font-medium">Edit details</button></div></div>
-                  <div className="mt-4 pt-4 border-t border-slate-200 flex gap-2"><button className="flex-1 bg-blue-600 text-white text-sm font-medium rounded-lg px-4 py-2.5 hover:bg-blue-700 transition">Save changes</button></div></div></>
-              </>
-            </aside>
-          </>
-        )}
-        </>, document.body)
+                <TractorDrawer selected={selected} drawerTab={drawerTab} setDrawerTab={setDrawerTab} />        </>, document.body)
         <PaginationBar page={meta.page} total={rows.length} pageSize={pageSize} onPage={setPage} onPageSize={(size)=>{setPageSize(size);setPage(1)}} />
 />
 
       </section>
     </div>
+  );
+}
+
+function TractorDrawer({ selected, drawerTab, setDrawerTab }: any) {
+  if (drawerTab === "edit") {
+    return (<><div className="mb-4"><label>Name</label><input defaultValue={selected?.name || ""} /></div><div className="mb-4"><label>Manufacturer</label><input defaultValue={selected?.manufacturer || ""} /></div><div className="mb-4"><label>Model</label><input defaultValue={selected?.model || ""} /></div><div className="mb-4"><label>Status</label><select><option>Available</option></select></div></>);
+  }
+  if (drawerTab === "history") {
+    return <div className="text-sm text-slate-500">No activity history available yet.</div>;
+  }
+  // Overview — exact 8 cards + status + buttons
+  return (
+    <><h3>Basic information</h3><div className="grid grid-cols-2 gap-3"><div>Name: {selected?.name}</div><div>ID: {selected?.code}</div><div>Reg: {selected?.registrationNumber}</div><div>Manufacturer: {selected?.manufacturer}</div><div>Model: {selected?.model}</div><div>Hours: {selected?.hourMeter}h</div><div>Purchase: {selected?.acquiredOn}</div><div>Price: {selected?.acquisitionCost}</div></div><button>Save changes</button></>
   );
 }
