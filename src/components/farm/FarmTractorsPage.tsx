@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Tractor } from "lucide-react";
 import {
@@ -46,9 +46,31 @@ export function FarmTractorsPage({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [drawerTab, setDrawerTab] = useState<"overview" | "edit" | "history">("overview");
+  const [drawerEditForm, setDrawerEditForm] = useState<Record<string,string>>({});
+  const [drawerBusy, setDrawerBusy] = useState(false);
+  const [drawerError, setDrawerError] = useState<string|null>(null);
+  const [drawerSavedOk, setDrawerSavedOk] = useState(false);
   const [selected, setSelected] = useState<
     FarmTractorsWorkspace["tractors"][0] | null
   >(null);
+  useEffect(() => {
+    if (drawerTab === "edit" && selected) {
+      setDrawerEditForm({
+        name: selected.name || "",
+        manufacturer: selected.manufacturer || "",
+        model: selected.model || "",
+        registrationNumber: selected.registrationNumber || "",
+        status: selected.status || "AVAILABLE",
+        hourMeter: String(selected.hourMeter || "0"),
+        acquisitionCost: selected.acquisitionCost ? String(selected.acquisitionCost) : "",
+        acquiredOn: selected.acquiredOn || "",
+        notes: selected.notes || "",
+      });
+      setDrawerSavedOk(false);
+      setDrawerError(null);
+    }
+  }, [drawerTab, selected]);
+
   const nextCode = useMemo(() => {
     const nums = (workspace?.tractors ?? [])
       .map((t: any) => {
@@ -313,36 +335,69 @@ export function FarmTractorsPage({
     </div>
   );
 }
-function TractorDrawer({ selected, drawerTab, setDrawerTab }: any) {
+function TractorDrawer({ selected, drawerTab, setDrawerTab, editForm, onEditFormChange, busy, error, savedOk, onCancel, onSave }: any) {
   if (!selected) return null;
   if (drawerTab === "edit") {
+    const formValues = editForm || {};
+    const f = (k: string) => (formValues as any)[k] ?? (selected as any)?.[k] ?? "";
     return (
-      <div className="space-y-4">
+      <div className="space-y-5">
         <div>
-          <label className="block text-[11px] font-medium uppercase tracking-wider text-slate-400 mb-1">Name</label>
-          <input className={inputClass} defaultValue={selected?.name || ""} />
+          <h3 className="text-base font-semibold text-navy">Edit tractor</h3>
+          <p className="text-[12px] text-slate-400 mt-0.5">Update details and save changes.</p>
         </div>
-        <div>
-          <label className="block text-[11px] font-medium uppercase tracking-wider text-slate-400 mb-1">Manufacturer</label>
-          <input className={inputClass} defaultValue={selected?.manufacturer || ""} />
+        <div className="space-y-3">
+          <div>
+            <label className="block text-[11px] font-medium text-slate-500 mb-1">Name</label>
+            <input className={inputClass} value={f("name")} onChange={e=>onEditFormChange("name",e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-slate-500 mb-1">Manufacturer</label>
+            <input className={inputClass} value={f("manufacturer")} onChange={e=>onEditFormChange("manufacturer",e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-slate-500 mb-1">Model</label>
+            <input className={inputClass} value={f("model")} onChange={e=>onEditFormChange("model",e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-slate-500 mb-1">Registration number</label>
+            <input className={inputClass} value={f("registrationNumber")} onChange={e=>onEditFormChange("registrationNumber",e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-slate-500 mb-1">Status</label>
+            <select className={inputClass} value={f("status")||"AVAILABLE"} onChange={e=>onEditFormChange("status",e.target.value)}>
+              <option value="AVAILABLE">Available</option>
+              <option value="IN_USE">In use</option>
+              <option value="UNDER_SERVICE">Under service</option>
+              <option value="INACTIVE">Inactive</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-slate-500 mb-1">Engine hours</label>
+            <input className={inputClass} value={f("hourMeter")} onChange={e=>onEditFormChange("hourMeter",e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-slate-500 mb-1">Buying price (TZS)</label>
+            <input className={inputClass} value={f("acquisitionCost")} onChange={e=>onEditFormChange("acquisitionCost",e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-slate-500 mb-1">Date of purchase</label>
+            <input type="date" className={inputClass} value={f("acquiredOn")} onChange={e=>onEditFormChange("acquiredOn",e.target.value)} />
+          </div>
         </div>
-        <div>
-          <label className="block text-[11px] font-medium uppercase tracking-wider text-slate-400 mb-1">Model</label>
-          <input className={inputClass} defaultValue={selected?.model || ""} />
-        </div>
-        <div>
-          <label className="block text-[11px] font-medium uppercase tracking-wider text-slate-400 mb-1">Status</label>
-          <select className={inputClass} defaultValue={selected?.status || "AVAILABLE"}>
-            <option>Available</option><option>In use</option><option>Under service</option><option>Inactive</option>
-          </select>
-        </div>
+        {error && <div className="text-[13px] text-rose-600">{error}</div>}
+        {savedOk && <div className="text-[13px] text-emerald-600">Changes saved successfully.</div>}
         <div className="flex gap-3 pt-2">
-          <button onClick={() => setDrawerTab("overview")} className={secondaryButton}>Cancel</button>
-          <button className={primaryButton}>Save changes</button>
+          <button onClick={onCancel} className={secondaryButton} disabled={busy}>Cancel</button>
+          <button onClick={onSave} className={primaryButton + " flex items-center gap-2"} disabled={busy}>
+            {busy ? <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : null}
+            Save changes
+          </button>
         </div>
       </div>
     );
   }
+
   if (drawerTab === "history") {
     return <div className="text-sm text-slate-500">No activity history available yet.</div>;
   }
