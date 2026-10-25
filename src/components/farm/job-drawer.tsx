@@ -8,7 +8,7 @@ function JobDrawer({ job, tab, setTab, onClose, onRefresh, workspace }: any) {
   const bal = jobBalance(job);
   const payments = job.payments ?? [];
   return (
-    <aside className="fixed top-4 right-4 w-[480px] max-w-[92vw] bg-white rounded-[24px] shadow-2xl z-50 overflow-hidden flex flex-col border border-slate-200" style={{ height: "calc(100dvh - 32px)", maxHeight: "calc(100dvh - 32px)" }} role="dialog" aria-modal="true">
+    <aside className="fixed top-0 right-4 w-[480px] max-w-[92vw] bg-white rounded-[24px] shadow-2xl z-50 overflow-hidden flex flex-col border border-slate-200" style={{ height: "100dvh", maxHeight: "100dvh" }} role="dialog" aria-modal="true">
       <div className="px-6 pt-6 pb-4 shrink-0">
         <div className="flex items-start justify-between gap-3">
           <div>
