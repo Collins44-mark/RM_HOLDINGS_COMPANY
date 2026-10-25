@@ -240,21 +240,7 @@ export function FarmJobsPage({
                       <td className="px-3 py-2.5">{formatTzs(row.agreedPrice)}</td>
                       <td className="px-3 py-2.5">{formatTzs(bal.receivable)}</td>
                       <td className="px-3 py-2.5">
-                        {t(farmJobStatusKey(row.status))} · {t(bal.status === "Paid" ? "status.paid" : bal.status === "Partial" ? "status.partial" : "status.unpaid")}
-                        {bal.receivable > 0 && workspace?.caps.canJobs ? (
-                          <JobPay
-                            onPay={async (amount) => {
-                              const requestId = crypto.randomUUID();
-                              const payload = { requestId, jobId: row.id, amount };
-                              const saved = await saveWithOutbox(
-                                { id: requestId, type: "farm.record_job_payment", businessUnitCode: "farm", payload, entityId: row.id, dependsOn: [] },
-                                () => recordFarmJobPaymentAction(payload),
-                              );
-                              if (saved.error) setError(saved.error);
-                              else if (!saved.queued) await refresh();
-                            }}
-                          />
-                        ) : null}
+                        <span className={`inline-flex h-[22px] items-center rounded-full px-2.5 text-[11.5px] font-medium ${row.status==="COMPLETED"?"bg-emerald-50 text-emerald-700":row.status==="IN_PROGRESS"?"bg-blue-50 text-blue-700":"bg-amber-50 text-amber-700"}`}>{t(farmJobStatusKey(row.status))}</span>
                       </td>
                     </tr>
                   );
