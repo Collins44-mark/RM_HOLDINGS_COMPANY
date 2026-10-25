@@ -23,7 +23,12 @@ export function FarmOperationsPage({
   const t = useT();
   const [workspace, setWorkspace] = useState(initial.ok ? initial.workspace : null);
   const [error, setError] = useState(initial.ok ? null : initial.error);
-  const [busy, setBusy] = useState(false);
+  const [isSavingPlot, setIsSavingPlot] = useState(false);
+  const [isSavingSeason, setIsSavingSeason] = useState(false);
+  const [isSavingFieldWork, setIsSavingFieldWork] = useState(false);
+  const [plotError, setPlotError] = useState("");
+  const [seasonError, setSeasonError] = useState("");
+  const [fieldError, setFieldError] = useState<string>("");
   const [plot, setPlot] = useState({ name: "", hectares: "", crop: "" });
   const [season, setSeason] = useState({ plotId: "", name: "", year: String(new Date().getFullYear()), crop: "" });
   const [op, setOp] = useState({ plotId: "", seasonId: "", tractorId: "", activity: "", occurredOn: todayIso(), areaHa: "", cost: "" });
@@ -53,12 +58,12 @@ export function FarmOperationsPage({
               </FarmField>
             </div>
             <div className="mt-4">
-              <SchoolWorkflowButton className={primaryButton} busy={busy} idleLabel={t("farm.ops.savePlot")} busyLabel={t("common.posting")} onClick={async () => {
-                setBusy(true); setError(null);
-                if (isLikelyOffline()) { setBusy(false); setError(t("offline.onlineOnly")); return; }
+              <SchoolWorkflowButton className={primaryButton} busy={isSavingPlot} idleLabel={isSavingPlot ? "Saving..." : t("farm.ops.savePlot")} busyLabel="Saving..." onClick={async () => {
+                setIsSavingPlot(true); setPlotError("");
+                if (isLikelyOffline()) { setIsSavingPlot(false); setPlotError(t("offline.onlineOnly")); return; }
                 const result = await saveFarmPlotAction(plot);
-                setBusy(false);
-                if (!result.ok) setError(result.error); else { setPlot({ name: "", hectares: "", crop: "" }); await refresh(); }
+                setIsSavingPlot(false);
+                if (!result.ok) setPlotError(result.error); else { setPlot({ name: "", hectares: "", crop: "" }); await refresh(); }
               }} />
             </div>
           </div>
@@ -79,12 +84,12 @@ export function FarmOperationsPage({
               </FarmField>
             </div>
             <div className="mt-4">
-              <SchoolWorkflowButton className={primaryButton} busy={busy} idleLabel={t("farm.ops.saveSeason")} busyLabel={t("common.posting")} onClick={async () => {
-                setBusy(true); setError(null);
-                if (isLikelyOffline()) { setBusy(false); setError(t("offline.onlineOnly")); return; }
+              <SchoolWorkflowButton className={primaryButton} busy={isSavingSeason} idleLabel={isSavingSeason ? "Saving..." : t("farm.ops.saveSeason")} busyLabel="Saving..." onClick={async () => {
+                setIsSavingSeason(true); setSeasonError("");
+                if (isLikelyOffline()) { setIsSavingSeason(false); setSeasonError(t("offline.onlineOnly")); return; }
                 const result = await saveFarmSeasonAction(season);
-                setBusy(false);
-                if (!result.ok) setError(result.error); else await refresh();
+                setIsSavingSeason(false);
+                if (!result.ok) setSeasonError(result.error); else await refresh();
               }} />
             </div>
           </div>
@@ -112,16 +117,16 @@ export function FarmOperationsPage({
             </FarmField>
           </div>
           <div className="mt-4">
-            <SchoolWorkflowButton className={primaryButton} busy={busy} idleLabel={t("farm.ops.post")} busyLabel={t("common.posting")} onClick={async () => {
-              setBusy(true); setError(null);
+            <SchoolWorkflowButton className={primaryButton} busy={isSavingFieldWork} idleLabel={isSavingFieldWork ? "Saving..." : t("farm.ops.post")} busyLabel={t("common.posting")} onClick={async () => {
+              setIsSavingFieldWork(true); setFieldError("");
               const requestId = crypto.randomUUID();
               const payload = { requestId, ...op };
               const saved = await saveWithOutbox(
                 { id: requestId, type: "farm.record_operation", businessUnitCode: "farm", payload },
                 () => recordFarmOperationAction(payload),
               );
-              setBusy(false);
-              if (saved.error) setError(saved.error);
+              setIsSavingFieldWork(false);
+              if (saved.error) setFieldError(saved.error);
               else { setOp((current) => ({ ...current, activity: "", cost: "" })); if (!saved.queued) await refresh(); }
             }} />
           </div>
@@ -146,16 +151,16 @@ export function FarmOperationsPage({
             </FarmField>
           </div>
           <div className="mt-4">
-            <SchoolWorkflowButton className={primaryButton} busy={busy} idleLabel={t("farm.ops.postHarvest")} busyLabel={t("common.posting")} onClick={async () => {
-              setBusy(true); setError(null);
+            <SchoolWorkflowButton className={primaryButton} busy={isSavingFieldWork} idleLabel={isSavingFieldWork ? "Saving..." : t("farm.ops.postHarvest")} busyLabel={t("common.posting")} onClick={async () => {
+              setIsSavingFieldWork(true); setFieldError("");
               const requestId = crypto.randomUUID();
               const payload = { requestId, ...harvest };
               const saved = await saveWithOutbox(
                 { id: requestId, type: "farm.record_harvest", businessUnitCode: "farm", payload },
                 () => recordFarmHarvestAction(payload),
               );
-              setBusy(false);
-              if (saved.error) setError(saved.error);
+              setIsSavingFieldWork(false);
+              if (saved.error) setFieldError(saved.error);
               else { setHarvest((current) => ({ ...current, quantity: "" })); if (!saved.queued) await refresh(); }
             }} />
           </div>
