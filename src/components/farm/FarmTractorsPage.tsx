@@ -303,10 +303,6 @@ export function FarmTractorsPage({
             </aside>
           </>
         )}
-        </div>
-            </aside>
-          </>
-        )}
         </>, document.body)
         <PaginationBar page={meta.page} total={rows.length} pageSize={pageSize} onPage={setPage} onPageSize={(size)=>{setPageSize(size);setPage(1)}} />
       </section>
@@ -322,18 +318,5 @@ function TractorDrawer({ selected, drawerTab, setDrawerTab }: any) {
   }
   return (<><h3>Basic information</h3><div className="grid grid-cols-2 gap-3"><div>Name: {selected?.name}</div><div>ID: {selected?.code}</div><div>Reg: {selected?.registrationNumber}</div><div>Manufacturer: {selected?.manufacturer}</div><div>Model: {selected?.model}</div><div>Hours: {selected?.hourMeter}h</div><div>Purchase: {selected?.acquiredOn}</div><div>Price: {selected?.acquisitionCost}</div></div><button>Save changes</button></>);
 }
-  );
-}
-
-function TractorDrawer({ selected, drawerTab, setDrawerTab }: any) {
-  if (drawerTab === "edit") {
-    return (<><div className="mb-4"><label>Name</label><input defaultValue={selected?.name || ""} /></div><div className="mb-4"><label>Manufacturer</label><input defaultValue={selected?.manufacturer || ""} /></div><div className="mb-4"><label>Model</label><input defaultValue={selected?.model || ""} /></div><div className="mb-4"><label>Status</label><select><option>Available</option></select></div></>);
-  }
-  if (drawerTab === "history") {
-    return <div className="text-sm text-slate-500">No activity history available yet.</div>;
-  }
-  // Overview — exact 8 cards + status + buttons
-  return (
-    <><h3>Basic information</h3><div className="grid grid-cols-2 gap-3"><div>Name: {selected?.name}</div><div>ID: {selected?.code}</div><div>Reg: {selected?.registrationNumber}</div><div>Manufacturer: {selected?.manufacturer}</div><div>Model: {selected?.model}</div><div>Hours: {selected?.hourMeter}h</div><div>Purchase: {selected?.acquiredOn}</div><div>Price: {selected?.acquisitionCost}</div></div><button>Save changes</button></>
   );
 }
