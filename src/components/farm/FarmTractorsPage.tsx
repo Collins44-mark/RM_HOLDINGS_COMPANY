@@ -303,7 +303,7 @@ export function FarmTractorsPage({
             </aside>
           </>
         ), document.body)
-        }
+        )}
         <PaginationBar page={meta.page} total={rows.length} pageSize={pageSize} onPage={setPage} onPageSize={(size)=>{setPageSize(size);setPage(1)}} />
       </section>
     </div>
