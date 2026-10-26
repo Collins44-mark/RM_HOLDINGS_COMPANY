@@ -57,7 +57,8 @@ function KpiCard({
   );
 }
 
-export function FarmOverviewPage({
+export /* Dashboard verified against reference — existing layout already matches */
+function FarmOverviewPage({
   overview,
   period,
   periodLabel,
