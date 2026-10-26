@@ -499,7 +499,8 @@ export async function updateFarmJobAction(input: {
       updated_at: new Date().toISOString(),
     }).eq("id", input.jobId).eq("business_unit_id", businessUnitId);
     if (payload.error) throw payload.error;
-    return { ok: true as const };
+    const { data } = await supabase.from("farm_jobs").select("*").eq("id", input.jobId).eq("business_unit_id", businessUnitId).single();
+    return { ok: true as const, data: data || null };
   } catch (error) {
     return { ok: false as const, error: farmActionError(error) };
   }
