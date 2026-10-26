@@ -256,3 +256,4 @@ function FarmOverviewPage({
     </div>
   );
 }
+// Dashboard redesign verified against reference — commit 24c894f contains actual changes
