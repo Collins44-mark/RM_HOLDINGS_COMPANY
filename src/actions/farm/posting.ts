@@ -465,3 +465,42 @@ export async function recordFarmHarvestAction(input: {
     return { ok: false as const, error: farmActionError(error) };
   }
 }
+
+export async function updateFarmJobAction(input: {
+  jobId: string;
+  partyId?: string;
+  serviceTypeId?: string;
+  tractorId?: string;
+  operatorId?: string;
+  location?: string;
+  occurredOn?: string;
+  agreedPrice?: number | string;
+  status?: string;
+  notes?: string;
+  areaHa?: number | string;
+  hourMeter?: number | string;
+  requestId?: string;
+  actorId?: string;
+}) {
+  try {
+    const { supabase, userId, businessUnitId } = await requireAnyFarmPermission(["farm.jobs.update"]);
+    const payload = await supabase.from("farm_jobs").update({
+      party_id: input.partyId || null,
+      service_type_id: input.serviceTypeId || null,
+      tractor_id: input.tractorId || null,
+      operator_id: input.operatorId || null,
+      location: input.location || null,
+      occurred_on: input.occurredOn || null,
+      agreed_price: input.agreedPrice ? Number(input.agreedPrice) : 0,
+      status: input.status || "PENDING",
+      notes: input.notes || null,
+      area_ha: input.areaHa ? Number(input.areaHa) : null,
+      hour_meter: input.hourMeter ? Number(input.hourMeter) : null,
+      updated_at: new Date().toISOString(),
+    }).eq("id", input.jobId).eq("business_unit_id", businessUnitId);
+    if (payload.error) throw payload.error;
+    return { ok: true as const };
+  } catch (error) {
+    return { ok: false as const, error: farmActionError(error) };
+  }
+}
