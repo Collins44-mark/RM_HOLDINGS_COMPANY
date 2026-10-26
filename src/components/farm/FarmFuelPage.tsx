@@ -238,14 +238,14 @@ export function FarmFuelPage({
       <section className={glassPanel}>
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-[16px] font-semibold text-navy">{t("farm.fuel.list")}</h2>
-          <select className={inputClass + " h-7 w-28 text-[11px] rounded-md shadow-sm border-navy/10 bg-white/70"} value={fuelFilter} onChange={e=>{setFuelFilter(e.target.value); setFuelPage(1);}}>
+          <select className="h-8 w-36 text-sm rounded-lg border border-slate-200 bg-white px-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-200" value={fuelFilter} onChange={e=>{setFuelFilter(e.target.value); setFuelPage(1);}}>
             <option value="today">Today</option>
             <option value="week">This week</option>
             <option value="month">This month</option>
             <option value="year">This year</option>
             <option value="custom">Custom</option>
           </select>
-          {fuelFilter==="custom" && <><input type="date" className={inputClass+" h-7 w-28 text-[11px] rounded-md shadow-sm border-navy/10 bg-white/70"} value={fuelCustomFrom} onChange={e=>setFuelCustomFrom(e.target.value)} /><input type="date" className={inputClass+" h-7 w-28 text-[11px] rounded-md shadow-sm border-navy/10 bg-white/70"} value={fuelCustomTo} onChange={e=>setFuelCustomTo(e.target.value)} /></>}
+          {fuelFilter==="custom" && <><input type="date" className="h-8 w-36 text-sm rounded-lg border border-slate-200 bg-white px-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-200" value={fuelCustomFrom} onChange={e=>setFuelCustomFrom(e.target.value)} /><input type="date" className="h-8 w-36 text-sm rounded-lg border border-slate-200 bg-white px-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-200" value={fuelCustomTo} onChange={e=>setFuelCustomTo(e.target.value)} /></>}
         </div>
         <div className={`${tableScrollClass} mt-4`}>
           <table className="min-w-full text-left text-[13.5px]">
@@ -280,7 +280,7 @@ export function FarmFuelPage({
         <div className="flex items-center justify-between mt-3 text-[12px] text-slate-500">
           <span>Showing {fuelFiltered.length ? (fuelPage-1)*fuelPageSize+1 : 0}-{Math.min(fuelPage*fuelPageSize, fuelFiltered.length)} of {fuelFiltered.length}</span>
           <div className="flex items-center gap-2">
-            <select className="h-7 text-[11px] rounded border border-navy/10 bg-white" value={fuelPageSize} onChange={e=>{setFuelPageSize(Number(e.target.value)); setFuelPage(1);}}><option>10</option><option>20</option><option>50</option></select>
+            <select className="h-8 text-sm rounded-lg border border-slate-200 bg-white px-2 shadow-sm" value={fuelPageSize} onChange={e=>{setFuelPageSize(Number(e.target.value)); setFuelPage(1);}}><option>10</option><option>20</option><option>50</option></select>
             <button className="px-2 py-0.5 rounded bg-white border border-navy/10 text-[11px] shadow-sm disabled:opacity-40" disabled={fuelPage<=1} onClick={()=>setFuelPage(p=>p-1)}>Prev</button>
             <span>Page {fuelPage} / {fuelTotalPages}</span>
             <button className="px-2 py-0.5 rounded bg-white border border-navy/10 text-[11px] shadow-sm disabled:opacity-40" disabled={fuelPage>=fuelTotalPages} onClick={()=>setFuelPage(p=>p+1)}>Next</button>
@@ -292,7 +292,7 @@ export function FarmFuelPage({
         <div className="flex items-center justify-between">
           <h2 className="text-[16px] font-semibold text-navy">{t("farm.maint.list")}</h2>
           <div className="flex items-center gap-2">
-            <select className={inputClass + " h-7 w-28 text-[11px] rounded-md shadow-sm border-navy/10 bg-white/70"} value={maintFilter} onChange={e=>{setMaintFilter(e.target.value); setMaintPage(1);}}>
+            <select className="h-8 w-36 text-sm rounded-lg border border-slate-200 bg-white px-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-200" value={maintFilter} onChange={e=>{setMaintFilter(e.target.value); setMaintPage(1);}}>
               <option value="today">Today</option><option value="week">This week</option><option value="month">This month</option><option value="year">This year</option><option value="custom">Custom</option>
             </select>
             {maintFilter==="custom" && <><input type="date" className={inputClass+" h-7 w-28 text-[11px] rounded-md shadow-sm border-navy/10 bg-white/70"} value={maintCustomFrom} onChange={e=>setMaintCustomFrom(e.target.value)} /><input type="date" className={inputClass+" h-7 w-28 text-[11px] rounded-md shadow-sm border-navy/10 bg-white/70"} value={maintCustomTo} onChange={e=>setMaintCustomTo(e.target.value)} /></>}
@@ -331,7 +331,7 @@ export function FarmFuelPage({
         <div className="flex items-center justify-between mt-3 text-[12px] text-slate-500">
           <span>Showing {maintFiltered.length ? (maintPage-1)*maintPageSize+1 : 0}-{Math.min(maintPage*maintPageSize, maintFiltered.length)} of {maintFiltered.length}</span>
           <div className="flex items-center gap-2">
-            <select className="h-7 text-[11px] rounded border border-navy/10 bg-white" value={maintPageSize} onChange={e=>{setMaintPageSize(Number(e.target.value)); setMaintPage(1);}}><option>10</option><option>20</option><option>50</option></select>
+            <select className="h-8 text-sm rounded-lg border border-slate-200 bg-white px-2 shadow-sm" value={maintPageSize} onChange={e=>{setMaintPageSize(Number(e.target.value)); setMaintPage(1);}}><option>10</option><option>20</option><option>50</option></select>
             <button className="px-2 py-0.5 rounded bg-white border border-navy/10 text-[11px] shadow-sm disabled:opacity-40" disabled={maintPage<=1} onClick={()=>setMaintPage(p=>p-1)}>Prev</button>
             <span>Page {maintPage} / {maintTotalPages}</span>
             <button className="px-2 py-0.5 rounded bg-white border border-navy/10 text-[11px] shadow-sm disabled:opacity-40" disabled={maintPage>=maintTotalPages} onClick={()=>setMaintPage(p=>p+1)}>Next</button>
