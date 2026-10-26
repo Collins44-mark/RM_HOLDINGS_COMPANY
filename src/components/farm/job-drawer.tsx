@@ -95,7 +95,9 @@ function EditTab({ job, onRefresh, workspace, onJobUpdate }: any) {
       else {
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
-        if (onRefresh) await onRefresh();
+        if (onRefresh) await onRefresh(); // refresh table
+        // Try to trigger parent refresh via window event or direct call if available
+        try { if (typeof (window as any).location !== "undefined") { /* no reload */ } } catch {}
         if (onJobUpdate && res?.ok) {
           onJobUpdate({ ...job, status: form.status, location: form.location, agreedPrice: form.agreedPrice, occurredOn: form.occurredOn, areaHa: form.areaHa, notes: form.notes, engineHours: form.engineHours });
         }

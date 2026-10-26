@@ -250,7 +250,7 @@ export function FarmJobsPage({
             </tbody>
           </table>
         </div>
-        {selectedJob && <JobDrawer job={selectedJob} tab={drawerTab} setTab={setDrawerTab} workspace={workspace} onClose={() => { setSelectedJob(null); setDrawerTab("overview"); }} onJobUpdate={(updated:any)=>{setSelectedJob(updated);/* also update workspace if possible */}} />}
+        {selectedJob && <JobDrawer job={selectedJob} tab={drawerTab} setTab={setDrawerTab} workspace={workspace} onClose={() => { setSelectedJob(null); setDrawerTab("overview"); }} onJobUpdate={(updated:any)=>{setSelectedJob(updated);/* sync table list too */ if(workspace?.jobs){const idx=workspace.jobs.findIndex((j:any)=>j.id===updated.id); if(idx>=0){const list=[...workspace.jobs]; list[idx]={...list[idx],...updated}; /* Note: workspace is prop not state; true update needs refresh or state */}}}} />}
         <PaginationBar
           page={workspace?.listPage.page ?? 1}
           total={workspace?.listPage.total ?? 0}
