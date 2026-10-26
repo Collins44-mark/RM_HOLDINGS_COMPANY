@@ -135,10 +135,8 @@ function FarmOverviewPage({
             <table className="min-w-full text-left text-[13.5px]">
               <thead className={tableHead}>
                 <tr>
-                  <th className="px-3 py-2">{t("farm.tractor.nameCode")}</th>
-                  <th className="px-3 py-2">{t("common.status")}</th>
-                  <th className="px-3 py-2">{t("farm.tractor.hours")}</th>
-                  <th className="px-3 py-2">{t("farm.tractor.fuel")}</th>
+                  <th className="px-3 py-2">Name</th>
+                  <th className="px-3 py-2">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -149,19 +147,16 @@ function FarmOverviewPage({
                     </td>
                   </tr>
                 ) : (
-                  (view?.tractors ?? []).map((row) => (
-                    <tr key={row.id} className="border-t border-navy/5 text-navy">
-                      <td className="px-3 py-2.5">
-                        {row.name}
-                        {row.registrationNumber ? ` ${row.registrationNumber}` : ""}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <FarmPill status={row.status} label={t(farmTractorStatusKey(row.status))} />
-                      </td>
-                      <td className="px-3 py-2.5">{hours(row.hourMeter)}</td>
-                      <td className="px-3 py-2.5">{litres(row.fuelLitres)}</td>
-                    </tr>
-                  ))
+                  (view?.tractors ?? [])
+                    .slice(0, 5)
+                    .map((row) => (
+                      <tr key={row.id} className="border-t border-navy/5 text-navy">
+                        <td className="px-3 py-2.5">{row.name}</td>
+                        <td className="px-3 py-2.5">
+                          <FarmPill status={row.status} label={t(farmTractorStatusKey(row.status))} />
+                        </td>
+                      </tr>
+                    ))
                 )}
               </tbody>
             </table>
@@ -179,10 +174,10 @@ function FarmOverviewPage({
             <table className="min-w-full text-left text-[13.5px]">
               <thead className={tableHead}>
                 <tr>
-                  <th className="px-3 py-2">{t("common.date")}</th>
-                  <th className="px-3 py-2">{t("farm.job.customerPlace")}</th>
-                  <th className="px-3 py-2">{t("farm.job.service")}</th>
-                  <th className="px-3 py-2">{t("common.status")}</th>
+                  <th className="px-3 py-2">Customer</th>
+                  <th className="px-3 py-2">Service</th>
+                  <th className="px-3 py-2">Location</th>
+                  <th className="px-3 py-2">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -193,19 +188,18 @@ function FarmOverviewPage({
                     </td>
                   </tr>
                 ) : (
-                  (view?.jobs ?? []).map((row) => (
-                    <tr key={row.id} className="border-t border-navy/5 text-navy">
-                      <td className="px-3 py-2.5">{row.occurredOn}</td>
-                      <td className="px-3 py-2.5">{row.location ? `${row.partyName} · ${row.location}` : row.partyName}</td>
-                      <td className="px-3 py-2.5">
-                        {row.serviceName}
-                        {row.areaHa != null ? ` (${row.areaHa} ha)` : ""}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <FarmPill status={row.status} label={t(farmJobStatusKey(row.status))} />
-                      </td>
-                    </tr>
-                  ))
+                  (view?.jobs ?? [])
+                    .slice(0, 5)
+                    .map((row) => (
+                      <tr key={row.id} className="border-t border-navy/5 text-navy">
+                        <td className="px-3 py-2.5">{row.partyName}</td>
+                        <td className="px-3 py-2.5">{row.serviceName}</td>
+                        <td className="px-3 py-2.5">{row.location || "—"}</td>
+                        <td className="px-3 py-2.5">
+                          <FarmPill status={row.status} label={t(farmJobStatusKey(row.status))} />
+                        </td>
+                      </tr>
+                    ))
                 )}
               </tbody>
             </table>
