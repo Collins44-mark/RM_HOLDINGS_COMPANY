@@ -38,6 +38,26 @@ export function FarmFuelPage({
   const [maintPage, setMaintPage] = useState(1);
   const [maintPageSize, setMaintPageSize] = useState(10);
 
+  function sessionFilter(dateStr: string, filter: string, from: string, to: string) {
+    if (!dateStr) return true;
+    const d = new Date(dateStr + "T00:00:00");
+    const today = new Date(); today.setHours(0,0,0,0);
+    if (filter === "today") return d.getTime() === today.getTime();
+    const ws = new Date(today); ws.setDate(today.getDate()-today.getDay()+(today.getDay()===0?-6:1)); ws.setHours(0,0,0,0);
+    const we = new Date(ws); we.setDate(ws.getDate()+6); we.setHours(23,59,59,999);
+    if (filter === "week") return d>=ws && d<=we;
+    if (filter === "month") return d.getFullYear()===today.getFullYear() && d.getMonth()===today.getMonth();
+    if (filter === "year") return d.getFullYear()===today.getFullYear();
+    if (filter === "custom") { const a=from?new Date(from+"T00:00:00"):null; const b=to?new Date(to+"T00:00:00"):null; return (!a||d>=a)&&(!b||d<=b); }
+    return true;
+  }
+  const fuelFiltered = (workspace?.fuel ?? []).filter((r:any)=>sessionFilter(r.occurredOn??"", fuelFilter, fuelCustomFrom, fuelCustomTo));
+  const fuelPaged = fuelFiltered.slice((fuelPage-1)*fuelPageSize, fuelPage*fuelPageSize);
+  const fuelTotalPages = Math.max(1, Math.ceil(fuelFiltered.length / fuelPageSize));
+  const maintFiltered = (workspace?.maintenance ?? []).filter((r:any)=>sessionFilter(r.occurredOn??"", maintFilter, maintCustomFrom, maintCustomTo));
+  const maintPaged = maintFiltered.slice((maintPage-1)*maintPageSize, maintPage*maintPageSize);
+  const maintTotalPages = Math.max(1, Math.ceil(maintFiltered.length / maintPageSize));
+
   const [fuelError, setFuelError] = useState("");
   const [maintError, setMaintError] = useState("");
   const [fuel, setFuel] = useState({
@@ -216,7 +236,7 @@ export function FarmFuelPage({
       </section>
 
       <section className={glassPanel}>
-        <div className="flex items-center gap-3 mb-2">
+        <div className="flex items-center justify-between mb-2">
           <h2 className="text-[16px] font-semibold text-navy">{t("farm.fuel.list")}</h2>
           <select className={inputClass + " h-7 w-28 text-[11px] rounded-md shadow-sm border-navy/10 bg-white/70"} value={fuelFilter} onChange={e=>{setFuelFilter(e.target.value); setFuelPage(1);}}>
             <option value="today">Today</option>
@@ -238,14 +258,14 @@ export function FarmFuelPage({
               </tr>
             </thead>
             <tbody>
-              {(workspace?.fuel ?? []).length === 0 ? (
+              {fuelPaged.length === 0 ? (
                 <tr>
                   <td className="px-3 py-6 text-slate-500" colSpan={4}>
                     {t("farm.fuel.empty")}
                   </td>
                 </tr>
               ) : (
-                (workspace?.fuel ?? []).map((row) => (
+                fuelPaged.map((row:any) => (
                   <tr key={row.id} className="border-t border-navy/5 text-navy">
                     <td className="px-3 py-2.5">{row.occurredOn}</td>
                     <td className="px-3 py-2.5">{row.tractorName}</td>
@@ -258,16 +278,26 @@ export function FarmFuelPage({
           </table>
         </div>
         <div className="flex items-center justify-between mt-3 text-[12px] text-slate-500">
-          <span>Page {workspace?.listPage.page ?? 1}</span>
-          <div className="flex gap-2">
-            <button className="px-2 py-0.5 rounded bg-white border border-navy/10 text-[11px] shadow-sm" disabled>Prev</button>
-            <button className="px-2 py-0.5 rounded bg-white border border-navy/10 text-[11px] shadow-sm">Next</button>
+          <span>Showing {fuelFiltered.length ? (fuelPage-1)*fuelPageSize+1 : 0}-{Math.min(fuelPage*fuelPageSize, fuelFiltered.length)} of {fuelFiltered.length}</span>
+          <div className="flex items-center gap-2">
+            <select className="h-7 text-[11px] rounded border border-navy/10 bg-white" value={fuelPageSize} onChange={e=>{setFuelPageSize(Number(e.target.value)); setFuelPage(1);}}><option>10</option><option>20</option><option>50</option></select>
+            <button className="px-2 py-0.5 rounded bg-white border border-navy/10 text-[11px] shadow-sm disabled:opacity-40" disabled={fuelPage<=1} onClick={()=>setFuelPage(p=>p-1)}>Prev</button>
+            <span>Page {fuelPage} / {fuelTotalPages}</span>
+            <button className="px-2 py-0.5 rounded bg-white border border-navy/10 text-[11px] shadow-sm disabled:opacity-40" disabled={fuelPage>=fuelTotalPages} onClick={()=>setFuelPage(p=>p+1)}>Next</button>
           </div>
         </div>
       </section>
 
       <section className={glassPanel}>
-        <h2 className="text-[16px] font-semibold text-navy">{t("farm.maint.list")}</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-[16px] font-semibold text-navy">{t("farm.maint.list")}</h2>
+          <div className="flex items-center gap-2">
+            <select className={inputClass + " h-7 w-28 text-[11px] rounded-md shadow-sm border-navy/10 bg-white/70"} value={maintFilter} onChange={e=>{setMaintFilter(e.target.value); setMaintPage(1);}}>
+              <option value="today">Today</option><option value="week">This week</option><option value="month">This month</option><option value="year">This year</option><option value="custom">Custom</option>
+            </select>
+            {maintFilter==="custom" && <><input type="date" className={inputClass+" h-7 w-28 text-[11px] rounded-md shadow-sm border-navy/10 bg-white/70"} value={maintCustomFrom} onChange={e=>setMaintCustomFrom(e.target.value)} /><input type="date" className={inputClass+" h-7 w-28 text-[11px] rounded-md shadow-sm border-navy/10 bg-white/70"} value={maintCustomTo} onChange={e=>setMaintCustomTo(e.target.value)} /></>}
+          </div>
+        </div>
         <div className={`${tableScrollClass} mt-4`}>
           <table className="min-w-full text-left text-[13.5px]">
             <thead className={tableHead}>
@@ -279,14 +309,14 @@ export function FarmFuelPage({
               </tr>
             </thead>
             <tbody>
-              {(workspace?.maintenance ?? []).length === 0 ? (
+              {maintPaged.length === 0 ? (
                 <tr>
                   <td className="px-3 py-6 text-slate-500" colSpan={4}>
                     {t("farm.maint.empty")}
                   </td>
                 </tr>
               ) : (
-                (workspace?.maintenance ?? []).map((row) => (
+                maintPaged.map((row:any) => (
                   <tr key={row.id} className="border-t border-navy/5 text-navy">
                     <td className="px-3 py-2.5">{row.occurredOn}</td>
                     <td className="px-3 py-2.5">{row.tractorName}</td>
@@ -297,6 +327,15 @@ export function FarmFuelPage({
               )}
             </tbody>
           </table>
+        </div>
+        <div className="flex items-center justify-between mt-3 text-[12px] text-slate-500">
+          <span>Showing {maintFiltered.length ? (maintPage-1)*maintPageSize+1 : 0}-{Math.min(maintPage*maintPageSize, maintFiltered.length)} of {maintFiltered.length}</span>
+          <div className="flex items-center gap-2">
+            <select className="h-7 text-[11px] rounded border border-navy/10 bg-white" value={maintPageSize} onChange={e=>{setMaintPageSize(Number(e.target.value)); setMaintPage(1);}}><option>10</option><option>20</option><option>50</option></select>
+            <button className="px-2 py-0.5 rounded bg-white border border-navy/10 text-[11px] shadow-sm disabled:opacity-40" disabled={maintPage<=1} onClick={()=>setMaintPage(p=>p-1)}>Prev</button>
+            <span>Page {maintPage} / {maintTotalPages}</span>
+            <button className="px-2 py-0.5 rounded bg-white border border-navy/10 text-[11px] shadow-sm disabled:opacity-40" disabled={maintPage>=maintTotalPages} onClick={()=>setMaintPage(p=>p+1)}>Next</button>
+          </div>
         </div>
       </section>
     </div>
