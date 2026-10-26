@@ -37,21 +37,10 @@ function metricText(metric: FarmMetric<number>, kind: "count" | "money") {
   return String(metric.value);
 }
 
-function KpiCard({
-  label,
-  value,
-  icon,
-  tone,
-}: {
-  label: string;
-  value: string;
-  icon: LucideIcon;
-  tone: string;
-}) {
+function KpiCard({ label, value }: { label: string; value: string }) {
   return (
     <article className={cn(glassCard, "px-5 py-5")}>
-      <IconWell icon={icon} tone={tone} />
-      <p className="mt-3 text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</p>
+      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</p>
       <p className="mt-1.5 min-h-7 text-[22px] font-semibold tracking-[-0.04em] text-navy">{value}</p>
     </article>
   );
@@ -115,32 +104,22 @@ function FarmOverviewPage({
         <KpiCard
           label={t("farm.kpi.tractors")}
           value={metricText(view?.tractorCount ?? { status: "unavailable", value: null, hint: "" }, "count")}
-          icon={Tractor}
-          tone="bg-sky-50 text-sky-700"
         />
         <KpiCard
           label={t("farm.kpi.completed")}
           value={metricText(view?.completedJobs ?? { status: "unavailable", value: null, hint: "" }, "count")}
-          icon={CheckCircle2}
-          tone="bg-emerald-50 text-emerald-700"
         />
         <KpiCard
           label={t("farm.kpi.customers")}
           value={metricText(view?.customersServed ?? { status: "unavailable", value: null, hint: "" }, "count")}
-          icon={Users}
-          tone="bg-orange-50 text-orange-700"
         />
         <KpiCard
           label={t("farm.kpi.income")}
           value={metricText(view?.serviceIncome ?? { status: "unavailable", value: null, hint: "" }, "money")}
-          icon={CircleDollarSign}
-          tone="bg-violet-50 text-violet-700"
         />
         <KpiCard
           label={t("farm.kpi.spend")}
           value={metricText(view?.tractorSpend ?? { status: "unavailable", value: null, hint: "" }, "money")}
-          icon={Wrench}
-          tone="bg-rose-50 text-rose-700"
         />
       </section>
 
@@ -165,7 +144,7 @@ function FarmOverviewPage({
               <tbody>
                 {(view?.tractors ?? []).length === 0 ? (
                   <tr>
-                    <td className="px-3 py-6 text-slate-500" colSpan={4}>
+                    <td className="px-3 py-6 text-slate-500" colSpan={2}>
                       {t("farm.tractor.empty")}
                     </td>
                   </tr>
@@ -209,7 +188,7 @@ function FarmOverviewPage({
               <tbody>
                 {(view?.jobs ?? []).length === 0 ? (
                   <tr>
-                    <td className="px-3 py-6 text-slate-500" colSpan={4}>
+                    <td className="px-3 py-6 text-slate-500" colSpan={2}>
                       {t("farm.job.empty")}
                     </td>
                   </tr>
