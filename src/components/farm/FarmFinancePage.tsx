@@ -116,9 +116,10 @@ export function FarmFinancePage({
           <h2 className="text-[16px] font-semibold text-navy">Customer Payment Transactions</h2>
           <span className="text-[11px] text-slate-400">{(workspace?.jobs ?? []).flatMap(j => j.payments ?? []).length} transactions</span>
         </div>
-        <div className="flex flex-wrap gap-2 mb-3 text-[12px]">
-          {["Today","This Week","This Month","This Year"].map(p => <button key={p} className="px-2 py-1 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200">{p}</button>)}
-          <button className="px-2 py-1 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200">Custom</button>
+        <div className="flex flex-wrap gap-2 mb-3 items-end text-[12px]">
+          <select className="px-2 py-1 rounded-md bg-slate-100 text-slate-600"><option>All Time</option><option>Today</option><option>This Week</option><option>This Month</option><option>This Year</option><option>Custom Range</option></select>
+          <label className="flex items-center gap-1"><span>Start</span><input type="date" className="px-1 py-0.5 rounded bg-slate-50 border border-slate-200 text-[11px]"/></label>
+          <label className="flex items-center gap-1"><span>End</span><input type="date" className="px-1 py-0.5 rounded bg-slate-50 border border-slate-200 text-[11px]"/></label>
           <select className="px-2 py-1 rounded-md bg-slate-100 text-[12px] text-slate-600"><option>All methods</option><option>Cash</option><option>Bank</option><option>Mobile Money</option></select>
         </div>
         <div className={`${tableScrollClass} mt-2`}>
