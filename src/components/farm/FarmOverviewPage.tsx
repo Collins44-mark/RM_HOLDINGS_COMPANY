@@ -233,7 +233,7 @@ function FarmOverviewPage({
                   </td>
                 </tr>
               ) : (
-                (view?.activity ?? []).map((row) => (
+                (view?.activity ?? []).slice(0, 5).map((row) => (
                   <tr key={`${row.kind}-${row.id}`} className="border-t border-navy/5 text-navy">
                     <td className="px-3 py-2.5">{row.occurredOn}</td>
                     <td className="px-3 py-2.5">{row.tractorName}</td>
