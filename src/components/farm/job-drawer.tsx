@@ -2,6 +2,7 @@ import { updateFarmJobAction } from "@/actions/farm/posting";
 import { useState } from "react";
 import { formatTzs } from "@/lib/format/currency";
 import { jobBalance } from "@/lib/farm/accounting";
+import { recordFarmJobPaymentAction } from "@/actions/farm/posting";
 import { inputClass, primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
 
 function JobDrawer({ job, tab, setTab, onClose, onRefresh, workspace, onJobUpdate }: any) {
@@ -40,7 +41,20 @@ function OverviewTab({ job, bal }: any) {
 
 function PaymentsTab({ job, onRefresh }: any) {
   const payments = job.payments ?? [];
-  return <div className="space-y-5"><h3 className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400">Payment history</h3>{payments.length === 0 ? <div className="text-sm text-slate-500">No payments recorded yet.</div> : <div className="space-y-2">{payments.map((p: any) => <div key={p.id} className="rounded-xl bg-slate-50 px-3 py-2 text-[13px]"><div className="font-medium">{formatTzs(p.amount)} · {p.paymentMethod||"—"}</div><div className="text-slate-500">{p.occurredOn||"—"}</div></div>)}</div>}<div className="pt-3 border-t border-slate-100"><h4 className="text-xs font-medium text-slate-500 mb-2">Record payment</h4><PaymentForm job={job} onRefresh={onRefresh} /></div></div>;
+  const bal = jobBalance(job);
+  return <div className="space-y-5">
+    <section>
+      <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400 mb-3">Summary</h3>
+      <div className="grid grid-cols-3 gap-3 text-[13px]">
+        <div className="rounded-xl bg-slate-50 px-3 py-3"><div className="text-[11px] text-slate-400">Job total</div><div className="font-semibold text-navy">{formatTzs(job.agreedPrice || job.total || 0)}</div></div>
+        <div className="rounded-xl bg-slate-50 px-3 py-3"><div className="text-[11px] text-slate-400">Total paid</div><div className="font-semibold text-navy">{formatTzs(job.amountPaid || 0)}</div></div>
+        <div className="rounded-xl bg-slate-50 px-3 py-3"><div className="text-[11px] text-slate-400">Balance due</div><div className="font-semibold text-navy">{formatTzs(bal.receivable || 0)}</div></div>
+      </div>
+    </section>
+    <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400">Payment history</h3>
+    {payments.length === 0 ? <div className="text-sm text-slate-500">No payments recorded yet.</div> : <div className="space-y-2">{payments.map((p: any) => <div key={p.id} className="rounded-xl bg-slate-50 px-3 py-2.5 text-[13px]"><div className="font-medium">{formatTzs(p.amount)} · {p.paymentMethod || "—"}</div><div className="text-slate-500">{p.occurredOn ? new Date(p.occurredOn).toLocaleDateString("en-GB") : "—"}</div></div>)}</div>}
+    <div className="pt-3 border-t border-slate-100"><h4 className="text-xs font-medium text-slate-500 mb-2">Record payment</h4><PaymentForm job={job} onRefresh={onRefresh} /></div>
+  </div>;
 }
 
 function PaymentForm({ job, onRefresh }: any) {
@@ -60,7 +74,10 @@ function PaymentForm({ job, onRefresh }: any) {
         const n = Number(amount);
         if (!(n>0)) { setError("Invalid amount"); setBusy(false); return; }
         if (n > max + 1) { setError("Amount exceeds balance"); setBusy(false); return; }
-        setBusy(false); setAmount(""); if (onRefresh) onRefresh();
+        try {
+          const res = await recordFarmJobPaymentAction({ requestId: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2), jobId: job.id, amount: String(n), occurredOn: new Date().toISOString().slice(0,10), paymentMethod: method, paymentReference: "" });
+          if (res?.duplicate) { setError("Already recorded"); } else { setAmount(""); setError(""); if (onRefresh) onRefresh(); }
+        } catch (e: any) { setError(e?.message || "Failed"); } finally { setBusy(false); }
       }}>{busy ? "Recording..." : "Record Payment"}</button>
     </div>
   );
