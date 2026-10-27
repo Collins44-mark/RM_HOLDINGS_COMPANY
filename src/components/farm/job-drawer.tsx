@@ -8,7 +8,6 @@ import { inputClass, primaryButton, secondaryButton } from "@/components/superma
 function JobDrawer({ job, tab, setTab, onClose, onRefresh, workspace, onJobUpdate }: any) {
   if (!job) return null;
   const bal = jobBalance(job);
-  const payments = job.payments ?? [];
   return (
     <aside className="fixed top-0 right-4 w-[480px] max-w-[92vw] bg-white rounded-[24px] shadow-2xl z-50 overflow-hidden flex flex-col border border-slate-200" style={{ height: "100dvh", maxHeight: "100dvh" }} role="dialog" aria-modal="true">
       <div className="px-6 pt-6 pb-4 shrink-0">
@@ -40,7 +39,6 @@ function OverviewTab({ job, bal }: any) {
 }
 
 function PaymentsTab({ job, onRefresh }: any) {
-  const payments = job.payments ?? [];
   const bal = jobBalance(job);
   return <div className="space-y-5">
     <section>
@@ -51,8 +49,6 @@ function PaymentsTab({ job, onRefresh }: any) {
         <div className="rounded-xl bg-slate-50 px-3 py-3"><div className="text-[11px] text-slate-400">Balance due</div><div className="font-semibold text-navy">{formatTzs(bal.receivable || 0)}</div></div>
       </div>
     </section>
-    <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400">Payment history</h3>
-    {payments.length === 0 ? <div className="text-sm text-slate-500">No payments recorded yet.</div> : <div className="space-y-2">{payments.map((p: any) => <div key={p.id} className="rounded-xl bg-slate-50 px-3 py-2.5 text-[13px]"><div className="font-medium">{formatTzs(p.amount)} · {p.paymentMethod || "—"}</div><div className="text-slate-500">{p.occurredOn ? new Date(p.occurredOn).toLocaleDateString("en-GB") : "—"}</div></div>)}</div>}
     <div className="pt-3 border-t border-slate-100"><h4 className="text-xs font-medium text-slate-500 mb-2">Record payment</h4><PaymentForm job={job} onRefresh={onRefresh} /></div>
   </div>;
 }
