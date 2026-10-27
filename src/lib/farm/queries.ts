@@ -185,6 +185,7 @@ function mapJob(row: Record<string, unknown>): FarmJob {
     amountPaid: n(row.amount_paid),
     status: s(row.status) as FarmJobStatus,
     notes: row.notes ? s(row.notes) : null,
+    payments: (row.farm_job_payments as Array<Record<string,unknown>> | null)?.map((p)=>({ id: s(p.id), amount: n(p.amount), occurredOn: s(p.occurred_on), paymentMethod: s(p.payment_method) || null, reference: s(p.payment_reference) || null, notes: s(p.notes) || null })) ?? [],
   };
 }
 
@@ -192,7 +193,7 @@ export async function loadFarmJobs(ctx: FarmContext, from?: string, to?: string,
   const page = resolvePaging(paging);
   let query = ctx.supabase
     .from("farm_jobs")
-    .select("id, job_number, party_id, service_type_id, tractor_id, operator_id, location, area_ha, occurred_on, completed_on, agreed_price, amount_paid, status, notes, farm_parties(name), farm_service_types(name), farm_tractors(name)", { count: "exact" })
+    .select("id, job_number, party_id, service_type_id, tractor_id, operator_id, location, area_ha, occurred_on, completed_on, agreed_price, amount_paid, status, notes, farm_parties(name), farm_service_types(name), farm_tractors(name), farm_job_payments(id, amount, payment_method, payment_reference, occurred_on, notes, recorded_by)" , { count: "exact" })
     .eq("business_unit_id", ctx.businessUnitId)
     .eq("is_active", true)
     .order("occurred_on", { ascending: false });
