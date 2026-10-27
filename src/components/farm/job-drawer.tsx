@@ -76,7 +76,11 @@ function PaymentForm({ job, onRefresh }: any) {
         if (n > max + 1) { setError("Amount exceeds balance"); setBusy(false); return; }
         try {
           const res = await recordFarmJobPaymentAction({ requestId: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2), jobId: job.id, amount: String(n), occurredOn: new Date().toISOString().slice(0,10), paymentMethod: method, paymentReference: "" });
-          if (res?.duplicate) { setError("Already recorded"); } else { setAmount(""); setError(""); if (onRefresh) onRefresh(); }
+          if (res?.duplicate) { setError("Already recorded"); } else {
+            setAmount(""); setError("");
+            const updatedJob = { ...job, amountPaid: (Number(job.amountPaid||0) + n), payments: [...(job.payments||[]), { id: "new", amount: n, paymentMethod: method, occurredOn: new Date().toISOString(), recordedBy: "" }] };
+            if (onRefresh) { await onRefresh(); }
+          }
         } catch (e: any) { setError(e?.message || "Failed"); } finally { setBusy(false); }
       }}>{busy ? "Recording..." : "Record Payment"}</button>
     </div>
