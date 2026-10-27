@@ -250,7 +250,7 @@ export function FarmJobsPage({
             </tbody>
           </table>
         </div>
-        {selectedJob && <JobDrawer job={selectedJob} tab={drawerTab} setTab={setDrawerTab} workspace={workspace} onClose={() => { setSelectedJob(null); setDrawerTab("overview"); }} onJobUpdate={(updated:any)=>{setSelectedJob(updated);void refresh(1,workspace?.listPage?.pageSize??10);}} />}
+        {selectedJob && <JobDrawer job={selectedJob} tab={drawerTab} setTab={setDrawerTab} workspace={workspace} onClose={() => { setSelectedJob(null); setDrawerTab("overview"); }} onRefresh={async()=>{await refresh(1,workspace?.listPage?.pageSize??10);}} onJobUpdate={(updated:any)=>{setSelectedJob(updated);void refresh(1,workspace?.listPage?.pageSize??10);}} />}
         <PaginationBar
           page={workspace?.listPage.page ?? 1}
           total={workspace?.listPage.total ?? 0}
