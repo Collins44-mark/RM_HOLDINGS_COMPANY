@@ -112,7 +112,28 @@ export function FarmFinancePage({
         </div>
       </section>
       <section className={glassPanel}>
-        <h2 className="text-[16px] font-semibold text-navy">{t("rice.finance.expenseList")}</h2>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <h2 className="text-[16px] font-semibold text-navy">Customer Payment Transactions</h2>
+          <span className="text-[11px] text-slate-400">{(workspace?.jobs ?? []).flatMap(j => j.payments ?? []).length} transactions</span>
+        </div>
+        <div className="flex flex-wrap gap-2 mb-3 text-[12px]">
+          {["Today","This Week","This Month","This Year"].map(p => <button key={p} className="px-2 py-1 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200">{p}</button>)}
+          <button className="px-2 py-1 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200">Custom</button>
+          <select className="px-2 py-1 rounded-md bg-slate-100 text-[12px] text-slate-600"><option>All methods</option><option>Cash</option><option>Bank</option><option>Mobile Money</option></select>
+        </div>
+        <div className={`${tableScrollClass} mt-2`}>
+          <table className="min-w-full text-left text-[13.5px]">
+            <thead className={tableHead}><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Customer</th><th className="px-3 py-2">Job / Service</th><th className="px-3 py-2">Amount</th><th className="px-3 py-2">Method</th><th className="px-3 py-2">Reference</th></tr></thead>
+            <tbody>
+              {(workspace?.jobs ?? []).flatMap(j => (j.payments ?? []).map(p => ({ ...p, customer: j.partyName, jobName: j.serviceName, jobId: j.id }))).slice(0, 10).map((p: any) => (
+                <tr key={p.id || p.occurredOn + p.amount} className="border-t border-navy/5 text-navy"><td className="px-3 py-2.5">{p.occurredOn ? new Date(p.occurredOn).toLocaleDateString("en-GB") : "—"}</td><td className="px-3 py-2.5">{p.customer || "—"}</td><td className="px-3 py-2.5">{p.jobName || "—"}</td><td className="px-3 py-2.5">{(typeof p.amount === "number" || typeof p.amount === "string") ? (Number(p.amount)).toLocaleString("en-TZ") + " TZS" : "—"}</td><td className="px-3 py-2.5">{p.paymentMethod || p.method || "—"}</td><td className="px-3 py-2.5">{p.reference || p.paymentReference || "—"}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="flex items-center justify-between mt-3 text-[12px] text-slate-500"><span>Showing 1-10</span><div className="flex gap-1"><button className="px-2 py-0.5 rounded bg-slate-100">Prev</button><button className="px-2 py-0.5 rounded bg-navy text-white">1</button><button className="px-2 py-0.5 rounded bg-slate-100">Next</button></div></div>
+        </div>
+      </section>
+      <section className={glassPanel}>
         <div className={`${tableScrollClass} mt-4`}>
           <table className="min-w-full text-left text-[13.5px]">
             <thead className={tableHead}>
