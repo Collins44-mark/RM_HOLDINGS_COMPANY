@@ -117,9 +117,9 @@ export function FarmFinancePage({
           <span className="text-[11px] text-slate-400">{(workspace?.jobs ?? []).flatMap(j => j.payments ?? []).length} transactions</span>
         </div>
         <div className="flex flex-wrap gap-2 mb-3 items-end text-[12px]">
-          <select className="px-2 py-1 rounded-md bg-slate-100 text-slate-600"><option>All Time</option><option>Today</option><option>This Week</option><option>This Month</option><option>This Year</option><option>Custom Range</option></select>
-          <label className="flex items-center gap-1"><span>Start</span><input type="date" className="px-1 py-0.5 rounded bg-slate-50 border border-slate-200 text-[11px]"/></label>
-          <label className="flex items-center gap-1"><span>End</span><input type="date" className="px-1 py-0.5 rounded bg-slate-50 border border-slate-200 text-[11px]"/></label>
+          <select className="px-2 py-1 rounded-md bg-slate-100 text-slate-600" defaultValue="Today" onChange={e => { const s = document.getElementById("cf-start"); const d = document.getElementById("cf-end"); if (s && d) { const hide = e.target.value !== "Custom Range"; s.style.display = hide ? "none" : "flex"; d.style.display = hide ? "none" : "flex"; } }}><option>Today</option><option>Yesterday</option><option>This Week</option><option>This Month</option><option>This Year</option><option>Custom Range</option><option>All Time</option></select>
+          <label id="cf-start" className="flex items-center gap-1 hidden"><span>Start</span><input type="date" className="px-1 py-0.5 rounded bg-slate-50 border border-slate-200 text-[11px]" onChange={e => { const s = e.target.valueAsDate; const d = document.getElementById("cf-end")?.querySelector("input") as HTMLInputElement; if (s && d && d.valueAsDate && d.valueAsDate < s) d.value = e.target.value; }}/></label>
+          <label id="cf-end" className="flex items-center gap-1 hidden"><span>End</span><input type="date" className="px-1 py-0.5 rounded bg-slate-50 border border-slate-200 text-[11px]"/></label>
           <select className="px-2 py-1 rounded-md bg-slate-100 text-[12px] text-slate-600"><option>All methods</option><option>Cash</option><option>Bank</option><option>Mobile Money</option></select>
         </div>
         <div className={`${tableScrollClass} mt-2`}>
