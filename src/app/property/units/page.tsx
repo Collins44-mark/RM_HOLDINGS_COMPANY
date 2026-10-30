@@ -1,0 +1,1 @@
+export default function Page() { return <main className="p-6"><h1 className="text-2xl font-bold">Units</h1><p className="text-slate-500">Module page — coming soon.</p></main>; }
