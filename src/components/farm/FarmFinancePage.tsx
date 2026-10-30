@@ -122,7 +122,7 @@ export function FarmFinancePage({
           <span className="text-[11px] text-slate-400">Transactions</span>
         </div>
         <div className="flex flex-wrap gap-2 mb-3 items-end text-[12px]">
-          <select className="px-2 py-1 rounded-md bg-slate-100 text-slate-600" defaultValue="Today"><option>Today</option><option>Yesterday</option><option>This Week</option><option>This Month</option><option>This Year</option><option>Custom Range</option><option>All Time</option></select>
+          <select className="px-2 py-1 rounded-md bg-slate-100 text-slate-600" value={dateFilter} onChange={e=>{setDateFilter(e.target.value); setPage(1);}}><option>Today</option><option>Yesterday</option><option>This Week</option><option>This Month</option><option>This Year</option><option>Custom Range</option><option>All Time</option></select>
           <select className="px-2 py-1 rounded-md bg-slate-100 text-[12px] text-slate-600"><option>All methods</option><option>Cash</option><option>Bank</option><option>Mobile Money</option></select>
         </div>
         <div className={`${tableScrollClass} mt-2`}>
