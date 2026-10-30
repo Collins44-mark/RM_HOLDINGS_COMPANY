@@ -10,7 +10,7 @@ export async function getPropertyDashboardData() {
       take: 5,
       include: { contract: { include: { unit: { include: { property: true } }, tenant: true } } },
     }),
-    prisma.rentPayment.aggregate({ _sum: { amount: true } }),
+    prisma.rentPayment.aggregate({ _sum: { amount: true } }).then(r => r)),
     prisma.rentalContract.count(),
     prisma.hallBooking.count(),
     prisma.propertyExpense.aggregate({ _sum: { amount: true } }),
@@ -69,8 +69,5 @@ export async function getPropertyDashboardData() {
     recentInvoices: invoices,
     monthlyIncome: monthlyIncomeArr,
     hallBookings,
-    contracts,
-    expenses: Number(expenses?._sum?.amount ?? 0),
-    units,
   };
 }
