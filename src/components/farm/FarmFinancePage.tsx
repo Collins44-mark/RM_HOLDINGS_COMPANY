@@ -24,7 +24,6 @@ export function FarmFinancePage({
 }) {
   const [dateFilter, setDateFilter] = useState("This Month");
   const [methodFilter, setMethodFilter] = useState("All history");
-  const [methodFilter, setMethodFilter] = useState("All history");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [page, setPage] = useState(1);
@@ -169,27 +168,44 @@ export function FarmFinancePage({
           onPageSize={(pageSize) => { void loadFarmFinanceWorkspaceAction({ period, page: 1, pageSize }).then((next) => { if (next.ok) setWorkspace(next.workspace); }); }}
         />
       </section>
-    </div>
-  );
-}
-
       <section className={glassPanel}>
         <div className="flex items-center justify-between gap-3 mb-3">
           <div className="flex items-center gap-2"><div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div><h2 className="text-[16px] font-semibold text-navy">Fuel & Maintenance History</h2></div>
           <span className="text-[11px] text-slate-400">13 records</span>
         </div>
         <div className="flex flex-wrap gap-2 mb-3 items-end text-[12px]">
-          <select className="px-2 py-1 rounded-md bg-slate-100 text-slate-600" defaultValue="This Month"><option>Today</option><option>Yesterday</option><option>This Week</option><option>This Month</option><option>This Year</option><option>Custom Range</option><option>All Time</option></select>
-          <select className="px-2 py-1 rounded-md bg-slate-100 text-[12px] text-slate-600"><option>All history</option><option>Fuel history</option><option>Maintenance history</option></select>
+          <select className="px-2 py-1 rounded-md bg-slate-100 text-slate-600" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}><option>Today</option><option>Yesterday</option><option>This Week</option><option>This Month</option><option>This Year</option><option>Custom Range</option><option>All Time</option></select>
+          <select className="px-2 py-1 rounded-md bg-slate-100 text-[12px] text-slate-600" value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)}><option>All history</option><option>Fuel history</option><option>Maintenance history</option></select>
         </div>
         <div className={`${tableScrollClass} mt-2`}>
           <table className="min-w-full text-left text-[13.5px]">
             <thead className={tableHead}><tr><th className="px-3 py-2">TYPE</th><th className="px-3 py-2">AMOUNT</th><th className="px-3 py-2">NOTES</th></tr></thead>
-            <tbody>{useMemo(() => [{type:"MAINTENANCE",amount:3600,notes:"Tire repair",d:new Date("2026-10-27")},{type:"FUEL",amount:14400,notes:"Tractor refueling",d:new Date("2026-10-27")},{type:"MAINTENANCE",amount:112000,notes:"Oil change",d:new Date("2026-10-27")},{type:"FUEL",amount:14400,notes:"Tractor refueling",d:new Date("2026-10-26")},{type:"MAINTENANCE",amount:90000,notes:"Service",d:new Date("2026-10-25")}],[]).filter((r:any)=>{if(dateFilter==="Today"){const n=new Date();return r.d&&r.d.toDateString()===n.toDateString();}else if(dateFilter==="Yesterday"){const y=new Date();y.setDate(y.getDate()-1);return r.d&&r.d.toDateString()===y.toDateString();}else if(dateFilter==="This Week"){const s=new Date();s.setDate(s.getDate()-s.getDay());return r.d&&r.d>=s;}else if(dateFilter==="This Month"){return r.d&&r.d.getMonth()===new Date().getMonth()&&r.d.getFullYear()===new Date().getFullYear();}else if(dateFilter==="This Year"){return r.d&&r.d.getFullYear()===new Date().getFullYear();}else if(dateFilter==="Custom Range"){if(startDate&&!r.d>=new Date(startDate))return false;if(endDate&&!r.d<=new Date(endDate))return false;return true;}return true;}).filter((r:any)=>methodFilter==="All history"||((methodFilter==="All history"||r.type===methodFilter.replace(" history","").toUpperCase())).slice(0, 10).map((r:any)=>(<tr key={r.type+r.amount+String(r.d)} className="border-t border-navy/5 text-navy"><td className="px-3 py-2.5">{r.type}</td><td className="px-3 py-2.5">{"TZS "+r.amount.toLocaleString("en-TZ")}</td><td className="px-3 py-2.5">{r.notes}</td></tr>))}</tbody>
+            <tbody>{useMemo(() => {
+              const df = dateFilter;
+              const mf = methodFilter;
+              const sd = startDate ? new Date(startDate) : null;
+              const ed = endDate ? new Date(endDate) : null;
+              const data = [{type:"MAINTENANCE",amount:3600,notes:"Tire repair",d:new Date("2026-10-27")},{type:"FUEL",amount:14400,notes:"Tractor refueling",d:new Date("2026-10-27")},{type:"MAINTENANCE",amount:112000,notes:"Oil change",d:new Date("2026-10-27")},{type:"FUEL",amount:14400,notes:"Tractor refueling",d:new Date("2026-10-26")},{type:"MAINTENANCE",amount:90000,notes:"Service",d:new Date("2026-10-25")}];
+              return data.filter((r:any) => {
+                const rd = r.d ? new Date(r.d) : null;
+                if (!rd) return false;
+                if (df === "Today") { const n = new Date(); return rd.toDateString() === n.toDateString(); }
+                if (df === "Yesterday") { const y = new Date(); y.setDate(y.getDate()-1); return rd.toDateString() === y.toDateString(); }
+                if (df === "This Week") { const s = new Date(); s.setDate(s.getDate()-s.getDay()); return rd >= s; }
+                if (df === "This Month") { return rd.getMonth() === new Date().getMonth() && rd.getFullYear() === new Date().getFullYear(); }
+                if (df === "This Year") { return rd.getFullYear() === new Date().getFullYear(); }
+                if (df === "Custom Range") { if (sd && !(rd >= sd)) return false; if (ed && !(rd <= ed)) return false; return true; }
+                return true;
+              }).filter((r:any) => mf === "All history" || r.type === mf.replace(" history", "").toUpperCase()).slice(0, 10).map((r:any) => (<tr key={r.type+r.amount+String(r.d)} className="border-t border-navy/5 text-navy"><td className="px-3 py-2.5">{r.type}</td><td className="px-3 py-2.5">{"TZS "+r.amount.toLocaleString("en-TZ")}</td><td className="px-3 py-2.5">{r.notes}</td></tr>));
+            }, [dateFilter, methodFilter, startDate, endDate])}</tbody>
           </table>
           <div className="flex items-center justify-between mt-3 text-[12px] text-slate-500"><span>Showing 1-5 of 13</span><div className="flex gap-1"><button className="px-2 py-0.5 rounded bg-slate-100">Prev</button><button className="px-2 py-0.5 rounded bg-navy text-white">1</button><button className="px-2 py-0.5 rounded bg-slate-100">Next</button></div></div>
         </div>
       </section>
+    </div>
+  );
+}
+
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <article className={`${glassCard} px-5 py-4`}>
