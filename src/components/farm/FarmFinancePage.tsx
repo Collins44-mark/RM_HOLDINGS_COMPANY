@@ -22,6 +22,11 @@ export function FarmFinancePage({
   initial: { ok: true; workspace: FarmFinanceWorkspace } | { ok: false; error: string };
   period: ReportPeriod;
 }) {
+  const [dateFilter, setDateFilter] = useState("Today");
+  const [methodFilter, setMethodFilter] = useState("All methods");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [page, setPage] = useState(1);
   const t = useT();
   const [workspace, setWorkspace] = useState(initial.ok ? initial.workspace : null);
   const [error, setError] = useState(initial.ok ? null : initial.error);
@@ -111,15 +116,13 @@ export function FarmFinancePage({
           </table>
         </div>
       </section>
-      <section className={glassPanel}>
+            <section className={glassPanel}>
         <div className="flex items-center justify-between gap-3 mb-3">
           <h2 className="text-[16px] font-semibold text-navy">Customer Payment Transactions</h2>
-          <span className="text-[11px] text-slate-400">{(workspace?.jobs ?? []).flatMap(j => j.payments ?? []).length} transactions</span>
+          <span className="text-[11px] text-slate-400">Transactions</span>
         </div>
         <div className="flex flex-wrap gap-2 mb-3 items-end text-[12px]">
-          <select className="px-2 py-1 rounded-md bg-slate-100 text-slate-600" defaultValue="Today" onChange={e => { const s = document.getElementById("cf-start"); const d = document.getElementById("cf-end"); if (s && d) { const hide = e.target.value !== "Custom Range"; s.style.display = hide ? "none" : "flex"; d.style.display = hide ? "none" : "flex"; } }}><option>Today</option><option>Yesterday</option><option>This Week</option><option>This Month</option><option>This Year</option><option>Custom Range</option><option>All Time</option></select>
-          <label id="cf-start" className="flex items-center gap-1 hidden"><span>Start</span><input type="date" className="px-1 py-0.5 rounded bg-slate-50 border border-slate-200 text-[11px]" onChange={e => { const s = e.target.valueAsDate; const d = document.getElementById("cf-end")?.querySelector("input") as HTMLInputElement; if (s && d && d.valueAsDate && d.valueAsDate < s) d.value = e.target.value; }}/></label>
-          <label id="cf-end" className="flex items-center gap-1 hidden"><span>End</span><input type="date" className="px-1 py-0.5 rounded bg-slate-50 border border-slate-200 text-[11px]"/></label>
+          <select className="px-2 py-1 rounded-md bg-slate-100 text-slate-600" defaultValue="Today"><option>Today</option><option>Yesterday</option><option>This Week</option><option>This Month</option><option>This Year</option><option>Custom Range</option><option>All Time</option></select>
           <select className="px-2 py-1 rounded-md bg-slate-100 text-[12px] text-slate-600"><option>All methods</option><option>Cash</option><option>Bank</option><option>Mobile Money</option></select>
         </div>
         <div className={`${tableScrollClass} mt-2`}>
@@ -131,10 +134,10 @@ export function FarmFinancePage({
               ))}
             </tbody>
           </table>
-          <div className="flex items-center justify-between mt-3 text-[12px] text-slate-500"><span>Showing 1-10</span><div className="flex gap-1"><button className="px-2 py-0.5 rounded bg-slate-100">Prev</button><button className="px-2 py-0.5 rounded bg-navy text-white">1</button><button className="px-2 py-0.5 rounded bg-slate-100">Next</button></div></div>
+          <div className="flex items-center justify-between mt-3 text-[12px] text-slate-500"><span>Showing 1-10 of 18 example</span><div className="flex gap-1"><button className="px-2 py-0.5 rounded bg-slate-100">Prev</button><button className="px-2 py-0.5 rounded bg-navy text-white">1</button><button className="px-2 py-0.5 rounded bg-slate-100">Next</button></div></div>
         </div>
       </section>
-      <section className={glassPanel}>
+<section className={glassPanel}>
         <div className={`${tableScrollClass} mt-4`}>
           <table className="min-w-full text-left text-[13.5px]">
             <thead className={tableHead}>
