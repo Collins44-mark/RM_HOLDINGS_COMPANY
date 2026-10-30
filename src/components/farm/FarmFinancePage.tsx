@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Landmark } from "lucide-react";
 import { loadFarmFinanceWorkspaceAction, type FarmFinanceWorkspace } from "@/actions/farm/workspace";
 import { recordFarmExpenseAction } from "@/actions/farm/posting";
@@ -22,8 +22,9 @@ export function FarmFinancePage({
   initial: { ok: true; workspace: FarmFinanceWorkspace } | { ok: false; error: string };
   period: ReportPeriod;
 }) {
-  const [dateFilter, setDateFilter] = useState("Today");
-  const [methodFilter, setMethodFilter] = useState("All methods");
+  const [dateFilter, setDateFilter] = useState("This Month");
+  const [methodFilter, setMethodFilter] = useState("All history");
+  const [methodFilter, setMethodFilter] = useState("All history");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [page, setPage] = useState(1);
@@ -184,13 +185,7 @@ export function FarmFinancePage({
         <div className={`${tableScrollClass} mt-2`}>
           <table className="min-w-full text-left text-[13.5px]">
             <thead className={tableHead}><tr><th className="px-3 py-2">TYPE</th><th className="px-3 py-2">AMOUNT</th><th className="px-3 py-2">NOTES</th></tr></thead>
-            <tbody>
-              <tr className="border-t border-navy/5 text-navy"><td className="px-3 py-2.5">MAINTENANCE</td><td className="px-3 py-2.5">TZS 3,600</td><td className="px-3 py-2.5">Tire repair</td></tr>
-              <tr className="border-t border-navy/5 text-navy"><td className="px-3 py-2.5">FUEL</td><td className="px-3 py-2.5">TZS 14,400</td><td className="px-3 py-2.5">Tractor refueling</td></tr>
-              <tr className="border-t border-navy/5 text-navy"><td className="px-3 py-2.5">MAINTENANCE</td><td className="px-3 py-2.5">TZS 112,000</td><td className="px-3 py-2.5">Oil change</td></tr>
-              <tr className="border-t border-navy/5 text-navy"><td className="px-3 py-2.5">FUEL</td><td className="px-3 py-2.5">TZS 14,400</td><td className="px-3 py-2.5">Tractor refueling</td></tr>
-              <tr className="border-t border-navy/5 text-navy"><td className="px-3 py-2.5">MAINTENANCE</td><td className="px-3 py-2.5">TZS 90,000</td><td className="px-3 py-2.5">Service</td></tr>
-            </tbody>
+            <tbody>{useMemo(() => [{type:"MAINTENANCE",amount:3600,notes:"Tire repair",d:new Date("2026-10-27")},{type:"FUEL",amount:14400,notes:"Tractor refueling",d:new Date("2026-10-27")},{type:"MAINTENANCE",amount:112000,notes:"Oil change",d:new Date("2026-10-27")},{type:"FUEL",amount:14400,notes:"Tractor refueling",d:new Date("2026-10-26")},{type:"MAINTENANCE",amount:90000,notes:"Service",d:new Date("2026-10-25")}],[]).filter((r:any)=>{if(dateFilter==="Today"){const n=new Date();return r.d&&r.d.toDateString()===n.toDateString();}else if(dateFilter==="Yesterday"){const y=new Date();y.setDate(y.getDate()-1);return r.d&&r.d.toDateString()===y.toDateString();}else if(dateFilter==="This Week"){const s=new Date();s.setDate(s.getDate()-s.getDay());return r.d&&r.d>=s;}else if(dateFilter==="This Month"){return r.d&&r.d.getMonth()===new Date().getMonth()&&r.d.getFullYear()===new Date().getFullYear();}else if(dateFilter==="This Year"){return r.d&&r.d.getFullYear()===new Date().getFullYear();}else if(dateFilter==="Custom Range"){if(startDate&&!r.d>=new Date(startDate))return false;if(endDate&&!r.d<=new Date(endDate))return false;return true;}return true;}).filter((r:any)=>methodFilter==="All history"||((methodFilter==="All history"||r.type===methodFilter.replace(" history","").toUpperCase())).slice(0, 10).map((r:any)=>(<tr key={r.type+r.amount+String(r.d)} className="border-t border-navy/5 text-navy"><td className="px-3 py-2.5">{r.type}</td><td className="px-3 py-2.5">{"TZS "+r.amount.toLocaleString("en-TZ")}</td><td className="px-3 py-2.5">{r.notes}</td></tr>))}</tbody>
           </table>
           <div className="flex items-center justify-between mt-3 text-[12px] text-slate-500"><span>Showing 1-5 of 13</span><div className="flex gap-1"><button className="px-2 py-0.5 rounded bg-slate-100">Prev</button><button className="px-2 py-0.5 rounded bg-navy text-white">1</button><button className="px-2 py-0.5 rounded bg-slate-100">Next</button></div></div>
         </div>
