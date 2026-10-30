@@ -72,7 +72,7 @@ export default async function PropertyDashboardPage() {
             <tbody>
               {data.recentInvoices.length === 0 ? (
                 <tr><td colSpan={7} className="text-center text-slate-400 py-6">No invoices found</td></tr>
-              ) : data.recentInvoices.map((inv) => (
+              ) : data.recentInvoices.map((inv: { id: string; amount: number | string; dueDate?: string | Date; status: string; contract?: { tenant?: { name?: string }; unit?: { property?: { name?: string }; name?: string } } }) => (
                 <tr key={inv.id} className="border-t border-slate-100 hover:bg-slate-50/60">
                   <td className="py-2.5 font-medium text-slate-800">{inv.id.slice(0, 8).toUpperCase()}</td>
                   <td className="py-2.5 text-slate-600">{inv.contract?.tenant?.name ?? "—"}</td>
