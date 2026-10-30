@@ -3,7 +3,7 @@ import { formatTzs } from "@/lib/format/currency";
 import { Landmark, Building2, User, Receipt, Eye, Plus, CalendarDays } from "lucide-react";
 
 export default async function PropertyDashboardPage() {
-  let data; try { data = await getPropertyDashboardData(); } catch (e: any) { return (<main className="min-h-screen bg-gradient-to-br from-[#0f172a] via-[#0b1221] to-[#1e293b] p-6 md:p-10 flex items-center justify-center"><div className="bg-white/10 rounded-2xl p-8 text-white"><h2>Data unavailable</h2><p>Property database not reachable.</p></div></main>); }
+  const data = await getPropertyDashboardData();
   const s = data.stats as { properties: number; totalUnits: number; occupied: number; vacant: number; occupancyPct: number; rentCollected: number; paid: number; unpaid: number; overdue: number; totalInv: number; paidAmount: number; unpaidAmount: number; overdueAmount: number; };
 
   return (
