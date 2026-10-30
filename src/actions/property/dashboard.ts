@@ -69,5 +69,8 @@ export async function getPropertyDashboardData() {
     recentInvoices: invoices,
     monthlyIncome: monthlyIncomeArr,
     hallBookings,
+    contracts,
+    expenses: Number(expenses?._sum?.amount ?? 0),
+    units,
   };
 }
