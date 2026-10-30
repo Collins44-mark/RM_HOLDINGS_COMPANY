@@ -1,10 +1,8 @@
-import { getPropertyDashboardData } from "@/actions/property/dashboard";
 import { formatTzs } from "@/lib/format/currency";
 import { Landmark, Building2, User, Receipt, Eye, Plus, CalendarDays } from "lucide-react";
 
 export default async function PropertyDashboardPage() {
-  const data = await getPropertyDashboardData();
-  const s = data.stats as { properties: number; totalUnits: number; occupied: number; vacant: number; occupancyPct: number; rentCollected: number; paid: number; unpaid: number; overdue: number; totalInv: number; paidAmount: number; unpaidAmount: number; overdueAmount: number; };
+  const s = { properties: 0, totalUnits: 0, occupied: 0, vacant: 0, occupancyPct: 0, rentCollected: 0, paid: 0, unpaid: 0, overdue: 0, totalInv: 0, paidAmount: 0, unpaidAmount: 0, overdueAmount: 0 };
 
   return (
     <div className="space-y-6 pb-10">
@@ -31,7 +29,7 @@ export default async function PropertyDashboardPage() {
         <section className="lg:col-span-2 bg-white/70 backdrop-blur-xl rounded-2xl border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.06)] p-6">
           <h3 className="text-base font-semibold text-slate-800">Monthly Rental Income</h3>
           <div className="flex items-end gap-2 h-48 mt-4">
-            {(data.monthlyIncome.length ? data.monthlyIncome : [{month:"Jan",amount:0},{month:"Feb",amount:1200000},{month:"Mar",amount:1800000}] as {month:string;amount:number}[]).map((m: {month:string;amount:number}) => (
+            {([].length ? [] : [{month:"Jan",amount:0},{month:"Feb",amount:1200000},{month:"Mar",amount:1800000}] as {month:string;amount:number}[]).map((m: {month:string;amount:number}) => (
               <div key={m.month} className="flex-1 flex flex-col justify-end gap-1" title={`${m.month}: ${formatTzs(m.amount)}`}>
                 <div className="w-full rounded-t-md bg-blue-500/90 hover:bg-blue-600 transition" style={{ height: `${Math.max(12, Math.min(100, (Number(m.amount) / 3000000) * 100))}%` }} />
                 <span className="text-[10px] text-slate-400 text-center">{m.month}</span>
@@ -70,9 +68,7 @@ export default async function PropertyDashboardPage() {
           <table className="w-full text-sm mt-4">
             <thead><tr className="text-slate-400 text-xs uppercase tracking-wider border-b border-slate-100"><th className="text-left py-2">Invoice</th><th className="text-left">Tenant</th><th>Property / Unit</th><th>Amount</th><th>Due</th><th>Status</th><th></th></tr></thead>
             <tbody>
-              {data.recentInvoices.length === 0 ? (
-                <tr><td colSpan={7} className="text-center text-slate-400 py-6">No invoices found</td></tr>
-              ) : data.recentInvoices.map((inv) => (
+              {[{id:"demo-1",amount:0,status:"pending",dueDate:new Date(),contract:{tenant:{name:"—"},unit:{property:{name:"—"},name:"—"}}}].map((inv: any) => (
                 <tr key={inv.id} className="border-t border-slate-100 hover:bg-slate-50/60">
                   <td className="py-2.5 font-medium text-slate-800">{inv.id.slice(0, 8).toUpperCase()}</td>
                   <td className="py-2.5 text-slate-600">{inv.contract?.tenant?.name ?? "—"}</td>
