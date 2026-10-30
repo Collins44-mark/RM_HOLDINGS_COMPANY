@@ -172,6 +172,29 @@ export function FarmFinancePage({
   );
 }
 
+      <section className={glassPanel}>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2"><div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div><h2 className="text-[16px] font-semibold text-navy">Fuel & Maintenance History</h2></div>
+          <span className="text-[11px] text-slate-400">13 records</span>
+        </div>
+        <div className="flex flex-wrap gap-2 mb-3 items-end text-[12px]">
+          <select className="px-2 py-1 rounded-md bg-slate-100 text-slate-600" defaultValue="This Month"><option>Today</option><option>Yesterday</option><option>This Week</option><option>This Month</option><option>This Year</option><option>Custom Range</option><option>All Time</option></select>
+          <select className="px-2 py-1 rounded-md bg-slate-100 text-[12px] text-slate-600"><option>All history</option><option>Fuel history</option><option>Maintenance history</option></select>
+        </div>
+        <div className={`${tableScrollClass} mt-2`}>
+          <table className="min-w-full text-left text-[13.5px]">
+            <thead className={tableHead}><tr><th className="px-3 py-2">TYPE</th><th className="px-3 py-2">AMOUNT</th><th className="px-3 py-2">NOTES</th></tr></thead>
+            <tbody>
+              <tr className="border-t border-navy/5 text-navy"><td className="px-3 py-2.5">MAINTENANCE</td><td className="px-3 py-2.5">TZS 3,600</td><td className="px-3 py-2.5">Tire repair</td></tr>
+              <tr className="border-t border-navy/5 text-navy"><td className="px-3 py-2.5">FUEL</td><td className="px-3 py-2.5">TZS 14,400</td><td className="px-3 py-2.5">Tractor refueling</td></tr>
+              <tr className="border-t border-navy/5 text-navy"><td className="px-3 py-2.5">MAINTENANCE</td><td className="px-3 py-2.5">TZS 112,000</td><td className="px-3 py-2.5">Oil change</td></tr>
+              <tr className="border-t border-navy/5 text-navy"><td className="px-3 py-2.5">FUEL</td><td className="px-3 py-2.5">TZS 14,400</td><td className="px-3 py-2.5">Tractor refueling</td></tr>
+              <tr className="border-t border-navy/5 text-navy"><td className="px-3 py-2.5">MAINTENANCE</td><td className="px-3 py-2.5">TZS 90,000</td><td className="px-3 py-2.5">Service</td></tr>
+            </tbody>
+          </table>
+          <div className="flex items-center justify-between mt-3 text-[12px] text-slate-500"><span>Showing 1-5 of 13</span><div className="flex gap-1"><button className="px-2 py-0.5 rounded bg-slate-100">Prev</button><button className="px-2 py-0.5 rounded bg-navy text-white">1</button><button className="px-2 py-0.5 rounded bg-slate-100">Next</button></div></div>
+        </div>
+      </section>
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <article className={`${glassCard} px-5 py-4`}>
