@@ -1,1 +1,1 @@
-export default function Page() { return <main className="min-h-screen bg-gradient-to-br from-[#0f172a] via-[#0b1221] to-[#1e293b] p-10"><h1 className="text-3xl font-extrabold text-white">units</h1></main>; }
+export default function Page() { return <main className="min-h-screen bg-slate-50 p-10"><h1 className="text-3xl font-extrabold text-slate-900">units</h1></main>; }
