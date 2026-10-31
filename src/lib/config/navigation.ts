@@ -194,7 +194,7 @@ export const PROPERTY_NAV: NavItem[] = [
   { href: "/property/tenants", label: "Tenants", icon: "users" },
   { href: "/property/contracts", label: "Contracts", icon: "audit" },
   { href: "/property/invoices", label: "Rent Invoices", icon: "money" },
-  { href: "/property/bookings", label: "Hall Bookings", icon: "clipboard" },
+  { href: "/property/hall-bookings", label: "Hall Bookings", icon: "clipboard" },
   { href: "/property/expenses", label: "Expenses", icon: "wallet" },
   { href: "/property/reports", label: "Reports", icon: "reports" },
 ];
