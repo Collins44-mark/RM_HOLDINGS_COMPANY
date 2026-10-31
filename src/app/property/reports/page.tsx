@@ -1,6 +1,6 @@
 export default function Page() {
   return (
-    <main className="min-h-screen bg-slate-50 p-6 md:p-10 text-slate-900">
+    <main className="min-h-screen p-6 md:p-10 text-slate-900">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div><h1 className="text-3xl font-extrabold">reports</h1><p className="text-slate-500 text-sm">Manage reports.</p></div>
