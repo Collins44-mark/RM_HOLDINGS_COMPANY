@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { getBusinessUnit, type ModuleCode } from "@/lib/config/app";
 import { MODULE_NAV, type NavItem } from "@/lib/config/navigation";
-import { PageBackButton } from "@/components/ui/PageBackButton";
 
 function navLabelForHref(href: string, items: NavItem[]): string | null {
   for (const item of items) {
@@ -65,9 +64,6 @@ export function ModuleContextBar({
   const suppressBreadcrumb = moduleCode === "property";
   return (
     <div className="mb-4 min-w-0">
-      {isRoot ? null : (
-        <PageBackButton onClick={() => router.back()} className="mb-3" />
-      )}
       {!suppressBreadcrumb && (<nav
         aria-label="Breadcrumb"
         className={isRoot ? "break-words text-[12.5px] leading-5 text-slate-400" : "break-words text-[12.5px] leading-5 text-slate-400"}
