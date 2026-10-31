@@ -62,15 +62,16 @@ export function ModuleContextBar({
   const isRoot = pathname === root;
   const crumbs = trail(moduleCode, pathname, showDashboardCrumb);
 
+  const suppressBreadcrumb = moduleCode === "property";
   return (
     <div className="mb-4 min-w-0">
       {isRoot ? null : (
         <PageBackButton onClick={() => router.back()} className="mb-3" />
       )}
-      <nav
+      {!suppressBreadcrumb && (<nav
         aria-label="Breadcrumb"
         className={isRoot ? "break-words text-[12.5px] leading-5 text-slate-400" : "break-words text-[12.5px] leading-5 text-slate-400"}
-      >
+      >)
         {crumbs.map((crumb, index) => {
           const last = index === crumbs.length - 1;
           return (
@@ -86,7 +87,7 @@ export function ModuleContextBar({
             </span>
           );
         })}
-      </nav>
+      </nav>)}
     </div>
   );
 }
