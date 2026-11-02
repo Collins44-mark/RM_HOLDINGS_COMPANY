@@ -2,9 +2,9 @@
 import { useState } from "react";
 export default function ContractsPage() {
   const [formOpen,setFormOpen]=useState(false);
-  const [props,setProps]=useState([]);
-  const [units,setUnits]=useState([]);
-  const [tenants,setTenants]=useState([]);
+  const [props,setProps]=useState<string[]>([]);
+  const [units,setUnits]=useState<string[]>([]);
+  const [tenants,setTenants]=useState<string[]>([]);
   return (
     <main className="min-h-screen p-6 md:p-10 text-slate-900">
       <div className="max-w-7xl mx-auto">
