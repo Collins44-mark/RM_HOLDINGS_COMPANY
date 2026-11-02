@@ -1,13 +1,16 @@
 "use client"
-
-import {useState} from "react";
-export default function Page() {
+import { useState } from "react";
+export default function ContractsPage() {
+  const [formOpen,setFormOpen]=useState(false);
+  const [props,setProps]=useState([]);
+  const [units,setUnits]=useState([]);
+  const [tenants,setTenants]=useState([]);
   return (
     <main className="min-h-screen p-6 md:p-10 text-slate-900">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div><h1 className="text-3xl font-extrabold">contracts</h1><p className="text-slate-500 text-sm">Manage contracts.</p></div>
-          <button className="bg-[#0b2244] text-white px-4 py-2.5 rounded-xl font-medium shadow-lg shadow-indigo-200/40">+ Create Contract</button>
+          <button onClick={()=>setFormOpen(true)} className="bg-[#0b2244] text-white px-4 py-2.5 rounded-xl font-medium shadow-lg shadow-indigo-200/40">+ Create Contract</button>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/60"><div className="text-xs font-semibold text-slate-400 uppercase">Total</div><div className="text-2xl font-extrabold text-slate-900">0</div></div>
@@ -21,6 +24,7 @@ export default function Page() {
         </div>
         <div className="mt-8 bg-white rounded-2xl p-10 text-center border border-slate-200 shadow-sm"><h3 className="text-xl font-bold text-slate-800 mb-2">No contracts found.</h3><p className="text-slate-500 mb-4">Add your first record to get started.</p><button className="bg-[#0b2244] text-white px-6 py-2.5 rounded-xl font-medium">+ Create Contract</button></div>
       </div>
+{formOpen && (<div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"><form onSubmit={async e=>{e.preventDefault();try{const r=await fetch("/api/property/contracts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({property_id:props[0],unit_id:units[0],tenant_id:tenants[0],start_date:(new Date()).toISOString().slice(0,10),rent_amount:1000,status:"Pending",business_unit_id:""})});if(r.ok){setFormOpen(false);window.location.reload();}else{alert("Save failed");}}catch{alert("Error")}}} className="bg-white rounded-2xl p-6 shadow-2xl w-full max-w-lg"><h3 className="text-xl font-bold mb-4">Create Contract</h3><select onChange={e=>setProps([e.target.value] as string[])} className="w-full mb-3 px-3 py-2 border rounded-lg"><option>Select Property</option></select><select onChange={e=>setUnits([e.target.value] as string[])} className="w-full mb-3 px-3 py-2 border rounded-lg"><option>Select Unit</option></select><select onChange={e=>setTenants([e.target.value] as string[])} className="w-full mb-3 px-3 py-2 border rounded-lg"><option>Select Tenant</option></select><button type="submit" className="bg-[#0b2244] text-white px-4 py-2 rounded-xl">Save</button><button type="button" onClick={()=>setFormOpen(false)} className="px-4 py-2 border rounded-xl">Cancel</button></form></div>)}
     </main>
   );
 }
