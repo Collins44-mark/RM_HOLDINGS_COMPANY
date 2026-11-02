@@ -1,7 +1,6 @@
 "use client"
 import { useState } from "react";
 
-import {useState} from "react";
 export default function PropertiesPage() {
   return (
     <main className="min-h-screen p-6 md:p-10 text-slate-900">
