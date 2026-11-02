@@ -1,0 +1,4 @@
+-- Ensure properties table has address column for form compatibility
+-- Actual column is street_address; this adds alias only if needed
+-- However migration already defines street_address. No destructive change needed.
+-- The fix is API mapping from form 'address' -> DB 'street_address' as done.
