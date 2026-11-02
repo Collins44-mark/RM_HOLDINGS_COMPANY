@@ -21,6 +21,7 @@ export async function POST(req: Request) {
     const buId = (user as any).businessUnitId || (user as any).business_unit_id;
     const supabase = await getSupabasePropertyClient();
     const body = await req.json();
+    if (!buId) return NextResponse.json({ error: "Missing business_unit_id — session not authorized" }, { status: 401 });
     const { data, error } = await supabase.from("properties").insert({ ...body, business_unit_id: buId }).select().single();
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     return NextResponse.json({ data });
