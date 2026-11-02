@@ -63,12 +63,12 @@ export default async function PropertyDashboardPage() {
         <section className="lg:col-span-2 bg-white/70 backdrop-blur-xl rounded-2xl border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.06)] p-6">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-semibold text-slate-800">Recent Rent Invoices</h3>
-            <a href="/property/rent-invoices" className="text-sm text-blue-600 hover:underline">View All</a>
+            <a href="/property/invoices" className="text-sm text-blue-600 hover:underline">View All</a>
           </div>
           <table className="w-full text-sm mt-4">
             <thead><tr className="text-slate-400 text-xs uppercase tracking-wider border-b border-slate-100"><th className="text-left py-2">Invoice</th><th className="text-left">Tenant</th><th>Property / Unit</th><th>Amount</th><th>Due</th><th>Status</th><th></th></tr></thead>
             <tbody>
-              {[{id:"demo-1",amount:0,status:"pending",dueDate:new Date(),contract:{tenant:{name:"—"},unit:{property:{name:"—"},name:"—"}}}].map((inv: any) => (
+              {[].map((inv: any) => (
                 <tr key={inv.id} className="border-t border-slate-100 hover:bg-slate-50/60">
                   <td className="py-2.5 font-medium text-slate-800">{inv.id.slice(0, 8).toUpperCase()}</td>
                   <td className="py-2.5 text-slate-600">{inv.contract?.tenant?.name ?? "—"}</td>
@@ -76,7 +76,7 @@ export default async function PropertyDashboardPage() {
                   <td className="py-2.5 font-medium">{formatTzs(Number(inv.amount))}</td>
                   <td className="py-2.5 text-slate-500">{inv.dueDate ? new Date(inv.dueDate).toLocaleDateString("en-TZ") : "—"}</td>
                   <td className="py-2.5"><StatusBadge status={inv.status} /></td>
-                  <td className="py-2.5"><a href="/property/rent-invoices" className="text-blue-600 hover:underline"><Eye className="w-4 h-4 inline" /></a></td>
+                  <td className="py-2.5"><a href="/property/invoices" className="text-blue-600 hover:underline"><Eye className="w-4 h-4 inline" /></a></td>
                 </tr>
               ))}
             </tbody>
@@ -98,7 +98,7 @@ export default async function PropertyDashboardPage() {
         <QuickCard icon={Building2} label="Add Property" href="/property/properties" />
         <QuickCard icon={User} label="Add Unit" href="/property/units" />
         <QuickCard icon={User} label="Add Tenant" href="/property/tenants" />
-        <QuickCard icon={Receipt} label="Create Invoice" href="/property/rent-invoices" />
+        <QuickCard icon={Receipt} label="Create Invoice" href="/property/invoices" />
         <QuickCard icon={CalendarDays} label="Hall Booking" href="/property/hall-bookings" />
       </div>
     </div>
@@ -127,7 +127,7 @@ function StatusBadge({ status }: { status: string }) {
 
 function Row({ label, count, amount, bold }: { label: string; count: number; amount: number; bold?: boolean }) {
   return (
-    <a href="/property/rent-invoices" className={`flex items-center justify-between px-3 py-3 rounded-xl border border-slate-100 bg-white hover:bg-slate-50 transition ${bold ? "font-semibold" : ""}`}>
+    <a href="/property/invoices" className={`flex items-center justify-between px-3 py-3 rounded-xl border border-slate-100 bg-white hover:bg-slate-50 transition ${bold ? "font-semibold" : ""}`}>
       <span className="text-sm text-slate-700">{label}</span>
       <div className="text-right">
         <div className={`text-sm ${bold ? "text-slate-900" : "text-slate-600"}`}>{count} invoices</div>
