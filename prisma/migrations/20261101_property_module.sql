@@ -1,0 +1,4 @@
+-- Properties & Rentals module migration
+-- Models: Property, PropertyUnit, Tenant, RentalContract, RentInvoice, RentPayment, HallBooking, PropertyExpense
+-- Note: These models are already defined in schema.prisma and present in dev.db.
+-- This migration records the module introduction for tracking.
