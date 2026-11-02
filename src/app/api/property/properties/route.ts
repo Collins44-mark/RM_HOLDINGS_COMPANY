@@ -6,10 +6,21 @@ export async function GET(req: Request) {
   try {
     const user = await requireAuth();
     const supabase = await getSupabasePropertyClient();
-    // Resolve authorized business unit from user assignment
-    const { data: buRow } = await supabase.from("business_units").select("id").eq("id", (user as any)?.businessUnitId || (user as any)?.business_unit_id).limit(1).maybeSingle();
-    const buId = buRow?.id || (user as any)?.businessUnitId || (user as any)?.business_unit_id || "";
-    const { data, error } = await supabase.from("properties").select("*").eq("business_unit_id", buId || "").limit(50);
+    // Resolve authorized business unit from user's assigned businessUnits (existing RM Holdings auth pattern)
+    let buId = "";
+    try {
+      const assigned = (user as any).businessUnits || [];
+      if (assigned.length > 0) {
+        const first = assigned[0];
+        if (first.id) buId = String(first.id);
+        else if (first.code) {
+          const { data: buRow } = await supabase.from("business_units").select("id").eq("code", first.code).limit(1).maybeSingle();
+          buId = buRow?.id ? String(buRow.id) : "";
+        }
+      }
+    } catch { buId = ""; }
+    if (!buId) return NextResponse.json({ error: "Missing business_unit_id — no authorized business unit assigned to user" }, { status: 401 });
+    const { data, error } = await supabase.from("properties").select("*").eq("business_unit_id", buId).limit(50);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ data });
   } catch (e: any) {
@@ -21,9 +32,20 @@ export async function POST(req: Request) {
   try {
     const user = await requireAuth();
     const supabase = await getSupabasePropertyClient();
-    // Resolve authorized business unit from user assignment
-    const { data: buRow } = await supabase.from("business_units").select("id").eq("id", (user as any)?.businessUnitId || (user as any)?.business_unit_id).limit(1).maybeSingle();
-    const buId = buRow?.id || (user as any)?.businessUnitId || (user as any)?.business_unit_id || "";
+    // Resolve authorized business unit from user's assigned businessUnits (existing RM Holdings auth pattern)
+    let buId = "";
+    try {
+      const assigned = (user as any).businessUnits || [];
+      if (assigned.length > 0) {
+        const first = assigned[0];
+        if (first.id) buId = String(first.id);
+        else if (first.code) {
+          const { data: buRow } = await supabase.from("business_units").select("id").eq("code", first.code).limit(1).maybeSingle();
+          buId = buRow?.id ? String(buRow.id) : "";
+        }
+      }
+    } catch { buId = ""; }
+    if (!buId) return NextResponse.json({ error: "Missing business_unit_id — no authorized business unit assigned to user" }, { status: 401 });
     const body = await req.json();
     if (!buId) return NextResponse.json({ error: "Missing business_unit_id — session not authorized" }, { status: 401 });
     const { data, error } = await supabase.from("properties").insert({ ...body, business_unit_id: buId }).select().single();
