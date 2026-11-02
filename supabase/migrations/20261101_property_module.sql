@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS rent_invoices (
   discount DECIMAL(12,2) DEFAULT 0,
   total_amount DECIMAL(12,2) GENERATED ALWAYS AS (rent_amount + additional_charges - discount) STORED,
   amount_paid DECIMAL(12,2) DEFAULT 0,
-  balance DECIMAL(12,2) GENERATED ALWAYS AS (total_amount - amount_paid) STORED,
+  balance DECIMAL(12,2) GENERATED ALWAYS AS (rent_amount + additional_charges - discount - amount_paid) STORED,
   status VARCHAR(50) DEFAULT 'Unpaid',
   notes TEXT,
   created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
