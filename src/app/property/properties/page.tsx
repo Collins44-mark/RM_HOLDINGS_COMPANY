@@ -2,6 +2,13 @@
 import { useState } from "react";
 
 export default function PropertiesPage() {
+  const [formOpen, setFormOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [address, setAddress] = useState("");
+  const [propType, setPropType] = useState("");
+  const [status, setStatus] = useState("Active");
+  const [error, setError] = useState("");
+  const [items, setItems] = useState([]);
   return (
     <main className="min-h-screen p-6 md:p-10 text-slate-900">
       <div className="max-w-7xl mx-auto">
@@ -45,9 +52,10 @@ export default function PropertiesPage() {
         <div className="mt-8 bg-white rounded-2xl p-10 text-center border border-slate-200/60 shadow-sm">
           <h3 className="text-xl font-bold text-slate-800 mb-2">No properties registered yet.</h3>
           <p className="text-slate-500 mb-4">Start by adding your first property to manage its units and rental activities.</p>
-          <button className="bg-[#0b2244] text-white px-6 py-2.5 rounded-xl font-medium">+ Add Property</button>
+          <button onClick={()=>setFormOpen(true)} className="bg-[#0b2244] text-white px-6 py-2.5 rounded-xl font-medium">+ Add Property</button>
         </div>
       </div>
+{formOpen && (<div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"><form onSubmit={async e=>{e.preventDefault();try{const r=await fetch("/api/property/properties",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,address,property_type:propType,status,business_unit_id:""})});if(r.ok){setFormOpen(false);window.location.reload();}else{setError("Save failed");}}catch{setError("Network error");}}} className="bg-white rounded-2xl p-6 shadow-2xl w-full max-w-md"><h3 className="text-xl font-bold mb-4">Add Property</h3><input required placeholder="Name" value={name} onChange={e=>setName(e.target.value)} className="w-full mb-3 px-3 py-2 border rounded-lg"/><input placeholder="Address" value={address} onChange={e=>setAddress(e.target.value)} className="w-full mb-3 px-3 py-2 border rounded-lg"/><input placeholder="Type" value={propType} onChange={e=>setPropType(e.target.value)} className="w-full mb-3 px-3 py-2 border rounded-lg"/><select value={status} onChange={e=>setStatus(e.target.value)} className="w-full mb-3 px-3 py-2 border rounded-lg"><option>Active</option><option>Inactive</option></select><div className="flex gap-3"><button type="submit" className="bg-[#0b2244] text-white px-4 py-2 rounded-xl">Save</button><button type="button" onClick={()=>setFormOpen(false)} className="px-4 py-2 border rounded-xl">Cancel</button></div>{error&&<p className="text-red-600 text-sm mt-2">{error}</p>}</form></div>)}
     </main>
   );
 }
