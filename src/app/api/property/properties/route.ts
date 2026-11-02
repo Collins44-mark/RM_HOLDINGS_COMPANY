@@ -19,6 +19,10 @@ export async function GET(req: Request) {
         }
       }
     } catch { buId = ""; }
+    // Owner/Group Admin: access all company business units
+    if (!buId && ((user as any)?.roleCode === "OWNER" || (user as any)?.roleCode === "SUPER_ADMIN" || (user as any)?.modules?.includes("*"))) {
+      try { const { data: all } = await supabase.from("business_units").select("id").limit(1); if (all && all.length > 0) buId = String(all[0].id); } catch { /* ignore */ }
+    }
     if (!buId) return NextResponse.json({ error: "Missing business_unit_id — no authorized business unit assigned to user" }, { status: 401 });
     const { data, error } = await supabase.from("properties").select("*").eq("business_unit_id", buId).limit(50);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -45,6 +49,10 @@ export async function POST(req: Request) {
         }
       }
     } catch { buId = ""; }
+    // Owner/Group Admin: access all company business units
+    if (!buId && ((user as any)?.roleCode === "OWNER" || (user as any)?.roleCode === "SUPER_ADMIN" || (user as any)?.modules?.includes("*"))) {
+      try { const { data: all } = await supabase.from("business_units").select("id").limit(1); if (all && all.length > 0) buId = String(all[0].id); } catch { /* ignore */ }
+    }
     if (!buId) return NextResponse.json({ error: "Missing business_unit_id — no authorized business unit assigned to user" }, { status: 401 });
     const body = await req.json();
     if (!buId) return NextResponse.json({ error: "Missing business_unit_id — session not authorized" }, { status: 401 });
