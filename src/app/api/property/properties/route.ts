@@ -1,11 +1,17 @@
-import { getSupabasePropertyClient } from "@/lib/supabase/property";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireAuth } from "@/lib/auth/session";
 import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
   try {
-    const user = await requireAuth();
-    const supabase = await getSupabasePropertyClient();
+        const user = await requireAuth();
+    // Server-side authorization: only Owner/Super Admin or assigned employee may write
+    const roleCode = (user as any)?.roleCode || '';
+    const isOwner = roleCode === 'OWNER' || roleCode === 'SUPER_ADMIN';
+    if (!isOwner && !(user as any)?.businessUnits?.length) {
+      return NextResponse.json({ error: 'Not authorized for property operations' }, { status: 403 });
+    }
+    const admin = createSupabaseAdminClient(); if (!admin) return NextResponse.json({ error: "Admin not configured" }, { status: 500 }); const supabase = admin;
     // Resolve authorized business unit from user's assigned businessUnits (existing RM Holdings auth pattern)
     let buId = "";
     try {
@@ -34,8 +40,14 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const user = await requireAuth();
-    const supabase = await getSupabasePropertyClient();
+        const user = await requireAuth();
+    // Server-side authorization: only Owner/Super Admin or assigned employee may write
+    const roleCode = (user as any)?.roleCode || '';
+    const isOwner = roleCode === 'OWNER' || roleCode === 'SUPER_ADMIN';
+    if (!isOwner && !(user as any)?.businessUnits?.length) {
+      return NextResponse.json({ error: 'Not authorized for property operations' }, { status: 403 });
+    }
+    const admin = createSupabaseAdminClient(); if (!admin) return NextResponse.json({ error: "Admin not configured" }, { status: 500 }); const supabase = admin;
     // Resolve authorized business unit from user's assigned businessUnits (existing RM Holdings auth pattern)
     let buId = "";
     try {
