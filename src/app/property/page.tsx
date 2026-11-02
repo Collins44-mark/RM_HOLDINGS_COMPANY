@@ -1,6 +1,7 @@
 import { formatTzs } from "@/lib/format/currency";
 import { Landmark, Building2, User, Receipt, Eye, Plus, CalendarDays } from "lucide-react";
 
+import {useState} from "react";
 export default async function PropertyDashboardPage() {
   const s = { properties: 0, totalUnits: 0, occupied: 0, vacant: 0, occupancyPct: 0, rentCollected: 0, paid: 0, unpaid: 0, overdue: 0, totalInv: 0, paidAmount: 0, unpaidAmount: 0, overdueAmount: 0 };
 

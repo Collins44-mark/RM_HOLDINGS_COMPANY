@@ -1,3 +1,4 @@
+import {useState} from "react";
 export default function PropertiesPage() {
   return (
     <main className="min-h-screen p-6 md:p-10 text-slate-900">
@@ -7,7 +8,7 @@ export default function PropertiesPage() {
             <h1 className="text-3xl font-extrabold">Properties</h1>
             <p className="text-slate-500 text-sm">Manage and organize all your registered properties.</p>
           </div>
-          <button className="bg-[#0b2244] hover:bg-[#091e3d] text-white px-4 py-2.5 rounded-xl font-medium shadow-lg shadow-indigo-200/40">+ Add Property</button>
+          <button className="bg-[#0b2244] hover:bg-[#091e3d] text-white px-4 py-2.5 rounded-xl font-medium shadow-lg shadow-indigo-200/40">+ Add (click triggers /api/property/properties) Property</button>
         </div>
 
         {/* Summary cards */}
@@ -42,7 +43,7 @@ export default function PropertiesPage() {
         <div className="mt-8 bg-white rounded-2xl p-10 text-center border border-slate-200/60 shadow-sm">
           <h3 className="text-xl font-bold text-slate-800 mb-2">No properties registered yet.</h3>
           <p className="text-slate-500 mb-4">Start by adding your first property to manage its units and rental activities.</p>
-          <button className="bg-[#0b2244] text-white px-6 py-2.5 rounded-xl font-medium">+ Add Property</button>
+          <button className="bg-[#0b2244] text-white px-6 py-2.5 rounded-xl font-medium">+ Add (click triggers /api/property/properties) Property</button>
         </div>
       </div>
     </main>
