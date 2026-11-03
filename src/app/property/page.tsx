@@ -27,7 +27,7 @@ export default function PropertyDashboardPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card icon={Building2} label="Total Properties" value={String(s.properties)} />
-        <Card icon={User} label="Total Units" value={String(items.filter((i:any)=>i.business_unit_id).length)} />
+        <Card icon={User} label="Total Units" value={String(s.totalUnits)} />
         <Card icon={Receipt} label="Rent Collected" value={formatTzs(s.rentCollected)} />
         <Card icon={Landmark} label="Outstanding Rent" value={formatTzs(s.unpaidAmount + s.overdueAmount)} />
       </div>
