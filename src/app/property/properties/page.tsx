@@ -10,7 +10,7 @@ export default function PropertiesPage() {
   const [propType, setPropType] = useState("");
   const [status, setStatus] = useState("Active");
   const [error, setError] = useState("");
-  const [items, setItems] = useState([]); const [selectedProperty, setSelectedProperty] = useState<any>(null); const [editMode, setEditMode] = useState(false);
+  const [items, setItems] = useState([]); const [selectedProperty, setSelectedProperty] = useState<any>(null); const [editMode, setEditMode] = useState(false); const [saveState, setSaveState] = useState<"idle"|"saving"|"saved"|"error">("idle"); const [saveError, setSaveError] = useState("");
   useEffect(() => { fetch("/api/property/properties").then(r => r.json()).then(d => { if (d && d.data) setItems(d.data); }).catch(() => {}); }, []);
   return (
     <main className="min-h-screen p-6 md:p-10 text-slate-900">
@@ -102,7 +102,7 @@ export default function PropertiesPage() {
             </div>
           </>
         ) : (
-          <form onSubmit={async(e)=>{e.preventDefault(); try{const r=await fetch(`/api/property/properties/${selectedProperty.id}`,{method:'PATCH',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:selectedProperty.name,property_type:selectedProperty.property_type,status:selectedProperty.status,street_address:selectedProperty.street_address,region:selectedProperty.region,district:selectedProperty.district,ward:selectedProperty.ward,description:selectedProperty.description})}); if(r.ok){ setEditMode(false); setSelectedProperty(await r.json().then(d=>d.data||d)); } else { alert('Save failed'); } } catch(err){ alert('Error'); }}}>
+          <form onSubmit={async(e)=>{e.preventDefault(); if(saveState!=="idle") return; const original=selectedProperty; setSaveState("saving"); setSaveError(""); try{const r=await fetch(`/api/property/properties/${selectedProperty.id}`,{method:"PATCH",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:selectedProperty.name,property_type:selectedProperty.property_type,status:selectedProperty.status,street_address:selectedProperty.street_address,region:selectedProperty.region,district:selectedProperty.district,ward:selectedProperty.ward,description:selectedProperty.description,property_code:selectedProperty.property_code})}); if(r.ok){ const data=await r.json(); setSaveState("saved"); setSelectedProperty(data.data||data); setItems((prev:any)=>prev.map((p:any)=>p.id===selectedProperty.id?{...p,...(data.data||data)}:p)); setTimeout(()=>{setEditMode(false);setSaveState("idle");},900); } else{ let msg="Save failed"; try{const d=await r.json(); msg=d.error||msg;}catch{} setSaveError(msg); setSaveState("idle"); } } catch(err){ setSaveError("Network error"); setSaveState("idle"); }}}>
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Edit Property</h3>
             <div className="grid grid-cols-2 gap-3 mb-4">
               <input required value={selectedProperty.name} onChange={e=>setSelectedProperty({...selectedProperty,name:e.target.value})} className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100" placeholder="Property Name" />
@@ -115,7 +115,7 @@ export default function PropertiesPage() {
               <input value={selectedProperty.property_code||''} onChange={e=>setSelectedProperty({...selectedProperty,property_code:e.target.value})} className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100" placeholder="Property Code" />
             </div>
             <textarea value={selectedProperty.description||''} onChange={e=>setSelectedProperty({...selectedProperty,description:e.target.value})} className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 mb-4" rows={3} placeholder="Description" />
-            <div className="flex gap-3"><button type="submit" className="bg-[#0b2244] text-white px-6 py-2.5 rounded-xl font-semibold shadow-lg shadow-indigo-200/40">Save Changes</button><button type="button" onClick={()=>setEditMode(false)} className="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50">Cancel</button></div>
+            <div className="flex gap-3"><button type="submit" disabled={saveState!=="idle"} className="bg-[#0b2244] text-white px-6 py-2.5 rounded-xl font-semibold shadow-lg shadow-indigo-200/40 min-w-[140px] flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-90">{saveState==="saving"?<span className="flex items-center gap-2"><span className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></span>Saving...</span>:saveState==="saved"?<span>✓ Saved</span>:"Save Changes"}</button><button type="button" onClick={()=>{setEditMode(false);setSaveState("idle");setSaveError("");}} className="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50">Cancel</button>{saveError&&<p className="text-red-600 text-sm mt-3 w-full">{saveError}</p>}</div>
           </form>
         )}
         <div className="flex gap-3 mt-8 pt-6 border-t border-slate-100">
