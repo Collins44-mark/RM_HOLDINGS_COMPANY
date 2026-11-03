@@ -27,7 +27,7 @@ export default function PropertiesPage() {
           {[{label:"Total Properties",val:items.length},{label:"Active Properties",val:items.filter((i:any)=>i.status==="Active").length},{label:"Total Units",val:0},{label:"Under Maintenance",val:0}].map(({label,val}) => (
             <div key={label} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/60">
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{label}</div>
-              <div className="text-2xl font-extrabold text-slate-900 mt-1">{items.length}</div>
+              <div className="text-2xl font-extrabold text-slate-900 mt-1">{val}</div>
             </div>
           ))}
         </div>
