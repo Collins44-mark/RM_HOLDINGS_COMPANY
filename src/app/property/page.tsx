@@ -3,8 +3,10 @@
 import { formatTzs } from "@/lib/format/currency";
 import { Landmark, Building2, User, Receipt, Eye, Plus, CalendarDays } from "lucide-react";
 
-import {useState} from "react";
+import {useState, useEffect} from "react";
 export default function PropertyDashboardPage() {
+  const [items, setItems] = useState([]);
+  useEffect(() => { fetch("/api/property/properties").then(r => r.json()).then(d => { if (d && d.data) setItems(d.data); }).catch(() => {}); }, []);
   const s = { properties: 0, totalUnits: 0, occupied: 0, vacant: 0, occupancyPct: 0, rentCollected: 0, paid: 0, unpaid: 0, overdue: 0, totalInv: 0, paidAmount: 0, unpaidAmount: 0, overdueAmount: 0 };
 
   return (
@@ -22,8 +24,8 @@ export default function PropertyDashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card icon={Building2} label="Total Properties" value={String(s.properties)} />
-        <Card icon={User} label="Total Units" value={String(s.totalUnits)} />
+        <Card icon={Building2} label="Total Properties" value={String(items.length)} />
+        <Card icon={User} label="Total Units" value={String(items.filter((i:any)=>i.business_unit_id).length)} />
         <Card icon={Receipt} label="Rent Collected" value={formatTzs(s.rentCollected)} />
         <Card icon={Landmark} label="Outstanding Rent" value={formatTzs(s.unpaidAmount + s.overdueAmount)} />
       </div>

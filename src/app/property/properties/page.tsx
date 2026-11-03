@@ -24,7 +24,7 @@ export default function PropertiesPage() {
 
         {/* Summary cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {["Total Properties","Active Properties","Total Units","Under Maintenance"].map((label) => (
+          {[{label:"Total Properties",val:items.length},{label:"Active Properties",val:items.filter((i:any)=>i.status==="Active").length},{label:"Total Units",val:0},{label:"Under Maintenance",val:0}].map(({label,val}) => (
             <div key={label} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/60">
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{label}</div>
               <div className="text-2xl font-extrabold text-slate-900 mt-1">{items.length}</div>
