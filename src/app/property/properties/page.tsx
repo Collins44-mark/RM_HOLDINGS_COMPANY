@@ -1,5 +1,5 @@
 "use client"
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function PropertiesPage() {
   const user = (globalThis as any)?.user || { businessUnitId: "test-bu" };
@@ -10,6 +10,7 @@ export default function PropertiesPage() {
   const [status, setStatus] = useState("Active");
   const [error, setError] = useState("");
   const [items, setItems] = useState([]);
+  useEffect(() => { fetch("/api/property/properties").then(r => r.json()).then(d => { if (d && d.data) setItems(d.data); }).catch(() => {}); }, []);
   return (
     <main className="min-h-screen p-6 md:p-10 text-slate-900">
       <div className="max-w-7xl mx-auto">
