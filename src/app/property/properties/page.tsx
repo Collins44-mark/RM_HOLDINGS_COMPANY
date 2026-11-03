@@ -1,5 +1,6 @@
 "use client"
 import { useState, useEffect } from "react";
+import { MoreVertical } from "lucide-react";
 
 export default function PropertiesPage() {
   const user = (globalThis as any)?.user || { businessUnitId: "test-bu" };
@@ -45,7 +46,7 @@ export default function PropertiesPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50"><tr className="text-left text-xs font-semibold text-slate-500"><th className="px-4 py-3">Property Name</th><th>Type</th><th>Location</th><th>Units</th><th>Occupied</th><th>Vacant</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
-              {items.length === 0 ? (<tr className="border-t border-slate-100"><td className="px-4 py-3 text-slate-800 font-medium">—</td><td>—</td><td>—</td><td>0</td><td>0</td><td>0</td><td><span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">No records</span></td><td><button className="text-indigo-600 hover:text-indigo-800 text-xs">View</button></td></tr>) : (items.map((it: any) => (<tr key={it.id} className="border-t border-slate-100"><td className="px-4 py-3 text-slate-800 font-medium">{it.name}</td><td>{it.property_type}</td><td>{it.street_address || it.region || it.district || 'Location not provided'}</td><td>0</td><td>0</td><td>0</td><td><span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">{it.status}</span></td><td><button className="text-indigo-600 hover:text-indigo-800 text-xs">View</button></td></tr>)))}
+              {items.length === 0 ? (<tr className="border-t border-slate-100"><td className="px-4 py-3 text-slate-800 font-medium">—</td><td>—</td><td>—</td><td>0</td><td>0</td><td>0</td><td><span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">No records</span></td><td><button onClick={()=>setSelectedProperty(null)} className="text-slate-600 hover:text-slate-900 p-1"><MoreVertical size={16} /></button></td></tr>) : (items.map((it: any) => (<tr key={it.id} className="border-t border-slate-100"><td className="px-4 py-3 text-slate-800 font-medium">{it.name}</td><td>{it.property_type}</td><td>{it.street_address || it.region || it.district || 'Location not provided'}</td><td>0</td><td>0</td><td>0</td><td><span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">{it.status}</span></td><td><button onClick={()=>setSelectedProperty(null)} className="text-slate-600 hover:text-slate-900 p-1"><MoreVertical size={16} /></button></td></tr>)))}
             </tbody>
           </table>
         </div>
