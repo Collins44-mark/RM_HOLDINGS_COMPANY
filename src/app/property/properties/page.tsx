@@ -27,7 +27,7 @@ export default function PropertiesPage() {
           {["Total Properties","Active Properties","Total Units","Under Maintenance"].map((label) => (
             <div key={label} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/60">
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{label}</div>
-              <div className="text-2xl font-extrabold text-slate-900 mt-1">0</div>
+              <div className="text-2xl font-extrabold text-slate-900 mt-1">{items.length}</div>
             </div>
           ))}
         </div>
@@ -45,7 +45,7 @@ export default function PropertiesPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50"><tr className="text-left text-xs font-semibold text-slate-500"><th className="px-4 py-3">Property Name</th><th>Type</th><th>Location</th><th>Units</th><th>Occupied</th><th>Vacant</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
-              <tr className="border-t border-slate-100"><td className="px-4 py-3 text-slate-800 font-medium">—</td><td>—</td><td>—</td><td>0</td><td>0</td><td>0</td><td><span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">No records</span></td><td><button className="text-indigo-600 hover:text-indigo-800 text-xs">View</button></td></tr>
+              {items.length === 0 ? (<tr className="border-t border-slate-100"><td className="px-4 py-3 text-slate-800 font-medium">—</td><td>—</td><td>—</td><td>0</td><td>0</td><td>0</td><td><span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">No records</span></td><td><button className="text-indigo-600 hover:text-indigo-800 text-xs">View</button></td></tr>) : (items.map((it: any) => (<tr key={it.id} className="border-t border-slate-100"><td className="px-4 py-3 text-slate-800 font-medium">{it.name}</td><td>{it.property_type}</td><td>{it.business_unit_id}</td><td>0</td><td>0</td><td>0</td><td><span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">{it.status}</span></td><td><button className="text-indigo-600 hover:text-indigo-800 text-xs">View</button></td></tr>)))}
             </tbody>
           </table>
         </div>
