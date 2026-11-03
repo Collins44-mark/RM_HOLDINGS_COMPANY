@@ -7,7 +7,9 @@ import {useState, useEffect} from "react";
 export default function PropertyDashboardPage() {
   const [items, setItems] = useState([]);
   useEffect(() => { fetch("/api/property/properties").then(r => r.json()).then(d => { if (d && d.data) setItems(d.data); }).catch(() => {}); }, []);
-  const s = { properties: 0, totalUnits: 0, occupied: 0, vacant: 0, occupancyPct: 0, rentCollected: 0, paid: 0, unpaid: 0, overdue: 0, totalInv: 0, paidAmount: 0, unpaidAmount: 0, overdueAmount: 0 };
+  const [propData, setPropData] = useState([]);
+  useEffect(() => { fetch("/api/property/properties").then(r=>r.json()).then(d=>{if(d&&d.data)setPropData(d.data)}).catch(()=>{}); }, []);
+  const s = { properties: propData.length, totalUnits: 0, occupied: 0, vacant: 0, occupancyPct: 0, rentCollected: 0, paid: 0, unpaid: 0, overdue: 0, totalInv: 0, paidAmount: 0, unpaidAmount: 0, overdueAmount: 0 };
 
   return (
     <div className="space-y-6 pb-10">
