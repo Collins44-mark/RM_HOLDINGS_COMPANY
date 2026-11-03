@@ -30,7 +30,7 @@ export async function GET(req: Request) {
       try { const { data: all } = await supabase.from("business_units").select("id").limit(1); if (all && all.length > 0) buId = String(all[0].id); } catch { /* ignore */ }
     }
     if (!buId) return NextResponse.json({ error: "Missing business_unit_id — no authorized business unit assigned to user" }, { status: 401 });
-    const { data, error } = await supabase.from("properties").select("*").limit(50);
+    const { data, error } = await supabase.from("properties").select("*").eq("business_unit_id", buId).limit(50);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ data });
   } catch (e: any) {
