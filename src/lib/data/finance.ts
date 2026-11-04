@@ -12,6 +12,9 @@ import {
 } from "@/lib/data/report-period";
 import { listBusinessUnits, type BusinessUnitView } from "@/lib/data/business-units";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { readMeta } from "@/lib/property/halls";
+import { readExpenseMeta } from "@/lib/property/expenses";
 
 export const FINANCE_DETAIL_HREF: Record<string, string> = {
   rice: "/rice/sales",
@@ -138,6 +141,8 @@ type PeriodPoints = {
   schoolExpenses: ExpensePoint[];
   farmCollections: SalePoint[];
   farmExpenses: ExpensePoint[];
+  propertyCollections: SalePoint[];
+  propertyExpenses: ExpensePoint[];
 };
 
 const EMPTY_POINTS: PeriodPoints = {
@@ -147,6 +152,8 @@ const EMPTY_POINTS: PeriodPoints = {
   schoolExpenses: [],
   farmCollections: [],
   farmExpenses: [],
+  propertyCollections: [],
+  propertyExpenses: [],
 };
 
 export type SchoolPeriodLedger = {
@@ -255,8 +262,8 @@ function schoolLedgerFromPoints(points: PeriodPoints): SchoolPeriodLedger {
 
 function combinedPoints(points: PeriodPoints): { sales: SalePoint[]; expenses: ExpensePoint[] } {
   return {
-    sales: [...points.sales, ...points.schoolCollections, ...points.farmCollections],
-    expenses: [...points.expenses, ...points.schoolExpenses, ...points.farmExpenses],
+    sales: [...points.sales, ...points.schoolCollections, ...points.farmCollections, ...points.propertyCollections],
+    expenses: [...points.expenses, ...points.schoolExpenses, ...points.farmExpenses, ...points.propertyExpenses],
   };
 }
 
@@ -268,6 +275,17 @@ function farmLedgerFromPoints(points: PeriodPoints): FarmPeriodLedger {
     expenses,
     netProfit: revenue - expenses,
     collectionCount: points.farmCollections.length,
+  };
+}
+
+function propertyLedgerFromPoints(points: PeriodPoints): FarmPeriodLedger {
+  const revenue = points.propertyCollections.reduce((sum, row) => sum + row.total, 0);
+  const expenses = points.propertyExpenses.reduce((sum, row) => sum + row.amount, 0);
+  return {
+    revenue,
+    expenses,
+    netProfit: revenue - expenses,
+    collectionCount: points.propertyCollections.length,
   };
 }
 
@@ -342,9 +360,10 @@ function buildCategoryRows(points: PeriodPoints): FinanceCategoryRow[] {
   const revenue = points.sales.reduce((sum, row) => sum + row.total, 0);
   const schoolRevenue = points.schoolCollections.reduce((sum, row) => sum + row.total, 0);
   const farmRevenue = points.farmCollections.reduce((sum, row) => sum + row.total, 0);
+  const propertyRevenue = points.propertyCollections.reduce((sum, row) => sum + row.total, 0);
   const cogs = points.sales.reduce((sum, row) => sum + row.cogs, 0);
   const expenseGroups = new Map<string, number>();
-  for (const expense of [...points.expenses, ...points.schoolExpenses, ...points.farmExpenses]) {
+  for (const expense of [...points.expenses, ...points.schoolExpenses, ...points.farmExpenses, ...points.propertyExpenses]) {
     const name = expense.category.trim() || "Uncategorized";
     expenseGroups.set(name, (expenseGroups.get(name) ?? 0) + expense.amount);
   }
@@ -356,6 +375,9 @@ function buildCategoryRows(points: PeriodPoints): FinanceCategoryRow[] {
       : []),
     ...(farmRevenue > 0
       ? [{ category: "Farm services", type: "Revenue" as const, amount: farmRevenue, share: 0 }]
+      : []),
+    ...(propertyRevenue > 0
+      ? [{ category: "Property collections", type: "Revenue" as const, amount: propertyRevenue, share: 0 }]
       : []),
     { category: "COGS", type: "Cost", amount: cogs, share: 0 },
     ...[...expenseGroups.entries()]
@@ -471,6 +493,8 @@ async function loadSupermarketPeriodPoints(from: Date, to: Date): Promise<Period
       schoolExpenses: [],
       farmCollections: [],
       farmExpenses: [],
+      propertyCollections: [],
+      propertyExpenses: [],
     };
   } catch (error) {
     console.error(
@@ -646,11 +670,91 @@ async function loadFarmPeriodSlice(from: Date, to: Date): Promise<Pick<PeriodPoi
   }
 }
 
+function inFinanceWindow(date: string, fromDate: string, toDate: string) {
+  const day = date.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) && day >= fromDate && day <= toDate;
+}
+
+/**
+ * Property cash uses the same records the property module already stores.
+ * Rent cash is completed rent_payments. Hall cash is completed payments inside
+ * hall booking notes. Expense cash is completed payments inside expense notes.
+ * Unpaid invoices and unpaid expenses are not cash.
+ */
+async function loadPropertyPeriodSlice(from: Date, to: Date): Promise<Pick<PeriodPoints, "propertyCollections" | "propertyExpenses">> {
+  const empty = { propertyCollections: [] as SalePoint[], propertyExpenses: [] as ExpensePoint[] };
+  try {
+    const supabase = createSupabaseAdminClient() ?? (await createSupabaseServerClient());
+    if (!supabase) return empty;
+    const { data: bu } = await supabase.from("business_units").select("id").eq("code", "property").maybeSingle();
+    if (!bu?.id) return empty;
+    const fromDate = formatLocalDate(from);
+    const toDate = formatLocalDate(to);
+    const [rentRes, hallRes, expenseRes] = await Promise.all([
+      supabase
+        .from("rent_payments")
+        .select("payment_date, amount, status")
+        .eq("business_unit_id", bu.id)
+        .eq("status", "Completed")
+        .gte("payment_date", fromDate)
+        .lte("payment_date", toDate),
+      supabase.from("hall_bookings").select("notes, booking_amount").eq("business_unit_id", bu.id),
+      supabase.from("property_expenses").select("expense_category, notes").eq("business_unit_id", bu.id),
+    ]);
+    if (rentRes.error || hallRes.error || expenseRes.error) {
+      console.error(
+        JSON.stringify({
+          scope: "consolidated-finance",
+          operation: "loadPropertyPeriodSlice",
+          message: rentRes.error?.message || hallRes.error?.message || expenseRes.error?.message,
+        }),
+      );
+      return empty;
+    }
+    const collections: SalePoint[] = (rentRes.data ?? []).map((row) => ({
+      saleDate: dayKey(String(row.payment_date ?? "")),
+      total: Number(row.amount || 0),
+      cogs: 0,
+    }));
+    for (const row of hallRes.data ?? []) {
+      for (const payment of readMeta(row.notes, Number(row.booking_amount || 0)).payments) {
+        if (payment.status !== "Completed") continue;
+        if (!inFinanceWindow(payment.payment_date, fromDate, toDate)) continue;
+        collections.push({ saleDate: dayKey(payment.payment_date), total: Number(payment.amount || 0), cogs: 0 });
+      }
+    }
+    const expenses: ExpensePoint[] = [];
+    for (const row of expenseRes.data ?? []) {
+      const meta = readExpenseMeta(row.notes);
+      for (const payment of meta.payments) {
+        if (payment.status !== "Completed") continue;
+        if (!inFinanceWindow(payment.payment_date, fromDate, toDate)) continue;
+        expenses.push({
+          expenseDate: dayKey(payment.payment_date),
+          amount: Number(payment.amount || 0),
+          category: String(row.expense_category || "Property expenses"),
+        });
+      }
+    }
+    return { propertyCollections: collections, propertyExpenses: expenses };
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        scope: "consolidated-finance",
+        operation: "loadPropertyPeriodSlice",
+        message: error instanceof Error ? error.message : "Failed to load property ledger.",
+      }),
+    );
+    return empty;
+  }
+}
+
 async function loadConsolidatedPeriodPoints(from: Date, to: Date): Promise<PeriodPoints> {
-  const [supermarket, school, farm] = await Promise.all([
+  const [supermarket, school, farm, property] = await Promise.all([
     loadSupermarketPeriodPoints(from, to),
     loadSchoolPeriodSlice(from, to),
     loadFarmPeriodSlice(from, to),
+    loadPropertyPeriodSlice(from, to),
   ]);
   return {
     ...supermarket,
@@ -658,6 +762,8 @@ async function loadConsolidatedPeriodPoints(from: Date, to: Date): Promise<Perio
     schoolExpenses: school.schoolExpenses,
     farmCollections: farm.farmCollections,
     farmExpenses: farm.farmExpenses,
+    propertyCollections: property.propertyCollections,
+    propertyExpenses: property.propertyExpenses,
   };
 }
 
@@ -669,9 +775,19 @@ function buildUnitRow(
   previousSchool: SchoolPeriodLedger,
   farm: FarmPeriodLedger = EMPTY_FARM,
   previousFarm: FarmPeriodLedger = EMPTY_FARM,
+  property: FarmPeriodLedger = EMPTY_FARM,
+  previousProperty: FarmPeriodLedger = EMPTY_FARM,
 ): UnitFinanceRow {
   const current =
-    unit.code === "supermarket" ? supermarket : unit.code === "school" ? school : unit.code === "farm" ? farm : EMPTY_SCHOOL;
+    unit.code === "supermarket"
+      ? supermarket
+      : unit.code === "school"
+        ? school
+        : unit.code === "farm"
+          ? farm
+          : unit.code === "property"
+            ? property
+            : EMPTY_SCHOOL;
   const previous =
     unit.code === "supermarket"
       ? previousSupermarket
@@ -679,7 +795,9 @@ function buildUnitRow(
         ? previousSchool
         : unit.code === "farm"
           ? previousFarm
-          : EMPTY_SCHOOL;
+          : unit.code === "property"
+            ? previousProperty
+            : EMPTY_SCHOOL;
   const revenue = current.revenue;
   const expenses = current.expenses;
   const operatingPosition = "netProfit" in current ? current.netProfit : 0;
@@ -725,10 +843,22 @@ async function consolidateLedgers(
   const previousSchool = schoolLedgerFromPoints(previousPoints);
   const currentFarm = farmLedgerFromPoints(currentPoints);
   const previousFarm = farmLedgerFromPoints(previousPoints);
+  const currentProperty = propertyLedgerFromPoints(currentPoints);
+  const previousProperty = propertyLedgerFromPoints(previousPoints);
   const trendSource = combinedPoints(currentPoints);
 
   const rows: UnitFinanceRow[] = units.map((unit) =>
-    buildUnitRow(unit, currentLedger, previousLedger, currentSchool, previousSchool, currentFarm, previousFarm),
+    buildUnitRow(
+      unit,
+      currentLedger,
+      previousLedger,
+      currentSchool,
+      previousSchool,
+      currentFarm,
+      previousFarm,
+      currentProperty,
+      previousProperty,
+    ),
   );
 
   const totals = snapshot(
@@ -738,9 +868,9 @@ async function consolidateLedgers(
   );
 
   const previousTotals = snapshot(
-    previousLedger.revenue + previousSchool.revenue + previousFarm.revenue,
-    previousLedger.expenses + previousSchool.expenses + previousFarm.expenses,
-    previousLedger.netProfit + previousSchool.netProfit + previousFarm.netProfit,
+    previousLedger.revenue + previousSchool.revenue + previousFarm.revenue + previousProperty.revenue,
+    previousLedger.expenses + previousSchool.expenses + previousFarm.expenses + previousProperty.expenses,
+    previousLedger.netProfit + previousSchool.netProfit + previousFarm.netProfit + previousProperty.netProfit,
   );
 
   const comparison: FinanceDelta = {
@@ -770,8 +900,10 @@ async function consolidateLedgers(
 /**
  * Single consolidated finance source for Super Admin Dashboard and Owner Finance.
  *
- * Live supermarket sales/expenses plus posted and pending school fee collections
- * (canonical sch_fee_payments) and active school expenses. Other units remain 0.
+ * Live supermarket sales/expenses, school fee collections, school expenses,
+ * completed farm jobs, farm expenses, and property cash: completed rent payments,
+ * completed hall booking payments, and completed property expense payments.
+ * Rice, livestock, and beekeeping remain 0 until those modules have cash ledgers.
  * Never falls back to sample-finance or Prisma FinanceTransaction.
  */
 export async function getConsolidatedFinance(input: {

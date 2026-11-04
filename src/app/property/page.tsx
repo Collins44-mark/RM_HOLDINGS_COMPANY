@@ -1,15 +1,12 @@
-"use client"
-
 import { formatTzs } from "@/lib/format/currency";
-import { Landmark, Building2, User, Receipt, Eye, Plus, CalendarDays } from "lucide-react";
+import { getPropertyDashboardCounts } from "@/lib/property/dashboard-counts";
+import { Landmark, Building2, User, Receipt, Eye, CalendarDays } from "lucide-react";
 
-import {useState, useEffect} from "react";
-export default function PropertyDashboardPage() {
-  const [items, setItems] = useState([]);
-  useEffect(() => { fetch("/api/property/properties").then(r => r.json()).then(d => { if (d && d.data) setItems(d.data); }).catch(() => {}); }, []);
-  const [propData, setPropData] = useState([]);
-  useEffect(() => { fetch("/api/property/properties").then(r=>r.json()).then(d=>{if(d&&d.data)setPropData(d.data)}).catch(()=>{}); }, []);
-  const s = { properties: propData.length, totalUnits: 0, occupied: 0, vacant: 0, occupancyPct: 0, rentCollected: 0, paid: 0, unpaid: 0, overdue: 0, totalInv: 0, paidAmount: 0, unpaidAmount: 0, overdueAmount: 0 };
+export const dynamic = "force-dynamic";
+
+export default async function PropertyDashboardPage() {
+  const s = await getPropertyDashboardCounts();
+  const chartMax = Math.max(1, ...s.monthlyIncome.map((month) => month.amount));
 
   return (
     <div className="space-y-6 pb-10">
@@ -30,15 +27,17 @@ export default function PropertyDashboardPage() {
         <Card icon={User} label="Total Units" value={String(s.totalUnits)} />
         <Card icon={Receipt} label="Rent Collected" value={formatTzs(s.rentCollected)} />
         <Card icon={Landmark} label="Outstanding Rent" value={formatTzs(s.unpaidAmount + s.overdueAmount)} />
+        <Card icon={Receipt} label="Expenses Paid" value={formatTzs(s.expensesPaid)} />
+        <Card icon={Landmark} label="Expenses Outstanding" value={formatTzs(s.expensesOutstanding)} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <section className="lg:col-span-2 bg-white/70 backdrop-blur-xl rounded-2xl border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.06)] p-6">
           <h3 className="text-base font-semibold text-slate-800">Monthly Rental Income</h3>
           <div className="flex items-end gap-2 h-48 mt-4">
-            {([].length ? [] : [{month:"Jan",amount:0},{month:"Feb",amount:1200000},{month:"Mar",amount:1800000}] as {month:string;amount:number}[]).map((m: {month:string;amount:number}) => (
+            {s.monthlyIncome.map((m) => (
               <div key={m.month} className="flex-1 flex flex-col justify-end gap-1" title={`${m.month}: ${formatTzs(m.amount)}`}>
-                <div className="w-full rounded-t-md bg-blue-500/90 hover:bg-blue-600 transition" style={{ height: `${Math.max(12, Math.min(100, (Number(m.amount) / 3000000) * 100))}%` }} />
+                <div className="w-full rounded-t-md bg-[#0b2244]/90 hover:bg-[#091e3d] transition" style={{ height: `${Math.max(4, Math.round((m.amount / chartMax) * 100))}%` }} />
                 <span className="text-[10px] text-slate-400 text-center">{m.month}</span>
               </div>
             ))}
@@ -70,20 +69,22 @@ export default function PropertyDashboardPage() {
         <section className="lg:col-span-2 bg-white/70 backdrop-blur-xl rounded-2xl border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.06)] p-6">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-semibold text-slate-800">Recent Rent Invoices</h3>
-            <a href="/property/invoices" className="text-sm text-blue-600 hover:underline">View All</a>
+            <a href="/property/invoices" className="text-sm text-[#0b2244] hover:underline">View All</a>
           </div>
           <table className="w-full text-sm mt-4">
             <thead><tr className="text-slate-400 text-xs uppercase tracking-wider border-b border-slate-100"><th className="text-left py-2">Invoice</th><th className="text-left">Tenant</th><th>Property / Unit</th><th>Amount</th><th>Due</th><th>Status</th><th></th></tr></thead>
             <tbody>
-              {[].map((inv: any) => (
+              {s.recentInvoices.length === 0 ? (
+                <tr><td colSpan={7} className="py-6 text-center text-slate-400">No invoices yet.</td></tr>
+              ) : s.recentInvoices.map((inv) => (
                 <tr key={inv.id} className="border-t border-slate-100 hover:bg-slate-50/60">
-                  <td className="py-2.5 font-medium text-slate-800">{inv.id.slice(0, 8).toUpperCase()}</td>
-                  <td className="py-2.5 text-slate-600">{inv.contract?.tenant?.name ?? "—"}</td>
-                  <td className="py-2.5 text-slate-600">{inv.contract?.unit?.property?.name ?? "—"} / {inv.contract?.unit?.name ?? "—"}</td>
-                  <td className="py-2.5 font-medium">{formatTzs(Number(inv.amount))}</td>
-                  <td className="py-2.5 text-slate-500">{inv.dueDate ? new Date(inv.dueDate).toLocaleDateString("en-TZ") : "—"}</td>
-                  <td className="py-2.5"><StatusBadge status={inv.status} /></td>
-                  <td className="py-2.5"><a href="/property/invoices" className="text-blue-600 hover:underline"><Eye className="w-4 h-4 inline" /></a></td>
+                  <td className="py-2.5 font-medium text-slate-800">{inv.invoice_number}</td>
+                  <td className="py-2.5 text-slate-600">{inv.tenant_name || "—"}</td>
+                  <td className="py-2.5 text-slate-600">{inv.property_name || "—"} / {inv.unit_name || "—"}</td>
+                  <td className="py-2.5 font-medium">{formatTzs(inv.total_amount)}</td>
+                  <td className="py-2.5 text-slate-500">{inv.due_date ? inv.due_date.split("-").reverse().join("/") : "—"}</td>
+                  <td className="py-2.5"><StatusBadge status={inv.effective_status} /></td>
+                  <td className="py-2.5"><a href="/property/invoices" className="text-[#0b2244] hover:underline"><Eye className="w-4 h-4 inline" /></a></td>
                 </tr>
               ))}
             </tbody>
@@ -115,10 +116,7 @@ export default function PropertyDashboardPage() {
 function Card({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
   return (
     <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.06)] p-5 hover:shadow-lg transition">
-      <div className="flex items-center justify-between">
-        <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shadow-inner"><Icon size={20} /></div>
-        <span className="text-xs text-slate-400">Live</span>
-      </div>
+      <div className="w-10 h-10 rounded-xl bg-[#0b2244]/10 text-[#0b2244] flex items-center justify-center shadow-inner"><Icon size={20} /></div>
       <h4 className="text-xs font-medium text-slate-400 mt-3 uppercase tracking-wider">{label}</h4>
       <p className="text-2xl font-bold text-slate-900 mt-1">{value}</p>
     </div>
@@ -126,9 +124,10 @@ function Card({ icon: Icon, label, value }: { icon: any; label: string; value: s
 }
 
 function StatusBadge({ status }: { status: string }) {
-  if (status === "paid") return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">Paid</span>;
-  if (status === "pending") return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700">Unpaid</span>;
-  if (status === "overdue") return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700">Overdue</span>;
+  if (status === "Paid") return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">Paid</span>;
+  if (status === "Unpaid") return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700">Unpaid</span>;
+  if (status === "Partially Paid") return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-sky-50 text-sky-700">Partially Paid</span>;
+  if (status === "Overdue") return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700">Overdue</span>;
   return <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-600">{status}</span>;
 }
 
@@ -147,7 +146,7 @@ function Row({ label, count, amount, bold }: { label: string; count: number; amo
 function QuickCard({ icon: Icon, label, href }: { icon: any; label: string; href: string }) {
   return (
     <a href={href} className="flex items-center gap-3 bg-white/70 backdrop-blur-xl rounded-2xl border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.05)] px-4 py-4 hover:shadow-md hover:-translate-y-0.5 transition group">
-      <div className="w-9 h-9 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-lg group-hover:scale-105 transition"><Icon size={18} /></div>
+      <div className="w-9 h-9 rounded-lg bg-[#0b2244] text-white flex items-center justify-center shadow-lg group-hover:scale-105 transition"><Icon size={18} /></div>
       <span className="text-sm font-medium text-slate-800">{label}</span>
     </a>
   );

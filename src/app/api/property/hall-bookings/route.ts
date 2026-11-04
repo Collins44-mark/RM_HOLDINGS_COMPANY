@@ -1,15 +1,24 @@
-import { getSupabasePropertyClient } from "@/lib/supabase/property";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireAuth } from "@/lib/auth/session";
 import { NextResponse } from "next/server";
+import { resolveBusinessUnitId } from "@/lib/property/business-unit";
+import { createBooking, listHallRecords } from "@/lib/property/hall-write";
+import { auditedPropertyResponse } from "@/lib/property/audit";
 
-export async function GET(req: Request) {
+async function ready() {
+  const user = await requireAuth();
+  const admin = createSupabaseAdminClient();
+  if (!admin) return { error: "Admin not configured", status: 500 as const };
+  const resolved = await resolveBusinessUnitId(user, admin);
+  if ("error" in resolved) return { error: resolved.error, status: resolved.status };
+  return { admin, buId: resolved.buId };
+}
+
+export async function GET() {
   try {
-    const user = await requireAuth();
-    const buId = (user as any).businessUnitId || (user as any).business_unit_id;
-    const supabase = await getSupabasePropertyClient();
-    const { data, error } = await supabase.from("hall_bookings").select("*").eq("businessUnitId", (user as any).businessUnitId || (user as any).business_unit_id).limit(50);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ data });
+    const context = await ready();
+    if ("error" in context) return NextResponse.json({ error: context.error }, { status: context.status });
+    return NextResponse.json({ data: await listHallRecords(context.admin, context.buId) });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Unauthorized" }, { status: 401 });
   }
@@ -17,13 +26,16 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const user = await requireAuth();
-    const buId = (user as any).businessUnitId || (user as any).business_unit_id;
-    const supabase = await getSupabasePropertyClient();
-    const body = await req.json();
-    const { data, error } = await supabase.from("hall_bookings").insert({ ...body, business_unit_id: buId }).select().single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-    return NextResponse.json({ data });
+    const context = await ready();
+    if ("error" in context) return NextResponse.json({ error: context.error }, { status: context.status });
+    const result = await createBooking(context.admin, context.buId, await req.json());
+    if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
+    return auditedPropertyResponse(context.buId, { data: result.data }, {
+      action: "booking.created",
+      description: "Created a hall booking.",
+      entityType: "hall_booking",
+      entityId: result.data?.id,
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: 400 });
   }
