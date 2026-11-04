@@ -1,5 +1,5 @@
 /* RM Holdings app-shell worker. Keep cache rules aligned with src/lib/offline/shell-policy.ts */
-const VERSION = "rm-shell-v2";
+const VERSION = "rm-shell-v4";
 const STATIC_CACHE = `${VERSION}-static`;
 const PRECACHE = ["/offline", "/login", "/manifest.webmanifest", "/file.svg"];
 const PUBLIC_PATHS = new Set([
@@ -119,6 +119,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (isStaticAsset(url)) {
+    if (self.location.hostname === "localhost" || self.location.hostname === "127.0.0.1") return;
     event.respondWith(
       (async () => {
         const cache = await caches.open(STATIC_CACHE);
