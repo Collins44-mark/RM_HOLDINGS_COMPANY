@@ -1,8 +1,8 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireAuth } from "@/lib/auth/session";
 import { NextResponse } from "next/server";
-import { isCurrentContract } from "@/lib/property/contracts";
 import { auditedPropertyResponse } from "@/lib/property/audit";
+import { listUnitDirectory } from "@/lib/property/unit-directory";
 
 async function resolveBusinessUnitId(user: any, admin: any) {
   const roleCode = user?.roleCode || "";
@@ -48,19 +48,8 @@ export async function GET() {
     if (!admin) return NextResponse.json({ error: "Admin not configured" }, { status: 500 });
     const resolved = await resolveBusinessUnitId(user, admin);
     if ("error" in resolved) return NextResponse.json({ error: resolved.error }, { status: resolved.status });
-    const [unitsResult, contractsResult, tenantsResult] = await Promise.all([
-      admin.from("property_units").select("*, properties(name)").eq("business_unit_id", resolved.buId).order("created_at", { ascending: false }).limit(200),
-      admin.from("rental_contracts").select("unit_id, tenant_id, status, start_date, end_date, created_at").eq("business_unit_id", resolved.buId).eq("status", "Active"),
-      admin.from("tenants").select("id, full_name").eq("business_unit_id", resolved.buId),
-    ]);
-    if (unitsResult.error) return NextResponse.json({ error: unitsResult.error.message }, { status: 500 });
-    const names = new Map((tenantsResult.data || []).map((tenant) => [tenant.id, tenant.full_name]));
-    const tenantByUnit = new Map<string, string>();
-    for (const contract of [...(contractsResult.data || [])].filter((contract) => isCurrentContract(contract)).sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")))) {
-      const name = names.get(contract.tenant_id);
-      if (name) tenantByUnit.set(contract.unit_id, name);
-    }
-    return NextResponse.json({ data: (unitsResult.data || []).map((row) => toUnit(row, tenantByUnit.get(row.id) || null)) });
+    const directory = await listUnitDirectory();
+    return NextResponse.json({ data: directory.units });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Unauthorized" }, { status: 401 });
   }
