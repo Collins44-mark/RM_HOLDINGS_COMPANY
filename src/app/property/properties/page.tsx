@@ -10,8 +10,8 @@ export default function PropertiesPage() {
   const [propType, setPropType] = useState("");
   const [status, setStatus] = useState("Active");
   const [error, setError] = useState("");
-  const [items, setItems] = useState([]); const [selectedProperty, setSelectedProperty] = useState<any>(null); const [editMode, setEditMode] = useState(false); const [loading, setLoading] = useState(true); const [saveState, setSaveState] = useState<"idle"|"saving"|"saved"|"error">("idle"); const [saveError, setSaveError] = useState("");
-  useEffect(() => { setLoading(true); fetch("/api/property/properties").then(r => r.json()).then(d => { if (d && d.data) setItems(d.data); }).catch(() => {}).finally(() => setLoading(false)); }, []);
+  const [items, setItems] = useState([]); const [selectedProperty, setSelectedProperty] = useState<any>(null); const [editMode, setEditMode] = useState(false); const [saveState, setSaveState] = useState<"idle"|"saving"|"saved"|"error">("idle"); const [saveError, setSaveError] = useState("");
+  useEffect(() => { fetch("/api/property/properties").then(r => r.json()).then(d => { if (d && d.data) setItems(d.data); }).catch(() => {}); }, []);
   return (
     <main className="min-h-screen p-6 md:p-10 text-slate-900">
       <div className="max-w-7xl mx-auto">
@@ -24,7 +24,7 @@ export default function PropertiesPage() {
         </div>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">{loading ? [1,2,3,4].map(i=>(<div key={i} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/60"><div className="h-3 w-24 bg-slate-200 animate-pulse rounded" /><div className="h-8 w-16 bg-slate-200 animate-pulse rounded mt-2" /></div>)) : [{label:"Total Properties",val:items.length},{label:"Active Properties",val:items.filter((i:any)=>i.status==="Active").length},{label:"Total Units",val:0},{label:"Under Maintenance",val:0}].map(({label,val}) => (<div key={label} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/60"><div className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{label}</div><div className="text-2xl font-extrabold text-slate-900 mt-1">{val}</div></div>))}</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">{[{label:"Total Properties",val:items.length},{label:"Active Properties",val:items.filter((i:any)=>i.status==="Active").length},{label:"Total Units",val:0},{label:"Under Maintenance",val:0}].map(({label,val}) => (<div key={label} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/60"><div className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{label}</div><div className="text-2xl font-extrabold text-slate-900 mt-1">{val}</div></div>))}</div>
 
         {/* Toolbar */}
         <div className="flex flex-wrap gap-3 mb-4">
@@ -39,7 +39,7 @@ export default function PropertiesPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50"><tr className="text-left text-xs font-semibold text-slate-500"><th className="px-4 py-3">Property Name</th><th>Type</th><th>Location</th><th>Units</th><th>Occupied</th><th>Vacant</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
-              {loading ? (<tr><td colSpan={8} className="px-4 py-8"><div className="flex gap-3"><div className="h-4 w-full bg-slate-200 animate-pulse rounded" /><div className="h-4 w-3/4 bg-slate-200 animate-pulse rounded" /></div></td></tr>) : items.length === 0 ? (<tr><td colSpan={8} className="px-4 py-10 text-center"><span className="text-sm text-slate-500">No properties registered yet.</span></td></tr>) : (items.map((it: any) => (<tr key={it.id} className="border-t border-slate-100"><td className="px-4 py-3 text-slate-800 font-medium">{it.name}</td><td>{it.property_type}</td><td>{it.street_address || it.region || it.district || 'Location not provided'}</td><td>0</td><td>0</td><td>0</td><td><span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">{it.status}</span></td><td><button onClick={()=>setSelectedProperty(it)} className="text-slate-600 hover:text-slate-900 p-1"><MoreVertical size={16} /></button></td></tr>)))}
+              {items.length === 0 ? (<tr><td colSpan={8} className="px-4 py-10 text-center"><span className="text-sm text-slate-500">No properties registered yet.</span></td></tr>) : (items.map((it: any) => (<tr key={it.id} className="border-t border-slate-100"><td className="px-4 py-3 text-slate-800 font-medium">{it.name}</td><td>{it.property_type}</td><td>{it.street_address || it.region || it.district || 'Location not provided'}</td><td>0</td><td>0</td><td>0</td><td><span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">{it.status}</span></td><td><button onClick={()=>setSelectedProperty(it)} className="text-slate-600 hover:text-slate-900 p-1"><MoreVertical size={16} /></button></td></tr>)))}
             </tbody>
           </table>
         </div>
