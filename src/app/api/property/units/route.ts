@@ -1,5 +1,5 @@
-import { getSupabasePropertyClient }
-import { createSupabaseAdminClient } from "@/lib/supabase/admin"; from "@/lib/supabase/property";
+import { getSupabasePropertyClient } from "@/lib/supabase/property";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireAuth } from "@/lib/auth/session";
 import { NextResponse } from "next/server";
 
