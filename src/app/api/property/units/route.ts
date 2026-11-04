@@ -27,3 +27,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: 400 });
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const user = await requireAuth();
+    const url = new URL(req.url);
+    const id = url.pathname.split('/').pop();
+    const admin = createSupabaseAdminClient();
+    if (!admin) return NextResponse.json({ error: "Admin not configured" }, { status: 500 });
+    const buId = (user as any).businessUnitId || (user as any).business_unit_id;
+    const { data, error } = await (admin as any).from("property_units").delete().eq("id", id).eq("business_unit_id", buId || "").select().single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ data });
+  } catch (e: any) { return NextResponse.json({ error: e.message || "Failed" }, { status: 400 }); }
+}
