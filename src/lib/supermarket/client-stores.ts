@@ -26,7 +26,8 @@ import type {
   Promotion,
   SupermarketSale,
 } from "@/lib/supermarket/types";
-import { refreshInventorySnapshot } from "@/lib/supermarket/inventory-store";
+import { refreshInventorySnapshot, reserveSaleStock } from "@/lib/supermarket/inventory-store";
+import { enqueueOperation, isLikelyOffline, syncPendingOperations } from "@/lib/offline";
 
 /**
  * CRITICAL: useSyncExternalStore requires getSnapshot to return a referentially
@@ -93,20 +94,35 @@ export function useSupermarketSales(period?: { from?: string; to?: string }) {
   return state;
 }
 
+async function queuePosSale(input: Parameters<typeof completeSaleAction>[0] & { requestId: string }) {
+  await enqueueOperation({
+    id: input.requestId,
+    type: "supermarket.complete_sale",
+    businessUnitCode: "supermarket",
+    payload: input,
+  });
+  reserveSaleStock(input.items.map((item) => ({ productId: item.productId, quantity: item.quantity })));
+  void syncPendingOperations();
+  return { ok: true as const, queued: true as const, saleId: input.requestId };
+}
+
 export async function completePosSale(input: Parameters<typeof completeSaleAction>[0]) {
+  const requestId = input.requestId || crypto.randomUUID();
+  const payload = { ...input, requestId };
+  if (isLikelyOffline()) return queuePosSale(payload);
   let result: Awaited<ReturnType<typeof completeSaleAction>>;
   try {
     const response = await fetch("/api/supermarket/pos/sale", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(input),
+      body: JSON.stringify(payload),
     });
     result = (await response.json()) as Awaited<ReturnType<typeof completeSaleAction>>;
   } catch {
-    return { ok: false as const, error: "The sale could not be completed. Check the connection and try again." };
+    return queuePosSale(payload);
   }
   if (!result || typeof result !== "object" || !("ok" in result)) {
-    return { ok: false as const, error: "The sale could not be completed. Check the connection and try again." };
+    return queuePosSale(payload);
   }
   if (result.ok) {
     void refreshInventorySnapshot();

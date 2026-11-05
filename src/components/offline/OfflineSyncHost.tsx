@@ -2,11 +2,12 @@
 
 import { useEffect } from "react";
 import type { AuthUser } from "@/lib/auth/types";
-import { configureBrowserOfflineEngine } from "@/lib/offline";
+import { bindOfflineSession, configureBrowserOfflineEngine, publishOfflineIdentity } from "@/lib/offline";
 
 export function OfflineSyncHost({ user }: { user: AuthUser }) {
-  useEffect(() => {
-    return configureBrowserOfflineEngine({ userId: user.id, authUid: user.authUid });
-  }, [user.id, user.authUid]);
+  const session = { userId: user.id, authUid: user.authUid };
+  bindOfflineSession(session);
+  publishOfflineIdentity(user.id);
+  useEffect(() => configureBrowserOfflineEngine(session), [session.userId, session.authUid]);
   return null;
 }

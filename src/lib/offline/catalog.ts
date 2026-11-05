@@ -450,3 +450,38 @@ export function requestIdFromPayload(payload: Record<string, unknown>) {
 export function moduleCodeFromType(type: OfflineOperationType) {
   return type.split(".")[0] ?? "";
 }
+
+const OPERATION_TITLE: Record<OfflineOperationType, string> = {
+  "farm.record_job": "Farm job",
+  "farm.record_job_payment": "Farm job payment",
+  "farm.record_fuel": "Farm fuel",
+  "farm.record_maintenance": "Farm maintenance",
+  "farm.record_expense": "Farm expense",
+  "farm.record_operation": "Farm operation",
+  "farm.record_harvest": "Farm harvest",
+  "rice.record_purchase": "Rice purchase",
+  "rice.record_mill_batch": "Milling batch",
+  "rice.record_sale": "Rice sale",
+  "rice.record_storage_movement": "Warehouse movement",
+  "rice.record_service_income": "Rice service income",
+  "rice.record_expense": "Rice expense",
+  "rice.adjust_stock": "Rice stock adjustment",
+  "school.record_expense": "School expense",
+  "school.record_fee_payment": "School fee payment",
+  "school.record_salary_payment": "Salary payment",
+  "school.record_fuel": "School bus fuel",
+  "school.record_maintenance": "School bus service",
+  "school.record_emergency_fund": "Emergency fund",
+  "school.store_receive": "School store receipt",
+  "school.store_issue": "School store issue",
+  "school.store_sale": "School store sale",
+  "school.withdraw_student": "Student withdrawal",
+  "school.change_class": "Class change",
+  "school.confirm_promotions": "Promotions",
+  "supermarket.create_purchase_order": "Purchase order",
+  "supermarket.complete_sale": "Shop sale",
+};
+
+export function operationTitle(type: OfflineOperationType) {
+  return OPERATION_TITLE[type] ?? type;
+}

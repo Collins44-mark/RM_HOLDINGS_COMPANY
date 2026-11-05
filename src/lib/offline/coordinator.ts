@@ -136,8 +136,10 @@ export function startOfflineCoordinator() {
     const onVisible = () => {
       if (document.visibilityState === "visible") void syncPendingOperations();
     };
+    const tick = window.setInterval(() => void syncPendingOperations(), 12_000);
     window.addEventListener("online", onOnline);
     document.addEventListener("visibilitychange", onVisible);
+    unsubscribers.push(() => window.clearInterval(tick));
     unsubscribers.push(() => window.removeEventListener("online", onOnline));
     unsubscribers.push(() => document.removeEventListener("visibilitychange", onVisible));
   }

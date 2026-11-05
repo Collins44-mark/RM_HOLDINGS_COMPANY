@@ -8,7 +8,7 @@ export function classifyActionError(error: string): SubmitQueuedResult {
   if (/not have access|isn.?t available|not authorized|forbidden|another account/.test(text)) {
     return { ok: false, retryable: false, code: "FORBIDDEN", error };
   }
-  if (/already posted|duplicate|conflict|stale/.test(text)) {
+  if (/already posted|duplicate|conflict|stale|not enough stock|insufficient stock|out of stock|quantity exceeds/.test(text)) {
     return { ok: false, retryable: false, code: "CONFLICT", error };
   }
   if (/must be|invalid|cannot be|greater than|below zero|insufficient|not found|enter |required|between zero/.test(text)) {

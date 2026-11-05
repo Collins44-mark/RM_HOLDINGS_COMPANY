@@ -57,7 +57,6 @@ import { createPosCustomerAction, getPosCheckoutOptionsAction } from "@/actions/
 import { getApplicableTaxesAction } from "@/actions/supermarket/tax";
 import { taxLineLabel, type TaxPricingMode } from "@/lib/supermarket/tax";
 import { APP_TIMEZONE } from "@/lib/config/app";
-import { isLikelyOffline } from "@/lib/offline";
 import { normalizeBarcode } from "@/lib/supermarket/barcode";
 import { BarcodeScanButton } from "@/components/supermarket/barcode/BarcodeScannerModal";
 import { useHardwareBarcodeScan } from "@/components/supermarket/barcode/useHardwareBarcodeScan";
@@ -176,6 +175,7 @@ export function PosManager() {
   const [mobileProviders, setMobileProviders] = useState<PosMobileProviderOption[]>([]);
   const [heldSales, setHeldSales] = useState<PosHeldSale[]>([]);
   const [completed, setCompleted] = useState<PosCompletedSale | null>(null);
+  const [saleQueued, setSaleQueued] = useState(false);
   const [saleError, setSaleError] = useState("");
   const [completing, setCompleting] = useState(false);
   const [flashId, setFlashId] = useState<string | null>(null);
@@ -355,6 +355,7 @@ export function PosManager() {
     setCardConfirmed(sale.cardConfirmed);
     setAllocations(sale.allocations?.length ? sale.allocations : [newPosPaymentSplit("Cash"), newPosPaymentSplit("Mobile Money")]);
     setCompleted(null);
+    setSaleQueued(false);
   }
 
   function resetWorkspace(nextInvoice: number) {
@@ -371,6 +372,7 @@ export function PosManager() {
     setCardConfirmed(false);
     setAllocations([newPosPaymentSplit("Cash"), newPosPaymentSplit("Mobile Money", mobileProviders[0]?.id ?? "")]);
     setCompleted(null);
+    setSaleQueued(false);
     if (searchTimer.current) window.clearTimeout(searchTimer.current);
     if (searchRef.current) searchRef.current.value = "";
     setQuery("");
@@ -528,10 +530,6 @@ export function PosManager() {
 
   async function completeSale() {
     if (!canComplete || completing) return;
-    if (isLikelyOffline()) {
-      setSaleError("This step needs an internet connection. It was not saved.");
-      return;
-    }
     setCompleting(true);
     setSaleError("");
     const snapshotItems = items.map((item) => ({ ...item }));
@@ -575,10 +573,11 @@ export function PosManager() {
       setCompleting(false);
       return;
     }
+    const queued = "queued" in result && result.queued;
 
     const sale = createCompletedSaleSnapshot({
       invoiceNumber,
-      invoiceLabel: result.invoiceNumber,
+      invoiceLabel: queued || !("invoiceNumber" in result) ? "Pending sync" : result.invoiceNumber,
       soldAt: new Date(),
       customer,
       items: snapshotItems,
@@ -600,6 +599,7 @@ export function PosManager() {
         provider: row.method === "Mobile Money" ? providerLabel(row.providerId) : undefined,
       })),
     });
+    setSaleQueued(Boolean(queued));
     setCompleted(sale);
     setInvoiceNumber((n) => n + 1);
     setPrinterNotice("none");
@@ -849,6 +849,7 @@ export function PosManager() {
           {completed ? (
             <SuccessState
               sale={completed}
+              queued={saleQueued}
               printBusy={printBusy}
               printerNotice={printerNotice}
               serialSupported={isEscPosSupported()}
@@ -1357,6 +1358,7 @@ function AddCustomerForm({ onAdd, onCancel }: { onAdd: (name: string) => Promise
 
 function SuccessState({
   sale,
+  queued = false,
   printBusy,
   printerNotice,
   serialSupported,
@@ -1367,6 +1369,7 @@ function SuccessState({
   onNewSale,
 }: {
   sale: PosCompletedSale;
+  queued?: boolean;
   printBusy: boolean;
   printerNotice: "none" | "no-printer" | "need-permission";
   serialSupported: boolean;
@@ -1382,7 +1385,14 @@ function SuccessState({
       <span className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#e8f6ee] text-[#1f8a4c]">
         <Check className="h-7 w-7" strokeWidth={2.4} />
       </span>
-      <h2 className="mt-4 text-[22px] font-semibold tracking-[-0.04em] text-navy">Sale completed successfully</h2>
+      <h2 className="mt-4 text-[22px] font-semibold tracking-[-0.04em] text-navy">
+        {queued ? "Sale saved on this device" : "Sale completed successfully"}
+      </h2>
+      {queued ? (
+        <p className="mt-2 max-w-sm text-[13px] leading-5 text-slate-500">
+          The internet is unavailable. This sale will sync to the cloud when the connection returns. If the same stock was sold elsewhere, it will show in the sync center.
+        </p>
+      ) : null}
       <p className="mt-4 text-[12px] font-medium uppercase tracking-[0.14em] text-slate-400">Invoice number</p>
       <p className="mt-1 text-[20px] font-semibold tracking-[-0.03em] text-navy">#{sale.invoice}</p>
       <p className="mt-4 text-[12px] font-medium uppercase tracking-[0.14em] text-slate-400">Amount</p>

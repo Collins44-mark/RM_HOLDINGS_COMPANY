@@ -19,6 +19,8 @@ import {
   type PurchasingCaps,
 } from "@/actions/supermarket/purchasing-payables";
 import { enqueueOrExecute } from "@/lib/offline";
+import { isLikelyOffline, isTransportError } from "@/lib/offline/errors";
+import { readOfflineSnapshot, writeOfflineSnapshot } from "@/lib/offline/snapshots";
 import {
   adjustStockAction,
   createCategoryAction,
@@ -112,6 +114,49 @@ function patchSnapshot(partial: Partial<InventorySnapshot>) {
   emit();
 }
 
+type ProductWorkspaceCache = Pick<InventorySnapshot, "products" | "categories" | "suppliers" | "batches">;
+
+function applyProductWorkspace(next: ProductWorkspaceCache) {
+  productsLoaded = true;
+  patchSnapshot({
+    products: next.products,
+    categories: next.categories,
+    suppliers: next.suppliers,
+    batches: next.batches,
+    loadedAt: new Date().toISOString(),
+    error: null,
+  });
+}
+
+async function cachedProductWorkspace() {
+  return readOfflineSnapshot<ProductWorkspaceCache>("products", "supermarket");
+}
+
+/** Reduce on-hand batches for a sale that is waiting to sync. */
+export function reserveSaleStock(lines: { productId: string; quantity: number }[]) {
+  const batches = snapshot.batches.map((batch) => ({ ...batch }));
+  for (const line of lines) {
+    let need = line.quantity;
+    for (const batch of batches) {
+      if (batch.productId !== line.productId || batch.quantity <= 0 || need <= 0) continue;
+      const take = Math.min(batch.quantity, need);
+      batch.quantity -= take;
+      need -= take;
+    }
+  }
+  patchSnapshot({ batches });
+  void writeOfflineSnapshot({
+    kind: "products",
+    businessUnitCode: "supermarket",
+    payload: {
+      products: snapshot.products,
+      categories: snapshot.categories,
+      suppliers: snapshot.suppliers,
+      batches: snapshot.batches,
+    } satisfies ProductWorkspaceCache,
+  });
+}
+
 function upsertPurchaseOrder(order: PurchaseOrder) {
   const exists = snapshot.purchaseOrders.some((item) => item.id === order.id);
   patchSnapshot({
@@ -201,31 +246,56 @@ export function getInventoryServerSnapshot() {
 
 /** Products + categories + suppliers + live batches (stock qty). No POs/receipts/movements. */
 export async function refreshProductsWorkspace() {
-  const next = await fetchProductsWorkspaceAction();
-  if (next.error) {
-    // Real DB/privilege error — keep empty lists, do not fake data.
-    // Mark loaded so hooks do not spawn an infinite auto-retry loop.
-    // Explicit Retry / refreshProducts() still reloads.
-    productsLoaded = true;
-    patchSnapshot({
-      products: [],
-      categories: [],
-      suppliers: [],
-      batches: [],
-      loadedAt: new Date().toISOString(),
-      error: next.error,
+  try {
+    const next = await fetchProductsWorkspaceAction();
+    if (next.error) {
+      const offline = isLikelyOffline() || isTransportError(next.error);
+      if (offline && snapshot.products.length > 0) {
+        productsLoaded = true;
+        patchSnapshot({ error: null });
+        return;
+      }
+      if (offline) {
+        const cached = await cachedProductWorkspace();
+        if (cached?.products.length) {
+          applyProductWorkspace(cached);
+          return;
+        }
+      }
+      productsLoaded = true;
+      patchSnapshot({
+        products: [],
+        categories: [],
+        suppliers: [],
+        batches: [],
+        loadedAt: new Date().toISOString(),
+        error: next.error,
+      });
+      return;
+    }
+    applyProductWorkspace(next);
+    void writeOfflineSnapshot({
+      kind: "products",
+      businessUnitCode: "supermarket",
+      payload: {
+        products: next.products,
+        categories: next.categories,
+        suppliers: next.suppliers,
+        batches: next.batches,
+      } satisfies ProductWorkspaceCache,
     });
-    return;
+  } catch (error) {
+    if ((isLikelyOffline() || isTransportError(error)) && snapshot.products.length > 0) {
+      productsLoaded = true;
+      return;
+    }
+    const cached = await cachedProductWorkspace();
+    if (cached?.products.length && (isLikelyOffline() || isTransportError(error))) {
+      applyProductWorkspace(cached);
+      return;
+    }
+    throw error;
   }
-  productsLoaded = true;
-  patchSnapshot({
-    products: next.products,
-    categories: next.categories,
-    suppliers: next.suppliers,
-    batches: next.batches,
-    loadedAt: new Date().toISOString(),
-    error: null,
-  });
 }
 
 /** Force a products reload (Retry buttons / after privilege fix). */

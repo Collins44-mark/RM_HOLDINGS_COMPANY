@@ -9,6 +9,7 @@ import {
   type QueuedOperation,
   type SyncStatusSnapshot,
 } from "@/lib/offline";
+import { operationTitle } from "@/lib/offline/catalog";
 
 function statusLabel(op: QueuedOperation, t: ReturnType<typeof useT>) {
   if (op.status === "pending") return t("offline.pending");
@@ -65,7 +66,7 @@ export function SyncCenterPanel({
           rows.slice(0, 40).map((op) => (
             <div key={op.id} className="border-t border-navy/5 px-4 py-3 first:border-t-0">
               <div className="flex items-start justify-between gap-2">
-                <p className="text-[13px] font-medium text-navy">{op.type}</p>
+                <p className="text-[13px] font-medium text-navy">{operationTitle(op.type)}</p>
                 <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
                   {statusLabel(op, t)}
                 </span>

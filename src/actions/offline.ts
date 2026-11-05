@@ -35,6 +35,7 @@ import {
 import { recordTransportFuelAction, recordTransportMaintenanceAction } from "@/actions/school/transport";
 import { createPurchaseOrderAction } from "@/actions/supermarket/catalog";
 import { completeSaleAction } from "@/actions/supermarket/sales";
+import { posIdempotencyRpcMissing } from "@/lib/supermarket/pos-idempotency";
 import { writeAuditEvent } from "@/lib/audit";
 import { requireAuth } from "@/lib/auth/session";
 import { classifyActionError } from "@/lib/offline/classify";
@@ -163,7 +164,12 @@ async function dispatchQueued(input: QueuedSubmitInput): Promise<ActionResult> {
       return { ok: true as const, id: result.id, duplicate: false };
     }
     case "supermarket.complete_sale": {
-      const result = await completeSaleAction(payload as Parameters<typeof completeSaleAction>[0]);
+      const body = payload as Parameters<typeof completeSaleAction>[0];
+      let result = await completeSaleAction(body);
+      if (!result.ok && body.requestId && posIdempotencyRpcMissing(result.error)) {
+        const { requestId: _requestId, ...rest } = body;
+        result = await completeSaleAction(rest);
+      }
       if (!result.ok) return result;
       return { ok: true as const, id: result.saleId, duplicate: false };
     }
