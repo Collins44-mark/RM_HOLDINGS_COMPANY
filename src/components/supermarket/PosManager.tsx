@@ -119,6 +119,8 @@ export function PosManager() {
   const inventory = useSupermarketInventory();
   const searchRef = useRef<HTMLInputElement>(null);
   const searchTimer = useRef<number | null>(null);
+  const productScrollRef = useRef<HTMLDivElement>(null);
+  const [productScrollMax, setProductScrollMax] = useState<number | null>(null);
   const products = useMemo<PosProduct[]>(
     () =>
       inventory.products
@@ -239,6 +241,25 @@ export function PosManager() {
       return next;
     });
   }
+
+  useEffect(() => {
+    const root = productScrollRef.current;
+    if (!root) return;
+    const measure = () => {
+      const card = root.querySelector("article");
+      if (!card) {
+        setProductScrollMax(null);
+        return;
+      }
+      const gap = Number.parseFloat(getComputedStyle(root).rowGap) || 0;
+      const next = Math.ceil(card.getBoundingClientRect().height * 3 + gap * 2);
+      setProductScrollMax((current) => (current === next ? current : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [catalog.length]);
 
   useEffect(() => {
     let active = true;
@@ -781,7 +802,11 @@ export function PosManager() {
             </p>
           ) : null}
 
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:gap-2.5">
+          <div
+            ref={productScrollRef}
+            className="mt-3 grid grid-cols-2 content-start gap-2 overflow-y-auto overscroll-y-contain pr-0.5 sm:gap-2.5"
+            style={productScrollMax ? { maxHeight: productScrollMax } : undefined}
+          >
             {catalog.map((product) => {
               const remaining = remainingStock(product, items);
               const out = remaining <= 0;

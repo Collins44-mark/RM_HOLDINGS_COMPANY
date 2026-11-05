@@ -208,17 +208,17 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
           <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy sm:text-[17px]">
             Quick Actions
           </h2>
-          <div className="mt-3 grid w-full grid-cols-4 gap-2.5">
+          <div className="mt-3 grid w-full grid-cols-2 gap-2 lg:grid-cols-4 lg:gap-2.5">
             {quickActions.map((action) => (
               <Link
                 key={action.href + action.label}
                 href={action.href}
-                className="flex min-w-0 items-center gap-3 rounded-[16px] border border-white/80 bg-white/75 px-4 py-3 shadow-[0_4px_12px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-md transition hover:bg-white"
+                className="flex min-w-0 flex-col items-center gap-2 overflow-hidden rounded-[16px] border border-white/80 bg-white/75 px-2.5 py-3 text-center shadow-[0_4px_12px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-md transition hover:bg-white lg:flex-row lg:gap-3 lg:px-4 lg:py-3 lg:text-left"
               >
-                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-white/80 bg-[#f4f7fb] text-navy">
+                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-white/80 bg-[#f4f7fb] text-navy lg:h-11 lg:w-11">
                   <action.icon className="h-5 w-5" strokeWidth={1.75} />
                 </span>
-                <span className="min-w-0 text-[13.5px] font-semibold leading-5 text-navy">
+                <span className="w-full text-balance text-[12.5px] font-semibold leading-4 text-navy lg:text-[13.5px] lg:leading-5">
                   {action.label}
                 </span>
               </Link>
@@ -433,12 +433,12 @@ function StockAlertsCard({ alerts }: { alerts: SupermarketStockAlert[] }) {
         Stock Alerts
       </h2>
       <p className="mt-1 text-[13px] text-slate-500">Items that need attention on the shop floor.</p>
-      <div className="mt-3 grid w-full grid-cols-4 gap-2">
+      <div className="mt-3 grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {alerts.map((alert) => (
           <Link
             key={alert.id}
             href={alert.href}
-            className="flex min-w-0 items-center gap-2 rounded-[14px] border border-white/80 bg-white/65 px-2.5 py-2 shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition hover:bg-white"
+            className="flex min-w-0 items-center gap-2.5 overflow-hidden rounded-[14px] border border-white/80 bg-white/65 px-3 py-2.5 shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition hover:bg-white"
           >
             <span
               className={cn(

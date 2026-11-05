@@ -1301,7 +1301,7 @@ function receiptMarkup(sale: SupermarketSale) {
     <p>${sale.dateLabel} ${sale.timeLabel} · ${sale.status}</p>
     <p>Customer: ${sale.customer}<br>Cashier: ${sale.cashier}<br>Payment: ${
       sale.paymentLines?.length
-        ? sale.paymentLines.map((line) => `${line.provider ? `${line.method} · ${line.provider}` : line.method} ${formatTzs(line.amount)}`).join("; ")
+        ? sale.paymentLines.map((line) => `${line.method} ${formatTzs(line.amount)}`).join("; ")
         : sale.payment
     }</p>
     <table>${rows}</table>

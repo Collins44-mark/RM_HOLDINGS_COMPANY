@@ -118,24 +118,18 @@ function paymentLines(sale: PosCompletedSale) {
   if (sale.allocations?.length) {
     for (const row of sale.allocations) {
       lines.push({
-        label: row.provider ? `${row.method} · ${row.provider}` : row.method,
+        label: row.method,
         value: formatTzs(asAmount(row.amount)),
       });
     }
     return lines;
-  }
-  if (sale.payment === "Mobile Money") {
-    lines.push({ label: "Provider", value: asText(sale.mobileProvider) });
   }
   if (sale.payment === "Card") {
     lines.push({ label: "Card Amount", value: formatTzs(asAmount(sale.cardAmount ?? sale.totalDue)) });
   }
   if (sale.payment === "Mixed") {
     lines.push({ label: "Cash", value: formatTzs(asAmount(sale.mixedCash)) });
-    lines.push({
-      label: sale.mobileProvider ? `Mobile Money (${sale.mobileProvider})` : "Mobile Money",
-      value: formatTzs(asAmount(sale.mixedMobile)),
-    });
+    lines.push({ label: "Mobile Money", value: formatTzs(asAmount(sale.mixedMobile)) });
   }
   if (sale.payment === "Cash") {
     lines.push({ label: "Cash Received", value: formatTzs(asAmount(sale.cashReceived)) });
@@ -291,7 +285,7 @@ export function buildPosReceiptHtml(sale: PosCompletedSale) {
         <div class="row"><span>Tax</span><span>${escapeHtml(formatTzs(asAmount(sale.tax)))}</span></div>
       </div>
       <hr class="rule" />
-      <div class="row total"><span>TOTAL DUE</span><span>${escapeHtml(formatTzs(asAmount(sale.totalDue)))}</span></div>
+      <div class="row total"><span>TOTAL</span><span>${escapeHtml(formatTzs(asAmount(sale.totalDue)))}</span></div>
       <div class="meta" style="margin-top:8px">
         <p><span class="label">Payment:</span>${escapeHtml(asText(sale.payment))}</p>
         ${extraPaymentMarkup}
@@ -432,7 +426,7 @@ export function buildEscPosBytes(sale: PosCompletedSale) {
   write(padRow("Discount", formatTzs(asAmount(sale.discount))));
   write(padRow("Tax", formatTzs(asAmount(sale.tax))));
   write(rule());
-  write(padRow("TOTAL DUE", formatTzs(asAmount(sale.totalDue))));
+  write(padRow("TOTAL", formatTzs(asAmount(sale.totalDue))));
   write();
   write("Payment:");
   write(asText(sale.payment));

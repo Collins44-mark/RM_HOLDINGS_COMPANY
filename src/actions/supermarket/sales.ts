@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { APP_TIMEZONE } from "@/lib/config/app";
 import { requireAuth } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/rbac";
@@ -12,7 +13,7 @@ import {
   requireSupermarketPermission,
   SupermarketError,
 } from "@/lib/supermarket/access";
-import { writeSupermarketAudit } from "@/lib/audit";
+import { writeAuditEvent, writeSupermarketAudit } from "@/lib/audit";
 import {
   humanPaymentDescription,
   notePrefixId,
@@ -34,6 +35,39 @@ function revalidateSupermarket() {
   // Page-level invalidation keeps the dashboard RSC cache fresh without
   // remounting the shared shell.
   revalidatePath("/supermarket", "page");
+}
+
+const providerLabelCache = new Map<string, { at: number; labels: Map<string, string> }>();
+const PROVIDER_CACHE_MS = 60_000;
+
+function rememberProviderLabels(
+  businessUnitId: string,
+  rows: { id: string; name?: string | null; payment_number?: string | null }[],
+) {
+  const labels = new Map(
+    rows.map((row) => [
+      String(row.id),
+      formatMobileMoneyLabel(String(row.name ?? ""), String(row.payment_number ?? "")),
+    ]),
+  );
+  providerLabelCache.set(businessUnitId, { at: Date.now(), labels });
+  return labels;
+}
+
+async function mobileMoneyLabels(
+  supabase: Awaited<ReturnType<typeof requireSupermarketContext>>["supabase"],
+  businessUnitId: string,
+) {
+  const cached = providerLabelCache.get(businessUnitId);
+  if (cached && Date.now() - cached.at < PROVIDER_CACHE_MS) return cached.labels;
+  const { data, error } = await supabase
+    .from("sm_payment_providers")
+    .select("id, name, payment_number")
+    .eq("business_unit_id", businessUnitId)
+    .eq("method", "MOBILE_MONEY")
+    .eq("is_active", true);
+  if (error) mapDbError(error);
+  return rememberProviderLabels(businessUnitId, data ?? []);
 }
 
 function paymentMethodToDb(method: string) {
@@ -74,7 +108,11 @@ export async function completeSaleAction(input: {
   payments: { method: string; amount: number; providerId?: string; provider?: string; reference?: string }[];
 }) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketPermission("supermarket.sales.create");
+    const [{ supabase, businessUnitId }, actor] = await Promise.all([
+      requireSupermarketPermission("supermarket.sales.create"),
+      requireAuth(),
+    ]);
+    if (!actor) throw new SupermarketError("You must be signed in.", "UNAUTHORIZED");
     if (!input.items.length) throw new SupermarketError("Cart is empty.", "VALIDATION");
     if (!input.payments.length) throw new SupermarketError("Add a payment.", "VALIDATION");
 
@@ -102,20 +140,7 @@ export async function completeSaleAction(input: {
       if (ids.length === 0) {
         throw new SupermarketError("Select a Mobile Money provider.", "VALIDATION");
       }
-      const { data: providerRows, error: providerError } = await supabase
-        .from("sm_payment_providers")
-        .select("id, name, payment_number")
-        .eq("business_unit_id", businessUnitId)
-        .eq("method", "MOBILE_MONEY")
-        .eq("is_active", true)
-        .in("id", ids);
-      if (providerError) mapDbError(providerError);
-      const byId = new Map(
-        (providerRows ?? []).map((row) => [
-          String(row.id),
-          formatMobileMoneyLabel(String(row.name ?? ""), String(row.payment_number ?? "")),
-        ]),
-      );
+      const byId = await mobileMoneyLabels(supabase, businessUnitId);
       for (const payment of payments) {
         if (payment.method !== "MOBILE_MONEY") continue;
         const label = byId.get(payment.providerId);
@@ -149,15 +174,25 @@ export async function completeSaleAction(input: {
       .eq("id", saleId)
       .maybeSingle();
     if (saleLookupError) mapDbError(saleLookupError);
+    const invoiceNumber = String(saleRow?.invoice_number ?? "");
     revalidateSupermarket();
-    await writeSupermarketAudit(businessUnitId, {
-      action: "sale.created",
-      description: `Completed sale ${String(saleRow?.invoice_number ?? saleId)}`,
-      severity: "medium",
-      entityType: "sale",
-      entityId: saleId,
-      metadata: { invoice_number: String(saleRow?.invoice_number ?? ""), item_count: input.items.length },
-    });
+    const recordSale = () =>
+      writeAuditEvent({
+        action: "sale.created",
+        module: "supermarket",
+        description: `Completed sale ${invoiceNumber || saleId}`,
+        severity: "medium",
+        entityType: "sale",
+        entityId: saleId,
+        businessUnitId,
+        actor: { id: actor.id, name: actor.name, email: actor.email },
+        metadata: { invoice_number: invoiceNumber, item_count: input.items.length },
+      });
+    try {
+      after(() => recordSale());
+    } catch {
+      void recordSale();
+    }
     return {
       ok: true as const,
       saleId,
@@ -197,6 +232,7 @@ export async function getPosCheckoutOptionsAction() {
     if (customersRes.error) mapDbError(customersRes.error);
     if (historyRes.error) mapDbError(historyRes.error);
     if (providersRes.error) mapDbError(providersRes.error);
+    rememberProviderLabels(businessUnitId, providersRes.data ?? []);
 
     const names = new Set<string>();
     for (const row of customersRes.data ?? []) {
@@ -298,6 +334,7 @@ export async function upsertMobileMoneyProviderAction(input: {
     const paymentNumber = input.paymentNumber.trim();
     if (!name) throw new SupermarketError("Enter a display name.", "VALIDATION");
     if (!paymentNumber) throw new SupermarketError("Enter the Lipa, till or merchant number.", "VALIDATION");
+    providerLabelCache.delete(businessUnitId);
     const payload = {
       business_unit_id: businessUnitId,
       method: "MOBILE_MONEY",
@@ -330,6 +367,7 @@ export async function upsertMobileMoneyProviderAction(input: {
 export async function setMobileMoneyProviderActiveAction(input: { id: string; isActive: boolean }) {
   try {
     const { supabase, businessUnitId } = await requireSupermarketPermission("platform.settings.manage");
+    providerLabelCache.delete(businessUnitId);
     const { error } = await supabase
       .from("sm_payment_providers")
       .update({ is_active: input.isActive })

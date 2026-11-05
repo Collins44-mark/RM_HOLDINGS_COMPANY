@@ -94,10 +94,23 @@ export function useSupermarketSales(period?: { from?: string; to?: string }) {
 }
 
 export async function completePosSale(input: Parameters<typeof completeSaleAction>[0]) {
-  const result = await completeSaleAction(input);
+  let result: Awaited<ReturnType<typeof completeSaleAction>>;
+  try {
+    const response = await fetch("/api/supermarket/pos/sale", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    result = (await response.json()) as Awaited<ReturnType<typeof completeSaleAction>>;
+  } catch {
+    return { ok: false as const, error: "The sale could not be completed. Check the connection and try again." };
+  }
+  if (!result || typeof result !== "object" || !("ok" in result)) {
+    return { ok: false as const, error: "The sale could not be completed. Check the connection and try again." };
+  }
   if (result.ok) {
-    // Do not block the POS success UI on catalog/list refreshes.
-    void Promise.all([refreshInventorySnapshot(), refreshSales()]);
+    void refreshInventorySnapshot();
+    void refreshSales();
   }
   return result;
 }
