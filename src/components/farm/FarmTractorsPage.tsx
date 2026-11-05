@@ -19,6 +19,7 @@ import {
 } from "@/components/supermarket/purchasing-ui";
 import { formatTzs } from "@/lib/format/currency";
 import { useT } from "@/components/i18n/LocaleProvider";
+import { SaveLabel } from "@/components/ui/SaveMark";
 import {
   FarmField,
   FarmNotice,
@@ -210,7 +211,7 @@ export function FarmTractorsPage({
             <button
               className={primaryButton + " flex items-center justify-center gap-2 min-w-[140px]" + (savedOk ? " bg-green-600" : "")}
               disabled={busy}
-              aria-label={busy ? "Saving..." : savedOk ? "Saved" : "Save tractor"}
+              aria-label="Save tractor"
               onClick={async () => {
                 setBusy(true);
                 setError(null);
@@ -235,7 +236,7 @@ export function FarmTractorsPage({
                 }
               }}
             >
-              {busy ? <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" /> : savedOk ? <span className="flex items-center gap-1"><span>✓</span> Saved</span> : <span className="flex items-center gap-2"><Tractor className="w-4 h-4" /> Save tractor</span>}
+              <SaveLabel busy={busy} failed={Boolean(error)} label={<span className="flex items-center gap-2"><Tractor className="w-4 h-4" /> Save tractor</span>} />
             </button>
           </div>
         </section>

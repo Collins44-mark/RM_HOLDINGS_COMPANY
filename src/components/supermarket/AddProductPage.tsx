@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { SaveLabel } from "@/components/ui/SaveMark";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Save } from "lucide-react";
@@ -315,7 +316,7 @@ export function AddProductPage() {
             className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_10px_22px_rgba(11,34,68,0.22)] transition duration-150 hover:bg-[#102a52] active:scale-[0.985] disabled:pointer-events-none disabled:opacity-70 sm:flex-none"
           >
             <Save className="h-4 w-4" strokeWidth={2} />
-            {busy ? "Saving..." : "Save Product"}
+            <SaveLabel busy={busy} label="Save Product" />
           </button>
         </div>
       </div>

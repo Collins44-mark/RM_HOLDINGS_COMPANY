@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { MoreVertical } from "lucide-react";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useListPage } from "@/lib/property/use-list-page";
 import type { LivestockDirectory } from "@/lib/livestock/directory";
-import { Panel, SaveButton, TypeSelect, fieldClass, money, useLivestock } from "../livestock-ui";
+import { Drawer, Panel, RowButton, SaveButton, TypeSelect, fieldClass, money, useLivestock } from "../livestock-ui";
 
 const tabs = [
   ["records", "Livestock Records"],
@@ -15,10 +16,13 @@ const tabs = [
 ] as const;
 
 export function AnimalsView({ initial }: { initial: LivestockDirectory }) {
-  const { data, state, error, save } = useLivestock(initial);
+  const { data, state, mark, error, save } = useLivestock(initial);
   const [tab, setTab] = useState<(typeof tabs)[number][0]>("records");
   const [form, setForm] = useState("");
   const [selected, setSelected] = useState<string>("");
+  const [menuId, setMenuId] = useState("");
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  const [typeId, setTypeId] = useState("");
   const [saleId, setSaleId] = useState("");
   const [query, setQuery] = useState("");
   const active = data.stock.filter((row) => row.active);
@@ -33,8 +37,13 @@ export function AnimalsView({ initial }: { initial: LivestockDirectory }) {
     const formData = new FormData(event.currentTarget);
     const payload = Object.fromEntries(formData.entries());
     if (Number(payload.amount_paid || 0) > 0) payload.request_key = crypto.randomUUID();
-    const ok = await save({ ...payload, action: form });
-    if (ok) setForm("");
+    await save({ ...payload, action: form }, { close: () => setForm("") });
+  }
+
+  function openAction(action: string, animalTypeId = "") {
+    setMenuId("");
+    setTypeId(animalTypeId);
+    setForm(action);
   }
 
   return (
@@ -55,8 +64,8 @@ export function AnimalsView({ initial }: { initial: LivestockDirectory }) {
       {tab === "records" ? (
         <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
           <div className="mb-3 flex flex-wrap gap-2">
-            <button type="button" onClick={() => setForm("type")} className="rounded-xl border px-3 py-2 text-sm">Add animal type</button>
-            <button type="button" onClick={() => setForm("opening")} className="rounded-xl bg-[#0b2244] px-3 py-2 text-sm font-semibold text-white">Add opening stock</button>
+            <button type="button" onClick={() => openAction("type")} className="rounded-xl border px-3 py-2 text-sm">Add animal type</button>
+            <button type="button" onClick={() => openAction("opening")} className="rounded-xl bg-[#0b2244] px-3 py-2 text-sm font-semibold text-white">Add opening stock</button>
           </div>
           <Table headers={["Animal Type", "Current", "Pregnant", "Purchased", "Born", "Sold", "Deaths", "Updated", ""]}>
             {active.map((row) => (
@@ -69,16 +78,63 @@ export function AnimalsView({ initial }: { initial: LivestockDirectory }) {
                 <td className="px-3 py-2">{row.sold}</td>
                 <td className="px-3 py-2">{row.deaths}</td>
                 <td className="px-3 py-2 text-slate-500">{String(row.updated_at).slice(0, 10)}</td>
-                <td className="px-3 py-2"><button type="button" className="text-sm font-semibold text-[#0b2244]" onClick={() => setSelected(row.id)}>History</button></td>
+                <td className="px-3 py-2">
+                  <button
+                    type="button"
+                    aria-label={`${row.name} actions`}
+                    onClick={(event) => {
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      const menuHeight = 248;
+                      const below = rect.bottom + 8;
+                      const top = below + menuHeight > window.innerHeight ? Math.max(8, rect.top - menuHeight - 8) : below;
+                      setMenuPos({ top, left: Math.max(8, rect.right - 160) });
+                      setMenuId(menuId === row.id ? "" : row.id);
+                    }}
+                    className="p-1 text-slate-600 hover:text-slate-900"
+                  >
+                    <MoreVertical size={16} />
+                  </button>
+                </td>
               </tr>
             ))}
           </Table>
+          {menuId ? (
+            <div className="fixed inset-0 z-40" onClick={() => setMenuId("")}>
+              <div className="absolute w-40 rounded-2xl border border-slate-100 bg-white py-1 shadow-xl" style={{ top: menuPos.top, left: menuPos.left }} onClick={(event) => event.stopPropagation()}>
+                {[
+                  ["view", "View"],
+                  ["purchase", "Purchase"],
+                  ["pregnancy", "Pregnancy"],
+                  ["birth", "Birth"],
+                  ["sale", "Sale"],
+                  ["death", "Death"],
+                  ["adjustment", "Adjustment"],
+                ].map(([action, label]) => (
+                  <button
+                    key={action}
+                    type="button"
+                    className="w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-slate-50"
+                    onClick={() => {
+                      if (action === "view") {
+                        setSelected(menuId);
+                        setMenuId("");
+                        return;
+                      }
+                      openAction(action, menuId);
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
       {tab === "purchases" ? (
         <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-          <button type="button" onClick={() => setForm("purchase")} className="mb-3 rounded-xl bg-[#0b2244] px-3 py-2 text-sm font-semibold text-white">Record purchase</button>
+          <button type="button" onClick={() => openAction("purchase")} className="mb-3 rounded-xl bg-[#0b2244] px-3 py-2 text-sm font-semibold text-white">Record purchase</button>
           <Table headers={["Reference", "Date", "Type", "Qty", "Cost", "Status", ""]}>
             {data.purchases.map((row) => (
               <tr key={row.id} className="border-t border-slate-100">
@@ -88,7 +144,7 @@ export function AnimalsView({ initial }: { initial: LivestockDirectory }) {
                 <td className="px-3 py-2">{row.quantity}</td>
                 <td className="px-3 py-2">{money(Number(row.total_cost))}</td>
                 <td className="px-3 py-2">{row.status}</td>
-                <td className="px-3 py-2">{row.status === "Valid" ? <button type="button" className="text-sm text-rose-700" onClick={() => save({ action: "purchase-cancel", id: row.id })}>Cancel</button> : null}</td>
+                <td className="px-3 py-2">{row.status === "Valid" ? <RowButton active={mark === row.id} state={state} label="Cancel" className="text-sm text-rose-700" onClick={() => save({ action: "purchase-cancel", id: row.id }, { mark: row.id })} /> : null}</td>
               </tr>
             ))}
           </Table>
@@ -98,8 +154,8 @@ export function AnimalsView({ initial }: { initial: LivestockDirectory }) {
       {tab === "reproduction" ? (
         <section className="space-y-4">
           <div className="flex gap-2">
-            <button type="button" onClick={() => setForm("pregnancy")} className="rounded-xl bg-[#0b2244] px-3 py-2 text-sm font-semibold text-white">Record pregnancy</button>
-            <button type="button" onClick={() => setForm("birth")} className="rounded-xl border px-3 py-2 text-sm">Record birth</button>
+            <button type="button" onClick={() => openAction("pregnancy")} className="rounded-xl bg-[#0b2244] px-3 py-2 text-sm font-semibold text-white">Record pregnancy</button>
+            <button type="button" onClick={() => openAction("birth")} className="rounded-xl border px-3 py-2 text-sm">Record birth</button>
           </div>
           <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
             <Table headers={["Type", "Event", "Count", "Offspring", "Date", "Expected", "Status", ""]}>
@@ -107,14 +163,14 @@ export function AnimalsView({ initial }: { initial: LivestockDirectory }) {
                 <tr key={row.id} className="border-t border-slate-100">
                   <td className="px-3 py-2">{row.animal_type}</td><td className="px-3 py-2">Pregnancy</td><td className="px-3 py-2">{row.quantity}</td><td className="px-3 py-2">—</td>
                   <td className="px-3 py-2">{row.pregnancy_date ? String(row.pregnancy_date).slice(0, 10) : "—"}</td><td className="px-3 py-2">{row.expected_date ? String(row.expected_date).slice(0, 10) : "—"}</td><td className="px-3 py-2">{row.status}</td>
-                  <td className="px-3 py-2">{row.status === "Active" ? <button type="button" className="text-sm text-rose-700" onClick={() => save({ action: "pregnancy-cancel", id: row.id })}>Cancel</button> : null}</td>
+                  <td className="px-3 py-2">{row.status === "Active" ? <RowButton active={mark === row.id} state={state} label="Cancel" className="text-sm text-rose-700" onClick={() => save({ action: "pregnancy-cancel", id: row.id }, { mark: row.id })} /> : null}</td>
                 </tr>
               ))}
               {data.births.map((row) => (
                 <tr key={row.id} className="border-t border-slate-100">
                   <td className="px-3 py-2">{row.animal_type}</td><td className="px-3 py-2">Birth</td><td className="px-3 py-2">{row.mothers} mothers</td><td className="px-3 py-2">{row.offspring}</td>
                   <td className="px-3 py-2">{String(row.birth_date).slice(0, 10)}</td><td className="px-3 py-2">—</td><td className="px-3 py-2">{row.status}</td>
-                  <td className="px-3 py-2">{row.status === "Valid" ? <button type="button" className="text-sm text-rose-700" onClick={() => save({ action: "birth-cancel", id: row.id })}>Cancel</button> : null}</td>
+                  <td className="px-3 py-2">{row.status === "Valid" ? <RowButton active={mark === row.id} state={state} label="Cancel" className="text-sm text-rose-700" onClick={() => save({ action: "birth-cancel", id: row.id }, { mark: row.id })} /> : null}</td>
                 </tr>
               ))}
             </Table>
@@ -125,8 +181,8 @@ export function AnimalsView({ initial }: { initial: LivestockDirectory }) {
       {tab === "movements" ? (
         <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
           <div className="mb-3 flex gap-2">
-            <button type="button" onClick={() => setForm("death")} className="rounded-xl border px-3 py-2 text-sm">Record death</button>
-            <button type="button" onClick={() => setForm("adjustment")} className="rounded-xl border px-3 py-2 text-sm">Record adjustment</button>
+            <button type="button" onClick={() => openAction("death")} className="rounded-xl border px-3 py-2 text-sm">Record death</button>
+            <button type="button" onClick={() => openAction("adjustment")} className="rounded-xl border px-3 py-2 text-sm">Record adjustment</button>
           </div>
           <Table headers={["Date", "Type", "Movement", "In", "Out", "Notes"]}>
             {movementPage.rows.map((row) => (
@@ -146,7 +202,7 @@ export function AnimalsView({ initial }: { initial: LivestockDirectory }) {
 
       {tab === "sales" ? (
         <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-          <button type="button" onClick={() => setForm("sale")} className="mb-3 rounded-xl bg-[#0b2244] px-3 py-2 text-sm font-semibold text-white">Record sale</button>
+          <button type="button" onClick={() => openAction("sale")} className="mb-3 rounded-xl bg-[#0b2244] px-3 py-2 text-sm font-semibold text-white">Record sale</button>
           <Table headers={["Reference", "Date", "Type", "Qty", "Total", "Received", "Balance", "Status", ""]}>
             {salePage.rows.map((row) => (
               <tr key={row.id} className="border-t border-slate-100">
@@ -161,7 +217,7 @@ export function AnimalsView({ initial }: { initial: LivestockDirectory }) {
                 <td className="px-3 py-2 space-x-2">
                   <button type="button" className="text-sm font-semibold text-[#0b2244]" onClick={() => setSaleId(row.id)}>View</button>
                   {row.status !== "Cancelled" && row.balance > 0 ? <button type="button" className="text-sm font-semibold text-[#0b2244]" onClick={() => setForm(`pay:${row.id}`)}>Pay</button> : null}
-                  {row.status !== "Cancelled" ? <button type="button" className="text-sm text-rose-700" onClick={() => save({ action: "sale-cancel", id: row.id })}>Cancel</button> : null}
+                  {row.status !== "Cancelled" ? <RowButton active={mark === row.id} state={state} label="Cancel" className="text-sm text-rose-700" onClick={() => save({ action: "sale-cancel", id: row.id }, { mark: row.id })} /> : null}
                 </td>
               </tr>
             ))}
@@ -170,44 +226,45 @@ export function AnimalsView({ initial }: { initial: LivestockDirectory }) {
         </section>
       ) : null}
       {saleId ? (
-        <div className="fixed inset-y-0 right-0 z-40 w-full max-w-md overflow-y-auto border-l bg-white p-5 shadow-xl">
-          <button type="button" onClick={() => setSaleId("")} className="text-sm text-slate-500">Close</button>
+        <Drawer title={data.sales.find((row) => row.id === saleId)?.sale_code || "Sale"} subtitle="Sale details" onClose={() => setSaleId("")}>
           {data.sales.filter((row) => row.id === saleId).map((row) => (
-            <div key={row.id} className="mt-3 space-y-2 text-sm">
-              <h2 className="text-lg font-semibold">{row.sale_code}</h2>
-              <p>{row.animal_type} · {row.quantity} · {row.buyer_name || "No buyer named"}</p>
-              <p>Total {money(Number(row.total_amount))}</p>
-              <p>Received {money(row.amount_received)}</p>
-              <p>Balance {money(row.balance)} · {row.status}</p>
-              <h3 className="pt-2 font-semibold">Payments</h3>
-              <ul>{row.payments.map((payment) => <li key={payment.id}>{String(payment.payment_date).slice(0, 10)} · {money(Number(payment.amount))} · {payment.status}</li>)}</ul>
+            <div key={row.id} className="space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+                <div><div className="text-xs text-slate-400">Animal type</div><div className="font-semibold text-slate-900">{row.animal_type}</div></div>
+                <div><div className="text-xs text-slate-400">Quantity</div><div className="font-semibold text-slate-900">{row.quantity}</div></div>
+                <div><div className="text-xs text-slate-400">Buyer</div><div className="font-semibold text-slate-900">{row.buyer_name || "No buyer named"}</div></div>
+                <div><div className="text-xs text-slate-400">Status</div><div className="font-semibold text-slate-900">{row.status}</div></div>
+                <div><div className="text-xs text-slate-400">Total</div><div className="font-semibold text-slate-900">{money(Number(row.total_amount))}</div></div>
+                <div><div className="text-xs text-slate-400">Received</div><div className="font-semibold text-slate-900">{money(row.amount_received)}</div></div>
+                <div><div className="text-xs text-slate-400">Balance</div><div className="font-semibold text-slate-900">{money(row.balance)}</div></div>
+              </div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">Payments</h3>
+              <ul className="space-y-2">{row.payments.map((payment) => <li key={payment.id}>{String(payment.payment_date).slice(0, 10)} · {money(Number(payment.amount))} · {payment.status}</li>)}</ul>
             </div>
           ))}
-        </div>
+        </Drawer>
       ) : null}
 
       {form === "type" ? <Panel title="Add animal type" onClose={() => setForm("")} onSubmit={onSubmit}><input name="name" required placeholder="Pigs, rabbits, ducks…" className={fieldClass} /><SaveButton state={state} label="Save type" /></Panel> : null}
-      {form === "opening" ? <Panel title="Opening stock" onClose={() => setForm("")} onSubmit={onSubmit}><TypeField types={data.types} /><input name="quantity" type="number" min="1" required placeholder="Quantity" className={fieldClass} /><input name="date" type="date" required className={fieldClass} /><textarea name="notes" placeholder="Notes" className={fieldClass} /><SaveButton state={state} label="Save opening stock" /></Panel> : null}
-      {form === "purchase" ? <Panel title="Purchase livestock" onClose={() => setForm("")} onSubmit={onSubmit}><TypeField types={data.types} /><input name="quantity" type="number" min="1" required placeholder="Quantity" className={fieldClass} /><input name="date" type="date" required className={fieldClass} /><input name="unit_price" type="number" min="0" step="0.01" placeholder="Unit price, optional" className={fieldClass} /><input name="total_cost" type="number" min="0" step="0.01" placeholder="Total cost if unit price is unknown" className={fieldClass} /><input name="seller_name" placeholder="Seller" className={fieldClass} /><input name="amount_paid" type="number" min="0" step="0.01" placeholder="Amount paid now" className={fieldClass} /><textarea name="notes" placeholder="Notes" className={fieldClass} /><SaveButton state={state} label="Save purchase" /></Panel> : null}
-      {form === "pregnancy" ? <Panel title="Record pregnancy" onClose={() => setForm("")} onSubmit={onSubmit}><TypeField types={data.types} /><input name="quantity" type="number" min="1" required placeholder="Number pregnant" className={fieldClass} /><input name="date" type="date" className={fieldClass} /><input name="expected_date" type="date" className={fieldClass} /><textarea name="notes" placeholder="Notes" className={fieldClass} /><SaveButton state={state} label="Save pregnancy" /></Panel> : null}
-      {form === "birth" ? <Panel title="Record birth" onClose={() => setForm("")} onSubmit={onSubmit}><TypeField types={data.types} /><input name="mothers" type="number" min="1" required placeholder="Mothers delivered" className={fieldClass} /><input name="offspring" type="number" min="1" required placeholder="Offspring born" className={fieldClass} /><input name="date" type="date" required className={fieldClass} /><textarea name="notes" placeholder="Notes" className={fieldClass} /><SaveButton state={state} label="Save birth" /></Panel> : null}
-      {form === "death" ? <Panel title="Record death" onClose={() => setForm("")} onSubmit={onSubmit}><TypeField types={data.types} /><input name="quantity" type="number" min="1" required placeholder="Quantity" className={fieldClass} /><input name="date" type="date" required className={fieldClass} /><input name="reason" placeholder="Reason" className={fieldClass} /><textarea name="notes" placeholder="Notes" className={fieldClass} /><SaveButton state={state} label="Save death" /></Panel> : null}
-      {form === "adjustment" ? <Panel title="Stock adjustment" onClose={() => setForm("")} onSubmit={onSubmit}><TypeField types={data.types} /><select name="direction" className={fieldClass}><option value="Increase">Increase</option><option value="Decrease">Decrease</option></select><input name="quantity" type="number" min="1" required placeholder="Quantity" className={fieldClass} /><input name="date" type="date" required className={fieldClass} /><input name="reason" required placeholder="Reason" className={fieldClass} /><textarea name="notes" placeholder="Notes" className={fieldClass} /><SaveButton state={state} label="Save adjustment" /></Panel> : null}
-      {form === "sale" ? <Panel title="Sell livestock" onClose={() => setForm("")} onSubmit={onSubmit}><TypeField types={data.types} /><input name="quantity" type="number" min="1" required placeholder="Quantity sold" className={fieldClass} /><input name="date" type="date" required className={fieldClass} /><input name="unit_price" type="number" min="0" step="0.01" required placeholder="Unit selling price" className={fieldClass} /><input name="buyer_name" placeholder="Buyer" className={fieldClass} /><input name="amount_paid" type="number" min="0" step="0.01" placeholder="Amount received now" className={fieldClass} /><textarea name="notes" placeholder="Notes" className={fieldClass} /><SaveButton state={state} label="Save sale" /></Panel> : null}
-      {form.startsWith("pay:") ? <Panel title="Record sale payment" onClose={() => setForm("")} onSubmit={async (event) => { event.preventDefault(); const formData = new FormData(event.currentTarget); const ok = await save({ action: "sale-payment", id: form.slice(4), amount: formData.get("amount"), date: formData.get("date"), payment_method: "Cash", request_key: crypto.randomUUID() }); if (ok) setForm(""); }}><input name="amount" type="number" min="0.01" step="0.01" required placeholder="Amount" className={fieldClass} /><input name="date" type="date" required className={fieldClass} /><SaveButton state={state} label="Save payment" /></Panel> : null}
+      {form === "opening" ? <Panel title="Opening stock" onClose={() => setForm("")} onSubmit={onSubmit}><TypeField types={data.types} initial={typeId} /><input name="quantity" type="number" min="1" required placeholder="Quantity" className={fieldClass} /><input name="date" type="date" required className={fieldClass} /><textarea name="notes" placeholder="Notes" className={fieldClass} /><SaveButton state={state} label="Save opening stock" /></Panel> : null}
+      {form === "purchase" ? <Panel title="Purchase livestock" onClose={() => setForm("")} onSubmit={onSubmit}><TypeField types={data.types} initial={typeId} /><input name="quantity" type="number" min="1" required placeholder="Quantity" className={fieldClass} /><input name="date" type="date" required className={fieldClass} /><input name="unit_price" type="number" min="0" step="0.01" placeholder="Unit price, optional" className={fieldClass} /><input name="total_cost" type="number" min="0" step="0.01" placeholder="Total cost if unit price is unknown" className={fieldClass} /><input name="seller_name" placeholder="Seller" className={fieldClass} /><input name="amount_paid" type="number" min="0" step="0.01" placeholder="Amount paid now" className={fieldClass} /><textarea name="notes" placeholder="Notes" className={fieldClass} /><SaveButton state={state} label="Save purchase" /></Panel> : null}
+      {form === "pregnancy" ? <Panel title="Record pregnancy" onClose={() => setForm("")} onSubmit={onSubmit}><TypeField types={data.types} initial={typeId} /><input name="quantity" type="number" min="1" required placeholder="Number pregnant" className={fieldClass} /><input name="date" type="date" className={fieldClass} /><input name="expected_date" type="date" className={fieldClass} /><textarea name="notes" placeholder="Notes" className={fieldClass} /><SaveButton state={state} label="Save pregnancy" /></Panel> : null}
+      {form === "birth" ? <Panel title="Record birth" onClose={() => setForm("")} onSubmit={onSubmit}><TypeField types={data.types} initial={typeId} /><input name="mothers" type="number" min="1" required placeholder="Mothers delivered" className={fieldClass} /><input name="offspring" type="number" min="1" required placeholder="Offspring born" className={fieldClass} /><input name="date" type="date" required className={fieldClass} /><textarea name="notes" placeholder="Notes" className={fieldClass} /><SaveButton state={state} label="Save birth" /></Panel> : null}
+      {form === "death" ? <Panel title="Record death" onClose={() => setForm("")} onSubmit={onSubmit}><TypeField types={data.types} initial={typeId} /><input name="quantity" type="number" min="1" required placeholder="Quantity" className={fieldClass} /><input name="date" type="date" required className={fieldClass} /><input name="reason" placeholder="Reason" className={fieldClass} /><textarea name="notes" placeholder="Notes" className={fieldClass} /><SaveButton state={state} label="Save death" /></Panel> : null}
+      {form === "adjustment" ? <Panel title="Stock adjustment" onClose={() => setForm("")} onSubmit={onSubmit}><TypeField types={data.types} initial={typeId} /><select name="direction" className={fieldClass}><option value="Increase">Increase</option><option value="Decrease">Decrease</option></select><input name="quantity" type="number" min="1" required placeholder="Quantity" className={fieldClass} /><input name="date" type="date" required className={fieldClass} /><input name="reason" required placeholder="Reason" className={fieldClass} /><textarea name="notes" placeholder="Notes" className={fieldClass} /><SaveButton state={state} label="Save adjustment" /></Panel> : null}
+      {form === "sale" ? <Panel title="Sell livestock" onClose={() => setForm("")} onSubmit={onSubmit}><TypeField types={data.types} initial={typeId} /><input name="quantity" type="number" min="1" required placeholder="Quantity sold" className={fieldClass} /><input name="date" type="date" required className={fieldClass} /><input name="unit_price" type="number" min="0" step="0.01" required placeholder="Unit selling price" className={fieldClass} /><input name="buyer_name" placeholder="Buyer" className={fieldClass} /><input name="amount_paid" type="number" min="0" step="0.01" placeholder="Amount received now" className={fieldClass} /><textarea name="notes" placeholder="Notes" className={fieldClass} /><SaveButton state={state} label="Save sale" /></Panel> : null}
+      {form.startsWith("pay:") ? <Panel title="Record sale payment" onClose={() => setForm("")} onSubmit={async (event) => { event.preventDefault(); const formData = new FormData(event.currentTarget); await save({ action: "sale-payment", id: form.slice(4), amount: formData.get("amount"), date: formData.get("date"), payment_method: "Cash", request_key: crypto.randomUUID() }, { close: () => setForm("") }); }}><input name="amount" type="number" min="0.01" step="0.01" required placeholder="Amount" className={fieldClass} /><input name="date" type="date" required className={fieldClass} /><SaveButton state={state} label="Save payment" /></Panel> : null}
       {selected && tab === "records" ? (
-        <div className="fixed inset-y-0 right-0 z-40 w-full max-w-md overflow-y-auto border-l bg-white p-5 shadow-xl">
-          <button type="button" onClick={() => setSelected("")} className="text-sm text-slate-500">Close</button>
-          <h2 className="mt-2 text-lg font-semibold">{data.stock.find((row) => row.id === selected)?.name} movements</h2>
-          <ul className="mt-4 space-y-2 text-sm">{history.map((row) => <li key={row.id}>{String(row.movement_date).slice(0, 10)} · {row.movement_type} · in {row.quantity_in} · out {row.quantity_out}</li>)}</ul>
-        </div>
+        <Drawer title={data.stock.find((row) => row.id === selected)?.name || "Livestock"} subtitle="Details" onClose={() => setSelected("")}>
+          <ul className="space-y-2 text-sm">{history.map((row) => <li key={row.id}>{String(row.movement_date).slice(0, 10)} · {row.movement_type} · in {row.quantity_in} · out {row.quantity_out}</li>)}</ul>
+        </Drawer>
       ) : null}
     </div>
   );
 }
 
-function TypeField({ types }: { types: LivestockDirectory["types"] }) {
-  const [value, setValue] = useState("");
+function TypeField({ types, initial = "" }: { types: LivestockDirectory["types"]; initial?: string }) {
+  const [value, setValue] = useState(initial);
   return <><input type="hidden" name="animal_type_id" value={value} /><TypeSelect types={types} value={value} onChange={setValue} /></>;
 }
 

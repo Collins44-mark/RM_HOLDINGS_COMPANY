@@ -3,18 +3,17 @@
 import { useState } from "react";
 import { LIVESTOCK_EXPENSE_CATEGORIES } from "@/lib/livestock/actions";
 import type { LivestockDirectory } from "@/lib/livestock/directory";
-import { Panel, SaveButton, fieldClass, money, useLivestock } from "../livestock-ui";
+import { Panel, RowButton, SaveButton, fieldClass, money, useLivestock } from "../livestock-ui";
 
 export function ExpensesView({ initial }: { initial: LivestockDirectory }) {
-  const { data, state, error, save } = useLivestock(initial);
+  const { data, state, mark, error, save } = useLivestock(initial);
   const [form, setForm] = useState("");
   const categories = LIVESTOCK_EXPENSE_CATEGORIES.filter((category) => category !== "Livestock Purchase");
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
-    const ok = await save({ ...payload, action: "expense" });
-    if (ok) setForm("");
+    await save({ ...payload, action: "expense" }, { close: () => setForm("") });
   }
 
   return (
@@ -43,7 +42,7 @@ export function ExpensesView({ initial }: { initial: LivestockDirectory }) {
                 <td className="px-3 py-2">{row.status}</td>
                 <td className="px-3 py-2 space-x-2">
                   {row.status !== "Cancelled" && row.balance > 0 ? <button type="button" className="text-sm font-semibold text-[#0b2244]" onClick={() => setForm(row.id)}>Pay</button> : null}
-                  {row.status !== "Cancelled" && !row.purchase_id ? <button type="button" className="text-sm text-rose-700" onClick={() => save({ action: "expense-cancel", id: row.id })}>Cancel</button> : null}
+                  {row.status !== "Cancelled" && !row.purchase_id ? <RowButton active={mark === row.id} state={state} label="Cancel" className="text-sm text-rose-700" onClick={() => save({ action: "expense-cancel", id: row.id }, { mark: row.id })} /> : null}
                 </td>
               </tr>
             ))}
@@ -68,8 +67,7 @@ export function ExpensesView({ initial }: { initial: LivestockDirectory }) {
         <Panel title="Expense payment" onClose={() => setForm("")} onSubmit={async (event) => {
           event.preventDefault();
           const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
-          const ok = await save({ action: "expense-payment", id: form, amount: payload.amount, date: payload.date, request_key: crypto.randomUUID() });
-          if (ok) setForm("");
+          await save({ action: "expense-payment", id: form, amount: payload.amount, date: payload.date, request_key: crypto.randomUUID() }, { close: () => setForm("") });
         }}>
           <input name="amount" type="number" min="0.01" step="0.01" required placeholder="Amount" className={fieldClass} />
           <input name="date" type="date" required className={fieldClass} />

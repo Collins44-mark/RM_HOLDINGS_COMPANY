@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { SaveLabel } from "@/components/ui/SaveMark";
 import { saveUserCustomizationAction } from "@/actions/rbac";
 import { AccessModal, PermissionSkeleton } from "@/components/users/AccessModal";
 import { PermissionTile } from "@/components/users/PermissionTile";
@@ -225,7 +226,7 @@ export function CustomizeAccessDrawer({
             }}
             className="h-10 rounded-[12px] bg-navy px-4 text-[13.5px] font-semibold text-white disabled:opacity-60"
           >
-            {saved ? "✓ Saved" : saving ? "Saving…" : "Save Changes"}
+            <SaveLabel busy={saving} label="Save Changes" />
           </button>
         </>
       }

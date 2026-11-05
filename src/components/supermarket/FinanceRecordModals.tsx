@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { SaveLabel } from "@/components/ui/SaveMark";
 import { createPortal } from "react-dom";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -166,7 +167,7 @@ export function RecordExpenseModal({ onClose }: { onClose: () => void }) {
             Cancel
           </button>
           <button type="submit" disabled={saving} className={primaryButton}>
-            {saving ? "Saving…" : "Save Expense"}
+            <SaveLabel busy={saving} label="Save Expense" />
           </button>
         </div>
       </form>

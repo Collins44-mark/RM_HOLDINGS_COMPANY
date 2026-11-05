@@ -18,7 +18,7 @@ export function Logo({
   size?: "sm" | "md" | "lg";
 }) {
   const markSize = size ?? (compact || markOnly || stacked ? "sm" : "md");
-  const { organisationName } = useLocale();
+  const { organisationName, logoUrl } = useLocale();
 
   return (
     <div
@@ -38,16 +38,20 @@ export function Logo({
         )}
         aria-hidden
       >
-        <span
-          className={cn(
-            "font-[family-name:var(--font-cormorant)] font-semibold leading-none tracking-tight",
-            markSize === "sm" && "text-[22px]",
-            markSize === "md" && "text-[26px]",
-            markSize === "lg" && "text-[30px]",
-          )}
-        >
-          RM
-        </span>
+        {logoUrl ? (
+          <img src={logoUrl} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <span
+            className={cn(
+              "font-[family-name:var(--font-cormorant)] font-semibold leading-none tracking-tight",
+              markSize === "sm" && "text-[22px]",
+              markSize === "md" && "text-[26px]",
+              markSize === "lg" && "text-[30px]",
+            )}
+          >
+            RM
+          </span>
+        )}
       </div>
       {markOnly ? null : (
         <div className={cn("min-w-0", stacked && "text-center")}>

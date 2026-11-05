@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { SaveLabel } from "@/components/ui/SaveMark";
 import { saveRolePermissionsAction } from "@/actions/rbac";
 import { loadSodControlsAction, saveSodControlsAction } from "@/actions/supermarket/sod";
 import { AccessModal, PermissionSkeleton } from "@/components/users/AccessModal";
@@ -144,7 +145,7 @@ export function RolePermissionEditor({
               }}
               className="h-10 rounded-[12px] bg-navy px-4 text-[13.5px] font-semibold text-white disabled:opacity-60"
             >
-              {saved ? "✓ Saved" : saving ? "Saving…" : "Save Changes"}
+              <SaveLabel busy={saving} label="Save Changes" />
             </button>
           </>
         )

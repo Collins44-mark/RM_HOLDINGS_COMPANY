@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { SaveLabel } from "@/components/ui/SaveMark";
 import { createPortal } from "react-dom";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { matchPermission } from "@/lib/config/permissions";
@@ -199,7 +200,7 @@ export function CategoryCreateModal({
               disabled={saving}
               className="inline-flex h-10 items-center justify-center rounded-full bg-[#0b2244] px-4 text-[13.5px] font-semibold text-white shadow-[0_10px_22px_rgba(11,34,68,0.22)] transition hover:bg-[#102a52] disabled:pointer-events-none disabled:opacity-70"
             >
-              {saving ? "Saving..." : editing ? "Save Changes" : "Save Category"}
+              <SaveLabel busy={saving} label={editing ? "Save Changes" : "Save Category"} />
             </button>
           </div>
         </form>

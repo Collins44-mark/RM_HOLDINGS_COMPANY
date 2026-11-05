@@ -146,9 +146,9 @@ export function FarmFuelPage({
             <div className="mt-4">
               <SchoolWorkflowButton
                 className={primaryButton}
-                busy={isSavingFuel || savedFuel}
-                idleLabel={savedFuel ? "Saved" : (isSavingFuel ? "Saving..." : t("farm.fuel.post"))}
-                busyLabel={savedFuel ? "Saved" : (isSavingFuel ? "Saving..." : t("farm.fuel.post"))}
+                busy={isSavingFuel}
+                confirmed={savedFuel}
+                idleLabel={t("farm.fuel.post")}
                 onClick={async () => {
                   setIsSavingFuel(true);
                   setSavedFuel(false);
@@ -211,8 +211,7 @@ export function FarmFuelPage({
               <SchoolWorkflowButton
                 className={primaryButton}
                 busy={isSavingMaint}
-                idleLabel={isSavingMaint ? "Saving..." : t("farm.maint.post")}
-                busyLabel="Saving..."
+                idleLabel={t("farm.maint.post")}
                 onClick={async () => {
                   setIsSavingMaint(true);
                   setMaintError("");

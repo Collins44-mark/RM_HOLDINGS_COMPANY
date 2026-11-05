@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { SaveLabel } from "@/components/ui/SaveMark";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { PageBackButton } from "@/components/ui/PageBackButton";
@@ -169,7 +170,7 @@ export function PromotionTypesPage() {
                 Cancel
               </button>
               <button type="button" disabled={saving} onClick={() => void saveEdit()} className={primaryButton}>
-                {saving ? "Saving…" : "Save"}
+                <SaveLabel busy={saving} label="Save" />
               </button>
             </div>
           </div>

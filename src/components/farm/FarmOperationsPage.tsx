@@ -60,7 +60,7 @@ export function FarmOperationsPage({
               </FarmField>
             </div>
             <div className="mt-4">
-              <SchoolWorkflowButton className={primaryButton} busy={isSavingPlot} idleLabel={isSavingPlot ? "Saving..." : t("farm.ops.savePlot")} busyLabel="Saving..." onClick={async () => {
+              <SchoolWorkflowButton className={primaryButton} busy={isSavingPlot} idleLabel={t("farm.ops.savePlot")} onClick={async () => {
                 setIsSavingPlot(true); setPlotError("");
                 if (isLikelyOffline()) { setIsSavingPlot(false); setPlotError(t("offline.onlineOnly")); return; }
                 const result = await saveFarmPlotAction(plot);
@@ -86,7 +86,7 @@ export function FarmOperationsPage({
               </FarmField>
             </div>
             <div className="mt-4">
-              <SchoolWorkflowButton className={primaryButton} busy={isSavingSeason} idleLabel={isSavingSeason ? "Saving..." : t("farm.ops.saveSeason")} busyLabel="Saving..." onClick={async () => {
+              <SchoolWorkflowButton className={primaryButton} busy={isSavingSeason} idleLabel={t("farm.ops.saveSeason")} onClick={async () => {
                 setIsSavingSeason(true); setSeasonError("");
                 if (isLikelyOffline()) { setIsSavingSeason(false); setSeasonError(t("offline.onlineOnly")); return; }
                 const result = await saveFarmSeasonAction(season);
@@ -119,7 +119,7 @@ export function FarmOperationsPage({
             </FarmField>
           </div>
           <div className="mt-4">
-            <SchoolWorkflowButton className={primaryButton} busy={isSavingFieldWork} idleLabel={isSavingFieldWork ? "Saving..." : t("farm.ops.post")} busyLabel={t("common.posting")} onClick={async () => {
+            <SchoolWorkflowButton className={primaryButton} busy={isSavingFieldWork} idleLabel={t("farm.ops.post")} onClick={async () => {
               setIsSavingFieldWork(true); setFieldError("");
               const requestId = crypto.randomUUID();
               const payload = { requestId, ...op };
@@ -153,7 +153,7 @@ export function FarmOperationsPage({
             </FarmField>
           </div>
           <div className="mt-4">
-            <SchoolWorkflowButton className={primaryButton} busy={isSavingFieldWork} idleLabel={isSavingFieldWork ? "Saving..." : t("farm.ops.postHarvest")} busyLabel={t("common.posting")} onClick={async () => {
+            <SchoolWorkflowButton className={primaryButton} busy={isSavingFieldWork} idleLabel={t("farm.ops.postHarvest")} onClick={async () => {
               setIsSavingFieldWork(true); setFieldError("");
               const requestId = crypto.randomUUID();
               const payload = { requestId, ...harvest };

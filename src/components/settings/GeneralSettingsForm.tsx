@@ -1,9 +1,11 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Settings } from "lucide-react";
-import { saveOrganizationSettingsAction } from "@/actions/organization-settings";
+import { removeOrganizationLogoAction, saveOrganizationLogoAction, saveOrganizationSettingsAction } from "@/actions/organization-settings";
+import { readFittedImage } from "@/lib/images/read-image";
+import { SaveLabel } from "@/components/ui/SaveMark";
 import {
   CURRENCY_OPTIONS,
   TIMEZONE_OPTIONS,
@@ -32,9 +34,17 @@ export function GeneralSettingsForm({
     ? TIMEZONE_OPTIONS
     : ([settings.timezone, ...TIMEZONE_OPTIONS] as string[]);
 
+  const [logo, setLogo] = useState(settings.logoUrl);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
+  const [logoError, setLogoError] = useState("");
+
   useEffect(() => {
     if (state?.ok) router.refresh();
   }, [state?.ok, router]);
+  useEffect(() => {
+    setLogo(settings.logoUrl);
+  }, [settings.logoUrl]);
 
   return (
     <div className="space-y-4">
@@ -51,6 +61,76 @@ export function GeneralSettingsForm({
             <p className="mt-1 text-[13px] leading-5 text-slate-500">
               {t("settings.generalSubtitle")}
             </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 pt-5 sm:px-6">
+        <div className="flex items-center gap-4">
+          <label className={`relative inline-flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-b from-[#d7b56a] to-[#b48a32] text-[#3a2a0a] shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] ${canEdit ? "cursor-pointer" : ""}`}>
+            {logo ? <img src={logo} alt="" className="h-full w-full object-cover" /> : <span className="font-[family-name:var(--font-cormorant)] text-[26px] font-semibold leading-none">RM</span>}
+            {canEdit ? (
+              <input
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  if (!file) return;
+                  setLogoBusy(true);
+                  setLogoFailed(false);
+                  setLogoError("");
+                  try {
+                    const image = await readFittedImage(file, 256);
+                    const result = await saveOrganizationLogoAction(image);
+                    if (result?.error) {
+                      setLogoFailed(true);
+                      setLogoError(result.error);
+                    } else {
+                      setLogo(image);
+                      router.refresh();
+                    }
+                  } catch (error) {
+                    setLogoFailed(true);
+                    setLogoError(error instanceof Error ? error.message : "Could not save the logo.");
+                  } finally {
+                    setLogoBusy(false);
+                  }
+                }}
+              />
+            ) : null}
+          </label>
+          <div>
+            <p className="text-[13px] font-medium text-navy">{t("settings.logo")}</p>
+            <p className="text-[12px] text-slate-500">{canEdit ? t("settings.logoHint") : t("settings.readOnly")}</p>
+            {logoError ? <p className="text-[12px] text-rose-600">{logoError}</p> : null}
+            <div className="mt-1 flex items-center gap-3">
+              {canEdit && logo ? (
+                <button
+                  type="button"
+                  disabled={logoBusy}
+                  className="text-[12px] font-semibold text-rose-700 disabled:opacity-60"
+                  onClick={async () => {
+                    setLogoBusy(true);
+                    setLogoFailed(false);
+                    setLogoError("");
+                    const result = await removeOrganizationLogoAction();
+                    if (result?.error) {
+                      setLogoFailed(true);
+                      setLogoError(result.error);
+                    } else {
+                      setLogo("");
+                      router.refresh();
+                    }
+                    setLogoBusy(false);
+                  }}
+                >
+                  {t("settings.logoRemove")}
+                </button>
+              ) : null}
+              {canEdit ? <span className="inline-flex text-navy"><SaveLabel busy={logoBusy} failed={logoFailed} label="" /></span> : null}
+            </div>
           </div>
         </div>
       </div>
@@ -138,7 +218,7 @@ export function GeneralSettingsForm({
               disabled={pending}
               className="h-11 rounded-[14px] bg-navy px-5 text-[14px] font-semibold text-white disabled:opacity-60"
             >
-              {pending ? t("common.saving") : t("common.save")}
+              <SaveLabel busy={pending} failed={Boolean(state?.error)} label={t("common.save")} />
             </button>
           </div>
         ) : null}

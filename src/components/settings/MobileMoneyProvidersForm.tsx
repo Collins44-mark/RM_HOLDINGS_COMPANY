@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SaveLabel } from "@/components/ui/SaveMark";
 import { Smartphone } from "lucide-react";
 import {
   listMobileMoneyProvidersAction,
@@ -117,7 +118,7 @@ export function MobileMoneyProvidersForm({ canEdit }: { canEdit: boolean }) {
                 onClick={() => void addProvider()}
                 className="h-11 w-full rounded-[14px] bg-navy px-4 text-[13.5px] font-semibold text-white disabled:opacity-60 md:w-auto"
               >
-                {saving ? "Saving…" : "Add Provider"}
+                <SaveLabel busy={saving} label="Add Provider" />
               </button>
             </div>
           </div>

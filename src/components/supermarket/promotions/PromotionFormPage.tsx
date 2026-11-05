@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { SaveLabel } from "@/components/ui/SaveMark";
 import { useRouter } from "next/navigation";
 import { Plus, Search, X } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -781,7 +782,7 @@ export function PromotionFormPage({
           </button>
           {canSave ? (
           <button type="submit" disabled={saving} className={cn(primaryButton, "w-full sm:w-auto")}>
-            {saving ? "Saving…" : mode === "edit" ? "Save Changes" : "Create Promotion"}
+            <SaveLabel busy={saving} label={mode === "edit" ? "Save Changes" : "Create Promotion"} />
           </button>
           ) : null}
         </div>

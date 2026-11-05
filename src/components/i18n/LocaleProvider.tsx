@@ -14,6 +14,7 @@ import {
 type LocaleContextValue = {
   locale: Locale;
   organisationName: string;
+  logoUrl: string;
   timezone: string;
   currency: string;
   t: Translator;
@@ -23,6 +24,7 @@ type LocaleContextValue = {
 const LocaleContext = createContext<LocaleContextValue>({
   locale: DEFAULT_LOCALE,
   organisationName: "RM Holdings Ltd",
+  logoUrl: "",
   timezone: "Africa/Dar_es_Salaam",
   currency: "TZS",
   t: createTranslator(DEFAULT_LOCALE),
@@ -32,12 +34,14 @@ const LocaleContext = createContext<LocaleContextValue>({
 export function LocaleProvider({
   locale,
   organisationName,
+  logoUrl,
   timezone,
   currency,
   children,
 }: {
   locale: Locale;
   organisationName: string;
+  logoUrl: string;
   timezone: string;
   currency: string;
   children: ReactNode;
@@ -54,6 +58,7 @@ export function LocaleProvider({
     return {
       locale: current,
       organisationName,
+      logoUrl,
       timezone,
       currency,
       t: createTranslator(current),
@@ -64,7 +69,7 @@ export function LocaleProvider({
         router.refresh();
       },
     };
-  }, [current, organisationName, timezone, currency, router]);
+  }, [current, organisationName, logoUrl, timezone, currency, router]);
 
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;
 }

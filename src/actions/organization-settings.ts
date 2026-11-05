@@ -10,8 +10,10 @@ import {
 } from "@/lib/config/regional";
 import {
   ORGANIZATION_SETTINGS_CACHE_TAG,
+  updateOrganizationLogo,
   updateOrganizationSettings,
 } from "@/lib/data/organization-settings";
+import { isStoredImage } from "@/lib/images/read-image";
 import { parseLocale } from "@/lib/i18n";
 
 export type OrganizationSettingsState = {
@@ -97,5 +99,40 @@ export async function saveOrganizationSettingsAction(
   revalidatePath("/owner/settings");
   revalidatePath("/", "layout");
 
+  return { ok: true };
+}
+
+export async function saveOrganizationLogoAction(image: string): Promise<OrganizationSettingsState> {
+  await requireOwner();
+  if (!isStoredImage(image)) return { error: "Choose a smaller logo image." };
+  const result = await updateOrganizationLogo(image);
+  if (!result.ok) return { error: result.error };
+  await writeAuditEvent({
+    action: "organisation.setting_updated",
+    module: "settings",
+    description: "Updated the company logo",
+    severity: "low",
+    entityType: "organization_settings",
+    entityId: "1",
+  });
+  updateTag(ORGANIZATION_SETTINGS_CACHE_TAG);
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export async function removeOrganizationLogoAction(): Promise<OrganizationSettingsState> {
+  await requireOwner();
+  const result = await updateOrganizationLogo("");
+  if (!result.ok) return { error: result.error };
+  await writeAuditEvent({
+    action: "organisation.setting_updated",
+    module: "settings",
+    description: "Removed the company logo",
+    severity: "low",
+    entityType: "organization_settings",
+    entityId: "1",
+  });
+  updateTag(ORGANIZATION_SETTINGS_CACHE_TAG);
+  revalidatePath("/", "layout");
   return { ok: true };
 }

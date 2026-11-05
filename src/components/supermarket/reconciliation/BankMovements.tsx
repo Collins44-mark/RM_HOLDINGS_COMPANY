@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { SaveLabel } from "@/components/ui/SaveMark";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import {
@@ -582,7 +583,7 @@ function MovementModal({
           ) : (
             <>
               <button type="button" className={secondaryButton} disabled={saving} onClick={() => void persist(false)}>
-                {saving ? "Saving…" : "Save draft"}
+                <SaveLabel busy={saving} label="Save draft" />
               </button>
               {canApprove ? (
                 <button type="button" className={primaryButton} disabled={saving} onClick={() => void persist(true)}>

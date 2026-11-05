@@ -47,6 +47,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <LocaleProvider
           locale={locale}
           organisationName={settings.organisationName}
+          logoUrl={settings.logoUrl}
           timezone={settings.timezone}
           currency={settings.currency}
         >

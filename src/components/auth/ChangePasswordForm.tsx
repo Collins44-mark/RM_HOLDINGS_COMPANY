@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useId, useState } from "react";
+import { SaveLabel } from "@/components/ui/SaveMark";
 import { changePasswordAction, type PasswordChangeState } from "@/actions/password";
 import { Logo } from "@/components/branding/Logo";
 import { APP_NAME } from "@/lib/config/app";
@@ -91,7 +92,7 @@ export function ChangePasswordForm() {
               "inline-flex h-12 w-full items-center justify-center rounded-[14px] bg-navy text-[15px] font-semibold text-white transition hover:bg-[#132844] disabled:opacity-70",
             )}
           >
-            {pending ? "Saving..." : "Save new password"}
+            <SaveLabel busy={pending} failed={Boolean(state?.error)} label="Save new password" />
           </button>
         </form>
       </div>

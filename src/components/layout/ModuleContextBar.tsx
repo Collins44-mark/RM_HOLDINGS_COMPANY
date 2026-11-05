@@ -61,7 +61,7 @@ export function ModuleContextBar({
   const isRoot = pathname === root;
   const crumbs = trail(moduleCode, pathname, showDashboardCrumb);
 
-  if (moduleCode === "beekeeping") return null;
+  if (moduleCode === "beekeeping" || moduleCode === "livestock") return null;
 
   const suppressBreadcrumb = moduleCode === "property";
   return (

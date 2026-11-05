@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { listLivestockDirectory } from "@/lib/livestock/directory";
 import { inLivestockWindow, livestockPeriod } from "@/lib/livestock/period";
+import { LivestockPeriodFilter } from "./period-filter";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Livestock Dashboard" };
@@ -32,17 +32,7 @@ export default async function LivestockDashboardPage({ searchParams }: { searchP
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Livestock Dashboard</h1>
           <p className="mt-1 text-sm text-slate-500">Kigamboni Farm herd quantities, births, poultry rentals, and cash result.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          {[["month", "This Month"], ["quarter", "Last 3 Months"], ["year", "This Year"]].map(([value, label]) => (
-            <Link key={value} href={`/livestock?period=${value}`} className={`rounded-full px-3 py-1.5 ${params.period === value || (!params.period && value === "month") ? "bg-[#0b2244] text-white" : "bg-white text-slate-600"}`}>{label}</Link>
-          ))}
-          <form action="/livestock" className="flex flex-wrap items-center gap-2">
-            <input type="hidden" name="period" value="custom" />
-            <input type="date" name="from" defaultValue={params.from || ""} className="rounded-xl border border-slate-200 bg-white px-2 py-1" />
-            <input type="date" name="to" defaultValue={params.to || ""} className="rounded-xl border border-slate-200 bg-white px-2 py-1" />
-            <button className="rounded-full bg-white px-3 py-1.5 text-slate-600">Custom range</button>
-          </form>
-        </div>
+        <LivestockPeriodFilter period={params.period || "month"} from={params.from || ""} to={params.to || ""} />
       </div>
       {data.error ? <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{data.error}</p> : null}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

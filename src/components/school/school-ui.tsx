@@ -2,9 +2,10 @@
 
 import { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Loader2, type LucideIcon } from "lucide-react";
+import { type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { primaryButton, secondaryButton } from "@/components/supermarket/purchasing-ui";
+import { SaveLabel, Tick } from "@/components/ui/SaveMark";
 
 export function SchoolIconWell({ icon: Icon }: { icon: LucideIcon }) {
   return (
@@ -19,9 +20,8 @@ export function SchoolWorkflowButton({
   busy,
   disabled,
   idleLabel,
-  busyLabel,
   confirmed,
-  confirmedLabel = "Saved ✓",
+  failed = false,
   onClick,
 }: {
   className: string;
@@ -31,27 +31,12 @@ export function SchoolWorkflowButton({
   busyLabel?: string;
   confirmed?: boolean;
   confirmedLabel?: string;
+  failed?: boolean;
   onClick: () => void;
 }) {
   return (
-    <button type="button" disabled={disabled || busy} onClick={onClick} className={cn(className, "relative min-w-[8.75rem]")}>
-      <span className={cn("inline-flex items-center justify-center gap-2", busy && !busyLabel && "invisible")}>
-        {busy && busyLabel ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} />
-            {busyLabel}
-          </>
-        ) : confirmed ? (
-          confirmedLabel
-        ) : (
-          idleLabel
-        )}
-      </span>
-      {busy && !busyLabel ? (
-        <span className="absolute inset-0 flex items-center justify-center">
-          <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} />
-        </span>
-      ) : null}
+    <button type="button" disabled={disabled || busy} onClick={onClick} className={cn(className, "relative inline-flex min-w-[8.75rem] items-center justify-center", confirmed && "bg-emerald-600")}>
+      {confirmed ? <Tick /> : <SaveLabel busy={busy} failed={failed} label={idleLabel} />}
     </button>
   );
 }

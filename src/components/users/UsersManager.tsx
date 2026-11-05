@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { ArrowLeft, Plus, Search } from "lucide-react";
 import { PageHeader, Surface } from "@/components/ui/PageHeader";
+import { SaveLabel } from "@/components/ui/SaveMark";
 import { useT } from "@/components/i18n/LocaleProvider";
 import { ModuleIcon } from "@/components/icons/ModuleIcon";
 import { UsersBusinessUnitCard } from "@/components/users/UsersBusinessUnitCard";
@@ -855,7 +856,7 @@ function UserFormDialog({
             disabled={pending || self}
             className="h-11 rounded-[14px] bg-navy px-4 text-[14px] font-semibold text-white disabled:opacity-60"
           >
-            {pending ? "Saving..." : "Save"}
+            <SaveLabel busy={pending} label="Save" />
           </button>
         </div>
       </form>
@@ -1134,7 +1135,7 @@ function CreateRoleDialog({
             disabled={saving || pending}
             className="h-11 rounded-[14px] bg-navy px-4 text-[14px] font-semibold text-white disabled:opacity-60"
           >
-            {saving ? "Saving..." : "Save"}
+            <SaveLabel busy={saving} label="Save" />
           </button>
         </div>
       </form>
@@ -1496,7 +1497,7 @@ function UserStaffDialog({
               disabled={pending}
               className="h-11 rounded-[14px] bg-navy px-4 text-[14px] font-semibold text-white disabled:opacity-60"
             >
-              {pending ? "Saving..." : "Create Staff Profile"}
+              <SaveLabel busy={pending} label="Create Staff Profile" />
             </button>
           </div>
         </form>

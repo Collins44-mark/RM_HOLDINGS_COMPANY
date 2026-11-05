@@ -1,8 +1,11 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Lock } from "lucide-react";
-import { updateProfileAction, type ProfileState } from "@/actions/profile";
+import { updateAvatarAction, updateProfileAction, type ProfileState } from "@/actions/profile";
+import { readFittedImage } from "@/lib/images/read-image";
+import { SaveLabel } from "@/components/ui/SaveMark";
 import { useAuth } from "@/components/auth/AuthProvider";
 import type { AuthUser } from "@/lib/auth/types";
 import { LanguagePreference } from "@/components/i18n/LanguagePreference";
@@ -31,10 +34,19 @@ export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
   const { user: authUser } = useAuth();
   const user = userProp ?? authUser;
   const t = useT();
+  const router = useRouter();
   const [state, action, pending] = useActionState<ProfileState, FormData>(
     updateProfileAction,
     null,
   );
+  const [photo, setPhoto] = useState(user?.avatarUrl || "");
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const [photoError, setPhotoError] = useState("");
+
+  useEffect(() => {
+    if (user?.avatarUrl) setPhoto(user.avatarUrl);
+  }, [user?.avatarUrl]);
 
   if (!user) return null;
 
@@ -49,17 +61,47 @@ export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
 
       <section className="glass-card rounded-card px-4 py-4 sm:px-6 sm:py-5">
         <div className="flex items-center gap-3 sm:gap-4">
-          {user.avatarUrl ? (
-            <img
-              src={user.avatarUrl}
-              alt=""
-              className="h-14 w-14 shrink-0 rounded-full object-cover ring-1 ring-black/5 sm:h-[68px] sm:w-[68px]"
+          <label className="group relative shrink-0 cursor-pointer">
+            {photo ? (
+              <img src={photo} alt="" className="h-14 w-14 rounded-full object-cover ring-1 ring-black/5 sm:h-[68px] sm:w-[68px]" />
+            ) : (
+              <span className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#e8eef6] text-[15px] font-semibold tracking-wide text-navy ring-1 ring-black/5 sm:h-[68px] sm:w-[68px] sm:text-[18px]">
+                {initials(user.name)}
+              </span>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={async (event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (!file) return;
+                setPhotoBusy(true);
+                setPhotoFailed(false);
+                setPhotoError("");
+                try {
+                  const image = await readFittedImage(file, 320);
+                  const result = await updateAvatarAction(image);
+                  if (result?.error) {
+                    setPhotoFailed(true);
+                    setPhotoError(result.error);
+                  } else {
+                    setPhoto(image);
+                    router.refresh();
+                  }
+                } catch (error) {
+                  setPhotoFailed(true);
+                  setPhotoError(error instanceof Error ? error.message : "Could not save your photo.");
+                } finally {
+                  setPhotoBusy(false);
+                }
+              }}
             />
-          ) : (
-            <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#e8eef6] text-[15px] font-semibold tracking-wide text-navy ring-1 ring-black/5 sm:h-[68px] sm:w-[68px] sm:text-[18px]">
-              {initials(user.name)}
+            <span className="absolute -bottom-1 -right-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-navy text-white">
+              <SaveLabel busy={photoBusy} failed={photoFailed} label="+" />
             </span>
-          )}
+          </label>
           <div className="min-w-0">
             <p className="truncate text-[17px] font-bold tracking-[-0.02em] text-navy sm:text-[20px]">
               {user.name}
@@ -68,6 +110,8 @@ export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
               {user.roleName}
             </p>
             <p className="mt-1.5 truncate text-[13px] text-slate-500">{user.email}</p>
+            <p className="mt-1 text-[12px] text-slate-400">{t("profile.photoHint")}</p>
+            {photoError ? <p className="mt-1 text-[12px] text-rose-600">{photoError}</p> : null}
           </div>
         </div>
       </section>
@@ -113,7 +157,7 @@ export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
               disabled={pending}
               className="inline-flex h-12 w-full items-center justify-center rounded-[14px] bg-navy px-5 text-[15px] font-semibold text-white transition hover:bg-[#132844] disabled:opacity-70 sm:w-auto"
             >
-              {pending ? t("common.saving") : t("common.save")}
+              <SaveLabel busy={pending} failed={Boolean(state?.error)} label={t("common.save")} />
             </button>
           </div>
         </form>

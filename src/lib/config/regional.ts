@@ -60,4 +60,5 @@ export const DEFAULT_ORGANIZATION_SETTINGS = {
   timezone: APP_TIMEZONE,
   currency: APP_CURRENCY,
   language: "en" as const,
+  logoUrl: "",
 };

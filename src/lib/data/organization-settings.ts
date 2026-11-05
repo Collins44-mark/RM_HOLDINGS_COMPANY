@@ -16,6 +16,7 @@ export type OrganizationSettings = {
   timezone: string;
   currency: string;
   language: Locale;
+  logoUrl: string;
 };
 
 function normalize(row: {
@@ -23,6 +24,7 @@ function normalize(row: {
   timezone?: unknown;
   currency?: unknown;
   language?: unknown;
+  logo_url?: unknown;
 } | null): OrganizationSettings {
   const organisationName =
     typeof row?.organisation_name === "string" && row.organisation_name.trim()
@@ -37,7 +39,8 @@ function normalize(row: {
       ? row.currency
       : DEFAULT_ORGANIZATION_SETTINGS.currency;
   const language = parseLocale(typeof row?.language === "string" ? row.language : null);
-  return { organisationName, timezone, currency, language };
+  const logoUrl = typeof row?.logo_url === "string" ? row.logo_url : "";
+  return { organisationName, timezone, currency, language, logoUrl };
 }
 
 async function loadOrganizationSettings(): Promise<OrganizationSettings> {
@@ -46,11 +49,17 @@ async function loadOrganizationSettings(): Promise<OrganizationSettings> {
 
   const { data, error } = await admin
     .from("organization_settings")
-    .select("organisation_name, timezone, currency, language")
+    .select("organisation_name, timezone, currency, language, logo_url")
     .eq("id", ORGANIZATION_SETTINGS_ID)
     .maybeSingle();
 
   if (error) {
+    const plain = await admin
+      .from("organization_settings")
+      .select("organisation_name, timezone, currency, language")
+      .eq("id", ORGANIZATION_SETTINGS_ID)
+      .maybeSingle();
+    if (!plain.error) return normalize(plain.data);
     console.error(
       JSON.stringify({
         scope: "organization-settings",
@@ -72,7 +81,7 @@ const loadOrganizationSettingsCached = unstable_cache(
 
 export const getOrganizationSettings = cache(async () => loadOrganizationSettingsCached());
 
-export async function updateOrganizationSettings(input: OrganizationSettings): Promise<
+export async function updateOrganizationSettings(input: Omit<OrganizationSettings, "logoUrl">): Promise<
   | { ok: true; previous: OrganizationSettings; next: OrganizationSettings; unchanged: boolean }
   | { ok: false; error: string }
 > {
@@ -87,6 +96,7 @@ export async function updateOrganizationSettings(input: OrganizationSettings): P
     timezone: input.timezone,
     currency: input.currency,
     language: input.language,
+    logoUrl: previous.logoUrl,
   };
 
   if (
@@ -123,4 +133,15 @@ export async function updateOrganizationSettings(input: OrganizationSettings): P
   }
 
   return { ok: true, previous, next, unchanged: false };
+}
+
+export async function updateOrganizationLogo(logoUrl: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const admin = createSupabaseAdminClient();
+  if (!admin) return { ok: false, error: "Server is missing SUPABASE_SERVICE_ROLE_KEY." };
+  const { error } = await admin
+    .from("organization_settings")
+    .update({ logo_url: logoUrl, updated_at: new Date().toISOString() })
+    .eq("id", ORGANIZATION_SETTINGS_ID);
+  if (error) return { ok: false, error: "Could not save the company logo. Apply the branding logo migration, then try again." };
+  return { ok: true };
 }
