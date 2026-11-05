@@ -5,6 +5,8 @@ import { Settings } from "lucide-react";
 import { loadRiceSettingsWorkspaceAction, type RiceSettingsWorkspace } from "@/actions/rice/workspace";
 import { saveRiceItemAction } from "@/actions/rice/posting";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { LanguagePreference } from "@/components/i18n/LanguagePreference";
 import { useLocale, useT } from "@/components/i18n/LocaleProvider";
@@ -22,6 +24,8 @@ export function RiceSettingsPage({
   const [error, setError] = useState(initial.ok ? null : initial.error);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ code: "", name: "", kind: "RICE" });
+  const items = workspace?.items ?? [];
+  const itemPage = useListPage(items, String(items.length));
 
   return (
     <div className="space-y-5 pb-10">
@@ -84,7 +88,7 @@ export function RiceSettingsPage({
               </tr>
             </thead>
             <tbody>
-              {(workspace?.items ?? []).map((row) => (
+              {itemPage.rows.map((row) => (
                 <tr key={row.id} className="border-t border-navy/5 text-navy">
                   <td className="px-3 py-2.5">{row.code}</td>
                   <td className="px-3 py-2.5">{row.name}</td>
@@ -95,6 +99,7 @@ export function RiceSettingsPage({
             </tbody>
           </table>
         </div>
+        <PaginationBar page={itemPage.page} total={items.length} pageSize={itemPage.pageSize} onPage={itemPage.setPage} onPageSize={itemPage.setPageSize} />
       </section>
     </div>
   );

@@ -1,4 +1,4 @@
-export const OFFLINE_SHELL_VERSION = "rm-shell-v2";
+export const OFFLINE_SHELL_VERSION = "rm-shell-v5";
 export const OFFLINE_IDENTITY_MESSAGE = "rm-offline-identity";
 
 const PUBLIC_SHELL_PATHS = new Set([

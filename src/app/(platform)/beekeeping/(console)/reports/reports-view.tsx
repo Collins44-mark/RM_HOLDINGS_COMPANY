@@ -4,6 +4,7 @@ import { useState } from "react";
 import { FileText, Flower2, Hexagon, Landmark, Package, Wallet } from "lucide-react";
 import type { BeeDirectory } from "@/lib/beekeeping/directory";
 import { beePeriodWindow } from "@/lib/beekeeping/period";
+import { PagedReportTable } from "@/components/ui/PagedReportTable";
 import { buildBeeReport } from "@/lib/beekeeping/reports";
 
 const CARDS = [
@@ -95,17 +96,8 @@ export default function ReportsView({ initial }: { initial: BeeDirectory }) {
                   <div className="mt-3 flex flex-wrap gap-2">
                     {report.totals.map((total) => <span key={total.label} className="rounded-full bg-slate-50 px-3 py-1 text-sm">{total.label}: {total.value}</span>)}
                   </div>
-                  <div className="mt-3 overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
-                        <tr>{report.columns.map((column) => <th key={column.key} className={`px-3 py-2 ${column.align === "right" ? "text-right" : ""}`}>{column.label}</th>)}</tr>
-                      </thead>
-                      <tbody>
-                        {report.rows.length === 0 ? <tr><td colSpan={report.columns.length} className="px-3 py-8 text-center text-slate-500">No records in this period.</td></tr> : report.rows.map((rowItem, index) => (
-                          <tr key={index} className="border-t border-slate-100">{report.columns.map((column) => <td key={column.key} className={`px-3 py-2 ${column.align === "right" ? "text-right" : ""}`}>{rowItem[column.key] || "—"}</td>)}</tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="mt-3">
+                    <PagedReportTable columns={report.columns} rows={report.rows} resetKey={`${reportId}|${range.from}|${range.to}`} />
                   </div>
                 </div>
               ) : null}

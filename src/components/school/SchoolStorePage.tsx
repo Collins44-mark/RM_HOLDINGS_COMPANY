@@ -16,6 +16,8 @@ import { recordSchoolFeePaymentAction } from "@/actions/school/fees";
 import { saveWithOutbox } from "@/lib/offline";
 import { SchoolField, SchoolIconWell, SchoolWorkflowButton } from "@/components/school/school-ui";
 import { SchoolPagination } from "@/components/school/SchoolPagination";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { ContainedDrawer, DrawerCancel } from "@/components/ui/ContainedDrawer";
 import {
   filterClass,
@@ -423,6 +425,7 @@ function EmptyState({ title, body }: { title: string; body: string }) {
 }
 
 function MovementTable({ rows, empty }: { rows: SchoolStoreMovement[]; empty: string }) {
+  const page = useListPage(rows, String(rows.length));
   if (!rows.length) return <EmptyState title={empty} body="Receiving, sales, issues and adjustments appear here after they are posted." />;
   return (
     <section className={glassPanel}>
@@ -438,7 +441,7 @@ function MovementTable({ rows, empty }: { rows: SchoolStoreMovement[]; empty: st
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {page.rows.map((row) => (
               <tr key={row.id} className="border-t border-navy/5 text-[13.5px] text-navy">
                 <td className="px-4 py-3">{row.occurredOn}</td>
                 <td className="px-4 py-3">{schoolStoreMovementLabel(row.movementType)}</td>
@@ -454,6 +457,7 @@ function MovementTable({ rows, empty }: { rows: SchoolStoreMovement[]; empty: st
           </tbody>
         </table>
       </div>
+      <PaginationBar page={page.page} total={rows.length} pageSize={page.pageSize} onPage={page.setPage} onPageSize={page.setPageSize} />
     </section>
   );
 }

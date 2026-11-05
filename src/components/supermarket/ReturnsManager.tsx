@@ -16,6 +16,8 @@ import {
   RotateCcw,
   Search,
 } from "lucide-react";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import {
@@ -283,6 +285,7 @@ export function ReturnsManager() {
     [returns, period.start, period.end, cashier, method, status, query],
   );
   const kpis = useMemo(() => returnKpis(filtered), [filtered]);
+  const list = useListPage(filtered, `${period.start}|${period.end}|${cashier}|${method}|${status}|${query}`);
   const selected = selectedId ? filtered.find((row) => row.id === selectedId) ?? null : null;
   const selectedSaleRecord = selected
     ? liveSales.find((sale) => sale.id === selected.invoiceId) ?? null
@@ -642,7 +645,7 @@ export function ReturnsManager() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((row) => (
+                    {list.rows.map((row) => (
                       <tr
                         key={row.id}
                         className={cn(
@@ -703,7 +706,7 @@ export function ReturnsManager() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((row) => (
+                    {list.rows.map((row) => (
                       <tr key={row.id} className="border-t border-[#d5dee8]/55">
                         <td className="px-4 py-3">
                           <button
@@ -737,7 +740,7 @@ export function ReturnsManager() {
               </div>
 
               <div className="space-y-2 px-3 pb-4 md:hidden">
-                {filtered.map((row) => (
+                {list.rows.map((row) => (
                   <button
                     key={row.id}
                     type="button"
@@ -765,6 +768,7 @@ export function ReturnsManager() {
               </div>
             </>
           )}
+          <PaginationBar page={list.page} total={filtered.length} pageSize={list.pageSize} onPage={list.setPage} onPageSize={list.setPageSize} />
         </article>
 
         {detailsOpen && selected ? (

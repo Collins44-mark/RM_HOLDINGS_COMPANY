@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Search, Trash2 } from "lucide-react";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import {
@@ -113,6 +115,7 @@ export function FinancePaymentsPage() {
   );
 
   const summary = useMemo(() => paymentSummaryCards(rows), [rows]);
+  const list = useListPage(rows, `${query}|${paymentType}|${paymentMethod}|${period.start}|${period.end}`);
 
   async function onDelete(id: string) {
     setDeletingId(id);
@@ -225,7 +228,7 @@ export function FinancePaymentsPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
+              {list.rows.map((row) => {
                 const direction = paymentDirection(row.paymentType);
                 const source = finance.payments.find((item) => item.id === row.id);
                 return (
@@ -300,7 +303,7 @@ export function FinancePaymentsPage() {
         </div>
 
         <div className="space-y-3 p-4 md:hidden">
-          {rows.map((row) => {
+          {list.rows.map((row) => {
             const direction = paymentDirection(row.paymentType);
             const source = finance.payments.find((item) => item.id === row.id);
             return (
@@ -367,6 +370,7 @@ export function FinancePaymentsPage() {
             <p className="py-8 text-center text-[13.5px] text-slate-500">No payments yet.</p>
           ) : null}
         </div>
+        <PaginationBar page={list.page} total={rows.length} pageSize={list.pageSize} onPage={list.setPage} onPageSize={list.setPageSize} />
       </section>
 
       {paymentOpen ? (

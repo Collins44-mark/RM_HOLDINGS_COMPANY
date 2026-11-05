@@ -5,6 +5,8 @@ import { Users } from "lucide-react";
 import { loadFarmPartiesWorkspaceAction, type FarmPartiesWorkspace } from "@/actions/farm/workspace";
 import { saveFarmPartyAction } from "@/actions/farm/posting";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { useT } from "@/components/i18n/LocaleProvider";
 import { FarmField, FarmNotice, FarmPageHeader } from "@/components/farm/farm-ui";
@@ -22,6 +24,8 @@ export function FarmPartiesPage({
   const [error, setError] = useState(initial.ok ? null : initial.error);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", notes: "" });
+  const parties = workspace?.parties ?? [];
+  const partyPage = useListPage(parties, `${kind}:${parties.length}`);
   const title = kind === "CUSTOMER" ? t("farm.customers.title") : t("farm.suppliers.title");
 
   return (
@@ -65,9 +69,9 @@ export function FarmPartiesPage({
               </tr>
             </thead>
             <tbody>
-              {(workspace?.parties ?? []).length === 0 ? (
+              {parties.length === 0 ? (
                 <tr><td className="px-3 py-6 text-slate-500" colSpan={3}>{t("farm.parties.empty")}</td></tr>
-              ) : (workspace?.parties ?? []).map((row) => (
+              ) : partyPage.rows.map((row) => (
                 <tr key={row.id} className="border-t border-navy/5 text-navy">
                   <td className="px-3 py-2.5">{row.name}</td>
                   <td className="px-3 py-2.5">{row.phone ?? "—"}</td>
@@ -77,6 +81,7 @@ export function FarmPartiesPage({
             </tbody>
           </table>
         </div>
+        <PaginationBar page={partyPage.page} total={parties.length} pageSize={partyPage.pageSize} onPage={partyPage.setPage} onPageSize={partyPage.setPageSize} />
       </section>
     </div>
   );

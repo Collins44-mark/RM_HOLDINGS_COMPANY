@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { Banknote, Droplets, Hexagon, Layers, Receipt, ShoppingBag, type LucideIcon } from "lucide-react";
 import { formatTzs } from "@/lib/format/currency";
 import { listBeekeepingDirectory } from "@/lib/beekeeping/directory";
 import { beePeriodWindow, inWindow } from "@/lib/beekeeping/period";
 import { BeePeriodFilter } from "./period-filter";
 import { roundKg, roundMoney } from "@/lib/beekeeping/constants";
+import { cn } from "@/lib/cn";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Beekeeping" };
@@ -22,13 +24,12 @@ export default async function BeekeepingDashboardPage({
   const expensesPaid = roundMoney(directory.expenses.flatMap((expense) => expense.payments).filter((payment) => payment.status === "Completed" && inWindow(payment.payment_date, period.from, period.to)).reduce((sum, payment) => sum + payment.amount, 0));
   const salesOutstanding = roundMoney(directory.sales.filter((sale) => sale.status !== "Cancelled").reduce((sum, sale) => sum + sale.balance, 0));
   const expensesOutstanding = roundMoney(directory.expenses.filter((expense) => expense.status !== "Cancelled").reduce((sum, expense) => sum + expense.balance, 0));
-  const months = new Map<string, number>();
-  for (const harvest of harvests) {
-    const key = harvest.harvest_date.slice(0, 7);
-    months.set(key, roundKg((months.get(key) || 0) + harvest.quantity_kg));
-  }
-  const chart = [...months.entries()].sort(([a], [b]) => a.localeCompare(b));
-  const max = Math.max(1, ...chart.map(([, value]) => value));
+  const chartYear = period.from.slice(0, 4);
+  const chart = monthlyProduction(
+    directory.harvests.filter((harvest) => harvest.status === "Valid"),
+    chartYear,
+  );
+  const yearHarvested = roundKg(chart.reduce((sum, bar) => sum + bar.value, 0));
   const active = directory.hives.filter((hive) => hive.status === "Active").length;
 
   return (
@@ -50,18 +51,14 @@ export default async function BeekeepingDashboardPage({
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <section className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm lg:col-span-2">
-          <h2 className="text-base font-semibold text-slate-800">Honey production</h2>
-          <p className="text-sm text-slate-500">{period.label}: {harvested} kg</p>
-          {chart.length === 0 ? <p className="py-10 text-sm text-slate-500">No harvests in this period.</p> : (
-            <div className="mt-4 flex h-48 items-end gap-2">
-              {chart.map(([month, value]) => (
-                <div key={month} className="flex flex-1 flex-col items-center justify-end gap-1" title={`${month}: ${value} kg`}>
-                  <div className="w-full rounded-t-md bg-[#0b2244]" style={{ height: `${Math.max(6, Math.round((value / max) * 100))}%` }} />
-                  <span className="text-[10px] text-slate-400">{month.slice(5)}</span>
-                </div>
-              ))}
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-slate-800">Honey production</h2>
+              <p className="text-sm text-slate-500">January to December {chartYear}</p>
             </div>
-          )}
+            <p className="text-right text-sm font-semibold text-[#0b2244]">{yearHarvested} kg</p>
+          </div>
+          <ProductionChart bars={chart} />
         </section>
         <section className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
           <h2 className="text-base font-semibold text-slate-800">Honey stock</h2>
@@ -81,16 +78,32 @@ export default async function BeekeepingDashboardPage({
         <Stat label="Operating result" value={formatTzs(roundMoney(income - expensesPaid))} />
       </section>
 
-      <section className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-        <h2 className="text-base font-semibold text-slate-800">Recent activity</h2>
-        {directory.activities.length === 0 ? <p className="mt-3 text-sm text-slate-500">No beekeeping activity yet.</p> : (
-          <ul className="mt-3 divide-y divide-slate-100">
-            {directory.activities.map((event) => (
-              <li key={event.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-                <span className="text-slate-700">{event.description}</span>
-                <span className="shrink-0 text-xs text-slate-400">{new Date(event.created_at).toLocaleString("en-GB", { timeZone: "Africa/Dar_es_Salaam" })}</span>
-              </li>
-            ))}
+      <section className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <div>
+            <h2 className="text-base font-semibold text-slate-800">Recent activity</h2>
+            <p className="text-xs text-slate-400">The five latest records</p>
+          </div>
+        </div>
+        {directory.activities.length === 0 ? <p className="px-6 py-10 text-sm text-slate-500">No beekeeping activity yet.</p> : (
+          <ul>
+            {directory.activities.slice(0, 5).map((event) => {
+              const kind = activityKind(event.action);
+              return (
+                <li key={event.id} className="flex items-center gap-3 border-b border-slate-50 px-6 py-3.5 last:border-b-0">
+                  <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", kind.tone)}>
+                    <kind.Icon className="h-4 w-4" strokeWidth={1.75} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{kind.label}</p>
+                    <p className="truncate text-sm text-slate-800">{event.description}</p>
+                  </div>
+                  <time className="shrink-0 text-xs text-slate-400" dateTime={event.created_at}>
+                    {formatActivityTime(event.created_at)}
+                  </time>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -98,6 +111,87 @@ export default async function BeekeepingDashboardPage({
   );
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function niceMax(value: number) {
+  if (value <= 0) return 4;
+  const power = 10 ** Math.floor(Math.log10(value));
+  const step = value / power;
+  const nice = step <= 1 ? 1 : step <= 2 ? 2 : step <= 5 ? 5 : 10;
+  return nice * power;
+}
+
+function monthlyProduction(harvests: { harvest_date: string; quantity_kg: number }[], year: string) {
+  const totals = Array.from({ length: 12 }, () => 0);
+  for (const harvest of harvests) {
+    const date = harvest.harvest_date.slice(0, 10);
+    if (!date.startsWith(year)) continue;
+    const month = Number(date.slice(5, 7)) - 1;
+    if (month < 0 || month > 11) continue;
+    totals[month] = roundKg(totals[month] + harvest.quantity_kg);
+  }
+  return totals.map((value, index) => ({
+    key: `${year}-${String(index + 1).padStart(2, "0")}`,
+    label: MONTHS[index],
+    value,
+  }));
+}
+
+function ProductionChart({ bars }: { bars: { key: string; label: string; value: number }[] }) {
+  const peak = Math.max(0, ...bars.map((bar) => bar.value));
+  const max = niceMax(peak);
+  const ticks = [max, max / 2, 0];
+  return (
+    <div className="mt-5">
+      <div className="flex h-56 gap-3">
+        <div className="flex h-[calc(100%-1.25rem)] w-10 flex-col justify-between pb-0 text-right text-[11px] tabular-nums text-slate-400">
+          {ticks.map((tick) => <span key={tick}>{Math.round(tick)}</span>)}
+        </div>
+        <div className="relative min-w-0 flex-1">
+          <div className="pointer-events-none absolute inset-x-0 top-0 bottom-5 flex flex-col justify-between">
+            {ticks.map((tick) => <div key={tick} className="border-t border-dashed border-slate-200" />)}
+          </div>
+          <div className="absolute inset-x-0 top-0 bottom-5 flex items-end gap-1">
+            {bars.map((bar) => (
+              <div key={bar.key} className="group flex h-full min-w-0 flex-1 items-end" title={`${bar.key}: ${bar.value} kg`}>
+                <div
+                  className="w-full rounded-t-md bg-gradient-to-t from-[#0b2244] to-[#3d6cb5] shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]"
+                  style={{ height: `${Math.max(bar.value > 0 ? 4 : 0, (bar.value / max) * 100)}%` }}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="absolute inset-x-0 bottom-0 flex gap-1">
+            {bars.map((bar) => (
+              <span key={bar.key} className="flex-1 text-center text-[10px] leading-none text-slate-400">{bar.label}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+      <p className="mt-2 text-[11px] text-slate-400">Kilograms harvested</p>
+    </div>
+  );
+}
+
 function Stat({ label, value }: { label: string; value: string }) {
   return <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 text-lg font-bold text-slate-900">{value}</p></div>;
+}
+
+function activityKind(action: string): { label: string; tone: string; Icon: LucideIcon } {
+  if (action.startsWith("hive")) return { label: "Hive", tone: "bg-amber-50 text-amber-700", Icon: Hexagon };
+  if (action.startsWith("harvest")) return { label: "Harvest", tone: "bg-emerald-50 text-emerald-700", Icon: Droplets };
+  if (action.includes("payment")) return { label: "Payment", tone: "bg-sky-50 text-sky-700", Icon: Banknote };
+  if (action.startsWith("sale")) return { label: "Sale", tone: "bg-[#0b2244]/8 text-[#0b2244]", Icon: ShoppingBag };
+  if (action.startsWith("expense")) return { label: "Expense", tone: "bg-rose-50 text-rose-700", Icon: Receipt };
+  return { label: "Stock", tone: "bg-slate-100 text-slate-600", Icon: Layers };
+}
+
+function formatActivityTime(value: string) {
+  return new Date(value).toLocaleString("en-GB", {
+    timeZone: "Africa/Dar_es_Salaam",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }

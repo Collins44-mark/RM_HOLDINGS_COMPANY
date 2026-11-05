@@ -148,6 +148,7 @@ const ROUTE_PERMISSION_RULES: RoutePermissionRule[] = [
   { prefix: "/beekeeping/sales", any: ["beekeeping.sales.view", "beekeeping.expenses.view"] },
   { prefix: "/beekeeping/reports", any: ["beekeeping.reports.view"] },
   { prefix: "/beekeeping", exact: true, any: ["beekeeping.dashboard.view", "beekeeping.hives.view", "beekeeping.sales.view"] },
+  { prefix: "/livestock/reports", any: ["livestock.reports.view", "livestock.dashboard.view", "livestock.records.view"] },
   { prefix: "/livestock/animals", any: ["livestock.records.view", "livestock.animals.view", "livestock.dashboard.view"] },
   { prefix: "/livestock/houses", any: ["livestock.houses.manage", "livestock.rentals.manage", "livestock.animals.view"] },
   { prefix: "/livestock/expenses", any: ["livestock.expenses.manage", "livestock.feeds.view", "livestock.animals.view"] },

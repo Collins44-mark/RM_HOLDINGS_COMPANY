@@ -13,6 +13,8 @@ import {
 } from "@/actions/supermarket/reconciliation";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
 import { filterClass, inputClass, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 import { EmptyState } from "@/components/ui/PageHeader";
 import { cn } from "@/lib/cn";
@@ -168,6 +170,7 @@ function BankWorkspace({
   }, [period.start, period.end, accountId]);
 
   const unmatched = transactions.filter((row) => row.status === "UNMATCHED").length;
+  const transactionPage = useListPage(transactions, `${transactions.length}`);
   const status = displayStatus(record?.status ?? null, moneyToCents(record?.difference));
   const selectedTxns = useMemo(
     () => transactions.filter((row) => selected.includes(row.id)),
@@ -343,7 +346,7 @@ function BankWorkspace({
               </tr>
             </thead>
             <tbody>
-              {transactions.map((txn) => (
+              {transactionPage.rows.map((txn) => (
                 <tr key={txn.id} className="border-t border-black/[0.04]">
                   <td className="whitespace-nowrap px-4 py-3 text-[13px] text-navy">{txn.transactionDate}</td>
                   <td className="px-4 py-3 text-[13px] text-navy">{txn.reference || "—"}</td>
@@ -397,6 +400,7 @@ function BankWorkspace({
             />
           </div>
         ) : null}
+        <PaginationBar page={transactionPage.page} total={transactions.length} pageSize={transactionPage.pageSize} onPage={transactionPage.setPage} onPageSize={transactionPage.setPageSize} />
       </section>
 
       {mode === "reconcile" && accountsReady && !noAccounts ? (

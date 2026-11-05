@@ -17,18 +17,22 @@ const loginSchema = z.object({
   next: z.string().optional(),
 });
 
-export type LoginState = { error?: string } | null;
+export type LoginState = { error?: string; ok?: boolean; href?: string } | null;
 
-function redirectAfterAuth(
+function destinationAfterAuth(
   identity: { role: string; modules: string[]; permissions: string[] },
   next: string | undefined,
-): never {
+) {
   const requested = typeof next === "string" && next.startsWith("/") ? next : null;
-  const destination =
-    requested && requested !== LOGIN_PATH && requested !== CHANGE_PASSWORD_PATH && canAccessPath(identity, requested)
-      ? requested
-      : landingPathFor(identity);
-  redirect(destination);
+  if (
+    requested &&
+    requested !== LOGIN_PATH &&
+    requested !== CHANGE_PASSWORD_PATH &&
+    canAccessPath(identity, requested)
+  ) {
+    return requested;
+  }
+  return landingPathFor(identity);
 }
 
 async function isCredentialFormPost() {
@@ -50,10 +54,12 @@ export async function loginAction(
 
   const existing = await getAuthUser();
   if (existing) {
-    if (existing.mustChangePassword) {
-      redirect(CHANGE_PASSWORD_PATH);
-    }
-    redirectAfterAuth(identityFromUser(existing), next);
+    return {
+      ok: true,
+      href: existing.mustChangePassword
+        ? CHANGE_PASSWORD_PATH
+        : destinationAfterAuth(identityFromUser(existing), next),
+    };
   }
 
   const parsed = loginSchema.safeParse({
@@ -73,17 +79,20 @@ export async function loginAction(
   }
 
   if (signedIn.mustChangePassword) {
-    redirect(CHANGE_PASSWORD_PATH);
+    return { ok: true, href: CHANGE_PASSWORD_PATH };
   }
 
-  redirectAfterAuth(
-    {
-      role: signedIn.roleCode,
-      modules: signedIn.modules,
-      permissions: permissionsForRoleCode(signedIn.roleCode),
-    },
-    next,
-  );
+  return {
+    ok: true,
+    href: destinationAfterAuth(
+      {
+        role: signedIn.roleCode,
+        modules: signedIn.modules,
+        permissions: permissionsForRoleCode(signedIn.roleCode),
+      },
+      next,
+    ),
+  };
 }
 
 export async function logoutAction() {

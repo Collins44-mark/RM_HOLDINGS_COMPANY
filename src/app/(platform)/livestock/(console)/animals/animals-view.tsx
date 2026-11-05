@@ -25,11 +25,20 @@ export function AnimalsView({ initial }: { initial: LivestockDirectory }) {
   const [typeId, setTypeId] = useState("");
   const [saleId, setSaleId] = useState("");
   const [query, setQuery] = useState("");
-  const active = data.stock.filter((row) => row.active);
-  const movements = data.movements.filter((row) => !query || `${row.animal_type} ${row.movement_type} ${row.notes}`.toLowerCase().includes(query.toLowerCase()));
-  const movementPage = useListPage(movements, query);
-  const sales = data.sales.filter((row) => !query || `${row.sale_code} ${row.animal_type} ${row.buyer_name}`.toLowerCase().includes(query.toLowerCase()));
-  const salePage = useListPage(sales, `${tab}:${query}`);
+  const needle = query.trim().toLowerCase();
+  const active = data.stock.filter((row) => row.active && (!needle || row.name.toLowerCase().includes(needle)));
+  const recordPage = useListPage(active, `records:${query}`);
+  const purchases = data.purchases.filter((row) => !needle || `${row.purchase_code} ${row.animal_type}`.toLowerCase().includes(needle));
+  const purchasePage = useListPage(purchases, `purchases:${query}`);
+  const reproduction = [
+    ...data.pregnancies.map((row) => ({ ...row, kind: "pregnancy" as const, date: row.pregnancy_date || "" })),
+    ...data.births.map((row) => ({ ...row, kind: "birth" as const, date: row.birth_date })),
+  ].filter((row) => !needle || row.animal_type.toLowerCase().includes(needle));
+  const reproductionPage = useListPage(reproduction, `reproduction:${query}`);
+  const movements = data.movements.filter((row) => !needle || `${row.animal_type} ${row.movement_type} ${row.notes}`.toLowerCase().includes(needle));
+  const movementPage = useListPage(movements, `movements:${query}`);
+  const sales = data.sales.filter((row) => !needle || `${row.sale_code} ${row.animal_type} ${row.buyer_name}`.toLowerCase().includes(needle));
+  const salePage = useListPage(sales, `sales:${query}`);
   const history = useMemo(() => data.movements.filter((row) => row.animal_type_id === selected), [data.movements, selected]);
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -68,7 +77,7 @@ export function AnimalsView({ initial }: { initial: LivestockDirectory }) {
             <button type="button" onClick={() => openAction("opening")} className="rounded-xl bg-[#0b2244] px-3 py-2 text-sm font-semibold text-white">Add opening stock</button>
           </div>
           <Table headers={["Animal Type", "Current", "Pregnant", "Purchased", "Born", "Sold", "Deaths", "Updated", ""]}>
-            {active.map((row) => (
+            {recordPage.rows.map((row) => (
               <tr key={row.id} className="border-t border-slate-100">
                 <td className="px-3 py-2 font-medium">{row.name}</td>
                 <td className="px-3 py-2">{row.current}</td>
@@ -129,6 +138,7 @@ export function AnimalsView({ initial }: { initial: LivestockDirectory }) {
               </div>
             </div>
           ) : null}
+          <PaginationBar page={recordPage.page} total={active.length} pageSize={recordPage.pageSize} onPage={recordPage.setPage} onPageSize={recordPage.setPageSize} />
         </section>
       ) : null}
 
@@ -136,7 +146,7 @@ export function AnimalsView({ initial }: { initial: LivestockDirectory }) {
         <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
           <button type="button" onClick={() => openAction("purchase")} className="mb-3 rounded-xl bg-[#0b2244] px-3 py-2 text-sm font-semibold text-white">Record purchase</button>
           <Table headers={["Reference", "Date", "Type", "Qty", "Cost", "Status", ""]}>
-            {data.purchases.map((row) => (
+            {purchasePage.rows.map((row) => (
               <tr key={row.id} className="border-t border-slate-100">
                 <td className="px-3 py-2">{row.purchase_code}</td>
                 <td className="px-3 py-2">{String(row.purchase_date).slice(0, 10)}</td>
@@ -148,6 +158,7 @@ export function AnimalsView({ initial }: { initial: LivestockDirectory }) {
               </tr>
             ))}
           </Table>
+          <PaginationBar page={purchasePage.page} total={purchases.length} pageSize={purchasePage.pageSize} onPage={purchasePage.setPage} onPageSize={purchasePage.setPageSize} />
         </section>
       ) : null}
 
@@ -159,21 +170,23 @@ export function AnimalsView({ initial }: { initial: LivestockDirectory }) {
           </div>
           <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
             <Table headers={["Type", "Event", "Count", "Offspring", "Date", "Expected", "Status", ""]}>
-              {data.pregnancies.map((row) => (
+              {reproductionPage.rows.map((row) => (
                 <tr key={row.id} className="border-t border-slate-100">
-                  <td className="px-3 py-2">{row.animal_type}</td><td className="px-3 py-2">Pregnancy</td><td className="px-3 py-2">{row.quantity}</td><td className="px-3 py-2">—</td>
-                  <td className="px-3 py-2">{row.pregnancy_date ? String(row.pregnancy_date).slice(0, 10) : "—"}</td><td className="px-3 py-2">{row.expected_date ? String(row.expected_date).slice(0, 10) : "—"}</td><td className="px-3 py-2">{row.status}</td>
-                  <td className="px-3 py-2">{row.status === "Active" ? <RowButton active={mark === row.id} state={state} label="Cancel" className="text-sm text-rose-700" onClick={() => save({ action: "pregnancy-cancel", id: row.id }, { mark: row.id })} /> : null}</td>
-                </tr>
-              ))}
-              {data.births.map((row) => (
-                <tr key={row.id} className="border-t border-slate-100">
-                  <td className="px-3 py-2">{row.animal_type}</td><td className="px-3 py-2">Birth</td><td className="px-3 py-2">{row.mothers} mothers</td><td className="px-3 py-2">{row.offspring}</td>
-                  <td className="px-3 py-2">{String(row.birth_date).slice(0, 10)}</td><td className="px-3 py-2">—</td><td className="px-3 py-2">{row.status}</td>
-                  <td className="px-3 py-2">{row.status === "Valid" ? <RowButton active={mark === row.id} state={state} label="Cancel" className="text-sm text-rose-700" onClick={() => save({ action: "birth-cancel", id: row.id }, { mark: row.id })} /> : null}</td>
+                  <td className="px-3 py-2">{row.animal_type}</td>
+                  <td className="px-3 py-2">{row.kind === "pregnancy" ? "Pregnancy" : "Birth"}</td>
+                  <td className="px-3 py-2">{row.kind === "pregnancy" ? row.quantity : `${row.mothers} mothers`}</td>
+                  <td className="px-3 py-2">{row.kind === "birth" ? row.offspring : "—"}</td>
+                  <td className="px-3 py-2">{row.date ? String(row.date).slice(0, 10) : "—"}</td>
+                  <td className="px-3 py-2">{row.kind === "pregnancy" && row.expected_date ? String(row.expected_date).slice(0, 10) : "—"}</td>
+                  <td className="px-3 py-2">{row.status}</td>
+                  <td className="px-3 py-2">
+                    {row.kind === "pregnancy" && row.status === "Active" ? <RowButton active={mark === row.id} state={state} label="Cancel" className="text-sm text-rose-700" onClick={() => save({ action: "pregnancy-cancel", id: row.id }, { mark: row.id })} /> : null}
+                    {row.kind === "birth" && row.status === "Valid" ? <RowButton active={mark === row.id} state={state} label="Cancel" className="text-sm text-rose-700" onClick={() => save({ action: "birth-cancel", id: row.id }, { mark: row.id })} /> : null}
+                  </td>
                 </tr>
               ))}
             </Table>
+            <PaginationBar page={reproductionPage.page} total={reproduction.length} pageSize={reproductionPage.pageSize} onPage={reproductionPage.setPage} onPageSize={reproductionPage.setPageSize} />
           </div>
         </section>
       ) : null}

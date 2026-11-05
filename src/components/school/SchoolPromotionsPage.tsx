@@ -16,6 +16,8 @@ import {
 import { glassCard, glassPanel, inputClass, primaryButton, secondaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { SchoolField, SchoolIconWell, SchoolWorkflowButton } from "@/components/school/school-ui";
 import { SchoolPagination } from "@/components/school/SchoolPagination";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { SCHOOL_PAGE_SIZE, schoolPageMeta } from "@/lib/school/pagination";
 import { formatCompactStudentNumber } from "@/lib/school/student-number";
 import { cn } from "@/lib/cn";
@@ -160,6 +162,7 @@ export function SchoolPromotionsPage({
   const [toYearName, setToYearName] = useState(initialToYearName);
   const [alreadyInTarget, setAlreadyInTarget] = useState(0);
   const [history, setHistory] = useState<PromotionHistoryRow[]>([]);
+  const historyPage = useListPage(history, `${selectedClass?.id ?? ""}:${history.length}`);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
@@ -566,6 +569,7 @@ export function SchoolPromotionsPage({
 
           {panel === "history" ? (
             history.length ? (
+              <>
               <div className={tableScrollClass}>
                 <table className="w-full min-w-[860px] text-left">
                   <thead>
@@ -578,7 +582,7 @@ export function SchoolPromotionsPage({
                     </tr>
                   </thead>
                   <tbody>
-                    {history.map((row) => (
+                    {historyPage.rows.map((row) => (
                       <tr key={row.id} className="border-t border-navy/5 text-[13px] text-navy">
                         <td className="px-3 py-3">
                           <p className="font-semibold">{row.studentName}</p>
@@ -598,6 +602,8 @@ export function SchoolPromotionsPage({
                   </tbody>
                 </table>
               </div>
+              <PaginationBar page={historyPage.page} total={history.length} pageSize={historyPage.pageSize} onPage={historyPage.setPage} onPageSize={historyPage.setPageSize} />
+              </>
             ) : (
               <p className="text-[13.5px] text-slate-500">No confirmed progression history for this class yet.</p>
             )

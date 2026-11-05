@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import type { LivestockDirectory } from "@/lib/livestock/directory";
 import { Drawer, Panel, RowButton, SaveButton, fieldClass, money, useLivestock } from "../livestock-ui";
 
@@ -8,6 +10,7 @@ export function HousesView({ initial }: { initial: LivestockDirectory }) {
   const { data, state, mark, error, save } = useLivestock(initial);
   const [form, setForm] = useState("");
   const [house, setHouse] = useState<string>("");
+  const housePage = useListPage(data.houses, `houses:${data.houses.length}`);
   const selected = data.houses.find((item) => item.id === house);
   const rental = data.rentals.find((item) => item.id === selected?.rental_id) || data.rentals.find((item) => item.house_id === house);
 
@@ -37,7 +40,7 @@ export function HousesView({ initial }: { initial: LivestockDirectory }) {
           <table className="w-full text-left text-sm">
             <thead><tr>{["House", "Location", "Capacity", "Status", "Tenant", "Monthly rent", ""].map((header) => <th key={header} className="px-3 py-2 text-xs uppercase text-slate-400">{header}</th>)}</tr></thead>
             <tbody>
-              {data.houses.map((item) => (
+              {housePage.rows.map((item) => (
                 <tr key={item.id} className="border-t border-slate-100">
                   <td className="px-3 py-2 font-medium">{item.house_name}</td>
                   <td className="px-3 py-2">{item.location}</td>
@@ -56,6 +59,7 @@ export function HousesView({ initial }: { initial: LivestockDirectory }) {
             </tbody>
           </table>
         </div>
+        <PaginationBar page={housePage.page} total={data.houses.length} pageSize={housePage.pageSize} onPage={housePage.setPage} onPageSize={housePage.setPageSize} />
       </section>
       {form === "house" ? <Panel title="Add poultry house" onClose={() => setForm("")} onSubmit={onSubmit}><input name="house_name" required placeholder="House name or number" className={fieldClass} /><input name="location" placeholder="Location" className={fieldClass} /><input name="capacity" type="number" min="0" placeholder="Capacity" className={fieldClass} /><input name="monthly_rent" type="number" min="0" step="0.01" placeholder="Monthly rent" className={fieldClass} /><select name="status" className={fieldClass}><option value="Available">Available</option><option value="Maintenance">Maintenance</option></select><textarea name="notes" placeholder="Notes" className={fieldClass} /><SaveButton state={state} label="Save house" /></Panel> : null}
       {form === "edit" && selected ? <Panel title="Edit house" onClose={() => setForm("")} onSubmit={onSubmit}><input name="location" defaultValue={selected.location} className={fieldClass} /><input name="capacity" type="number" min="0" defaultValue={selected.capacity ?? ""} className={fieldClass} /><input name="monthly_rent" type="number" min="0" step="0.01" defaultValue={selected.monthly_rent} className={fieldClass} /><select name="status" defaultValue={selected.status} className={fieldClass}><option value="Available">Available</option><option value="Maintenance">Maintenance</option></select><textarea name="notes" defaultValue={selected.notes} className={fieldClass} /><SaveButton state={state} label="Save changes" /></Panel> : null}

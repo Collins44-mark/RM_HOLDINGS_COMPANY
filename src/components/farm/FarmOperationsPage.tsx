@@ -7,6 +7,8 @@ import { recordFarmHarvestAction, recordFarmOperationAction, saveFarmPlotAction,
 import { isLikelyOffline, saveWithOutbox } from "@/lib/offline";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { formatTzs } from "@/lib/format/currency";
 import type { ReportPeriod } from "@/lib/data/report-period";
 import { useT } from "@/components/i18n/LocaleProvider";
@@ -35,6 +37,8 @@ export function FarmOperationsPage({
   const [season, setSeason] = useState({ plotId: "", name: "", year: String(new Date().getFullYear()), crop: "" });
   const [op, setOp] = useState({ plotId: "", seasonId: "", tractorId: "", activity: "", occurredOn: todayIso(), areaHa: "", cost: "" });
   const [harvest, setHarvest] = useState({ seasonId: "", quantity: "", unit: "kg", harvestedOn: todayIso() });
+  const operations = workspace?.operations ?? [];
+  const operationPage = useListPage(operations, `${period}:${operations.length}`);
 
   async function refresh() {
     const next = await loadFarmOperationsWorkspaceAction({ period });
@@ -182,9 +186,9 @@ export function FarmOperationsPage({
               </tr>
             </thead>
             <tbody>
-              {(workspace?.operations ?? []).length === 0 ? (
+              {operations.length === 0 ? (
                 <tr><td className="px-3 py-6 text-slate-500" colSpan={4}>{t("farm.ops.empty")}</td></tr>
-              ) : (workspace?.operations ?? []).map((row) => (
+              ) : operationPage.rows.map((row) => (
                 <tr key={row.id} className="border-t border-navy/5 text-navy">
                   <td className="px-3 py-2.5">{row.occurredOn}</td>
                   <td className="px-3 py-2.5">{row.activity}</td>
@@ -195,6 +199,7 @@ export function FarmOperationsPage({
             </tbody>
           </table>
         </div>
+        <PaginationBar page={operationPage.page} total={operations.length} pageSize={operationPage.pageSize} onPage={operationPage.setPage} onPageSize={operationPage.setPageSize} />
       </section>
     </div>
   );

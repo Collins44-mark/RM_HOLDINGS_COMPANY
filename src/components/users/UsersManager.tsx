@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { ArrowLeft, Plus, Search } from "lucide-react";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { PageHeader, Surface } from "@/components/ui/PageHeader";
 import { SaveLabel } from "@/components/ui/SaveMark";
 import { useT } from "@/components/i18n/LocaleProvider";
@@ -157,6 +159,7 @@ export function UsersManager({
     }
     return true;
   });
+  const userPage = useListPage(filtered, `${tab}|${selectedUnit?.code ?? ""}|${roleFilter}|${statusFilter}|${query}`);
 
   const writeUrl = useCallback(
     (
@@ -456,7 +459,7 @@ export function UsersManager({
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((user) => (
+                {userPage.rows.map((user) => (
                   <tr key={user.id} className="border-b border-black/4 last:border-0">
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
@@ -495,7 +498,7 @@ export function UsersManager({
           </Surface>
 
           <div className="space-y-2.5 md:hidden">
-            {filtered.map((user) => (
+            {userPage.rows.map((user) => (
               <div
                 key={user.id}
                 className="flex w-full min-w-0 items-start gap-3 rounded-[16px] border border-white/90 bg-white px-3 py-3 text-left shadow-[0_6px_20px_rgba(20,40,70,0.04)]"
@@ -527,6 +530,7 @@ export function UsersManager({
             ))}
           </div>
 
+          <PaginationBar page={userPage.page} total={filtered.length} pageSize={userPage.pageSize} onPage={userPage.setPage} onPageSize={userPage.setPageSize} />
           {filtered.length === 0 ? (
             <p className="text-sm text-slate-500">No users match the current filters.</p>
           ) : null}

@@ -11,6 +11,8 @@ import {
 } from "@/actions/school/salary";
 import { SchoolField, SchoolIconWell, SchoolWorkflowButton } from "@/components/school/school-ui";
 import { SchoolPagination } from "@/components/school/SchoolPagination";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { ContainedDrawer, DrawerCancel } from "@/components/ui/ContainedDrawer";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
@@ -87,6 +89,7 @@ export function SchoolSalaryPage({
   const [rows, setRows] = useState<SalaryStaffRow[]>(first?.employees ?? []);
   const [payees, setPayees] = useState<SalaryStaffRow[]>(first?.payees ?? []);
   const [payments, setPayments] = useState(first?.payments ?? []);
+  const paymentPage = useListPage(payments, String(payments.length));
   const [summary, setSummary] = useState<SalarySummary>(first?.summary ?? EMPTY_SUMMARY);
   const [page, setPage] = useState<SchoolPageMeta>(first?.page ?? schoolPageMeta(1, 0));
   const [caps, setCaps] = useState<SalaryCaps>(first?.capabilities ?? EMPTY_CAPS);
@@ -334,7 +337,7 @@ export function SchoolSalaryPage({
                 </tr>
               </thead>
               <tbody>
-                {payments.map((row) => (
+                {paymentPage.rows.map((row) => (
                   <tr key={row.id} className="border-t border-navy/5 text-[13.5px] text-navy">
                     <td className="px-4 py-3">{row.staffName}</td>
                     <td className="px-4 py-3">{row.paymentDate}</td>
@@ -349,6 +352,7 @@ export function SchoolSalaryPage({
               </tbody>
             </table>
           </div>
+          <PaginationBar page={paymentPage.page} total={payments.length} pageSize={paymentPage.pageSize} onPage={paymentPage.setPage} onPageSize={paymentPage.setPageSize} />
         </section>
       ) : null}
 

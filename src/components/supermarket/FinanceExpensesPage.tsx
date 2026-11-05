@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import {
@@ -87,6 +89,7 @@ export function FinanceExpensesPage() {
   }, [mapped, period.start, period.end, category, paymentMethod, query]);
 
   const summary = useMemo(() => expenseSummaryCards(rows), [rows]);
+  const list = useListPage(rows, `${query}|${category}|${paymentMethod}|${period.start}|${period.end}`);
 
   return (
     <div className="min-w-0 max-w-full space-y-5 pb-10 sm:space-y-6">
@@ -181,7 +184,7 @@ export function FinanceExpensesPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {list.rows.map((row) => (
                 <tr key={row.id} className="border-t border-white/50 bg-white/35">
                   <td className="px-3 py-3 text-slate-500">{formatFinanceDate(row.date)}</td>
                   <td className="px-3 py-3 font-medium text-navy">{row.name}</td>
@@ -203,6 +206,7 @@ export function FinanceExpensesPage() {
             </tbody>
           </table>
         </div>
+        <PaginationBar page={list.page} total={rows.length} pageSize={list.pageSize} onPage={list.setPage} onPageSize={list.setPageSize} />
       </section>
 
       {expenseOpen ? <RecordExpenseModal onClose={() => setExpenseOpen(false)} /> : null}

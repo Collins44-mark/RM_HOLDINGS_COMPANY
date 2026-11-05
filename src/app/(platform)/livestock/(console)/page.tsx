@@ -71,12 +71,6 @@ export default async function LivestockDashboardPage({ searchParams }: { searchP
         <Mini label="Outstanding payables" value={format(payables)} />
         <Mini label="Net cash result" value={format(saleIncome + rentalIncome - expensesPaid)} />
       </section>
-      <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-        <h2 className="font-semibold text-slate-800">Recent activity</h2>
-        {data.activities.length === 0 ? <p className="py-6 text-sm text-slate-500">No livestock activity yet.</p> : (
-          <ul className="mt-3 space-y-2 text-sm">{data.activities.map((item) => <li key={item.id} className="flex justify-between gap-3"><span>{item.description}</span><span className="text-slate-400">{String(item.created_at).slice(0, 16).replace("T", " ")}</span></li>)}</ul>
-        )}
-      </section>
     </div>
   );
 }

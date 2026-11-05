@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { getStudentTransportWorkspaceAction, setStudentTransportAction } from "@/actions/school/transport-billing";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, secondaryButton, StatusPill } from "@/components/supermarket/purchasing-ui";
 import { formatTzs } from "@/lib/format/currency";
@@ -26,6 +28,8 @@ export function SchoolStudentTransportPanel({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const charges = workspace?.charges ?? [];
+  const chargePage = useListPage(charges, `${enrollmentId ?? ""}:${charges.length}`);
 
   useEffect(() => {
     if (initial || !enrollmentId) return;
@@ -138,7 +142,8 @@ export function SchoolStudentTransportPanel({
           {!selected.billable ? " This route cannot be billed until fare and frequency are configured." : ""}
         </p>
       ) : null}
-      {workspace.charges.length ? (
+      {charges.length ? (
+        <>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-[13.5px]">
             <thead>
@@ -152,7 +157,7 @@ export function SchoolStudentTransportPanel({
               </tr>
             </thead>
             <tbody>
-              {workspace.charges.map((row) => (
+              {chargePage.rows.map((row) => (
                 <tr key={row.id} className="border-t border-navy/5 text-navy">
                   <td className="py-2 pr-3">{row.routeName}</td>
                   <td className="py-2 pr-3">{row.billingPeriod || transportBillingFrequencyLabel(row.billingFrequency)}</td>
@@ -165,6 +170,8 @@ export function SchoolStudentTransportPanel({
             </tbody>
           </table>
         </div>
+        <PaginationBar page={chargePage.page} total={charges.length} pageSize={chargePage.pageSize} onPage={chargePage.setPage} onPageSize={chargePage.setPageSize} />
+        </>
       ) : (
         <p className="text-[13.5px] text-slate-500">No transport charges yet.</p>
       )}

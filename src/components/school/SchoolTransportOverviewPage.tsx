@@ -11,6 +11,8 @@ import {
   tableHead,
   tableScrollClass,
 } from "@/components/supermarket/purchasing-ui";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { SchoolIconWell } from "@/components/school/school-ui";
 import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
@@ -33,6 +35,9 @@ export function SchoolTransportOverviewPage({ initial }: { initial: TransportOve
   const [routes, setRoutes] = useState(ready ? initial.routes : []);
   const [recent, setRecent] = useState(ready ? initial.recent : []);
   const [enabled, setEnabled] = useState(ready ? initial.enabled : false);
+  const busPage = useListPage(buses, `${period}:buses:${buses.length}`);
+  const routePage = useListPage(routes, `${period}:routes:${routes.length}`);
+  const recentPage = useListPage(recent, `${period}:recent:${recent.length}`);
 
   function load(next: TransportPeriod) {
     void getTransportOverviewAction({ period: next }).then((result) => {
@@ -129,7 +134,7 @@ export function SchoolTransportOverviewPage({ initial }: { initial: TransportOve
                 </tr>
               </thead>
               <tbody>
-                {buses.map((row) => (
+                {busPage.rows.map((row) => (
                   <tr key={row.id} className="border-t border-navy/5 text-[13.5px] text-navy">
                     <td className="px-4 py-3 font-semibold">
                       {row.registrationNumber}
@@ -147,6 +152,7 @@ export function SchoolTransportOverviewPage({ initial }: { initial: TransportOve
               </tbody>
             </table>
           </div>
+          <PaginationBar page={busPage.page} total={buses.length} pageSize={busPage.pageSize} onPage={busPage.setPage} onPageSize={busPage.setPageSize} />
         </section>
       )}
 
@@ -167,7 +173,7 @@ export function SchoolTransportOverviewPage({ initial }: { initial: TransportOve
                 </tr>
               </thead>
               <tbody>
-                {routes.map((row) => (
+                {routePage.rows.map((row) => (
                   <tr key={row.id} className="border-t border-navy/5 text-[13.5px] text-navy">
                     <td className="px-4 py-3 font-semibold">{row.name}</td>
                     <td className="px-4 py-3">{formatTzs(row.price)}</td>
@@ -181,6 +187,7 @@ export function SchoolTransportOverviewPage({ initial }: { initial: TransportOve
               </tbody>
             </table>
           </div>
+          <PaginationBar page={routePage.page} total={routes.length} pageSize={routePage.pageSize} onPage={routePage.setPage} onPageSize={routePage.setPageSize} />
         </section>
       ) : null}
 
@@ -201,7 +208,7 @@ export function SchoolTransportOverviewPage({ initial }: { initial: TransportOve
                 </tr>
               </thead>
               <tbody>
-                {recent.map((row) => (
+                {recentPage.rows.map((row) => (
                   <tr key={`${row.kind}-${row.id}`} className="border-t border-navy/5 text-[13.5px] text-navy">
                     <td className="px-4 py-3">{row.recordedOn}</td>
                     <td className="px-4 py-3">{row.busRegistration}</td>
@@ -213,6 +220,7 @@ export function SchoolTransportOverviewPage({ initial }: { initial: TransportOve
               </tbody>
             </table>
           </div>
+          <PaginationBar page={recentPage.page} total={recent.length} pageSize={recentPage.pageSize} onPage={recentPage.setPage} onPageSize={recentPage.setPageSize} />
         </section>
       ) : null}
     </div>

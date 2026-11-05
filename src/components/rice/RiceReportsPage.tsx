@@ -2,6 +2,8 @@
 
 import { FileText } from "lucide-react";
 import type { RiceReportsWorkspace } from "@/actions/rice/workspace";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { glassPanel, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { formatTzs } from "@/lib/format/currency";
 import type { ReportPeriod } from "@/lib/data/report-period";
@@ -21,6 +23,10 @@ export function RiceReportsPage({
   const error = initial.ok ? null : initial.error;
   const t = useT();
   const { locale } = useLocale();
+  const items = workspace?.items ?? [];
+  const accounts = workspace?.accounts ?? [];
+  const itemPage = useListPage(items, `${period}:${items.length}`);
+  const accountPage = useListPage(accounts, `${period}:${accounts.length}`);
 
   return (
     <div className="space-y-5 pb-10">
@@ -67,7 +73,7 @@ export function RiceReportsPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {workspace.items.map((row) => (
+                  {itemPage.rows.map((row) => (
                     <tr key={row.id} className="border-t border-navy/5 text-navy">
                       <td className="px-3 py-2.5">{row.name}</td>
                       <td className="px-3 py-2.5">{t(riceKindKey(row.kind))}</td>
@@ -78,6 +84,7 @@ export function RiceReportsPage({
                 </tbody>
               </table>
             </div>
+            <PaginationBar page={itemPage.page} total={items.length} pageSize={itemPage.pageSize} onPage={itemPage.setPage} onPageSize={itemPage.setPageSize} />
           </section>
           <section className={glassPanel}>
             <h2 className="text-[16px] font-semibold text-navy">{t("rice.reports.storage")}</h2>
@@ -90,14 +97,14 @@ export function RiceReportsPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {workspace.accounts.length === 0 ? (
+                  {accounts.length === 0 ? (
                     <tr>
                       <td className="px-3 py-6 text-slate-500" colSpan={2}>
                         {t("rice.reports.storageEmpty")}
                       </td>
                     </tr>
                   ) : (
-                    workspace.accounts.map((row) => (
+                    accountPage.rows.map((row) => (
                       <tr key={row.id} className="border-t border-navy/5 text-navy">
                         <td className="px-3 py-2.5">{row.partyName}</td>
                         <td className="px-3 py-2.5">{formatKg(row.qtyKg, locale)}</td>
@@ -107,6 +114,7 @@ export function RiceReportsPage({
                 </tbody>
               </table>
             </div>
+            <PaginationBar page={accountPage.page} total={accounts.length} pageSize={accountPage.pageSize} onPage={accountPage.setPage} onPageSize={accountPage.setPageSize} />
           </section>
         </>
       ) : null}

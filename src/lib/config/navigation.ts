@@ -204,6 +204,7 @@ export const LIVESTOCK_NAV: NavItem[] = [
   { href: "/livestock/animals", label: "Livestock Management", icon: "paw" },
   { href: "/livestock/houses", label: "Poultry Houses", icon: "home" },
   { href: "/livestock/expenses", label: "Expenses", icon: "wallet" },
+  { href: "/livestock/reports", label: "Reports", icon: "reports" },
 ];
 
 export const BEEKEEPING_NAV: NavItem[] = [

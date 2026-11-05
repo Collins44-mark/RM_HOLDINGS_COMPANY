@@ -1,10 +1,12 @@
 "use client";
 
-import { useActionState, useId, useState } from "react";
+import { useActionState, useEffect, useId, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { loginAction, type LoginState } from "@/actions/auth";
 import { Logo } from "@/components/branding/Logo";
 import { useLocale } from "@/components/i18n/LocaleProvider";
+import { Spinner, Tick } from "@/components/ui/SaveMark";
 import { cn } from "@/lib/cn";
 
 const fieldClass =
@@ -23,10 +25,18 @@ export function LoginForm({
   void _subtitle;
   const t = useLocale().t;
   const { organisationName } = useLocale();
+  const router = useRouter();
   const [state, action, pending] = useActionState<LoginState, FormData>(loginAction, null);
   const [showPassword, setShowPassword] = useState(false);
   const emailId = useId();
   const passwordId = useId();
+  const succeeded = Boolean(state?.ok && state.href);
+
+  useEffect(() => {
+    if (!succeeded || !state?.href) return;
+    const timer = window.setTimeout(() => router.push(state.href!), 700);
+    return () => window.clearTimeout(timer);
+  }, [succeeded, state?.href, router]);
 
   return (
     <div className="relative flex min-h-dvh items-center justify-center overflow-hidden px-4 py-8 sm:px-5">
@@ -123,11 +133,19 @@ export function LoginForm({
 
           <button
             type="submit"
-            disabled={pending}
-            className="mt-6 inline-flex h-[58px] w-full items-center justify-center gap-2 rounded-[16px] bg-navy text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(15,35,64,0.22)] transition duration-200 hover:-translate-y-px hover:bg-[#132844] hover:shadow-[0_14px_28px_rgba(15,35,64,0.26)] active:translate-y-0 active:bg-[#0c1c33] disabled:translate-y-0 disabled:opacity-70"
+            disabled={pending || succeeded}
+            className={cn(
+              "mt-6 inline-flex h-[58px] w-full items-center justify-center gap-2 rounded-[16px] bg-navy text-[15px] font-semibold text-white shadow-[0_10px_24px_rgba(15,35,64,0.22)] transition duration-200 hover:-translate-y-px hover:bg-[#132844] hover:shadow-[0_14px_28px_rgba(15,35,64,0.26)] active:translate-y-0 active:bg-[#0c1c33] disabled:translate-y-0",
+              succeeded && "bg-emerald-600 hover:bg-emerald-600",
+              pending && "opacity-90",
+            )}
           >
-            {pending ? t("login.submitting") : t("login.submit")}
-            {pending ? null : <ArrowRight className="h-4 w-4" strokeWidth={2.2} />}
+            {pending ? <Spinner /> : succeeded ? <Tick /> : (
+              <>
+                {t("login.submit")}
+                <ArrowRight className="h-4 w-4" strokeWidth={2.2} />
+              </>
+            )}
           </button>
         </form>
       </div>

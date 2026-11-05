@@ -1,5 +1,5 @@
 /* RM Holdings app-shell worker. Keep cache rules aligned with src/lib/offline/shell-policy.ts */
-const VERSION = "rm-shell-v4";
+const VERSION = "rm-shell-v5";
 const STATIC_CACHE = `${VERSION}-static`;
 const PRECACHE = ["/offline", "/login", "/manifest.webmanifest", "/file.svg"];
 const PUBLIC_PATHS = new Set([
@@ -89,6 +89,7 @@ self.addEventListener("fetch", (event) => {
   if (bypass(request)) return;
 
   const url = new URL(request.url);
+  if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return;
 
   if (request.mode === "navigate") {
     event.respondWith(
@@ -96,8 +97,13 @@ self.addEventListener("fetch", (event) => {
         try {
           const fresh = await fetch(request);
           if (fresh.ok && fresh.type === "basic" && currentUserId && !PUBLIC_PATHS.has(url.pathname)) {
-            const cache = await caches.open(pageCacheName(currentUserId));
-            await cache.put(request, fresh.clone());
+            const copy = fresh.clone();
+            event.waitUntil(
+              caches
+                .open(pageCacheName(currentUserId))
+                .then((cache) => cache.put(request, copy))
+                .catch(() => undefined),
+            );
           }
           return fresh;
         } catch {

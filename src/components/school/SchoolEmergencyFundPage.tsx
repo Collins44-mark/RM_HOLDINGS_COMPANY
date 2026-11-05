@@ -8,6 +8,8 @@ import {
   loadSchoolEmergencyFundAction,
   type SchoolEmergencyFundResult,
 } from "@/actions/school/expenses";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { SchoolField, SchoolWorkflowButton } from "@/components/school/school-ui";
 import { cn } from "@/lib/cn";
 import { saveWithOutbox } from "@/lib/offline";
@@ -91,6 +93,7 @@ export function SchoolEmergencyFundPage({
     if (date) return date;
     return b.createdAt.localeCompare(a.createdAt);
   });
+  const rowPage = useListPage(rows, `${bounds.from}|${bounds.to}|${rows.length}`);
 
   function load(next: { period?: ReportPeriod; from?: string; to?: string } = {}) {
     const seqPeriod = next.period ?? period;
@@ -299,6 +302,7 @@ export function SchoolEmergencyFundPage({
         </div>
 
         {rows.length ? (
+          <>
           <div className={tableScrollClass}>
             <table className="w-full min-w-[860px] text-left">
               <thead>
@@ -311,7 +315,7 @@ export function SchoolEmergencyFundPage({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((entry) => (
+                {rowPage.rows.map((entry) => (
                   <tr key={entry.id} className="border-t border-navy/5 text-[13px] text-navy">
                     <td className="px-4 py-2">{entry.occurredOn}</td>
                     <td className="px-4 py-2">{fundEntryKindLabel(entry.kind)}</td>
@@ -328,6 +332,8 @@ export function SchoolEmergencyFundPage({
               </tbody>
             </table>
           </div>
+          <PaginationBar page={rowPage.page} total={rows.length} pageSize={rowPage.pageSize} onPage={rowPage.setPage} onPageSize={rowPage.setPageSize} />
+          </>
         ) : (
           <p className="text-[13px] text-slate-500">No emergency fund entries in this period.</p>
         )}

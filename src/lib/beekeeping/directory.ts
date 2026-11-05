@@ -294,7 +294,7 @@ export async function listBeekeepingDirectory(): Promise<BeeDirectory> {
     admin.from("bee_sale_payments").select("*").eq("business_unit_id", buId).order("payment_date", { ascending: false }),
     admin.from("bee_expenses").select("*").eq("business_unit_id", buId).order("expense_date", { ascending: false }),
     admin.from("bee_expense_payments").select("*").eq("business_unit_id", buId).order("payment_date", { ascending: false }),
-    admin.from("audit_logs").select("id, action, description, created_at").eq("module", "beekeeping").eq("business_unit_id", buId).order("created_at", { ascending: false }).limit(8),
+    admin.from("audit_logs").select("id, action, description, created_at").eq("module", "beekeeping").eq("business_unit_id", buId).order("created_at", { ascending: false }).limit(5),
   ]);
   if (hives.error) return empty;
   return presentDirectory({

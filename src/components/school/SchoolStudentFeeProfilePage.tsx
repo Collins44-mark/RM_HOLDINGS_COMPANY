@@ -9,6 +9,8 @@ import {
   recordSchoolFeePaymentAction,
   verifySchoolFeePaymentAction,
 } from "@/actions/school/fees";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { ContainedDrawer, DrawerCancel, useContainedDrawerClose } from "@/components/ui/ContainedDrawer";
 import {
@@ -127,6 +129,11 @@ export function SchoolStudentFeeProfilePage({
     setPayChargeId(next ? payableSelectorId(next) : "");
     setPayOpen(true);
   }, [openPay, initialAccount]);
+
+  const obligations = account?.obligations ?? [];
+  const payments = account?.payments ?? [];
+  const obligationPage = useListPage(obligations, `${account?.studentId ?? ""}:${obligations.length}`);
+  const paymentPage = useListPage(payments, `${account?.studentId ?? ""}:${payments.length}`);
 
   if (!account && pending) {
     return (
@@ -374,6 +381,7 @@ export function SchoolStudentFeeProfilePage({
         {account.obligations.length === 0 ? (
           <p className="px-4 pb-4 text-[13.5px] text-slate-500">No billed obligations for this student.</p>
         ) : (
+          <>
           <div className={tableScrollClass}>
             <table className="w-full min-w-[720px] text-left">
               <thead>
@@ -386,7 +394,7 @@ export function SchoolStudentFeeProfilePage({
                 </tr>
               </thead>
               <tbody>
-                {account.obligations.map((row) => (
+                {obligationPage.rows.map((row) => (
                   <tr key={row.chargeId || `${row.enrollmentId}-${row.description}`} className="border-t border-navy/5 text-[13.5px] text-navy">
                     <td className="px-4 py-3">{row.description}</td>
                     <td className="px-4 py-3">{row.billingPeriod || row.academicYearName}</td>
@@ -408,6 +416,8 @@ export function SchoolStudentFeeProfilePage({
               </tbody>
             </table>
           </div>
+          <PaginationBar page={obligationPage.page} total={obligations.length} pageSize={obligationPage.pageSize} onPage={obligationPage.setPage} onPageSize={obligationPage.setPageSize} />
+          </>
         )}
       </section>
 
@@ -416,6 +426,7 @@ export function SchoolStudentFeeProfilePage({
         {account.payments.length === 0 ? (
           <p className="px-4 py-4 text-[13.5px] text-slate-500">No payments recorded yet.</p>
         ) : (
+          <>
           <div className={tableScrollClass}>
             <table className="w-full min-w-[820px] text-left">
               <thead>
@@ -428,7 +439,7 @@ export function SchoolStudentFeeProfilePage({
                 </tr>
               </thead>
               <tbody>
-                {account.payments.map((payment) => (
+                {paymentPage.rows.map((payment) => (
                   <tr key={payment.id} className="border-t border-navy/5 text-[13.5px] text-navy">
                     <td className="px-4 py-3">{formatWhen(payment.recordedAt, payment.paymentDate)}</td>
                     <td className="px-4 py-3 tabular-nums">{formatTzs(payment.amount)}</td>
@@ -478,6 +489,8 @@ export function SchoolStudentFeeProfilePage({
               </tbody>
             </table>
           </div>
+          <PaginationBar page={paymentPage.page} total={payments.length} pageSize={paymentPage.pageSize} onPage={paymentPage.setPage} onPageSize={paymentPage.setPageSize} />
+          </>
         )}
       </section>
 

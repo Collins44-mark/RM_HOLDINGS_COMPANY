@@ -28,6 +28,8 @@ import {
 } from "@/components/supermarket/purchasing-ui";
 import { downloadPurchaseDocumentPdf } from "@/lib/supermarket/inventory-store";
 import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { useAuth } from "@/components/auth/AuthProvider";
 
 type PurchasingTab = "orders" | "purchases" | "suppliers";
@@ -214,6 +216,7 @@ function OrdersView({
   onQuery: (value: string) => void;
   orders: ReturnType<typeof useSupermarketInventory>["purchaseOrders"];
 }) {
+  const list = useListPage(orders, `${query}|${focus}`);
   return (
     <div className="space-y-5">
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3.5 lg:grid-cols-3 xl:grid-cols-5">
@@ -245,7 +248,7 @@ function OrdersView({
               </tr>
             </thead>
             <tbody>
-              {orders.map((order) => (
+              {list.rows.map((order) => (
                 <tr key={order.id} className="border-t border-[#d5dee8]/80">
                   <td className="px-4 py-3 font-semibold text-navy">{order.number}</td>
                   <td className="px-4 py-3 text-slate-500">{order.supplierName}</td>
@@ -267,7 +270,7 @@ function OrdersView({
           </table>
         </div>
         <div className="divide-y divide-[#d5dee8]/70 md:hidden">
-          {orders.map((order) => (
+          {list.rows.map((order) => (
             <Link key={order.id} href={`/supermarket/purchasing/${order.id}`} className="block px-4 py-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -288,6 +291,7 @@ function OrdersView({
             {query || focus !== "all" ? "No purchase orders match this view." : "No purchase orders yet."}
           </p>
         ) : null}
+        <PaginationBar page={list.page} total={orders.length} pageSize={list.pageSize} onPage={list.setPage} onPageSize={list.setPageSize} />
       </section>
     </div>
   );
@@ -305,6 +309,7 @@ function PurchasesView({
   invoices: ReturnType<typeof useSupermarketInventory>["supplierInvoices"];
 }) {
   const router = useRouter();
+  const list = useListPage(purchases, query);
 
   function payablesFor(purchaseOrderId: string) {
     const verified = invoices.filter(
@@ -337,7 +342,7 @@ function PurchasesView({
               </tr>
             </thead>
             <tbody>
-              {purchases.map((item) => {
+              {list.rows.map((item) => {
                 const payables = payablesFor(item.purchaseOrderId);
                 return (
                 <tr key={item.id} className="border-t border-[#d5dee8]/80">
@@ -382,7 +387,7 @@ function PurchasesView({
           </table>
         </div>
         <div className="divide-y divide-[#d5dee8]/70 md:hidden">
-          {purchases.map((item) => {
+          {list.rows.map((item) => {
             const payables = payablesFor(item.purchaseOrderId);
             return (
             <div key={item.id} className="flex items-start justify-between gap-3 px-4 py-3">
@@ -428,6 +433,7 @@ function PurchasesView({
             {query ? "No purchases match this search." : "No purchases yet."}
           </p>
         ) : null}
+        <PaginationBar page={list.page} total={purchases.length} pageSize={list.pageSize} onPage={list.setPage} onPageSize={list.setPageSize} />
       </section>
     </div>
   );
@@ -446,11 +452,12 @@ function SuppliersView({
   purchases: ReturnType<typeof useSupermarketInventory>["purchases"];
   invoices: ReturnType<typeof useSupermarketInventory>["supplierInvoices"];
 }) {
+  const list = useListPage(suppliers, query);
   return (
     <div className="space-y-5">
       <SearchField value={query} onChange={onQuery} placeholder="Search suppliers..." />
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3.5 xl:grid-cols-3">
-        {suppliers.map((supplier) => (
+        {list.rows.map((supplier) => (
           <Link key={supplier.id} href={`/supermarket/purchasing/suppliers/${supplier.id}`} className={cn(glassCard, "px-4 py-4 transition hover:bg-white/85")}>
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -481,6 +488,7 @@ function SuppliersView({
           {query ? "No suppliers match this search." : "No suppliers yet."}
         </p>
       ) : null}
+      <PaginationBar page={list.page} total={suppliers.length} pageSize={list.pageSize} onPage={list.setPage} onPageSize={list.setPageSize} />
     </div>
   );
 }

@@ -15,6 +15,8 @@ import {
   Settings2,
   Tag,
 } from "lucide-react";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { cn } from "@/lib/cn";
 import {
   effectivePromotionStatus,
@@ -128,6 +130,7 @@ export function PromotionsManager() {
       );
     });
   }, [items, tab, query, typeFilter, categoryFilter, statusFilter]);
+  const list = useListPage(filtered, `${tab}|${query}|${typeFilter}|${categoryFilter}|${statusFilter}`);
 
   useEffect(() => {
     if (!menu) return;
@@ -311,11 +314,11 @@ export function PromotionsManager() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((item, index) => {
+                list.rows.map((item, index) => {
                   const status = effectivePromotionStatus(item);
                   return (
                     <tr key={item.id} className="border-t border-[#eef2f7] transition hover:bg-white/55">
-                      <td className="px-4 py-3.5 text-[13px] text-slate-400">{index + 1}</td>
+                      <td className="px-4 py-3.5 text-[13px] text-slate-400">{(list.page - 1) * list.pageSize + index + 1}</td>
                       <td className="px-4 py-3.5">
                         <span className="block text-[13.5px] font-semibold tracking-[-0.02em] text-navy">{item.name}</span>
                         <span className="mt-0.5 block text-[12px] text-slate-400">{item.description}</span>
@@ -365,7 +368,7 @@ export function PromotionsManager() {
                 : "No promotions yet."}
             </p>
           ) : (
-            filtered.map((item, index) => {
+            list.rows.map((item, index) => {
               const status = effectivePromotionStatus(item);
               return (
                 <article
@@ -374,7 +377,7 @@ export function PromotionsManager() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-[11px] font-medium text-slate-400">#{index + 1}</p>
+                      <p className="text-[11px] font-medium text-slate-400">#{(list.page - 1) * list.pageSize + index + 1}</p>
                       <h3 className="mt-0.5 text-[14.5px] font-semibold tracking-[-0.02em] text-navy">{item.name}</h3>
                       <p className="mt-0.5 text-[12.5px] text-slate-400">{item.description}</p>
                     </div>
@@ -404,6 +407,7 @@ export function PromotionsManager() {
             })
           )}
         </div>
+        <PaginationBar page={list.page} total={filtered.length} pageSize={list.pageSize} onPage={list.setPage} onPageSize={list.setPageSize} />
       </section>
 
       {menu && menuItem && menuStatus && typeof document !== "undefined"

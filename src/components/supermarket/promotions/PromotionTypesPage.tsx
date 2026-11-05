@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { SaveLabel } from "@/components/ui/SaveMark";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
@@ -29,6 +31,7 @@ export function PromotionTypesPage() {
       })),
     [live.types, live.promotions],
   );
+  const list = useListPage(rows, String(rows.length));
 
   const editing = rows.find((item) => item.id === editingId) ?? null;
 
@@ -99,7 +102,7 @@ export function PromotionTypesPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {list.rows.map((row) => (
                 <tr key={row.id} className="border-t border-white/50">
                   <td className="px-5 py-3.5">
                     <p className="text-[13.5px] font-semibold text-navy">{row.name}</p>
@@ -145,6 +148,7 @@ export function PromotionTypesPage() {
             </tbody>
           </table>
         </div>
+        <PaginationBar page={list.page} total={rows.length} pageSize={list.pageSize} onPage={list.setPage} onPageSize={list.setPageSize} />
       </section>
 
       {editing ? (

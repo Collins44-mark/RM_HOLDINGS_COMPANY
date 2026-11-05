@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { LIVESTOCK_EXPENSE_CATEGORIES } from "@/lib/livestock/actions";
 import type { LivestockDirectory } from "@/lib/livestock/directory";
 import { Panel, RowButton, SaveButton, fieldClass, money, useLivestock } from "../livestock-ui";
@@ -9,6 +11,7 @@ export function ExpensesView({ initial }: { initial: LivestockDirectory }) {
   const { data, state, mark, error, save } = useLivestock(initial);
   const [form, setForm] = useState("");
   const categories = LIVESTOCK_EXPENSE_CATEGORIES.filter((category) => category !== "Livestock Purchase");
+  const expensePage = useListPage(data.expenses, `expenses:${data.expenses.length}`);
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -30,7 +33,7 @@ export function ExpensesView({ initial }: { initial: LivestockDirectory }) {
         <table className="w-full text-left text-sm">
           <thead><tr>{["Reference", "Date", "Category", "Description", "Amount", "Paid", "Balance", "Status", ""].map((header) => <th key={header} className="px-3 py-2 text-xs uppercase text-slate-400">{header}</th>)}</tr></thead>
           <tbody>
-            {data.expenses.map((row) => (
+            {expensePage.rows.map((row) => (
               <tr key={row.id} className="border-t border-slate-100">
                 <td className="px-3 py-2">{row.expense_code}</td>
                 <td className="px-3 py-2">{String(row.expense_date).slice(0, 10)}</td>
@@ -48,6 +51,7 @@ export function ExpensesView({ initial }: { initial: LivestockDirectory }) {
             ))}
           </tbody>
         </table>
+        <PaginationBar page={expensePage.page} total={data.expenses.length} pageSize={expensePage.pageSize} onPage={expensePage.setPage} onPageSize={expensePage.setPageSize} />
       </section>
       {form === "expense" ? (
         <Panel title="Add expense" onClose={() => setForm("")} onSubmit={onSubmit}>

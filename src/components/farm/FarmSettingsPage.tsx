@@ -2,6 +2,8 @@
 
 import { Settings } from "lucide-react";
 import type { FarmSettingsWorkspace } from "@/actions/farm/workspace";
+import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { glassPanel, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { LanguagePreference } from "@/components/i18n/LanguagePreference";
 import { useT } from "@/components/i18n/LocaleProvider";
@@ -12,6 +14,8 @@ export function FarmSettingsPage({ initial }: { initial: { ok: true; workspace: 
   const t = useT();
   const workspace = initial.ok ? initial.workspace : null;
   const error = initial.ok ? null : initial.error;
+  const services = workspace?.services ?? [];
+  const servicePage = useListPage(services, String(services.length));
   return (
     <div className="space-y-5 pb-10">
       <FarmPageHeader icon={Settings} title={t("farm.settings.title")} subtitle={t("farm.settings.subtitle")} />
@@ -28,7 +32,7 @@ export function FarmSettingsPage({ initial }: { initial: { ok: true; workspace: 
               </tr>
             </thead>
             <tbody>
-              {(workspace?.services ?? []).map((row) => (
+              {servicePage.rows.map((row) => (
                 <tr key={row.id} className="border-t border-navy/5 text-navy">
                   <td className="px-3 py-2.5">{row.code}</td>
                   <td className="px-3 py-2.5">{row.name}</td>
@@ -37,6 +41,7 @@ export function FarmSettingsPage({ initial }: { initial: { ok: true; workspace: 
             </tbody>
           </table>
         </div>
+        <PaginationBar page={servicePage.page} total={services.length} pageSize={servicePage.pageSize} onPage={servicePage.setPage} onPageSize={servicePage.setPageSize} />
       </section>
     </div>
   );
