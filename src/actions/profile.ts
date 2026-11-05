@@ -71,11 +71,6 @@ export async function updateAvatarAction(image: string): Promise<ProfileState> {
     .eq("id", actor.id);
   if (error) return { error: "Unable to save your photo. Please try again." };
 
-  const supabase = await createSupabaseServerClient();
-  if (supabase) {
-    await supabase.auth.updateUser({ data: { avatar_url: image, full_name: actor.name } });
-  }
-
   await writeAuditEvent({
     action: "profile.updated",
     module: "profile",

@@ -84,7 +84,7 @@ function legacyOwnerFromAuth(user: User): AuthUser {
     name: fullName,
     title: typeof metadata.title === "string" ? metadata.title : "Owner",
     phone: typeof metadata.phone === "string" ? metadata.phone : null,
-    avatarUrl: typeof metadata.avatar_url === "string" ? metadata.avatar_url : null,
+    avatarUrl: null,
     roleCode: "SUPER_ADMIN",
     roleName: "Owner",
     modules: ["*"],
