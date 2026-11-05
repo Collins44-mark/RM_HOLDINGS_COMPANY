@@ -2,6 +2,7 @@ import Link from "next/link";
 import { formatTzs } from "@/lib/format/currency";
 import { listBeekeepingDirectory } from "@/lib/beekeeping/directory";
 import { beePeriodWindow, inWindow } from "@/lib/beekeeping/period";
+import { BeePeriodFilter } from "./period-filter";
 import { roundKg, roundMoney } from "@/lib/beekeeping/constants";
 
 export const dynamic = "force-dynamic";
@@ -37,17 +38,7 @@ export default async function BeekeepingDashboardPage({
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Beekeeping</h1>
           <p className="mt-1 text-sm text-slate-500">Hives, harvests, honey stock, sales, and expenses for this business.</p>
         </div>
-        <form className="flex flex-wrap items-center gap-2" action="/beekeeping">
-          <select name="period" defaultValue={params.period || "month"} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-            <option value="month">This Month</option>
-            <option value="last">Last Month</option>
-            <option value="year">This Year</option>
-            <option value="custom">Custom range</option>
-          </select>
-          <input name="from" type="date" defaultValue={params.from || ""} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" aria-label="From" />
-          <input name="to" type="date" defaultValue={params.to || ""} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" aria-label="To" />
-          <button className="rounded-xl bg-[#0b2244] px-3 py-2 text-sm font-semibold text-white">Apply</button>
-        </form>
+        <BeePeriodFilter period={params.period === "week" || params.period === "year" || params.period === "custom" ? params.period : "month"} from={params.from || ""} to={params.to || ""} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -166,6 +166,17 @@ begin
   end if;
   perform pg_advisory_xact_lock(hashtext(p_business_unit_id::text || ':bee-stock'));
 
+  loop
+    exit when not exists (
+      select 1 from bee_sales
+      where business_unit_id = p_business_unit_id and sale_code = p_sale_code
+    );
+    select 'SALE-' || lpad((coalesce(max((regexp_match(sale_code, '^SALE-([0-9]+)$'))[1]::int), 0) + 1)::text, 3, '0')
+      into p_sale_code
+    from bee_sales
+    where business_unit_id = p_business_unit_id;
+  end loop;
+
   select coalesce(sum(h.quantity_kg - coalesce(a.allocated, 0)), 0)
     into available
   from bee_harvests h

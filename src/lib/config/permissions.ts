@@ -151,15 +151,28 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "payments", actions: ["view", "create"] },
       { resource: "bookings", actions: [...CRUD] },
       { resource: "expenses", actions: ["view", "create"] },
+      { resource: "reports", actions: ["view"] },
     ]).map((code) => ({ module: "property", code, name: titleize(code) })),
     ...expand("livestock", [
+      { resource: "dashboard", actions: ["view"] },
+      { resource: "records", actions: ["view", "create", "edit"] },
+      { resource: "types", actions: ["manage"] },
+      { resource: "purchases", actions: ["manage"] },
+      { resource: "pregnancy", actions: ["manage"] },
+      { resource: "births", actions: ["manage"] },
+      { resource: "movements", actions: ["manage"] },
+      { resource: "sales", actions: ["manage"] },
+      { resource: "houses", actions: ["manage"] },
+      { resource: "rentals", actions: ["manage"] },
+      { resource: "rental_payments", actions: ["record"] },
+      { resource: "expenses", actions: ["manage"] },
+      { resource: "expense_payments", actions: ["record"] },
+      { resource: "reports", actions: ["view"] },
       { resource: "animals", actions: [...CRUD] },
       { resource: "health", actions: ["view", "create", "edit"] },
       { resource: "breeding", actions: ["view", "create"] },
-      { resource: "births", actions: ["view", "create"] },
       { resource: "deaths", actions: ["view", "create"] },
       { resource: "feeds", actions: ["view", "create"] },
-      { resource: "sales", actions: ["view", "create"] },
     ]).map((code) => ({ module: "livestock", code, name: titleize(code) })),
     ...expand("beekeeping", [
       { resource: "dashboard", actions: ["view"] },
@@ -172,8 +185,8 @@ export const PERMISSION_CATALOG: PermissionItem[] =
   ];
 
 /** Permissions that map to live application capabilities. */
-export const OPERABLE_PERMISSION_MODULES = ["platform", "supermarket", "school", "rice", "beekeeping"] as const;
-export const IMPLEMENTED_BUSINESS_MODULES = ["supermarket", "school", "rice", "beekeeping"] as const;
+export const OPERABLE_PERMISSION_MODULES = ["platform", "supermarket", "school", "rice", "farm", "property", "livestock", "beekeeping"] as const;
+export const IMPLEMENTED_BUSINESS_MODULES = ["supermarket", "school", "rice", "farm", "property", "livestock", "beekeeping"] as const;
 export const OWNER_DISPLAY_NAME = "Owner";
 /** Unique `roles.name` for code SUPER_ADMIN. Never shown in the UI. */
 export const OWNER_LEGACY_DB_NAME = "Owner Legacy";
@@ -183,6 +196,9 @@ export function isOperablePermission(code: string) {
     code.startsWith("platform.") ||
     code.startsWith("supermarket.") ||
     code.startsWith("rice.") ||
+    code.startsWith("farm.") ||
+    code.startsWith("property.") ||
+    code.startsWith("livestock.") ||
     code.startsWith("beekeeping.") ||
     code === "school.settings.view" ||
     code === "school.settings.manage" ||
@@ -279,6 +295,10 @@ const MODULE_LABELS: Record<string, string> = {
   supermarket: "Supermarket",
   school: "School",
   rice: "Rice Mill & Warehouse",
+  farm: "Farm & Tractor Services",
+  property: "Properties & Rentals",
+  livestock: "Livestock Farm",
+  beekeeping: "Beekeeping",
 };
 
 const RESOURCE_LABELS: Record<string, string> = {
@@ -305,6 +325,12 @@ const RESOURCE_LABELS: Record<string, string> = {
   expenses: "Expenses",
   store: "Store & Inventory",
   payroll: "Payroll",
+  hives: "Beehives",
+  harvests: "Harvests",
+  bookings: "Hall Bookings",
+  tractors: "Tractors",
+  plots: "Plots",
+  animals: "Animals",
 };
 
 export function permissionModuleLabel(module: string) {

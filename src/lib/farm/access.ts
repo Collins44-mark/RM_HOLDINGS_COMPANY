@@ -99,7 +99,7 @@ export function isFarmUnconfiguredRead(error: ReadError) {
 export function mapFarmDbError(error: { message: string; code?: string } | null, operation: "load" | "save" = "save"): never {
   const fallback = operation === "load" ? "Couldn't load this page." : "Couldn't save. Please try again.";
   if (!error) throw new FarmError(fallback, "DATABASE");
-  if (error.code === "23505") throw new FarmError("That record is already posted.", "CONFLICT");
+  if (error.code === "23505" || /duplicate key|unique constraint/i.test(error.message)) throw new FarmError("That record is already posted.", "CONFLICT");
   if (error.code === "23514") throw new FarmError("Check the quantities and amounts entered.", "VALIDATION");
   if (error.code === "42501" || error.message.toLowerCase().includes("permission denied")) {
     throw new FarmError("This action isn’t available.", "PRIVILEGE");

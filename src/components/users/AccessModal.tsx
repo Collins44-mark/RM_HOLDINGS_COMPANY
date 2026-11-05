@@ -20,12 +20,11 @@ export function AccessModal({
   wide?: boolean;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-navy/25 p-0 sm:items-center sm:p-6">
+    <div className="fixed inset-x-0 bottom-0 top-16 z-50 flex items-start justify-center overflow-y-auto bg-navy/25 px-4 py-4 sm:top-[88px]">
       <button type="button" className="absolute inset-0" aria-label="Close" onClick={onClose} />
       <div
         className={cn(
-          "relative flex max-h-[100vh] w-full flex-col overflow-hidden border border-white/70 bg-white/90 shadow-[0_18px_50px_rgba(15,35,64,0.16)] backdrop-blur-xl",
-          "rounded-t-[24px] sm:max-h-[calc(100vh-48px)] sm:rounded-[24px]",
+          "relative my-1 flex max-h-[calc(100vh-7.5rem)] w-full flex-col overflow-hidden rounded-[24px] border border-white/70 bg-white/90 shadow-[0_18px_50px_rgba(15,35,64,0.16)] backdrop-blur-xl",
           wide ? "sm:max-w-[920px]" : "sm:max-w-[780px]",
         )}
       >

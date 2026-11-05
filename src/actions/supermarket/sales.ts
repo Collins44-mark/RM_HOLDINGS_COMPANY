@@ -241,7 +241,7 @@ export async function createPosCustomerAction(input: { name: string; phone?: str
       .select("name")
       .maybeSingle();
     if (error) {
-      if (error.code === "23505") {
+      if (error.code === "23505" || /duplicate key|unique constraint/i.test(error.message || "")) {
         return { ok: true as const, name };
       }
       mapDbError(error);
@@ -315,7 +315,7 @@ export async function upsertMobileMoneyProviderAction(input: {
     }
     const { data, error } = await supabase.from("sm_payment_providers").insert(payload).select("id").maybeSingle();
     if (error) {
-      if (error.code === "23505") {
+      if (error.code === "23505" || /duplicate key|unique constraint/i.test(error.message || "")) {
         throw new SupermarketError("A provider with this name already exists.", "CONFLICT");
       }
       mapDbError(error);

@@ -1,3 +1,5 @@
+import { writeAuditEvent } from "@/lib/audit";
+import { isUniqueConflict, losesToEarlier, writeError } from "@/lib/data/conflict";
 import { businessToday, invoiceStatus, PAYMENT_METHODS, presentInvoices } from "@/lib/property/invoices";
 import { isCurrentContract } from "@/lib/property/contracts";
 import { nextSerial } from "@/lib/property/serial";
@@ -12,6 +14,20 @@ function money(value: unknown) {
 
 function invoiceNumber(existing: string[]) {
   return nextSerial(existing, "INV", 1);
+}
+
+function samePeriod(left: any, right: any) {
+  return String(left.billing_period_start).slice(0, 10) === String(right.billing_period_start).slice(0, 10)
+    && String(left.billing_period_end).slice(0, 10) === String(right.billing_period_end).slice(0, 10);
+}
+
+async function releaseLaterInvoice(admin: any, buId: string, row: any) {
+  const { data } = await admin.from("rent_invoices").select("id, contract_id, billing_period_start, billing_period_end, status, created_at").eq("business_unit_id", buId).eq("contract_id", row.contract_id);
+  const overlaps = (data || []).filter((invoice: any) => invoice.id !== row.id && invoice.status !== "Cancelled" && samePeriod(invoice, row));
+  if (!losesToEarlier(row, overlaps)) return null;
+  if (Number(row.amount_paid) > 0) return "An invoice already exists for this contract and billing period";
+  await admin.from("rent_invoices").delete().eq("id", row.id).eq("business_unit_id", buId);
+  return "An invoice already exists for this contract and billing period";
 }
 
 async function load(admin: any, buId: string) {
@@ -83,13 +99,14 @@ export async function createInvoice(admin: any, buId: string, body: any) {
   const duplicate = directory.invoices.find((invoice: any) => invoice.contract_id === contract.id && invoice.status !== "Cancelled" && String(invoice.billing_period_start).slice(0, 10) === start && String(invoice.billing_period_end).slice(0, 10) === end);
   if (duplicate) return { error: "An invoice already exists for this contract and billing period" };
 
+  const taken = directory.invoices.map((invoice: any) => invoice.invoice_number);
   const payload = {
     business_unit_id: buId,
     contract_id: contract.id,
     tenant_id: contract.tenant_id,
     property_id: contract.property_id,
     unit_id: contract.unit_id,
-    invoice_number: invoiceNumber(directory.invoices.map((invoice: any) => invoice.invoice_number)),
+    invoice_number: invoiceNumber(taken),
     billing_period_start: start,
     billing_period_end: end,
     issue_date: issue,
@@ -103,10 +120,14 @@ export async function createInvoice(admin: any, buId: string, body: any) {
     updated_at: new Date().toISOString(),
   };
   let inserted = await admin.from("rent_invoices").insert(payload).select(INVOICE_COLUMNS).single();
-  if (inserted.error && /duplicate|unique/i.test(inserted.error.message || "")) {
-    inserted = await admin.from("rent_invoices").insert({ ...payload, invoice_number: invoiceNumber([...directory.invoices.map((invoice: any) => invoice.invoice_number), payload.invoice_number]) }).select(INVOICE_COLUMNS).single();
+  for (let attempt = 0; attempt < 3 && inserted.error && isUniqueConflict(inserted.error); attempt += 1) {
+    taken.push(payload.invoice_number);
+    payload.invoice_number = invoiceNumber(taken);
+    inserted = await admin.from("rent_invoices").insert(payload).select(INVOICE_COLUMNS).single();
   }
-  if (inserted.error || !inserted.data) return { error: inserted.error?.message || "Save failed" };
+  if (inserted.error || !inserted.data) return { error: writeError(inserted.error, "Save failed") };
+  const blocked = await releaseLaterInvoice(admin, buId, inserted.data);
+  if (blocked) return { error: blocked };
   const refreshed = await refreshPaid(admin, buId, inserted.data);
   const saved = refreshed.data || inserted.data;
   directory.invoices.unshift(saved);
@@ -179,7 +200,23 @@ export async function updateInvoice(admin: any, buId: string, id: string, body: 
     notes,
     updated_at: new Date().toISOString(),
   }).eq("id", id).eq("business_unit_id", buId).select(INVOICE_COLUMNS).single();
-  if (updated.error || !updated.data) return { error: updated.error?.message || "Update failed" };
+  if (updated.error || !updated.data) return { error: writeError(updated.error, "Update failed") };
+  const { data: peers } = await admin.from("rent_invoices").select("id, billing_period_start, billing_period_end, status").eq("business_unit_id", buId).eq("contract_id", invoice.contract_id);
+  const clash = (peers || []).some((item: any) => item.id !== id && item.status !== "Cancelled" && samePeriod(item, updated.data));
+  if (clash) {
+    await admin.from("rent_invoices").update({
+      rent_amount: invoice.rent_amount,
+      additional_charges: invoice.additional_charges,
+      discount: invoice.discount,
+      billing_period_start: invoice.billing_period_start,
+      billing_period_end: invoice.billing_period_end,
+      due_date: invoice.due_date,
+      issue_date: invoice.issue_date,
+      notes: invoice.notes,
+      updated_at: new Date().toISOString(),
+    }).eq("id", id).eq("business_unit_id", buId);
+    return { error: "An invoice already exists for this contract and billing period" };
+  }
   const refreshed = await refreshPaid(admin, buId, updated.data);
   Object.assign(invoice, refreshed.data || updated.data);
   return { data: one(directory, id) };
@@ -218,8 +255,16 @@ export async function recordPayment(admin: any, buId: string, invoiceId: string,
     notes: String(body.notes || "").trim(),
     status: "Completed",
     updated_at: new Date().toISOString(),
-  }).select("id, invoice_id, amount, payment_date, payment_method, transaction_reference, notes, status").single();
-  if (inserted.error || !inserted.data) return { error: inserted.error?.message || "Payment failed" };
+  }).select("id, invoice_id, amount, payment_date, payment_method, transaction_reference, notes, status, created_at").single();
+  if (inserted.error || !inserted.data) return { error: writeError(inserted.error, "Payment failed") };
+  if (reference) {
+    const peers = await admin.from("rent_payments").select("id, created_at, transaction_reference, status").eq("invoice_id", invoice.id).eq("status", "Completed").eq("transaction_reference", reference);
+    const earlier = (peers.data || []).filter((payment: any) => payment.id !== inserted.data.id);
+    if (losesToEarlier(inserted.data, earlier)) {
+      await admin.from("rent_payments").delete().eq("id", inserted.data.id);
+      return { error: "A payment with this reference is already recorded" };
+    }
+  }
   directory.payments.push(inserted.data);
   const refreshed = await refreshPaid(admin, buId, invoice);
   if (refreshed.error || !refreshed.data) {
@@ -294,8 +339,19 @@ export async function generateDueInvoices(admin: any) {
         additional_charges: 0,
         discount: 0,
       });
-      if (result.data) created.push(result.data.invoice_number);
-      else skipped.push(result.error || contract.id);
+      if (result.data) {
+        created.push(result.data.invoice_number);
+        await writeAuditEvent({
+          action: "invoice.created",
+          module: "property",
+          description: `Generated rent invoice ${result.data.invoice_number || ""}`.trim(),
+          severity: "medium",
+          entityType: "rent_invoice",
+          entityId: result.data.id ?? null,
+          businessUnitId: unit.id,
+          actor: { name: "System" },
+        });
+      } else skipped.push(result.error || contract.id);
     }
   }
   return { created, skipped };

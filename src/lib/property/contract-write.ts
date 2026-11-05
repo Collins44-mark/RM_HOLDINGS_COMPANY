@@ -1,3 +1,4 @@
+import { losesToEarlier, writeError, isUniqueConflict } from "@/lib/data/conflict";
 import { CONTRACT_FREQUENCIES, isCurrentContract, paidByContract, presentContracts, todayIso } from "@/lib/property/contracts";
 import { nextSerial } from "@/lib/property/serial";
 import { businessToday } from "@/lib/property/invoices";
@@ -109,14 +110,33 @@ function validateTerms(body: any, directory: Awaited<ReturnType<typeof loadDirec
 }
 
 async function insertContract(admin: any, buId: string, value: any, existingNumbers: string[]) {
-  const number = value.contract_number || contractNumber(existingNumbers);
-  let payload = { ...value, business_unit_id: buId, contract_number: number, updated_at: new Date().toISOString() };
+  const taken = [...existingNumbers];
+  let payload = { ...value, business_unit_id: buId, contract_number: value.contract_number || contractNumber(taken), updated_at: new Date().toISOString() };
   let inserted = await admin.from("rental_contracts").insert(payload).select(CONTRACT_COLUMNS).single();
-  if (inserted.error && /duplicate|unique/i.test(inserted.error.message || "")) {
-    payload = { ...payload, contract_number: contractNumber([...existingNumbers, number]) };
+  for (let attempt = 0; attempt < 3 && inserted.error && isUniqueConflict(inserted.error); attempt += 1) {
+    taken.push(payload.contract_number);
+    payload = { ...payload, contract_number: contractNumber(taken) };
     inserted = await admin.from("rental_contracts").insert(payload).select(CONTRACT_COLUMNS).single();
   }
+  if (inserted.error) return { data: null, error: { message: writeError(inserted.error) } };
   return inserted;
+}
+
+async function overlappingContracts(admin: any, buId: string, row: any) {
+  if (row.status !== "Active") return [];
+  const { data } = await admin.from("rental_contracts").select("id, start_date, end_date, status, created_at").eq("business_unit_id", buId).eq("unit_id", row.unit_id).eq("status", "Active");
+  const start = String(row.start_date).slice(0, 10);
+  const end = String(row.end_date).slice(0, 10);
+  return (data || []).filter((contract: any) => contract.id !== row.id && start < String(contract.end_date).slice(0, 10) && String(contract.start_date).slice(0, 10) < end);
+}
+
+async function releaseLaterContract(admin: any, buId: string, row: any) {
+  const overlaps = await overlappingContracts(admin, buId, row);
+  if (!losesToEarlier(row, overlaps)) return null;
+  const invoices = await admin.from("rent_invoices").select("id").eq("contract_id", row.id).limit(1);
+  if ((invoices.data || []).length > 0) return "This unit already has an active contract for those dates";
+  await admin.from("rental_contracts").delete().eq("id", row.id).eq("business_unit_id", buId);
+  return "This unit already has an active contract for those dates";
 }
 
 export async function createContract(admin: any, buId: string, body: any) {
@@ -125,6 +145,8 @@ export async function createContract(admin: any, buId: string, body: any) {
   if (checked.error || !checked.value) return { error: checked.error || "Invalid contract" };
   const inserted = await insertContract(admin, buId, checked.value, directory.contracts.map((contract: any) => contract.contract_number));
   if (inserted.error || !inserted.data) return { error: inserted.error?.message || "Save failed" };
+  const blocked = await releaseLaterContract(admin, buId, inserted.data);
+  if (blocked) return { error: blocked };
   directory.contracts.push(inserted.data);
   if (checked.value.status === "Active") await syncUnitOccupancy(admin, buId, checked.value.unit_id);
   return { data: presentOne(directory, inserted.data.id) };
@@ -139,7 +161,26 @@ export async function updateContract(admin: any, buId: string, id: string, body:
   if (checked.error || !checked.value) return { error: checked.error || "Invalid contract" };
   const previousUnit = existing.unit_id;
   const updated = await admin.from("rental_contracts").update({ ...checked.value, updated_at: new Date().toISOString() }).eq("id", id).eq("business_unit_id", buId).select(CONTRACT_COLUMNS).single();
-  if (updated.error || !updated.data) return { error: updated.error?.message || "Update failed" };
+  if (updated.error || !updated.data) return { error: writeError(updated.error, "Update failed") };
+  const overlaps = await overlappingContracts(admin, buId, updated.data);
+  const blocked = overlaps.length ? "This unit already has an active contract for those dates" : null;
+  if (blocked) {
+    await admin.from("rental_contracts").update({
+      tenant_id: existing.tenant_id,
+      property_id: existing.property_id,
+      unit_id: existing.unit_id,
+      start_date: existing.start_date,
+      end_date: existing.end_date,
+      rent_amount: existing.rent_amount,
+      deposit_amount: existing.deposit_amount,
+      billing_frequency: existing.billing_frequency,
+      payment_due_day: existing.payment_due_day,
+      contract_terms: existing.contract_terms,
+      status: existing.status,
+      updated_at: new Date().toISOString(),
+    }).eq("id", id).eq("business_unit_id", buId);
+    return { error: blocked };
+  }
   Object.assign(existing, updated.data);
   await syncUnitOccupancy(admin, buId, checked.value.unit_id);
   if (previousUnit !== checked.value.unit_id) await syncUnitOccupancy(admin, buId, previousUnit);

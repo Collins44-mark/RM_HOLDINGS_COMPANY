@@ -101,7 +101,7 @@ export function mapSchoolDbError(
   const fallback =
     operation === "load" ? "Couldn't load this page." : "Couldn't save. Please try again.";
   if (!error) throw new SchoolError(fallback, "DATABASE");
-  if (error.code === "23505") {
+  if (error.code === "23505" || /duplicate key|unique constraint/i.test(error.message)) {
     throw new SchoolError("That name or code is already in use.", "CONFLICT");
   }
   if (error.code === "23P01") {

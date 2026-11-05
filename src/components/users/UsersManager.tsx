@@ -1152,9 +1152,9 @@ function Modal({
   children: React.ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-navy/30 p-0 sm:items-center sm:p-4">
+    <div className="fixed inset-x-0 bottom-0 top-16 z-50 flex items-start justify-center overflow-y-auto bg-navy/30 px-4 py-4 sm:top-[88px]">
       <button type="button" className="absolute inset-0" aria-label="Close" onClick={onClose} />
-      <div className="relative max-h-[92vh] w-full overflow-y-auto rounded-t-[24px] bg-white p-5 shadow-2xl sm:max-w-[560px] sm:rounded-[24px] sm:p-6">
+      <div className="relative my-1 max-h-full w-full overflow-y-auto rounded-[24px] bg-white p-5 shadow-2xl sm:max-w-[560px] sm:p-6">
         <div className="mb-4 flex items-start justify-between gap-3">
           <h2 className="text-[18px] font-bold tracking-[-0.03em] text-navy">{title}</h2>
           <button type="button" onClick={onClose} className="text-[13px] font-medium text-slate-500">

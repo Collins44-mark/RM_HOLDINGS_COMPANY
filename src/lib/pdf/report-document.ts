@@ -71,6 +71,42 @@ export function pdfClip(value: string, max: number) {
   return textValue.length > max ? `${textValue.slice(0, Math.max(0, max - 3))}...` : textValue;
 }
 
+/** Wrap a cell onto as many lines as the text needs. Never end a line with "...". */
+export function wrapPdfLines(value: string, width: number, size: number, bold = false) {
+  const text = pdfAscii(String(value ?? "")).trim() || "—";
+  const avail = Math.max(8, width - 8);
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+  const fits = (chunk: string) => pdfTextWidth(chunk, size, bold) <= avail;
+  const pushLongWord = (word: string) => {
+    let rest = word;
+    while (rest) {
+      if (fits(rest)) {
+        current = rest;
+        return;
+      }
+      let cut = 1;
+      while (cut < rest.length && fits(rest.slice(0, cut + 1))) cut += 1;
+      lines.push(rest.slice(0, cut));
+      rest = rest.slice(cut);
+    }
+  };
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (fits(next)) {
+      current = next;
+      continue;
+    }
+    if (current) lines.push(current);
+    current = "";
+    if (fits(word)) current = word;
+    else pushLongWord(word);
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : ["—"];
+}
+
 /** Approximate Helvetica string width in points */
 export function pdfTextWidth(value: string, size: number, bold = false) {
   const factor = bold ? 0.62 : 0.58;
@@ -275,9 +311,16 @@ export class ReportDocument {
   ) {
     const x = options?.x ?? MARGIN_X;
     const width = options?.width ?? CONTENT_W;
-    const rowH = 15;
-    const headerH = 14;
+    const bodySize = 8;
+    const lineStep = 10;
     const sectionTitle = options?.sectionTitle;
+    const headerCells = columns.map((col) => wrapPdfLines(col.label, col.width, 7.5, true));
+    const headerH = 6 + Math.max(1, ...headerCells.map((lines) => lines.length)) * 9;
+
+    const measure = (row: Record<string, string>, bold: boolean) => {
+      const cells = columns.map((col) => wrapPdfLines(row[col.key] ?? "", col.width, bodySize, bold));
+      return { cells, height: 6 + Math.max(1, ...cells.map((lines) => lines.length)) * lineStep };
+    };
 
     const drawHeader = () => {
       const hy = this.page.y - headerH;
@@ -287,35 +330,49 @@ export class ReportDocument {
       this.page.ops.push(pdfLine(x, hy, x + width, hy, 0.45));
       this.setInk(INK);
       let cx = x;
-      for (const col of columns) {
-        this.page.ops.push(
-          pdfAlignedText("F2", 7.5, cx, hy + 4, col.width, col.label, col.align ?? "left"),
-        );
+      columns.forEach((col, index) => {
+        headerCells[index].forEach((line, lineIndex) => {
+          this.page.ops.push(
+            pdfAlignedText("F2", 7.5, cx, hy + headerH - 11 - lineIndex * 9, col.width, line, col.align ?? "left"),
+          );
+        });
         cx += col.width;
-      }
+      });
       this.page.y = hy;
     };
 
-    this.ensureSpace(headerH + rowH * 2, sectionTitle);
+    this.ensureSpace(headerH + 28, sectionTitle);
     drawHeader();
 
     const paintRow = (row: Record<string, string>, bold = false, tint = false) => {
-      if (this.page.y - rowH < MARGIN_BOTTOM) {
+      const measured = measure(row, bold);
+      if (this.page.y - measured.height < MARGIN_BOTTOM) {
         this.newPage(sectionTitle);
         drawHeader();
       }
-      const ry = this.page.y - rowH;
-      if (tint) this.page.ops.push(pdfFillRect(x, ry, width, rowH, FILL_HEADER));
+      const ry = this.page.y - measured.height;
+      if (tint) this.page.ops.push(pdfFillRect(x, ry, width, measured.height, FILL_HEADER));
       this.setStroke(STROKE);
       this.page.ops.push(pdfLine(x, ry, x + width, ry, 0.35));
       this.setInk(INK);
       let cx = x;
-      for (const col of columns) {
-        this.page.ops.push(
-          pdfAlignedText(bold ? "F2" : "F1", 8, cx, ry + 4, col.width, row[col.key] ?? "", col.align ?? "left"),
-        );
+      measured.cells.forEach((lines, index) => {
+        const col = columns[index];
+        lines.forEach((line, lineIndex) => {
+          this.page.ops.push(
+            pdfAlignedText(
+              bold ? "F2" : "F1",
+              bodySize,
+              cx,
+              ry + measured.height - 12 - lineIndex * lineStep,
+              col.width,
+              line,
+              col.align ?? "left",
+            ),
+          );
+        });
         cx += col.width;
-      }
+      });
       this.page.y = ry;
     };
 
@@ -338,13 +395,16 @@ export class ReportDocument {
       totalRow?: Record<string, string>;
     },
   ) {
-    const rowH = 15;
-    const headerH = 14;
+    const bodySize = 7.5;
+    const lineStep = 9;
     const titleBlock = 28;
-    const leftRows = left.rows.length + (left.totalRow ? 1 : 0);
-    const rightRows = right.rows.length + (right.totalRow ? 1 : 0);
-    const needed =
-      titleBlock + headerH + rowH * Math.max(leftRows, rightRows) + 16;
+    const rowHeight = (columns: TableColumn[], row: Record<string, string>) => {
+      const lines = Math.max(1, ...columns.map((col) => wrapPdfLines(row[col.key] ?? "", col.width, bodySize).length));
+      return 6 + lines * lineStep;
+    };
+    const blockHeight = (block: { columns: TableColumn[]; rows: Record<string, string>[]; totalRow?: Record<string, string> }) =>
+      18 + 8 + 16 + block.rows.reduce((sum, row) => sum + rowHeight(block.columns, row), 0) + (block.totalRow ? rowHeight(block.columns, block.totalRow) : 0);
+    const needed = titleBlock + Math.max(blockHeight(left), blockHeight(right)) + 16;
 
     // If not enough room for both columns side-by-side, stack full-width.
     if (this.page.y - needed < MARGIN_BOTTOM) {
@@ -382,6 +442,8 @@ export class ReportDocument {
       this.page.ops.push(pdfText("F2", 9, x + 6, titleY + 5.5, block.title));
       y = titleY - 8;
 
+      const headerCells = block.columns.map((col) => wrapPdfLines(col.label, col.width, 7, true));
+      const headerH = 6 + Math.max(1, ...headerCells.map((lines) => lines.length)) * 8;
       const hy = y - headerH;
       this.page.ops.push(pdfFillRect(x, hy, COL_W, headerH, FILL_HEADER));
       this.setStroke(STROKE);
@@ -389,35 +451,42 @@ export class ReportDocument {
       this.page.ops.push(pdfLine(x, hy, x + COL_W, hy, 0.45));
       this.setInk(INK);
       let cx = x;
-      for (const col of block.columns) {
-        this.page.ops.push(
-          pdfAlignedText("F2", 7, cx, hy + 4, col.width, col.label, col.align ?? "left"),
-        );
+      block.columns.forEach((col, index) => {
+        headerCells[index].forEach((line, lineIndex) => {
+          this.page.ops.push(
+            pdfAlignedText("F2", 7, cx, hy + headerH - 10 - lineIndex * 8, col.width, line, col.align ?? "left"),
+          );
+        });
         cx += col.width;
-      }
+      });
       y = hy;
 
       const paint = (row: Record<string, string>, bold = false, tint = false) => {
-        const ry = y - rowH;
-        if (tint) this.page.ops.push(pdfFillRect(x, ry, COL_W, rowH, FILL_HEADER));
+        const cells = block.columns.map((col) => wrapPdfLines(row[col.key] ?? "", col.width, bodySize, bold));
+        const height = 6 + Math.max(1, ...cells.map((lines) => lines.length)) * lineStep;
+        const ry = y - height;
+        if (tint) this.page.ops.push(pdfFillRect(x, ry, COL_W, height, FILL_HEADER));
         this.setStroke(STROKE);
         this.page.ops.push(pdfLine(x, ry, x + COL_W, ry, 0.35));
         this.setInk(INK);
         let colX = x;
-        for (const col of block.columns) {
-          this.page.ops.push(
-            pdfAlignedText(
-              bold ? "F2" : "F1",
-              7.5,
-              colX,
-              ry + 4,
-              col.width,
-              row[col.key] ?? "",
-              col.align ?? "left",
-            ),
-          );
+        cells.forEach((lines, index) => {
+          const col = block.columns[index];
+          lines.forEach((line, lineIndex) => {
+            this.page.ops.push(
+              pdfAlignedText(
+                bold ? "F2" : "F1",
+                bodySize,
+                colX,
+                ry + height - 11 - lineIndex * lineStep,
+                col.width,
+                line,
+                col.align ?? "left",
+              ),
+            );
+          });
           colX += col.width;
-        }
+        });
         y = ry;
       };
 

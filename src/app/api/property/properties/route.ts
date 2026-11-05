@@ -60,6 +60,9 @@ export async function POST(req: Request) {
     const body = await req.json();
     if (!buId) return NextResponse.json({ error: "Missing business_unit_id — session not authorized" }, { status: 401 });
     const payload = { ...body, business_unit_id: buId, property_code: body.property_code || (body.name ? String(body.name).toLowerCase().replace(/\s+/g,"_").substring(0,50) : "PROP"), street_address: body.address || body.street_address || "" }; if (body.address && !body.street_address) delete payload.address; const { data, error } = await supabase.from("properties").insert(payload).select().single();
+    if (error && /duplicate|unique/i.test(error.message || "")) {
+      return NextResponse.json({ error: "A property with this name or code already exists." }, { status: 409 });
+    }
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     return auditedPropertyResponse(buId, { data }, {
       action: "property.created",

@@ -200,13 +200,10 @@ export const PROPERTY_NAV: NavItem[] = [
 ];
 
 export const LIVESTOCK_NAV: NavItem[] = [
-  { href: "/livestock", label: "Livestock Dashboard", icon: "dashboard", exact: true },
-  { href: "/livestock/animals", label: "Animals", icon: "paw" },
-  { href: "/livestock/health", label: "Health", icon: "health" },
-  { href: "/livestock/breeding", label: "Breeding", icon: "flower" },
-  { href: "/livestock/feeds", label: "Feeds", icon: "package" },
-  { href: "/livestock/sales", label: "Sales", icon: "money" },
-  { href: "/livestock/reports", label: "Reports", icon: "reports" },
+  { href: "/livestock", label: "Dashboard", icon: "dashboard", exact: true },
+  { href: "/livestock/animals", label: "Livestock Management", icon: "paw" },
+  { href: "/livestock/houses", label: "Poultry Houses", icon: "home" },
+  { href: "/livestock/expenses", label: "Expenses", icon: "wallet" },
 ];
 
 export const BEEKEEPING_NAV: NavItem[] = [
@@ -214,6 +211,7 @@ export const BEEKEEPING_NAV: NavItem[] = [
   { href: "/beekeeping/hives", label: "Beehives", icon: "hexagon" },
   { href: "/beekeeping/harvests", label: "Harvest Records", icon: "flower" },
   { href: "/beekeeping/sales", label: "Sales & Expenses", icon: "money" },
+  { href: "/beekeeping/reports", label: "Reports", icon: "reports" },
 ];
 
 export const MODULE_NAV: Record<string, NavItem[]> = {

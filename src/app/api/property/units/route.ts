@@ -90,12 +90,9 @@ export async function POST(req: Request) {
       occupancy_status: status,
     };
 
-    let { data, error } = await admin.from("property_units").insert(payload).select("*, properties(name)").single();
+    const { data, error } = await admin.from("property_units").insert(payload).select("*, properties(name)").single();
     if (error && /duplicate|unique/i.test(error.message || "")) {
-      const retry = { ...payload, unit_code: `${payload.unit_code}-${Date.now().toString(36).slice(-4)}`.slice(0, 50) };
-      const second = await admin.from("property_units").insert(retry).select("*, properties(name)").single();
-      data = second.data;
-      error = second.error;
+      return NextResponse.json({ error: "This unit already exists for that property." }, { status: 409 });
     }
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     return auditedPropertyResponse(resolved.buId, { data: toUnit(data) }, {

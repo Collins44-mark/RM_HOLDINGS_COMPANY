@@ -67,6 +67,49 @@ export function ReportResultHeader({
   );
 }
 
+export function ReportDataTable({
+  columns,
+  rows,
+}: {
+  columns: { key: string; label: string }[];
+  rows: Record<string, string>[];
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr>
+            {columns.map((column) => (
+              <th key={column.key} className="px-2 py-2 text-left text-xs font-medium text-slate-500">
+                {column.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td className="px-2 py-6 text-slate-500" colSpan={Math.max(columns.length, 1)}>
+                No records in this period.
+              </td>
+            </tr>
+          ) : (
+            rows.map((row, index) => (
+              <tr key={index} className="border-t border-slate-100">
+                {columns.map((column) => (
+                  <td key={column.key} className="px-2 py-2 text-navy">
+                    {row[column.key] || "—"}
+                  </td>
+                ))}
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function ReportEmptyState({
   title,
   description,

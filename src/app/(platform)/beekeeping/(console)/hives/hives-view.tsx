@@ -6,7 +6,7 @@ import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useListPage } from "@/lib/property/use-list-page";
 import { HIVE_STATUSES, HIVE_TYPES, businessToday } from "@/lib/beekeeping/constants";
 import type { BeeDirectory, BeeHive } from "@/lib/beekeeping/directory";
-import { SaveButton, fieldClass, formatDate, overlayClass, saveJson, statusClass } from "../bee-ui";
+import { ActionMenu, ActionMenuItem, SaveButton, fieldClass, formatDate, overlayClass, placeActionMenu, saveJson, statusClass } from "../bee-ui";
 
 export default function HivesView({ initial }: { initial: BeeDirectory }) {
   const [directory, setDirectory] = useState(initial);
@@ -20,12 +20,24 @@ export default function HivesView({ initial }: { initial: BeeDirectory }) {
   const [saveState, setSaveState] = useState("idle");
   const [error, setError] = useState("");
   const [menu, setMenu] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const rows = useMemo(() => directory.hives.filter((hive) => hive.status !== "Archived").filter((hive) => {
     const text = `${hive.hive_code} ${hive.hive_name} ${hive.location}`.toLowerCase();
     return (!query || text.includes(query.toLowerCase())) && (!status || hive.status === status) && (!location || hive.location === location);
   }), [directory.hives, query, status, location]);
   const list = useListPage(rows, `${query}|${status}|${location}`);
   const locations = [...new Set(directory.hives.map((hive) => hive.location).filter(Boolean))];
+  const menuHive = directory.hives.find((hive) => hive.id === menu) || null;
+
+  function openMenu(event: React.MouseEvent<HTMLButtonElement>, id: string, itemCount: number) {
+    if (menu === id) {
+      setMenu(null);
+      return;
+    }
+    setMenuPos(placeActionMenu(event.currentTarget.getBoundingClientRect(), itemCount));
+    setMenu(id);
+  }
+
   const counts = {
     total: directory.hives.filter((hive) => hive.status !== "Archived").length,
     active: directory.hives.filter((hive) => hive.status === "Active").length,
@@ -92,15 +104,8 @@ export default function HivesView({ initial }: { initial: BeeDirectory }) {
                 <td className="px-4 py-3">{hive.total_harvested} kg</td>
                 <td className="px-4 py-3">{formatDate(hive.last_harvest)}</td>
                 <td className="px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-xs ${statusClass(hive.status)}`}>{hive.status}</span></td>
-                <td className="px-4 py-3"><button type="button" aria-label="Hive actions" onClick={() => setMenu(menu === hive.id ? null : hive.id)} className="p-1"><MoreVertical size={16} /></button>
-                  {menu === hive.id && (
-                    <div className="absolute z-20 w-44 rounded-2xl border border-slate-100 bg-white py-1 shadow-xl">
-                      <MenuButton label="View Details" onClick={() => { setSelected(hive); setMenu(null); }} />
-                      <MenuButton label="Edit Hive" onClick={() => { setEditing(hive); setDraft({ hive_name: hive.hive_name, location: hive.location, hive_type: hive.hive_type, installation_date: hive.installation_date, status: hive.status, notes: hive.notes }); setMode("edit"); setSaveState("idle"); setMenu(null); }} />
-                      <MenuButton label="View Harvest History" onClick={() => { setSelected(hive); setMenu(null); }} />
-                      <MenuButton label="Archive Hive" onClick={() => archive(hive)} />
-                    </div>
-                  )}
+                <td className="px-4 py-3 text-right">
+                  <button type="button" aria-label="Hive actions" className="rounded-lg p-1 hover:bg-slate-100" onClick={(event) => openMenu(event, hive.id, 4)}><MoreVertical size={16} /></button>
                 </td>
               </tr>
             ))}
@@ -108,6 +113,14 @@ export default function HivesView({ initial }: { initial: BeeDirectory }) {
         </table>
         <div className="px-4"><PaginationBar page={list.page} total={rows.length} pageSize={list.pageSize} onPage={list.setPage} onPageSize={list.setPageSize} /></div>
       </div>
+      {menuHive ? (
+        <ActionMenu top={menuPos.top} left={menuPos.left} onClose={() => setMenu(null)}>
+          <ActionMenuItem label="View Details" onClick={() => { setSelected(menuHive); setMenu(null); }} />
+          <ActionMenuItem label="Edit Hive" onClick={() => { setEditing(menuHive); setDraft({ hive_name: menuHive.hive_name, location: menuHive.location, hive_type: menuHive.hive_type, installation_date: menuHive.installation_date, status: menuHive.status, notes: menuHive.notes }); setMode("edit"); setSaveState("idle"); setMenu(null); }} />
+          <ActionMenuItem label="View Harvest History" onClick={() => { setSelected(menuHive); setMenu(null); }} />
+          <ActionMenuItem label="Archive Hive" onClick={() => archive(menuHive)} />
+        </ActionMenu>
+      ) : null}
 
       {mode && (
         <div className={overlayClass} onClick={(event) => { if (event.target === event.currentTarget && saveState === "idle") setMode(null); }}>
@@ -152,7 +165,4 @@ function Card({ label, value }: { label: string; value: number }) {
 }
 function Info({ label, value }: { label: string; value: string }) {
   return <div><p className="text-xs text-slate-400">{label}</p><p className="font-medium text-slate-800">{value}</p></div>;
-}
-function MenuButton({ label, onClick }: { label: string; onClick: () => void }) {
-  return <button type="button" onClick={onClick} className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50">{label}</button>;
 }

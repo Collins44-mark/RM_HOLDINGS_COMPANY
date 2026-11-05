@@ -374,13 +374,22 @@ export async function recordFarmExpenseAction(input: {
 
 export async function saveFarmPartyAction(input: { id?: string; kind: string; name: string; phone?: string; notes?: string }) {
   try {
-    const { supabase } = await requireAnyFarmPermission(["farm.customers.create", "farm.jobs.create", "farm.customers.edit"]);
+    const { supabase, businessUnitId } = await requireAnyFarmPermission(["farm.customers.create", "farm.jobs.create", "farm.customers.edit"]);
     const payload = await rpcResult(supabase, "farm_save_party", {
       p_id: str(input.id) || null,
       p_kind: str(input.kind),
       p_name: str(input.name),
       p_phone: str(input.phone) || null,
       p_notes: str(input.notes) || null,
+    });
+    await writeAuditEvent({
+      action: input.id ? "farm.party_updated" : "farm.party_saved",
+      module: "farm",
+      description: `${str(input.kind) || "Party"} ${str(input.name)}`,
+      severity: "low",
+      entityType: "farm_parties",
+      entityId: payload.id ?? null,
+      businessUnitId,
     });
     refreshFarm();
     return { ok: true as const, id: payload.id ?? "" };
@@ -391,13 +400,22 @@ export async function saveFarmPartyAction(input: { id?: string; kind: string; na
 
 export async function saveFarmStaffAction(input: { id?: string; name: string; phone?: string; role?: string; notes?: string }) {
   try {
-    const { supabase } = await requireAnyFarmPermission(["farm.staff.create", "farm.jobs.edit"]);
+    const { supabase, businessUnitId } = await requireAnyFarmPermission(["farm.staff.create", "farm.jobs.edit"]);
     const payload = await rpcResult(supabase, "farm_save_staff", {
       p_id: str(input.id) || null,
       p_name: str(input.name),
       p_phone: str(input.phone) || null,
       p_role: str(input.role) || "OPERATOR",
       p_notes: str(input.notes) || null,
+    });
+    await writeAuditEvent({
+      action: input.id ? "farm.staff_updated" : "farm.staff_saved",
+      module: "farm",
+      description: `Staff ${str(input.name)}`,
+      severity: "low",
+      entityType: "farm_staff",
+      entityId: payload.id ?? null,
+      businessUnitId,
     });
     refreshFarm();
     return { ok: true as const, id: payload.id ?? "" };
@@ -408,13 +426,22 @@ export async function saveFarmStaffAction(input: { id?: string; name: string; ph
 
 export async function saveFarmPlotAction(input: { id?: string; name: string; hectares?: string; crop?: string; notes?: string }) {
   try {
-    const { supabase } = await requireAnyFarmPermission(["farm.plots.create", "farm.plots.edit", "farm.operations.create"]);
+    const { supabase, businessUnitId } = await requireAnyFarmPermission(["farm.plots.create", "farm.plots.edit", "farm.operations.create"]);
     const payload = await rpcResult(supabase, "farm_save_plot", {
       p_id: str(input.id) || null,
       p_name: str(input.name),
       p_hectares: str(input.hectares) ? num(input.hectares) : null,
       p_crop: str(input.crop) || null,
       p_notes: str(input.notes) || null,
+    });
+    await writeAuditEvent({
+      action: input.id ? "farm.plot_updated" : "farm.plot_saved",
+      module: "farm",
+      description: `Plot ${str(input.name)}`,
+      severity: "low",
+      entityType: "farm_plots",
+      entityId: payload.id ?? null,
+      businessUnitId,
     });
     refreshFarm();
     return { ok: true as const, id: payload.id ?? "" };
@@ -425,13 +452,22 @@ export async function saveFarmPlotAction(input: { id?: string; name: string; hec
 
 export async function saveFarmSeasonAction(input: { id?: string; plotId: string; name: string; year: string; crop?: string }) {
   try {
-    const { supabase } = await requireAnyFarmPermission(["farm.seasons.create", "farm.seasons.edit", "farm.operations.create"]);
+    const { supabase, businessUnitId } = await requireAnyFarmPermission(["farm.seasons.create", "farm.seasons.edit", "farm.operations.create"]);
     const payload = await rpcResult(supabase, "farm_save_season", {
       p_id: str(input.id) || null,
       p_plot_id: str(input.plotId),
       p_name: str(input.name),
       p_year: num(input.year),
       p_crop: str(input.crop) || null,
+    });
+    await writeAuditEvent({
+      action: input.id ? "farm.season_updated" : "farm.season_saved",
+      module: "farm",
+      description: `Season ${str(input.name)}`,
+      severity: "low",
+      entityType: "farm_seasons",
+      entityId: payload.id ?? null,
+      businessUnitId,
     });
     refreshFarm();
     return { ok: true as const, id: payload.id ?? "" };
@@ -449,7 +485,7 @@ export async function recordFarmHarvestAction(input: {
   notes?: string;
 }) {
   try {
-    const { supabase, userId } = await requireAnyFarmPermission(["farm.harvests.create"]);
+    const { supabase, userId, businessUnitId } = await requireAnyFarmPermission(["farm.harvests.create"]);
     const payload = await rpcResult(supabase, "farm_record_harvest", {
       p_season_id: str(input.seasonId),
       p_quantity: num(input.quantity),
@@ -459,7 +495,18 @@ export async function recordFarmHarvestAction(input: {
       p_request_id: str(input.requestId),
       p_actor_id: userId,
     });
-    if (!payload.duplicate) refreshFarm();
+    if (!payload.duplicate) {
+      await writeAuditEvent({
+        action: "farm.harvest_recorded",
+        module: "farm",
+        description: `Harvest ${num(input.quantity)} ${str(input.unit) || "kg"}`,
+        severity: "medium",
+        entityType: "farm_harvests",
+        entityId: payload.id ?? null,
+        businessUnitId,
+      });
+      refreshFarm();
+    }
     return { ok: true as const, duplicate: Boolean(payload.duplicate) };
   } catch (error) {
     return { ok: false as const, error: farmActionError(error) };
@@ -500,6 +547,15 @@ export async function updateFarmJobAction(input: {
     }).eq("id", input.jobId).eq("business_unit_id", businessUnitId);
     if (payload.error) throw payload.error;
     const { data } = await supabase.from("farm_jobs").select("*").eq("id", input.jobId).eq("business_unit_id", businessUnitId).single();
+    await writeAuditEvent({
+      action: "farm.job_updated",
+      module: "farm",
+      description: `Farm job ${data?.number ?? input.jobId} updated`,
+      severity: "medium",
+      entityType: "farm_jobs",
+      entityId: input.jobId,
+      businessUnitId,
+    });
     return { ok: true as const, data: data || null };
   } catch (error) {
     return { ok: false as const, error: farmActionError(error) };

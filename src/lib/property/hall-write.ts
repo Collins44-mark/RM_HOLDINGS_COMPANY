@@ -1,5 +1,6 @@
 import { BLOCKING_STATUSES, EVENT_TYPES, overlaps, paymentStanding, presentBookings, readMeta, writeMeta, type BookingMeta } from "@/lib/property/halls";
 import { businessToday, PAYMENT_METHODS } from "@/lib/property/invoices";
+import { isUniqueConflict, writeError } from "@/lib/data/conflict";
 import { nextSerial } from "@/lib/property/serial";
 
 const COLUMNS = "id, business_unit_id, property_id, booking_number, customer_name, customer_phone, customer_email, event_type, event_description, event_date, start_time, end_time, expected_guests, booking_amount, deposit_required, amount_paid, balance, booking_status, payment_status, notes, created_at, updated_at";
@@ -133,11 +134,14 @@ export async function createBooking(admin: any, buId: string, body: any): Promis
     notes: writeMeta(meta),
     updated_at: new Date().toISOString(),
   };
+  const usedNumbers = directory.bookings.map((booking: any) => booking.booking_number);
   let inserted = await admin.from("hall_bookings").insert(payload).select(COLUMNS).single();
-  if (inserted.error && /duplicate|unique/i.test(inserted.error.message || "")) {
-    inserted = await admin.from("hall_bookings").insert({ ...payload, booking_number: nextSerial([...directory.bookings.map((booking: any) => booking.booking_number), number], "HB", 1) }).select(COLUMNS).single();
+  for (let attempt = 0; attempt < 3 && inserted.error && isUniqueConflict(inserted.error); attempt += 1) {
+    usedNumbers.push(payload.booking_number);
+    payload.booking_number = nextSerial(usedNumbers, "HB", 1);
+    inserted = await admin.from("hall_bookings").insert(payload).select(COLUMNS).single();
   }
-  if (inserted.error || !inserted.data) return { error: inserted.error?.message || "Save failed" };
+  if (inserted.error || !inserted.data) return { error: writeError(inserted.error, "Save failed") };
   const after = await conflicts(admin, buId, hall.id, slot.date, slot.start, slot.end);
   const ranked = after.slice().sort((left: any, right: any) => String(left.created_at).localeCompare(String(right.created_at)) || String(left.id).localeCompare(String(right.id)));
   if (ranked.length > 1 && ranked[0].id !== inserted.data.id) {

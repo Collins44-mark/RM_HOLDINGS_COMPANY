@@ -1,9 +1,9 @@
 import { APP_NAME } from "@/lib/config/app";
 import {
   pdfAscii,
-  pdfClip,
   pdfLine,
   pdfText,
+  wrapPdfLines as wrapPdfText,
   type PdfAlign,
   type PdfFont,
   type ReportDocMeta,
@@ -68,42 +68,8 @@ export function formalTextWidth(value: string, size: number, bold = false) {
   return pdfAscii(value).length * size * (bold ? 0.62 : 0.58);
 }
 
-export function wrapPdfLines(value: string, width: number, size: number, bold: boolean, maxLines: number) {
-  const text = pdfAscii(String(value ?? "")).trim() || "—";
-  const avail = Math.max(10, width - 10);
-  const words = text.split(/\s+/);
-  const lines: string[] = [];
-  let current = "";
-  const fits = (chunk: string) => formalTextWidth(chunk, size, bold) <= avail;
-  const hardBreak = (word: string) => {
-    let rest = word;
-    while (rest && !fits(rest)) {
-      let cut = 1;
-      while (cut < rest.length && fits(rest.slice(0, cut + 1))) cut += 1;
-      lines.push(rest.slice(0, cut));
-      rest = rest.slice(cut);
-      if (lines.length >= maxLines) return "";
-    }
-    return rest;
-  };
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (fits(next)) {
-      current = next;
-      continue;
-    }
-    if (current) lines.push(current);
-    if (lines.length >= maxLines) break;
-    current = fits(word) ? word : hardBreak(word);
-  }
-  if (current && lines.length < maxLines) lines.push(current);
-  if (!lines.length) return ["—"];
-  if (lines.length > maxLines) {
-    const kept = lines.slice(0, maxLines);
-    kept[maxLines - 1] = pdfClip(kept[maxLines - 1], Math.max(3, Math.floor(avail / (size * (bold ? 0.62 : 0.58)))));
-    return kept;
-  }
-  return lines;
+export function wrapPdfLines(value: string, width: number, size: number, bold: boolean, _maxLines?: number) {
+  return wrapPdfText(value, width, size, bold);
 }
 
 function alignedX(x: number, width: number, value: string, size: number, bold: boolean, align: PdfAlign) {

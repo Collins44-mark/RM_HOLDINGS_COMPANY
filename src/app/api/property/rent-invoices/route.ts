@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth/session";
 import { NextResponse } from "next/server";
 import { resolveBusinessUnitId } from "@/lib/property/business-unit";
 import { createInvoice, listInvoiceRecords } from "@/lib/property/invoice-write";
+import { auditedPropertyResponse } from "@/lib/property/audit";
 
 export async function GET() {
   try {
@@ -26,7 +27,12 @@ export async function POST(req: Request) {
     if ("error" in resolved) return NextResponse.json({ error: resolved.error }, { status: resolved.status });
     const result = await createInvoice(admin, resolved.buId, await req.json());
     if (result.error) return NextResponse.json({ error: result.error }, { status: 400 });
-    return NextResponse.json({ data: result.data });
+    return auditedPropertyResponse(resolved.buId, { data: result.data }, {
+      action: "invoice.created",
+      description: "Created a rent invoice.",
+      entityType: "rent_invoice",
+      entityId: result.data?.id,
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: 400 });
   }

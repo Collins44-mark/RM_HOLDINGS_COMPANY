@@ -1,6 +1,7 @@
 import { BUSINESS_UNITS, type BusinessUnitCode } from "@/lib/config/app";
 import type { BusinessUnitView } from "@/lib/data/business-units";
 import { isKnownBusinessUnitCode } from "@/lib/data/business-units";
+import { REPORT_MODULES, REPORT_TYPES } from "@/lib/property/report-types";
 
 /** Group scope or a configured business-unit code. */
 export type ReportModuleId = "group" | BusinessUnitCode | string;
@@ -154,12 +155,138 @@ export const REPORT_DEFINITIONS: ReportDefinition[] = [
     description: "Collected income, paid expenses, and operating result.",
     exports: ["pdf"],
   },
+  { id: "ls-inventory", module: "livestock", label: "Livestock Inventory Report", description: "Current group quantities by animal type.", exports: ["pdf"] },
+  { id: "ls-purchases", module: "livestock", label: "Livestock Purchase Report", description: "Livestock purchases and their costs.", exports: ["pdf"] },
+  { id: "ls-pregnancy", module: "livestock", label: "Pregnancy Report", description: "Active group pregnancy records.", exports: ["pdf"] },
+  { id: "ls-births", module: "livestock", label: "Birth Report", description: "Mothers delivered and offspring born.", exports: ["pdf"] },
+  { id: "ls-movements", module: "livestock", label: "Livestock Movement Report", description: "Opening stock, purchases, births, sales, deaths, and adjustments.", exports: ["pdf"] },
+  { id: "ls-sales", module: "livestock", label: "Livestock Sales Report", description: "Sales, amounts received, and outstanding balances.", exports: ["pdf"] },
+  { id: "ls-houses", module: "livestock", label: "Poultry Houses Report", description: "Poultry houses and their rental status.", exports: ["pdf"] },
+  { id: "ls-rent", module: "livestock", label: "Rental Income Report", description: "Poultry house rent actually received.", exports: ["pdf"] },
+  { id: "ls-expenses", module: "livestock", label: "Livestock Expenses Report", description: "Expense obligations, amounts paid, and balances.", exports: ["pdf"] },
+  { id: "ls-financial", module: "livestock", label: "Livestock Financial Summary", description: "Collected livestock income, paid expenses, and cash result.", exports: ["pdf"] },
   {
     id: "school-transport",
     module: "school",
     label: "Transport Report",
     description: "Posted fuel and maintenance expenses by bus.",
     exports: ["pdf"],
+  },
+  ...REPORT_MODULES.flatMap((group) =>
+    REPORT_TYPES[group.id]
+      .filter((report) => report.id !== "individual" && report.id !== "statement")
+      .map((report) => ({
+        id: `property:${group.id}:${report.id}`,
+        module: "property" as const,
+        label: `${group.name} — ${report.label}`,
+        description: group.description,
+        exports: ["pdf"] as ReportExportFormat[],
+      })),
+  ),
+  {
+    id: "rice-summary",
+    module: "rice",
+    label: "Financial Summary",
+    description: "Purchases, sales, milling income, expenses, and stock value.",
+    exports: [],
+  },
+  {
+    id: "rice-inventory",
+    module: "rice",
+    label: "Inventory",
+    description: "Current rice stock quantities and values.",
+    exports: [],
+  },
+  {
+    id: "rice-purchases",
+    module: "rice",
+    label: "Purchases",
+    description: "Paddy purchases for the selected period.",
+    exports: [],
+  },
+  {
+    id: "rice-production",
+    module: "rice",
+    label: "Milling & Production",
+    description: "Mill batches, output, and wastage.",
+    exports: [],
+  },
+  {
+    id: "rice-sales",
+    module: "rice",
+    label: "Sales",
+    description: "Rice sales and amounts received.",
+    exports: [],
+  },
+  {
+    id: "rice-services",
+    module: "rice",
+    label: "Service Income",
+    description: "Storage and milling service income.",
+    exports: [],
+  },
+  {
+    id: "rice-expenses",
+    module: "rice",
+    label: "Expenses",
+    description: "Rice operating expenses for the selected period.",
+    exports: [],
+  },
+  {
+    id: "rice-storage",
+    module: "rice",
+    label: "Customer Storage",
+    description: "Customer storage balances.",
+    exports: [],
+  },
+  {
+    id: "farm-summary",
+    module: "farm",
+    label: "Financial Summary",
+    description: "Farm service income, expenses, and operating result.",
+    exports: [],
+  },
+  {
+    id: "farm-jobs",
+    module: "farm",
+    label: "Farm Services",
+    description: "Customer jobs, prices, and payments.",
+    exports: [],
+  },
+  {
+    id: "farm-tractors",
+    module: "farm",
+    label: "Tractors & Equipment",
+    description: "Registered tractors and their status.",
+    exports: [],
+  },
+  {
+    id: "farm-fuel",
+    module: "farm",
+    label: "Fuel",
+    description: "Fuel issued to tractors.",
+    exports: [],
+  },
+  {
+    id: "farm-maintenance",
+    module: "farm",
+    label: "Maintenance",
+    description: "Tractor maintenance costs.",
+    exports: [],
+  },
+  {
+    id: "farm-operations",
+    module: "farm",
+    label: "Company Farm",
+    description: "Company farm operations.",
+    exports: [],
+  },
+  {
+    id: "farm-expenses",
+    module: "farm",
+    label: "Expenses",
+    description: "Farm expenses for the selected period.",
+    exports: [],
   },
 ];
 

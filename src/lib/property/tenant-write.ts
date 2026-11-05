@@ -1,5 +1,10 @@
+import { losesToEarlier, writeError, isUniqueConflict } from "@/lib/data/conflict";
 import { assignmentNotes, presentTenants, readAssignment } from "@/lib/property/tenants";
 import { contractNumber, syncUnitOccupancy } from "@/lib/property/contract-write";
+
+function phoneKey(value: unknown) {
+  return String(value || "").replace(/\D/g, "");
+}
 
 function codeFromName(name: string, prefix: string) {
   const base = String(name || prefix).toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) || prefix;
@@ -56,20 +61,33 @@ export async function createTenant(admin: any, buId: string, body: any) {
   if (unitId && (!unit || unit.property_id !== propertyId)) return { error: "Unit does not belong to the selected property" };
 
   const status = body.status === "Inactive" ? "Inactive" : "Active";
+  const phone = String(body.phone_number || body.phone || "").trim();
+  const key = phoneKey(phone);
+  if (key.length >= 6 && context.tenants.some((tenant: any) => phoneKey(tenant.phone_number) === key)) {
+    return { error: "A tenant with this phone number already exists" };
+  }
   const payload = {
     business_unit_id: buId,
     tenant_code: codeFromName(fullName, "TENANT"),
     full_name: fullName,
-    phone_number: String(body.phone_number || body.phone || "").trim(),
+    phone_number: phone,
     email: String(body.email || "").trim(),
     status,
     notes: unit ? null : assignmentNotes(propertyId),
   };
   let inserted = await admin.from("tenants").insert(payload).select("id, full_name, phone_number, email, status, notes, created_at").single();
-  if (inserted.error && /duplicate|unique/i.test(inserted.error.message || "")) {
+  if (inserted.error && isUniqueConflict(inserted.error)) {
     inserted = await admin.from("tenants").insert({ ...payload, tenant_code: codeFromName(fullName, "TENANT") }).select("id, full_name, phone_number, email, status, notes, created_at").single();
   }
-  if (inserted.error || !inserted.data) return { error: inserted.error?.message || "Save failed" };
+  if (inserted.error || !inserted.data) return { error: writeError(inserted.error, "Save failed") };
+  if (key.length >= 6) {
+    const peers = await admin.from("tenants").select("id, phone_number, created_at").eq("business_unit_id", buId);
+    const same = (peers.data || []).filter((tenant: any) => phoneKey(tenant.phone_number) === key);
+    if (losesToEarlier(inserted.data, same)) {
+      await admin.from("tenants").delete().eq("id", inserted.data.id).eq("business_unit_id", buId);
+      return { error: "A tenant with this phone number already exists" };
+    }
+  }
 
   if (unit) {
     const start = new Date().toISOString().slice(0, 10);
@@ -86,7 +104,7 @@ export async function createTenant(admin: any, buId: string, body: any) {
     }).select("id, tenant_id, property_id, unit_id, status, created_at").single();
     if (contract.error) {
       await admin.from("tenants").delete().eq("id", inserted.data.id);
-      return { error: contract.error.message };
+      return { error: writeError(contract.error, "The tenant could not be assigned to that unit") };
     }
     context.contracts.push(contract.data);
     if (status === "Active") await syncOccupancy(admin, buId, unit.id);
@@ -131,7 +149,7 @@ export async function assignTenant(admin: any, buId: string, tenant: any, proper
         rent_amount: Number(unit.monthly_rent || 0),
         status: contractStatus,
       }).select("id, tenant_id, property_id, unit_id, status, created_at").single();
-      if (created.error) return { error: created.error.message };
+      if (created.error) return { error: writeError(created.error, "The tenant could not be assigned to that unit") };
       context.contracts.push(created.data);
     }
     const notes = readAssignment(tenant.notes) ? null : tenant.notes;

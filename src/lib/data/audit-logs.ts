@@ -28,9 +28,16 @@ export type AuditLogFilters = {
   from?: string;
   to?: string;
   page?: number;
+  pageSize?: number;
 };
 
 export const AUDIT_PAGE_SIZE = 25;
+export const AUDIT_PAGE_SIZES = [10, 25, 50, 100] as const;
+
+export function parseAuditPageSize(value: unknown) {
+  const size = Number(value);
+  return (AUDIT_PAGE_SIZES as readonly number[]).includes(size) ? size : AUDIT_PAGE_SIZE;
+}
 
 export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "login.success": "User signed in",
@@ -180,7 +187,14 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   supermarket: "Supermarket",
   school: "School",
   profile: "Profile",
+  rice: "Rice Mill & Warehouse",
+  farm: "Farm & Tractor Services",
+  property: "Properties & Rentals",
+  livestock: "Livestock Farm",
+  beekeeping: "Beekeeping",
 };
+
+const AUDIT_MODULES = Object.keys(AUDIT_MODULE_LABELS);
 
 function mapRow(row: Record<string, unknown>): AuditLogRecord {
   const metadata =
@@ -241,6 +255,11 @@ export type AuditLogPage = {
   actors: { id: string; name: string }[];
 };
 
+function bound(value: string, end: boolean) {
+  if (value.includes("T")) return value;
+  return end ? `${value}T23:59:59.999+03:00` : `${value}T00:00:00+03:00`;
+}
+
 export async function listAuditLogs(filters: AuditLogFilters): Promise<AuditLogPage> {
   const empty: AuditLogPage = {
     rows: [],
@@ -259,8 +278,9 @@ export async function listAuditLogs(filters: AuditLogFilters): Promise<AuditLogP
   if (!admin) return empty;
 
   const page = Math.max(1, filters.page ?? 1);
-  const from = (page - 1) * AUDIT_PAGE_SIZE;
-  const to = from + AUDIT_PAGE_SIZE - 1;
+  const pageSize = parseAuditPageSize(filters.pageSize);
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
 
   let query = admin
     .from("audit_logs")
@@ -275,8 +295,8 @@ export async function listAuditLogs(filters: AuditLogFilters): Promise<AuditLogP
   if (filters.action) query = query.eq("action", filters.action);
   if (filters.actorUserId) query = query.eq("actor_user_id", filters.actorUserId);
   if (filters.severity) query = query.eq("severity", filters.severity);
-  if (filters.from) query = query.gte("created_at", `${filters.from}T00:00:00.000Z`);
-  if (filters.to) query = query.lte("created_at", `${filters.to}T23:59:59.999Z`);
+  if (filters.from) query = query.gte("created_at", bound(filters.from, false));
+  if (filters.to) query = query.lte("created_at", bound(filters.to, true));
   if (filters.query?.trim()) {
     const q = filters.query.trim().replace(/[%]/g, "");
     query = query.or(
@@ -286,7 +306,7 @@ export async function listAuditLogs(filters: AuditLogFilters): Promise<AuditLogP
 
   const [pageResult, facetResult, summaryResult] = await Promise.all([
     query,
-    admin.from("audit_logs").select("module, action, actor_user_id, actor_name").limit(2000),
+    admin.from("audit_logs").select("module, action, actor_user_id, actor_name").order("created_at", { ascending: false }).limit(8000),
     admin
       .from("audit_logs")
       .select("id, actor_user_id, module, created_at")
@@ -306,7 +326,9 @@ export async function listAuditLogs(filters: AuditLogFilters): Promise<AuditLogP
   }
 
   const facetRows = facetResult.data ?? [];
-  const modules = [...new Set(facetRows.map((row) => String(row.module)).filter(Boolean))].sort();
+  const modules = [...new Set([...AUDIT_MODULES, ...facetRows.map((row) => String(row.module)).filter(Boolean)])].sort(
+    (a, b) => auditModuleLabel(a).localeCompare(auditModuleLabel(b)),
+  );
   const actions = [...new Set(facetRows.map((row) => String(row.action)).filter(Boolean))].sort();
   const actorsMap = new Map<string, string>();
   for (const row of facetRows) {
@@ -325,7 +347,7 @@ export async function listAuditLogs(filters: AuditLogFilters): Promise<AuditLogP
     rows: (pageResult.data ?? []).map((row) => mapRow(row as Record<string, unknown>)),
     total: pageResult.count ?? 0,
     page,
-    pageSize: AUDIT_PAGE_SIZE,
+    pageSize,
     uniqueActors,
     uniqueModules,
     latestAt: summaryRows[0]?.created_at ? String(summaryRows[0].created_at) : null,

@@ -1,3 +1,4 @@
+import { ALREADY_SAVED, isUniqueConflict, writeError } from "@/lib/data/conflict";
 import { nextSerial } from "@/lib/property/serial";
 import { EXPENSE_CATEGORIES, HARVEST_QUALITIES, HIVE_STATUSES, HIVE_TYPES, PAYMENT_METHODS, roundKg, roundMoney } from "@/lib/beekeeping/constants";
 import { presentDirectory, type BeeDirectory } from "@/lib/beekeeping/directory";
@@ -43,6 +44,19 @@ async function directory(admin: any, buId: string): Promise<{ error: string } | 
   return presentDirectory(raw);
 }
 
+async function insertCoded(admin: any, buId: string, table: string, field: string, prefix: string, row: Record<string, unknown>) {
+  const taken: string[] = [];
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const existing = await admin.from(table).select(field).eq("business_unit_id", buId);
+    const code = nextSerial([...(existing.data || []).map((item: any) => item[field]), ...taken], prefix, 1);
+    taken.push(code);
+    const inserted = await admin.from(table).insert({ ...row, [field]: code }).select("id").single();
+    if (!inserted.error) return inserted;
+    if (!isUniqueConflict(inserted.error)) return { data: null, error: { message: writeError(inserted.error) } };
+  }
+  return { data: null, error: { message: ALREADY_SAVED } };
+}
+
 function eligibleHive(hive: any) {
   return hive && hive.status !== "Archived" && hive.status !== "Inactive";
 }
@@ -58,10 +72,8 @@ export async function createHive(admin: any, buId: string, userId: string, body:
   if (!HIVE_TYPES.includes(hiveType as (typeof HIVE_TYPES)[number])) return { error: "Select a hive type" };
   if (!HIVE_STATUSES.includes(status as (typeof HIVE_STATUSES)[number])) return { error: "Select a hive status" };
   if (!installed) return { error: "Installation date is required" };
-  const hive_code = nextSerial(current.hives.map((hive) => hive.hive_code), "HIVE", 1);
-  const inserted = await admin.from("bee_hives").insert({
+  const inserted = await insertCoded(admin, buId, "bee_hives", "hive_code", "HIVE", {
     business_unit_id: buId,
-    hive_code,
     hive_name: String(body.hive_name || "").trim(),
     location,
     hive_type: hiveType,
@@ -69,8 +81,8 @@ export async function createHive(admin: any, buId: string, userId: string, body:
     status,
     notes: String(body.notes || "").trim(),
     created_by: userId || null,
-  }).select("id").single();
-  if (inserted.error) return { error: inserted.error.message };
+  });
+  if (inserted.error || !inserted.data) return { error: inserted.error?.message || "Save failed" };
   const next = await directory(admin, buId);
   if ("error" in next) return next;
   return { data: next.hives.find((hive) => hive.id === inserted.data.id), directory: next };
@@ -128,19 +140,17 @@ export async function createHarvest(admin: any, buId: string, userId: string, bo
   if (!date) return { error: "Harvest date is required" };
   if (!Number.isFinite(quantity) || quantity <= 0) return { error: "Honey quantity must be greater than zero" };
   if (!HARVEST_QUALITIES.includes(quality as (typeof HARVEST_QUALITIES)[number])) return { error: "Select a honey quality" };
-  const harvest_code = nextSerial(current.harvests.map((harvest) => harvest.harvest_code), "HARV", 1);
-  const inserted = await admin.from("bee_harvests").insert({
+  const inserted = await insertCoded(admin, buId, "bee_harvests", "harvest_code", "HARV", {
     business_unit_id: buId,
     hive_id: hive!.id,
-    harvest_code,
     harvest_date: date,
     quantity_kg: roundKg(quantity),
     quality,
     status: "Valid",
     notes: String(body.notes || "").trim(),
     created_by: userId || null,
-  }).select("id").single();
-  if (inserted.error) return { error: inserted.error.message };
+  });
+  if (inserted.error || !inserted.data) return { error: inserted.error?.message || "Save failed" };
   const next = await directory(admin, buId);
   if ("error" in next) return next;
   return { data: next.harvests.find((harvest) => harvest.id === inserted.data.id), directory: next };
@@ -194,22 +204,56 @@ export async function createSale(admin: any, buId: string, userId: string, body:
   if (!Number.isFinite(quantity) || quantity <= 0) return { error: "Honey quantity must be greater than zero" };
   if (price == null) return { error: "Price per kg must be a valid amount" };
   if (roundKg(quantity) > current.stock.available + 0.0001) return { error: "Not enough honey stock" };
-  const sale_code = nextSerial(current.sales.map((sale) => sale.sale_code), "SALE", 1);
-  const created = await admin.rpc("bee_create_sale", {
-    p_business_unit_id: buId,
-    p_created_by: userId || null,
-    p_sale_code: sale_code,
-    p_sale_date: date,
-    p_quantity_kg: roundKg(quantity),
-    p_price_per_kg: price,
-    p_customer_name: String(body.customer_name || "").trim(),
-    p_phone: String(body.phone || "").trim(),
-    p_notes: String(body.notes || "").trim(),
-  });
-  if (created.error) return { error: created.error.message };
+  const total = roundMoney(roundKg(quantity) * price);
+  const paidInput = String(body.amount_paid ?? "").trim();
+  const paid = paidInput === "" || Number(paidInput) === 0 ? 0 : money(paidInput);
+  const method = String(body.payment_method || "Cash");
+  const payDate = day(body.payment_date || date);
+  if (paid == null || paid < 0) return { error: "Payment amount must be a valid amount" };
+  if (paid > total + 0.001) return { error: "Payment cannot exceed the sale total" };
+  if (paid > 0 && !PAYMENT_METHODS.includes(method as (typeof PAYMENT_METHODS)[number])) return { error: "Select a payment method" };
+  if (paid > 0 && !payDate) return { error: "Payment date is required" };
+  if (paid > 0 && !String(body.request_key || "").trim()) return { error: "Payment could not be identified" };
+  const taken: string[] = [];
+  let created: { data?: { id?: string }; error?: { message?: string; code?: string } | null } = {};
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const fresh = attempt === 0 ? current : await directory(admin, buId);
+    if ("error" in fresh) return fresh;
+    const saleCode = nextSerial([...fresh.sales.map((sale) => sale.sale_code), ...taken], "SALE", 1);
+    taken.push(saleCode);
+    created = await admin.rpc("bee_create_sale", {
+      p_business_unit_id: buId,
+      p_created_by: userId || null,
+      p_sale_code: saleCode,
+      p_sale_date: date,
+      p_quantity_kg: roundKg(quantity),
+      p_price_per_kg: price,
+      p_customer_name: String(body.customer_name || "").trim(),
+      p_phone: String(body.phone || "").trim(),
+      p_notes: String(body.notes || "").trim(),
+    });
+    if (!created.error) break;
+    if (!isUniqueConflict(created.error)) return { error: writeError(created.error) };
+  }
+  if (created.error) return { error: ALREADY_SAVED };
+  const id = created.data?.id;
+  if (paid > 0 && id) {
+    const paidSale = await recordSalePayment(admin, buId, userId, id, {
+      amount: paid,
+      payment_method: method,
+      payment_date: payDate,
+      transaction_reference: body.transaction_reference,
+      request_key: body.request_key,
+      notes: "",
+    });
+    if ("error" in paidSale) {
+      await cancelSale(admin, buId, id);
+      return paidSale;
+    }
+    return paidSale;
+  }
   const next = await directory(admin, buId);
   if ("error" in next) return next;
-  const id = created.data?.id;
   return { data: next.sales.find((sale) => sale.id === id), directory: next };
 }
 
@@ -267,7 +311,7 @@ export async function recordSalePayment(admin: any, buId: string, userId: string
     notes: String(body.notes || "").trim(),
     created_by: userId || null,
   }).select("id").single();
-  if (inserted.error) return { error: /duplicate|unique/i.test(inserted.error.message) ? "This payment was already recorded" : inserted.error.message };
+  if (inserted.error) return { error: isUniqueConflict(inserted.error) ? "This payment was already recorded" : writeError(inserted.error) };
   const next = await directory(admin, buId);
   if ("error" in next) return next;
   const saved = next.sales.find((item) => item.id === saleId);
@@ -300,11 +344,9 @@ export async function createExpense(admin: any, buId: string, userId: string, bo
   if (amount == null || amount <= 0) return { error: "Amount must be greater than zero" };
   if (!date) return { error: "Expense date is required" };
   if (hiveId && !current.hives.some((hive) => hive.id === hiveId)) return { error: "Select a hive from this business" };
-  const expense_code = nextSerial(current.expenses.map((expense) => expense.expense_code), "BEX", 1);
-  const inserted = await admin.from("bee_expenses").insert({
+  const inserted = await insertCoded(admin, buId, "bee_expenses", "expense_code", "BEX", {
     business_unit_id: buId,
     hive_id: hiveId || null,
-    expense_code,
     expense_date: date,
     due_date: day(body.due_date) || null,
     category,
@@ -315,8 +357,8 @@ export async function createExpense(admin: any, buId: string, userId: string, bo
     status: "Unpaid",
     notes: String(body.notes || "").trim(),
     created_by: userId || null,
-  }).select("id").single();
-  if (inserted.error) return { error: inserted.error.message };
+  });
+  if (inserted.error || !inserted.data) return { error: inserted.error?.message || "Save failed" };
   const next = await directory(admin, buId);
   if ("error" in next) return next;
   return { data: next.expenses.find((expense) => expense.id === inserted.data.id), directory: next };
@@ -388,7 +430,7 @@ export async function recordExpensePayment(admin: any, buId: string, userId: str
     notes: String(body.notes || "").trim(),
     created_by: userId || null,
   }).select("id").single();
-  if (inserted.error) return { error: /duplicate|unique/i.test(inserted.error.message) ? "This payment was already recorded" : inserted.error.message };
+  if (inserted.error) return { error: isUniqueConflict(inserted.error) ? "This payment was already recorded" : writeError(inserted.error) };
   const next = await directory(admin, buId);
   if ("error" in next) return next;
   const saved = next.expenses.find((item) => item.id === expenseId);

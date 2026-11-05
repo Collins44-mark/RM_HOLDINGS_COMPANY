@@ -7,6 +7,10 @@ import {
 import { EmbeddedSupermarketReport } from "@/components/reports/EmbeddedSupermarketReport";
 import { EmbeddedSchoolReport } from "@/components/reports/EmbeddedSchoolReport";
 import { EmbeddedBeekeepingReport } from "@/components/reports/EmbeddedBeekeepingReport";
+import { EmbeddedLivestockReport } from "@/components/reports/EmbeddedLivestockReport";
+import { EmbeddedFarmReport } from "@/components/reports/EmbeddedFarmReport";
+import { EmbeddedPropertyReport } from "@/components/reports/EmbeddedPropertyReport";
+import { EmbeddedRiceReport } from "@/components/reports/EmbeddedRiceReport";
 import { ReportEmptyState } from "@/components/reports/report-ui";
 import { ReportMountFallback } from "@/components/supermarket/report-shell";
 import type { ConsolidatedReport } from "@/lib/data/reports";
@@ -95,10 +99,42 @@ export function ReportResultRouter({
     );
   }
 
+  if (moduleId === "livestock") {
+    return (
+      <Suspense fallback={<ReportMountFallback />}>
+        <EmbeddedLivestockReport reportId={reportId} period={period} from={from} to={to} />
+      </Suspense>
+    );
+  }
+
   if (moduleId === "beekeeping") {
     return (
       <Suspense fallback={<ReportMountFallback />}>
         <EmbeddedBeekeepingReport reportId={reportId} period={period} from={from} to={to} />
+      </Suspense>
+    );
+  }
+
+  if (moduleId === "property") {
+    return (
+      <Suspense fallback={<ReportMountFallback />}>
+        <EmbeddedPropertyReport reportId={reportId} period={period} from={from} to={to} />
+      </Suspense>
+    );
+  }
+
+  if (moduleId === "rice") {
+    return (
+      <Suspense fallback={<ReportMountFallback />}>
+        <EmbeddedRiceReport reportId={reportId} period={period} from={from} to={to} />
+      </Suspense>
+    );
+  }
+
+  if (moduleId === "farm") {
+    return (
+      <Suspense fallback={<ReportMountFallback />}>
+        <EmbeddedFarmReport reportId={reportId} period={period} from={from} to={to} />
       </Suspense>
     );
   }

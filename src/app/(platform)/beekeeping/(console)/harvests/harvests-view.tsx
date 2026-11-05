@@ -6,7 +6,7 @@ import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useListPage } from "@/lib/property/use-list-page";
 import { HARVEST_QUALITIES, businessToday, roundKg } from "@/lib/beekeeping/constants";
 import type { BeeDirectory, BeeHarvest } from "@/lib/beekeeping/directory";
-import { SaveButton, fieldClass, formatDate, overlayClass, saveJson, statusClass } from "../bee-ui";
+import { ActionMenu, ActionMenuItem, SaveButton, fieldClass, formatDate, overlayClass, placeActionMenu, saveJson, statusClass } from "../bee-ui";
 
 export default function HarvestsView({ initial }: { initial: BeeDirectory }) {
   const [directory, setDirectory] = useState(initial);
@@ -21,6 +21,7 @@ export default function HarvestsView({ initial }: { initial: BeeDirectory }) {
   const [saveState, setSaveState] = useState("idle");
   const [error, setError] = useState("");
   const [menu, setMenu] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const eligible = directory.hives.filter((hive) => hive.status !== "Archived" && hive.status !== "Inactive");
   const rows = useMemo(() => directory.harvests.filter((harvest) => {
     const text = `${harvest.harvest_code} ${harvest.hive_code} ${harvest.location}`.toLowerCase();
@@ -31,6 +32,16 @@ export default function HarvestsView({ initial }: { initial: BeeDirectory }) {
   const month = businessToday().slice(0, 7);
   const monthQty = roundKg(valid.filter((harvest) => harvest.harvest_date.startsWith(month)).reduce((sum, harvest) => sum + harvest.quantity_kg, 0));
   const total = roundKg(valid.reduce((sum, harvest) => sum + harvest.quantity_kg, 0));
+  const menuHarvest = directory.harvests.find((harvest) => harvest.id === menu) || null;
+
+  function openMenu(event: React.MouseEvent<HTMLButtonElement>, id: string) {
+    if (menu === id) {
+      setMenu(null);
+      return;
+    }
+    setMenuPos(placeActionMenu(event.currentTarget.getBoundingClientRect(), 3));
+    setMenu(id);
+  }
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
@@ -84,8 +95,8 @@ export default function HarvestsView({ initial }: { initial: BeeDirectory }) {
                 <td className="px-4 py-3">{harvest.quantity_kg} kg</td>
                 <td className="px-4 py-3">{harvest.quality}</td>
                 <td className="px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-xs ${statusClass(harvest.status)}`}>{harvest.status}</span></td>
-                <td className="relative px-4 py-3"><button type="button" aria-label="Harvest actions" onClick={() => setMenu(menu === harvest.id ? null : harvest.id)}><MoreVertical size={16} /></button>
-                  {menu === harvest.id && <div className="absolute right-4 z-20 w-40 rounded-2xl border bg-white py-1 shadow-xl"><button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { setSelected(harvest); setMenu(null); }}>View Details</button><button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { setEditing(harvest); setDraft({ hive_id: harvest.hive_id, harvest_date: harvest.harvest_date, quantity_kg: String(harvest.quantity_kg), quality: harvest.quality, notes: harvest.notes }); setMode("edit"); setSaveState("idle"); setMenu(null); }}>Edit Harvest</button><button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={() => cancel(harvest)}>Cancel Harvest</button></div>}
+                <td className="px-4 py-3 text-right">
+                  <button type="button" aria-label="Harvest actions" className="rounded-lg p-1 hover:bg-slate-100" onClick={(event) => openMenu(event, harvest.id)}><MoreVertical size={16} /></button>
                 </td>
               </tr>
             ))}
@@ -93,6 +104,13 @@ export default function HarvestsView({ initial }: { initial: BeeDirectory }) {
         </table>
         <div className="px-4"><PaginationBar page={list.page} total={rows.length} pageSize={list.pageSize} onPage={list.setPage} onPageSize={list.setPageSize} /></div>
       </div>
+      {menuHarvest ? (
+        <ActionMenu top={menuPos.top} left={menuPos.left} onClose={() => setMenu(null)}>
+          <ActionMenuItem label="View Details" onClick={() => { setSelected(menuHarvest); setMenu(null); }} />
+          <ActionMenuItem label="Edit Harvest" onClick={() => { setEditing(menuHarvest); setDraft({ hive_id: menuHarvest.hive_id, harvest_date: menuHarvest.harvest_date, quantity_kg: String(menuHarvest.quantity_kg), quality: menuHarvest.quality, notes: menuHarvest.notes }); setMode("edit"); setSaveState("idle"); setMenu(null); }} />
+          <ActionMenuItem label="Cancel Harvest" onClick={() => cancel(menuHarvest)} />
+        </ActionMenu>
+      ) : null}
       {mode && (
         <div className={overlayClass}>
           <form onSubmit={handleSave} className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">

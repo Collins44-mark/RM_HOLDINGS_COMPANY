@@ -6,8 +6,9 @@ import { PaginationBar } from "@/components/ui/PaginationBar";
 import { formatTzs } from "@/lib/format/currency";
 import { useListPage } from "@/lib/property/use-list-page";
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS, businessToday, roundMoney } from "@/lib/beekeeping/constants";
+import { beePeriodWindow, inWindow } from "@/lib/beekeeping/period";
 import type { BeeDirectory, BeeExpense, BeeSale } from "@/lib/beekeeping/directory";
-import { SaveButton, fieldClass, formatDate, overlayClass, saveJson, statusClass } from "../bee-ui";
+import { ActionMenu, ActionMenuItem, SaveButton, fieldClass, formatDate, overlayClass, placeActionMenu, saveJson, statusClass } from "../bee-ui";
 
 export default function SalesView({ initial, initialTab }: { initial: BeeDirectory; initialTab: "sales" | "expenses" }) {
   const [directory, setDirectory] = useState(initial);
@@ -23,12 +24,29 @@ export default function SalesView({ initial, initialTab }: { initial: BeeDirecto
   const [saveState, setSaveState] = useState("idle");
   const [error, setError] = useState("");
   const [menu, setMenu] = useState<string | null>(null);
-  const sales = useMemo(() => directory.sales.filter((item) => `${item.sale_code} ${item.customer_name}`.toLowerCase().includes(query.toLowerCase())), [directory.sales, query]);
-  const expenses = useMemo(() => directory.expenses.filter((item) => `${item.expense_code} ${item.description} ${item.category}`.toLowerCase().includes(query.toLowerCase())), [directory.expenses, query]);
-  const salePage = useListPage(sales, query);
-  const expensePage = useListPage(expenses, query);
-  const received = roundMoney(directory.sales.reduce((sum, item) => sum + item.amount_received, 0));
-  const soldKg = directory.sales.filter((item) => item.status !== "Cancelled").reduce((sum, item) => sum + item.quantity_kg, 0);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  const [period, setPeriod] = useState("month");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const range = beePeriodWindow(period === "custom" && fromDate && toDate && fromDate <= toDate ? "custom" : period === "custom" ? "month" : period, fromDate, toDate);
+  const sales = useMemo(() => directory.sales.filter((item) => `${item.sale_code} ${item.customer_name}`.toLowerCase().includes(query.toLowerCase()) && inWindow(item.sale_date, range.from, range.to)), [directory.sales, query, range.from, range.to]);
+  const expenses = useMemo(() => directory.expenses.filter((item) => `${item.expense_code} ${item.description} ${item.category}`.toLowerCase().includes(query.toLowerCase()) && inWindow(item.expense_date, range.from, range.to)), [directory.expenses, query, range.from, range.to]);
+  const salePage = useListPage(sales, `${query}|${range.from}|${range.to}`);
+  const expensePage = useListPage(expenses, `${query}|${range.from}|${range.to}`);
+  const menuSale = directory.sales.find((item) => item.id === menu) || null;
+  const menuExpense = directory.expenses.find((item) => item.id === menu) || null;
+  const openSales = sales.filter((item) => item.status !== "Cancelled");
+  const received = roundMoney(openSales.reduce((sum, item) => sum + item.amount_received, 0));
+  const soldKg = openSales.reduce((sum, item) => sum + item.quantity_kg, 0);
+
+  function openMenu(event: React.MouseEvent<HTMLButtonElement>, id: string, itemCount: number) {
+    if (menu === id) {
+      setMenu(null);
+      return;
+    }
+    setMenuPos(placeActionMenu(event.currentTarget.getBoundingClientRect(), itemCount));
+    setMenu(id);
+  }
 
   function open(next: NonNullable<typeof mode>, seed: Record<string, string> = {}) {
     setMode(next);
@@ -46,7 +64,7 @@ export default function SalesView({ initial, initialTab }: { initial: BeeDirecto
     setError("");
     try {
       const data = mode === "sale"
-        ? await saveJson("/api/beekeeping/sales", "POST", { ...draft, quantity_kg: Number(draft.quantity_kg), price_per_kg: Number(draft.price_per_kg) })
+        ? await saveJson("/api/beekeeping/sales", "POST", { ...draft, quantity_kg: Number(draft.quantity_kg), price_per_kg: Number(draft.price_per_kg), amount_paid: draft.amount_paid ? Number(draft.amount_paid) : 0, request_key: requestKey })
         : mode === "edit-sale" && sale
           ? await saveJson(`/api/beekeeping/sales/${sale.id}`, "PATCH", draft)
           : mode === "pay-sale" && sale
@@ -80,30 +98,43 @@ export default function SalesView({ initial, initialTab }: { initial: BeeDirecto
   return (
     <div className="space-y-5 pb-10">
       <div className="flex items-center justify-between"><div><h1 className="text-2xl font-bold">Sales & Expenses</h1><p className="text-sm text-slate-500">Honey stock, sales, payments, and beekeeping expenses.</p></div>
-        <button type="button" onClick={() => tab === "sales" ? open("sale", { sale_date: businessToday(), quantity_kg: "", price_per_kg: "", customer_name: "", phone: "", notes: "" }) : open("expense", { expense_date: businessToday(), category: EXPENSE_CATEGORIES[0], description: "", amount: "", location: "", hive_id: "", vendor_name: "", due_date: "", notes: "" })} className="rounded-xl bg-[#0b2244] px-4 py-2 text-sm font-semibold text-white">{tab === "sales" ? "+ Add Sale" : "+ Add Expense"}</button>
+        <button type="button" onClick={() => tab === "sales" ? open("sale", { sale_date: businessToday(), quantity_kg: "", price_per_kg: "", customer_name: "", phone: "", notes: "", amount_paid: "", payment_method: "Cash", payment_date: businessToday(), transaction_reference: "" }) : open("expense", { expense_date: businessToday(), category: EXPENSE_CATEGORIES[0], description: "", amount: "", location: "", hive_id: "", vendor_name: "", due_date: "", notes: "" })} className="rounded-xl bg-[#0b2244] px-4 py-2 text-sm font-semibold text-white">{tab === "sales" ? "+ Add Sale" : "+ Add Expense"}</button>
       </div>
       <div id="stock" className="grid grid-cols-3 gap-3">
         <Card label="Harvested" value={`${directory.stock.harvested} kg`} /><Card label="Sold" value={`${directory.stock.sold} kg`} /><Card label="Available" value={`${directory.stock.available} kg`} />
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => setTab("sales")} className={`rounded-xl px-4 py-2 text-sm ${tab === "sales" ? "bg-[#0b2244] text-white" : "bg-white"}`}>Sales</button>
         <button type="button" onClick={() => setTab("expenses")} className={`rounded-xl px-4 py-2 text-sm ${tab === "expenses" ? "bg-[#0b2244] text-white" : "bg-white"}`}>Expenses</button>
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" />
+        <select value={period} onChange={(event) => setPeriod(event.target.value)} aria-label="Period" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+          <option value="week">This Week</option>
+          <option value="today">Today</option>
+          <option value="month">This Month</option>
+          <option value="year">This Year</option>
+          <option value="custom">Custom range</option>
+        </select>
+        {period === "custom" && (
+          <>
+            <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} aria-label="From" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" />
+            <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} aria-label="To" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" />
+          </>
+        )}
       </div>
       {error && !mode && <p className="text-sm text-red-600">{error}</p>}
       {tab === "sales" ? (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Card label="Sales value" value={formatTzs(directory.sales.filter((item) => item.status !== "Cancelled").reduce((sum, item) => sum + item.total_amount, 0))} />
+            <Card label="Sales value" value={formatTzs(openSales.reduce((sum, item) => sum + item.total_amount, 0))} />
             <Card label="Received" value={formatTzs(received)} />
-            <Card label="Outstanding" value={formatTzs(directory.sales.reduce((sum, item) => sum + item.balance, 0))} />
+            <Card label="Outstanding" value={formatTzs(openSales.reduce((sum, item) => sum + item.balance, 0))} />
             <Card label="Quantity sold" value={`${soldKg} kg`} />
           </div>
-          <Table headers={["Sale", "Date", "Customer", "Qty", "Price/kg", "Total", "Received", "Balance", "Status", ""]}>
-            {sales.length === 0 ? <tr><td colSpan={10} className="px-4 py-10 text-center text-slate-500">No sales yet.</td></tr> : salePage.rows.map((item) => (
+          <Table headers={["Sale", "Customer", "Qty", "Price/kg", "Total", "Received", "Balance", "Status", ""]}>
+            {sales.length === 0 ? <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-500">No sales in this period.</td></tr> : salePage.rows.map((item) => (
               <tr key={item.id}>
-                <td className="px-3 py-3 font-medium">{item.sale_code}</td><td className="px-3 py-3">{formatDate(item.sale_date)}</td><td className="px-3 py-3">{item.customer_name || "—"}</td><td className="px-3 py-3">{item.quantity_kg} kg</td><td className="px-3 py-3">{formatTzs(item.price_per_kg)}</td><td className="px-3 py-3">{formatTzs(item.total_amount)}</td><td className="px-3 py-3">{formatTzs(item.amount_received)}</td><td className="px-3 py-3">{formatTzs(item.balance)}</td><td className="px-3 py-3"><span className={`rounded-full px-2 py-0.5 text-xs ${statusClass(item.status)}`}>{item.status}</span></td>
-                <td className="relative px-3 py-3"><button type="button" aria-label="Sale actions" onClick={() => setMenu(menu === item.id ? null : item.id)}><MoreVertical size={16} /></button>{menu === item.id && <div className="absolute right-2 z-20 w-40 rounded-2xl border bg-white py-1 shadow-xl"><RowButton label="View Details" onClick={() => { setSelectedSale(item); setMenu(null); }} /><RowButton label="Edit Sale" onClick={() => { setSale(item); open("edit-sale", { customer_name: item.customer_name, phone: item.phone, price_per_kg: String(item.price_per_kg), notes: item.notes }); }} /><RowButton label="Record Payment" onClick={() => { setSale(item); open("pay-sale", { amount: String(item.balance), payment_date: businessToday(), payment_method: "Cash", transaction_reference: "", notes: "" }); }} /><RowButton label="Cancel Sale" onClick={() => cancel("sale", item.id)} /></div>}</td>
+                <td className="px-3 py-3 font-medium">{item.sale_code}</td><td className="px-3 py-3">{item.customer_name || "—"}</td><td className="px-3 py-3">{item.quantity_kg} kg</td><td className="px-3 py-3">{formatTzs(item.price_per_kg)}</td><td className="px-3 py-3">{formatTzs(item.total_amount)}</td><td className="px-3 py-3">{formatTzs(item.amount_received)}</td><td className="px-3 py-3">{formatTzs(item.balance)}</td><td className="px-3 py-3"><span className={`rounded-full px-2 py-0.5 text-xs ${statusClass(item.status)}`}>{item.status}</span></td>
+                <td className="px-3 py-3 text-right"><button type="button" aria-label="Sale actions" className="rounded-lg p-1 hover:bg-slate-100" onClick={(event) => openMenu(event, item.id, 4)}><MoreVertical size={16} /></button></td>
               </tr>
             ))}
           </Table>
@@ -111,11 +142,11 @@ export default function SalesView({ initial, initialTab }: { initial: BeeDirecto
         </>
       ) : (
         <>
-          <Table headers={["Expense", "Description", "Category", "Date", "Hive", "Amount", "Paid", "Balance", "Status", ""]}>
-            {expenses.length === 0 ? <tr><td colSpan={10} className="px-4 py-10 text-center text-slate-500">No expenses yet.</td></tr> : expensePage.rows.map((item) => (
+          <Table headers={["Expense", "Description", "Category", "Hive", "Amount", "Paid", "Balance", "Status", ""]}>
+            {expenses.length === 0 ? <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-500">No expenses in this period.</td></tr> : expensePage.rows.map((item) => (
               <tr key={item.id}>
-                <td className="px-3 py-3 font-medium">{item.expense_code}</td><td className="px-3 py-3">{item.description}</td><td className="px-3 py-3">{item.category}</td><td className="px-3 py-3">{formatDate(item.expense_date)}</td><td className="px-3 py-3">{item.hive_code || item.location || "—"}</td><td className="px-3 py-3">{formatTzs(item.amount)}</td><td className="px-3 py-3">{formatTzs(item.amount_paid)}</td><td className="px-3 py-3">{formatTzs(item.balance)}</td><td className="px-3 py-3"><span className={`rounded-full px-2 py-0.5 text-xs ${statusClass(item.status)}`}>{item.status}</span></td>
-                <td className="relative px-3 py-3"><button type="button" aria-label="Expense actions" onClick={() => setMenu(menu === item.id ? null : item.id)}><MoreVertical size={16} /></button>{menu === item.id && <div className="absolute right-2 z-20 w-44 rounded-2xl border bg-white py-1 shadow-xl"><RowButton label="View Details" onClick={() => { setSelectedExpense(item); setMenu(null); }} /><RowButton label="Edit Expense" onClick={() => { setExpense(item); open("edit-expense", { category: item.category, description: item.description, amount: String(item.amount), expense_date: item.expense_date, due_date: item.due_date, location: item.location, hive_id: item.hive_id, vendor_name: item.vendor_name, notes: item.notes }); }} /><RowButton label="Record Payment" onClick={() => { setExpense(item); open("pay-expense", { amount: String(item.balance), payment_date: businessToday(), payment_method: "Cash", transaction_reference: "", notes: "" }); }} /><RowButton label="Cancel Expense" onClick={() => cancel("expense", item.id)} /></div>}</td>
+                <td className="px-3 py-3 font-medium">{item.expense_code}</td><td className="px-3 py-3">{item.description}</td><td className="px-3 py-3">{item.category}</td><td className="px-3 py-3">{item.hive_code || item.location || "—"}</td><td className="px-3 py-3">{formatTzs(item.amount)}</td><td className="px-3 py-3">{formatTzs(item.amount_paid)}</td><td className="px-3 py-3">{formatTzs(item.balance)}</td><td className="px-3 py-3"><span className={`rounded-full px-2 py-0.5 text-xs ${statusClass(item.status)}`}>{item.status}</span></td>
+                <td className="px-3 py-3 text-right"><button type="button" aria-label="Expense actions" className="rounded-lg p-1 hover:bg-slate-100" onClick={(event) => openMenu(event, item.id, 4)}><MoreVertical size={16} /></button></td>
               </tr>
             ))}
           </Table>
@@ -123,19 +154,43 @@ export default function SalesView({ initial, initialTab }: { initial: BeeDirecto
         </>
       )}
 
+      {menuSale ? (
+        <ActionMenu top={menuPos.top} left={menuPos.left} onClose={() => setMenu(null)}>
+          <ActionMenuItem label="View Details" onClick={() => { setSelectedSale(menuSale); setMenu(null); }} />
+          <ActionMenuItem label="Edit Sale" onClick={() => { setSale(menuSale); open("edit-sale", { customer_name: menuSale.customer_name, phone: menuSale.phone, price_per_kg: String(menuSale.price_per_kg), notes: menuSale.notes }); }} />
+          <ActionMenuItem label="Record Payment" onClick={() => { setSale(menuSale); open("pay-sale", { amount: String(menuSale.balance), payment_date: businessToday(), payment_method: "Cash", transaction_reference: "", notes: "" }); }} />
+          <ActionMenuItem label="Cancel Sale" onClick={() => cancel("sale", menuSale.id)} />
+        </ActionMenu>
+      ) : null}
+      {menuExpense ? (
+        <ActionMenu top={menuPos.top} left={menuPos.left} onClose={() => setMenu(null)}>
+          <ActionMenuItem label="View Details" onClick={() => { setSelectedExpense(menuExpense); setMenu(null); }} />
+          <ActionMenuItem label="Edit Expense" onClick={() => { setExpense(menuExpense); open("edit-expense", { category: menuExpense.category, description: menuExpense.description, amount: String(menuExpense.amount), expense_date: menuExpense.expense_date, due_date: menuExpense.due_date, location: menuExpense.location, hive_id: menuExpense.hive_id, vendor_name: menuExpense.vendor_name, notes: menuExpense.notes }); }} />
+          <ActionMenuItem label="Record Payment" onClick={() => { setExpense(menuExpense); open("pay-expense", { amount: String(menuExpense.balance), payment_date: businessToday(), payment_method: "Cash", transaction_reference: "", notes: "" }); }} />
+          <ActionMenuItem label="Cancel Expense" onClick={() => cancel("expense", menuExpense.id)} />
+        </ActionMenu>
+      ) : null}
+
       {mode && (
         <div className={overlayClass}>
           <form onSubmit={handleSave} className="max-h-full w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
             <h3 className="mb-4 text-xl font-bold">{mode.includes("pay") ? "Record Payment" : mode.includes("edit") ? "Edit" : mode === "sale" ? "Add Sale" : "Add Expense"}</h3>
             {mode === "sale" && <>
               <div className="grid grid-cols-2 gap-3">
-                <label className="text-sm">Date<input required type="date" value={draft.sale_date || ""} onChange={(event) => setDraft({ ...draft, sale_date: event.target.value })} className={fieldClass} /></label>
+                <label className="text-sm">Date<input required type="date" value={draft.sale_date || ""} onChange={(event) => setDraft({ ...draft, sale_date: event.target.value, payment_date: draft.payment_date === draft.sale_date ? event.target.value : draft.payment_date })} className={fieldClass} /></label>
                 <label className="text-sm">Quantity (kg)<input required type="number" min="0.001" step="0.001" value={draft.quantity_kg || ""} onChange={(event) => setDraft({ ...draft, quantity_kg: event.target.value })} className={fieldClass} /></label>
                 <label className="text-sm">Price per kg<input required type="number" min="0" step="1" value={draft.price_per_kg || ""} onChange={(event) => setDraft({ ...draft, price_per_kg: event.target.value })} className={fieldClass} /></label>
                 <label className="text-sm">Customer<input value={draft.customer_name || ""} onChange={(event) => setDraft({ ...draft, customer_name: event.target.value })} className={fieldClass} /></label>
                 <label className="text-sm col-span-2">Phone<input value={draft.phone || ""} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} className={fieldClass} /></label>
               </div>
               <p className="mt-3 text-sm">Total {formatTzs(preview)}. Available stock {directory.stock.available} kg.</p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <label className="text-sm">Amount paid<input type="number" min="0" step="1" value={draft.amount_paid || ""} onChange={(event) => setDraft({ ...draft, amount_paid: event.target.value })} className={fieldClass} /></label>
+                <label className="text-sm">Payment date<input type="date" value={draft.payment_date || ""} onChange={(event) => setDraft({ ...draft, payment_date: event.target.value })} className={fieldClass} /></label>
+                <label className="text-sm">Method<select value={draft.payment_method || "Cash"} onChange={(event) => setDraft({ ...draft, payment_method: event.target.value })} className={fieldClass}>{PAYMENT_METHODS.map((item) => <option key={item}>{item}</option>)}</select></label>
+                <label className="text-sm">Reference<input value={draft.transaction_reference || ""} onChange={(event) => setDraft({ ...draft, transaction_reference: event.target.value })} className={fieldClass} /></label>
+              </div>
+              <p className="mt-2 text-sm text-slate-500">Balance {formatTzs(Math.max(0, roundMoney(preview - Number(draft.amount_paid || 0))))}. Leave amount paid empty if nothing was received.</p>
             </>}
             {mode === "edit-sale" && <div className="grid grid-cols-2 gap-3"><label className="text-sm">Customer<input value={draft.customer_name || ""} onChange={(event) => setDraft({ ...draft, customer_name: event.target.value })} className={fieldClass} /></label><label className="text-sm">Phone<input value={draft.phone || ""} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} className={fieldClass} /></label><label className="text-sm col-span-2">Price per kg<input required type="number" min="0" value={draft.price_per_kg || ""} onChange={(event) => setDraft({ ...draft, price_per_kg: event.target.value })} className={fieldClass} /></label></div>}
             {(mode === "expense" || mode === "edit-expense") && <div className="grid grid-cols-2 gap-3">
@@ -161,20 +216,48 @@ export default function SalesView({ initial, initialTab }: { initial: BeeDirecto
         </div>
       )}
 
-      {selectedSale && <Drawer title={selectedSale.sale_code} onClose={() => setSelectedSale(null)}>
-        <p>{selectedSale.customer_name || "No customer"} · {selectedSale.phone || "No phone"}</p>
-        <p>{selectedSale.quantity_kg} kg at {formatTzs(selectedSale.price_per_kg)} = {formatTzs(selectedSale.total_amount)}</p>
-        <p>Received {formatTzs(selectedSale.amount_received)} · Balance {formatTzs(selectedSale.balance)} · {selectedSale.status}</p>
-        <h3 className="mt-4 text-xs font-bold uppercase text-slate-400">Stock allocations</h3>
-        {selectedSale.allocations.map((allocation) => <p key={allocation.id}>{allocation.harvest_code}: {allocation.quantity_kg} kg · {allocation.status}</p>)}
-        <h3 className="mt-4 text-xs font-bold uppercase text-slate-400">Payments</h3>
-        {selectedSale.payments.map((payment) => <p key={payment.id}>{formatDate(payment.payment_date)} · {formatTzs(payment.amount)} · {payment.payment_method} · {payment.status}</p>)}
+      {selectedSale && <Drawer title={selectedSale.sale_code} subtitle={formatDate(selectedSale.sale_date)} status={selectedSale.status} onClose={() => setSelectedSale(null)}>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Customer" value={selectedSale.customer_name || "—"} />
+          <Field label="Phone" value={selectedSale.phone || "—"} />
+          <Field label="Quantity" value={`${selectedSale.quantity_kg} kg`} />
+          <Field label="Price per kg" value={formatTzs(selectedSale.price_per_kg)} />
+          <Field label="Total" value={formatTzs(selectedSale.total_amount)} />
+          <Field label="Received" value={formatTzs(selectedSale.amount_received)} />
+          <Field label="Balance" value={formatTzs(selectedSale.balance)} />
+          <Field label="Status" value={selectedSale.status} />
+        </div>
+        {selectedSale.notes ? <p className="mt-4 text-sm text-slate-600">{selectedSale.notes}</p> : null}
+        <Section title="Honey taken from">
+          {selectedSale.allocations.length === 0 ? <EmptyLine text="No harvest was allocated." /> : selectedSale.allocations.map((allocation) => (
+            <Row key={allocation.id} title={allocation.harvest_code} detail={`${allocation.quantity_kg} kg`} extra={allocation.status} />
+          ))}
+        </Section>
+        <Section title="Payments">
+          {selectedSale.payments.length === 0 ? <EmptyLine text="No payment recorded." /> : selectedSale.payments.map((payment) => (
+            <Row key={payment.id} title={formatTzs(payment.amount)} detail={`${formatDate(payment.payment_date)} · ${payment.payment_method}${payment.transaction_reference ? ` · ${payment.transaction_reference}` : ""}`} extra={payment.status} />
+          ))}
+        </Section>
       </Drawer>}
-      {selectedExpense && <Drawer title={selectedExpense.expense_code} onClose={() => setSelectedExpense(null)}>
-        <p>{selectedExpense.category} · {selectedExpense.description}</p>
-        <p>{formatTzs(selectedExpense.amount)} · Paid {formatTzs(selectedExpense.amount_paid)} · Balance {formatTzs(selectedExpense.balance)}</p>
-        <p>{selectedExpense.hive_code || "No hive"} · {selectedExpense.location || "No location"} · {selectedExpense.vendor_name || "No vendor"}</p>
-        {selectedExpense.payments.map((payment) => <p key={payment.id}>{formatDate(payment.payment_date)} · {formatTzs(payment.amount)} · {payment.status}</p>)}
+      {selectedExpense && <Drawer title={selectedExpense.expense_code} subtitle={formatDate(selectedExpense.expense_date)} status={selectedExpense.status} onClose={() => setSelectedExpense(null)}>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Category" value={selectedExpense.category} />
+          <Field label="Description" value={selectedExpense.description} />
+          <Field label="Amount" value={formatTzs(selectedExpense.amount)} />
+          <Field label="Paid" value={formatTzs(selectedExpense.amount_paid)} />
+          <Field label="Balance" value={formatTzs(selectedExpense.balance)} />
+          <Field label="Due date" value={formatDate(selectedExpense.due_date)} />
+          <Field label="Hive" value={selectedExpense.hive_code || "—"} />
+          <Field label="Location" value={selectedExpense.location || "—"} />
+          <Field label="Vendor" value={selectedExpense.vendor_name || "—"} />
+          <Field label="Status" value={selectedExpense.status} />
+        </div>
+        {selectedExpense.notes ? <p className="mt-4 text-sm text-slate-600">{selectedExpense.notes}</p> : null}
+        <Section title="Payments">
+          {selectedExpense.payments.length === 0 ? <EmptyLine text="No payment recorded." /> : selectedExpense.payments.map((payment) => (
+            <Row key={payment.id} title={formatTzs(payment.amount)} detail={`${formatDate(payment.payment_date)} · ${payment.payment_method}${payment.transaction_reference ? ` · ${payment.transaction_reference}` : ""}`} extra={payment.status} />
+          ))}
+        </Section>
       </Drawer>}
     </div>
   );
@@ -186,9 +269,34 @@ function Card({ label, value }: { label: string; value: string }) {
 function Table({ headers, children }: { headers: string[]; children: React.ReactNode }) {
   return <div className="overflow-x-auto rounded-2xl bg-white shadow-sm"><table className="w-full min-w-[980px] text-sm"><thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500"><tr>{headers.map((header) => <th key={header} className="px-3 py-3">{header}</th>)}</tr></thead><tbody>{children}</tbody></table></div>;
 }
-function RowButton({ label, onClick }: { label: string; onClick: () => void }) {
-  return <button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={onClick}>{label}</button>;
+function Drawer({ title, subtitle, status, onClose, children }: { title: string; subtitle: string; status: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/30 backdrop-blur-sm" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <aside className="mt-[72px] mr-4 mb-4 h-[calc(100vh-72px)] w-full overflow-y-auto rounded-3xl border border-slate-100 bg-white p-8 shadow-2xl sm:w-[480px]">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-extrabold text-slate-900">{title}</h2>
+            <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`rounded-full px-2 py-0.5 text-xs ${statusClass(status)}`}>{status}</span>
+            <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100">✕</button>
+          </div>
+        </div>
+        <div className="mt-6">{children}</div>
+      </aside>
+    </div>
+  );
 }
-function Drawer({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return <div className="fixed inset-0 z-50 flex justify-end bg-black/30 backdrop-blur-sm" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}><aside className="mt-[72px] mr-4 mb-4 h-[calc(100vh-72px)] w-full space-y-2 overflow-y-auto rounded-3xl bg-white p-8 text-sm shadow-2xl sm:w-[480px]"><div className="flex justify-between"><h2 className="text-2xl font-extrabold">{title}</h2><button type="button" onClick={onClose} aria-label="Close">✕</button></div>{children}</aside></div>;
+function Field({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-xl bg-slate-50 px-3 py-2"><p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 text-sm font-medium text-slate-900">{value}</p></div>;
+}
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return <section className="mt-6"><h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">{title}</h3><div className="mt-2 divide-y divide-slate-100">{children}</div></section>;
+}
+function Row({ title, detail, extra }: { title: string; detail: string; extra: string }) {
+  return <div className="flex items-center justify-between gap-3 py-3"><div><p className="text-sm font-medium text-slate-900">{title}</p><p className="text-xs text-slate-500">{detail}</p></div><span className={`rounded-full px-2 py-0.5 text-xs ${statusClass(extra)}`}>{extra}</span></div>;
+}
+function EmptyLine({ text }: { text: string }) {
+  return <p className="py-3 text-sm text-slate-500">{text}</p>;
 }

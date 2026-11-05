@@ -99,7 +99,7 @@ export function isRiceUnconfiguredRead(error: ReadError) {
 export function mapRiceDbError(error: { message: string; code?: string } | null, operation: "load" | "save" = "save"): never {
   const fallback = operation === "load" ? "Couldn't load this page." : "Couldn't save. Please try again.";
   if (!error) throw new RiceError(fallback, "DATABASE");
-  if (error.code === "23505") throw new RiceError("That record is already posted.", "CONFLICT");
+  if (error.code === "23505" || /duplicate key|unique constraint/i.test(error.message)) throw new RiceError("That record is already posted.", "CONFLICT");
   if (error.code === "23514") throw new RiceError("Check the quantities and amounts entered.", "VALIDATION");
   if (error.code === "42501" || error.message.toLowerCase().includes("permission denied")) {
     throw new RiceError("This action isn’t available.", "PRIVILEGE");
