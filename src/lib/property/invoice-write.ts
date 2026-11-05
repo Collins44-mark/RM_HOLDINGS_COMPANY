@@ -113,6 +113,37 @@ export async function createInvoice(admin: any, buId: string, body: any) {
   return { data: one(directory, saved.id) };
 }
 
+export function paidPeriodEnd(start: string, months: number) {
+  const [year, month, day] = start.slice(0, 10).split("-").map(Number);
+  if (!year || !month || !day || months < 1) return "";
+  const end = new Date(Date.UTC(year, month - 1 + months, day));
+  end.setUTCDate(end.getUTCDate() - 1);
+  return end.toISOString().slice(0, 10);
+}
+
+export async function issuePaidRentInvoice(admin: any, buId: string, contract: { id: string; start_date: string; end_date: string; rent_amount: number }, months: number) {
+  const start = String(contract.start_date || "").slice(0, 10);
+  const end = paidPeriodEnd(start, months);
+  if (months < 1) return { error: "Select how many months were paid" };
+  if (!end || end > String(contract.end_date || "").slice(0, 10)) return { error: "Months paid go past the contract end date" };
+  const amount = Math.round(Number(contract.rent_amount || 0) * months * 100) / 100;
+  const invoice = await createInvoice(admin, buId, {
+    contract_id: contract.id,
+    billing_period_start: start,
+    billing_period_end: end,
+    issue_date: businessToday(),
+    due_date: start,
+    rent_amount: amount,
+    additional_charges: 0,
+    discount: 0,
+    notes: "",
+  });
+  if (invoice.error || !invoice.data) return { error: invoice.error || "The invoice could not be created" };
+  const paid = await recordPayment(admin, buId, invoice.data.id, { amount, payment_method: "Cash", payment_date: businessToday(), transaction_reference: "", notes: "" });
+  if (paid.error || !paid.data) return { error: paid.error || "The payment could not be recorded" };
+  return { data: paid.data, amount_paid: amount };
+}
+
 export async function updateInvoice(admin: any, buId: string, id: string, body: any) {
   const directory = await load(admin, buId);
   const invoice = directory.invoices.find((item: any) => item.id === id);
@@ -156,7 +187,11 @@ export async function updateInvoice(admin: any, buId: string, id: string, body: 
 
 export async function recordPayment(admin: any, buId: string, invoiceId: string, body: any) {
   const directory = await load(admin, buId);
-  const invoice = directory.invoices.find((item: any) => item.id === invoiceId);
+  let invoice = directory.invoices.find((item: any) => item.id === invoiceId);
+  if (!invoice) {
+    const direct = await admin.from("rent_invoices").select(INVOICE_COLUMNS).eq("id", invoiceId).eq("business_unit_id", buId).maybeSingle();
+    invoice = direct.data;
+  }
   if (!invoice) return { error: "Invoice not found" };
   if (invoice.status === "Cancelled") return { error: "A cancelled invoice cannot take a payment" };
   const amount = money(body.amount);

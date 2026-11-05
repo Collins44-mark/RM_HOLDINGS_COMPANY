@@ -49,9 +49,6 @@ export const REPORT_TYPES: Record<string, { id: string; label: string }[]> = {
     { id: "all", label: "All Expenses" },
     { id: "by-property", label: "Expenses by Property" },
     { id: "by-category", label: "Expenses by Category" },
-    { id: "paid", label: "Paid Expenses" },
-    { id: "pending", label: "Pending Expenses" },
-    { id: "overdue", label: "Overdue Expenses" },
   ],
 };
 
@@ -92,7 +89,7 @@ export function reportFilters(moduleId: string, reportId: string) {
   const tenant = moduleId === "invoices" || reportId === "statement";
   const hall = moduleId === "halls";
   const category = moduleId === "expenses" && reportId !== "by-category";
-  const status = (moduleId === "units" && reportId === "all") || (moduleId === "contracts" && reportId === "all") || (moduleId === "invoices" && reportId === "all") || (moduleId === "halls" && reportId === "all") || (moduleId === "expenses" && reportId === "all");
+  const status = (moduleId === "units" && reportId === "all") || (moduleId === "contracts" && reportId === "all") || (moduleId === "invoices" && reportId === "all") || (moduleId === "halls" && reportId === "all");
   const propertyRequired = reportId === "individual";
   const tenantRequired = reportId === "statement";
   return { dates, property, unit, tenant, hall, category, status, propertyRequired, tenantRequired };

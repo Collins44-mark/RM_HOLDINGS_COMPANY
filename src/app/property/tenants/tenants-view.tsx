@@ -225,21 +225,21 @@ export default function TenantsView({ initialItems, properties, units }: { initi
       )}
 
       {formOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={(event) => { if (event.target === event.currentTarget && addState === "idle") setFormOpen(false); }}>
+        <div className="fixed inset-x-0 bottom-0 top-14 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/30 px-4 py-4 sm:top-[72px]" onClick={(event) => { if (event.target === event.currentTarget && addState === "idle") setFormOpen(false); }}>
           <form onSubmit={handleAdd} className="bg-white rounded-2xl p-6 shadow-2xl w-full max-w-md">
             <h3 className="text-xl font-bold mb-4">Add Tenant</h3>
-            <input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Full name" className="w-full mb-3 px-3 py-2 border rounded-lg" />
-            <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Phone" className="w-full mb-3 px-3 py-2 border rounded-lg" />
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" className="w-full mb-3 px-3 py-2 border rounded-lg" />
-            <select required value={propertyId} onChange={(event) => { setPropertyId(event.target.value); setUnitId(""); }} className="w-full mb-3 px-3 py-2 border rounded-lg">
+            <input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Full name" className="mb-3 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
+            <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Phone" className="mb-3 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
+            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" className="mb-3 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
+            <select required value={propertyId} onChange={(event) => { setPropertyId(event.target.value); setUnitId(""); }} className="mb-3 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
               <option value="">Select property</option>
               {properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
             </select>
-            <select value={unitId} onChange={(event) => setUnitId(event.target.value)} className="w-full mb-3 px-3 py-2 border rounded-lg" disabled={!propertyId}>
+            <select value={unitId} onChange={(event) => setUnitId(event.target.value)} className="mb-3 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" disabled={!propertyId}>
               <option value="">Property only</option>
               {propertyUnits.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
             </select>
-            <select value={status} onChange={(event) => setStatus(event.target.value)} className="w-full mb-3 px-3 py-2 border rounded-lg"><option>Active</option><option>Inactive</option></select>
+            <select value={status} onChange={(event) => setStatus(event.target.value)} className="mb-3 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300"><option>Active</option><option>Inactive</option></select>
             <div className="flex gap-3 items-center">
               <SaveButton state={addState} label="Save" />
               <button type="button" onClick={() => setFormOpen(false)} className="px-4 py-2 border rounded-xl">Cancel</button>
@@ -282,15 +282,15 @@ export default function TenantsView({ initialItems, properties, units }: { initi
                 <form onSubmit={handleUpdate}>
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Edit Tenant</h3>
                   <div className="grid grid-cols-2 gap-3 mb-4">
-                    <input required value={draft.full_name} onChange={(event) => setDraft({ ...draft, full_name: event.target.value })} className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" placeholder="Full name" />
-                    <input value={draft.phone_number} onChange={(event) => setDraft({ ...draft, phone_number: event.target.value })} className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" placeholder="Phone" />
-                    <input type="email" value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" placeholder="Email" />
-                    <select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })} className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm"><option>Active</option><option>Inactive</option></select>
-                    <select required value={draft.property_id} onChange={(event) => setDraft({ ...draft, property_id: event.target.value, unit_id: "" })} className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm">
+                    <input required value={draft.full_name} onChange={(event) => setDraft({ ...draft, full_name: event.target.value })} className="w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" placeholder="Full name" />
+                    <input value={draft.phone_number} onChange={(event) => setDraft({ ...draft, phone_number: event.target.value })} className="w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" placeholder="Phone" />
+                    <input type="email" value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} className="w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" placeholder="Email" />
+                    <select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })} className="w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300"><option>Active</option><option>Inactive</option></select>
+                    <select required value={draft.property_id} onChange={(event) => setDraft({ ...draft, property_id: event.target.value, unit_id: "" })} className="w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
                       <option value="">Select property</option>
                       {properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
                     </select>
-                    <select value={draft.unit_id} onChange={(event) => setDraft({ ...draft, unit_id: event.target.value })} className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm">
+                    <select value={draft.unit_id} onChange={(event) => setDraft({ ...draft, unit_id: event.target.value })} className="w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
                       <option value="">Property only</option>
                       {draftUnits.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
                     </select>

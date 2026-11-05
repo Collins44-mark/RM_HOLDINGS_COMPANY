@@ -24,7 +24,6 @@ export default async function PrintExpensePage({ params }: { params: Promise<{ i
         </div>
         <div className="text-right">
           <p className="text-lg font-bold">{expense.expense_number || "—"}</p>
-          <p className="text-sm text-slate-500">{expense.payment_status}</p>
         </div>
       </div>
       <section className="mt-6 grid grid-cols-2 gap-4 text-sm">
@@ -40,9 +39,7 @@ export default async function PrintExpensePage({ params }: { params: Promise<{ i
       <p className="mt-4 text-sm text-slate-600">{expense.description || "No description."}</p>
       <table className="mt-8 w-full text-sm">
         <tbody>
-          <tr><td className="py-2">Amount</td><td className="py-2 text-right">{formatTzs(expense.amount)}</td></tr>
-          <tr><td className="py-2">Paid</td><td className="py-2 text-right">{formatTzs(expense.amount_paid)}</td></tr>
-          <tr><td className="py-2 font-bold">Outstanding</td><td className="py-2 text-right font-bold">{formatTzs(expense.balance)}</td></tr>
+          <tr><td className="py-2 font-bold">Amount</td><td className="py-2 text-right font-bold">{formatTzs(expense.amount)}</td></tr>
         </tbody>
       </table>
       <button type="button" className="print-button mt-8 rounded-xl bg-[#0b2244] px-4 py-2 text-white">Print</button>

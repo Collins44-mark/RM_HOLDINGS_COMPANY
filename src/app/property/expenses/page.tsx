@@ -11,7 +11,6 @@ export default async function ExpensesPage() {
       properties={directory.properties}
       units={directory.units}
       bookings={directory.bookings}
-      income={directory.income}
     />
   );
 }

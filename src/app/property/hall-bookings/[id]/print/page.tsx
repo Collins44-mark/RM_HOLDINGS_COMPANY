@@ -24,7 +24,7 @@ export default async function PrintBookingPage({ params }: { params: Promise<{ i
         </div>
         <div className="text-right">
           <p className="text-lg font-bold">{booking.booking_number}</p>
-          <p className="text-sm text-slate-500">{booking.booking_status} · {booking.payment_status}</p>
+          <p className="text-sm text-slate-500">{booking.booking_status}</p>
         </div>
       </div>
       <section className="grid grid-cols-2 gap-4 text-sm">

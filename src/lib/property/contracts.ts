@@ -24,6 +24,7 @@ export type ContractRecord = {
   contract_terms: string;
   status: string;
   effective_status: string;
+  amount_paid: number;
   created_at: string;
   updated_at: string;
 };
@@ -51,7 +52,6 @@ export function effectiveStatus(row: { status?: string; start_date?: string; end
   if (status === "Pending") return "Pending";
   if (status === "Active") {
     if (row.end_date && row.end_date < today) return "Completed";
-    if (row.start_date && row.start_date > today) return "Pending";
     return "Active";
   }
   return status;
@@ -65,7 +65,16 @@ function addressOf(property: any) {
   return [property?.street_address, property?.ward, property?.district, property?.region].filter(Boolean).join(", ");
 }
 
-export function presentContracts(rows: any[], tenants: any[], properties: any[], units: any[]): ContractRecord[] {
+export function paidByContract(invoices: { contract_id?: string; amount_paid?: number; status?: string }[]) {
+  const totals = new Map<string, number>();
+  for (const invoice of invoices) {
+    if (!invoice.contract_id || invoice.status === "Cancelled") continue;
+    totals.set(invoice.contract_id, Math.round(((totals.get(invoice.contract_id) || 0) + Number(invoice.amount_paid || 0)) * 100) / 100);
+  }
+  return totals;
+}
+
+export function presentContracts(rows: any[], tenants: any[], properties: any[], units: any[], paid = new Map<string, number>()): ContractRecord[] {
   const tenantById = new Map(tenants.map((tenant) => [tenant.id, tenant]));
   const propertyById = new Map(properties.map((property) => [property.id, property]));
   const unitById = new Map(units.map((unit) => [unit.id, unit]));
@@ -97,6 +106,7 @@ export function presentContracts(rows: any[], tenants: any[], properties: any[],
       contract_terms: row.contract_terms || "",
       status: row.status || "Pending",
       effective_status: effectiveStatus(row),
+      amount_paid: Number(paid.get(row.id) || 0),
       created_at: row.created_at || "",
       updated_at: row.updated_at || "",
     };

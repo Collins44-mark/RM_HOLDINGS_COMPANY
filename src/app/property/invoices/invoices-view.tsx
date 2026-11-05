@@ -6,8 +6,6 @@ import { PaginationBar } from "@/components/ui/PaginationBar";
 import { formatTzs } from "@/lib/format/currency";
 import { useListPage } from "@/lib/property/use-list-page";
 import { PAYMENT_METHODS, businessToday, summarizeInvoices, type InvoiceContractOption, type InvoiceRecord } from "@/lib/property/invoices";
-import { nextSerial } from "@/lib/property/serial";
-
 function formatDate(value: string) {
   if (!value) return "—";
   const [year, month, day] = value.slice(0, 10).split("-");
@@ -42,6 +40,16 @@ type Draft = {
   discount: string;
   notes: string;
 };
+
+const fieldClass = "mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300";
+
+function addMonths(start: string, months: number) {
+  const [year, month, day] = start.slice(0, 10).split("-").map(Number);
+  if (!year || !month || !day || months < 1) return "";
+  const end = new Date(Date.UTC(year, month - 1 + months, day));
+  end.setUTCDate(end.getUTCDate() - 1);
+  return end.toISOString().slice(0, 10);
+}
 
 const emptyDraft = (): Draft => ({
   contract_id: "",
@@ -79,7 +87,7 @@ export default function InvoicesView({ initialItems, contracts }: { initialItems
   const [formMode, setFormMode] = useState<"create" | "edit" | "pay" | null>(null);
   const [editing, setEditing] = useState<InvoiceRecord | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
-  const [contractQuery, setContractQuery] = useState("");
+  const [monthsPaid, setMonthsPaid] = useState("1");
   const [payment, setPayment] = useState({ payment_date: businessToday(), amount: "", payment_method: "Cash", transaction_reference: "", notes: "" });
   const [saveState, setSaveState] = useState("idle");
   const [saveError, setSaveError] = useState("");
@@ -115,10 +123,9 @@ export default function InvoicesView({ initialItems, contracts }: { initialItems
   const selectedContract = contracts.find((contract) => contract.id === draft.contract_id);
   const locked = formMode === "edit" && !!editing && editing.amount_paid > 0;
   const previewTotal = Math.max(0, Number(draft.rent_amount || 0) + Number(draft.additional_charges || 0) - Number(draft.discount || 0));
-  const contractChoices = contracts.filter((contract) => {
-    const text = contractQuery.trim().toLowerCase();
-    return !text || [contract.contract_number, contract.tenant_name, contract.property_name, contract.unit_name].some((value) => value.toLowerCase().includes(text));
-  });
+  const months = Math.max(1, Number(monthsPaid) || 1);
+  const covered = selectedContract ? { start: selectedContract.start_date, end: addMonths(selectedContract.start_date, months), amount: Math.round(selectedContract.rent_amount * months * 100) / 100 } : null;
+  const periodFits = !covered || !selectedContract || (covered.end && covered.end <= selectedContract.end_date);
 
   function replaceInvoice(invoice: InvoiceRecord) {
     setItems((current) => {
@@ -135,7 +142,7 @@ export default function InvoicesView({ initialItems, contracts }: { initialItems
     setSaveState("idle");
     setSaveError("");
     setNotice("");
-    setContractQuery("");
+    setMonthsPaid("1");
   }
 
   function openEdit(invoice: InvoiceRecord) {
@@ -160,14 +167,8 @@ export default function InvoicesView({ initialItems, contracts }: { initialItems
   }
 
   function chooseContract(contractId: string) {
-    const contract = contracts.find((item) => item.id === contractId);
-    setDraft((current) => ({
-      ...current,
-      contract_id: contractId,
-      rent_amount: contract ? String(contract.rent_amount) : current.rent_amount,
-      billing_period_start: current.billing_period_start || contract?.start_date || "",
-      due_date: current.due_date || (contract ? `${(current.billing_period_start || contract.start_date).slice(0, 8)}${String(contract.payment_due_day).padStart(2, "0")}` : ""),
-    }));
+    setDraft((current) => ({ ...current, contract_id: contractId }));
+    setSaveError("");
   }
 
   async function handleSave(event: React.FormEvent) {
@@ -175,14 +176,31 @@ export default function InvoicesView({ initialItems, contracts }: { initialItems
     if (saveState !== "idle") return;
     setSaveState("saving");
     setSaveError("");
+    if (formMode === "create" && (!selectedContract || !covered || !periodFits)) {
+      setSaveError(!selectedContract ? "Select a tenant with a contract" : "Those months go past the contract end date");
+      setSaveState("idle");
+      return;
+    }
     const payload = formMode === "pay"
       ? { ...payment, amount: Number(payment.amount) }
-      : {
-          ...draft,
-          rent_amount: Number(draft.rent_amount),
-          additional_charges: Number(draft.additional_charges || 0),
-          discount: Number(draft.discount || 0),
-        };
+      : formMode === "create" && covered
+        ? {
+            contract_id: draft.contract_id,
+            billing_period_start: covered.start,
+            billing_period_end: covered.end,
+            issue_date: businessToday(),
+            due_date: covered.start,
+            rent_amount: covered.amount,
+            additional_charges: 0,
+            discount: 0,
+            notes: "",
+          }
+        : {
+            ...draft,
+            rent_amount: Number(draft.rent_amount),
+            additional_charges: Number(draft.additional_charges || 0),
+            discount: Number(draft.discount || 0),
+          };
     const url = formMode === "edit" && editing ? `/api/property/invoices/${editing.id}` : formMode === "pay" && editing ? `/api/property/invoices/${editing.id}/payments` : "/api/property/invoices";
     try {
       const response = await fetch(url, {
@@ -196,7 +214,24 @@ export default function InvoicesView({ initialItems, contracts }: { initialItems
         setSaveState("idle");
         return;
       }
-      replaceInvoice(data.data);
+      let saved = data.data;
+      if (formMode === "create" && covered) {
+        const paid = await fetch(`/api/property/invoices/${saved.id}/payments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ payment_date: businessToday(), amount: covered.amount, payment_method: "Cash", transaction_reference: "", notes: "" }),
+        });
+        const paidBody = await paid.json().catch(() => ({}));
+        if (!paid.ok || !paidBody.data) {
+          replaceInvoice(saved);
+          setSaveError(paidBody.error || "The invoice was created, but the payment was not recorded");
+          setSaveState("idle");
+          return;
+        }
+        saved = paidBody.data;
+        window.open(`/property/invoices/${saved.id}/print`, "_blank", "noopener");
+      }
+      replaceInvoice(saved);
       setNotice(data.notice || "");
       setSaveState("saved");
       window.setTimeout(() => {
@@ -336,45 +371,61 @@ export default function InvoicesView({ initialItems, contracts }: { initialItems
       </div>
 
       {formMode ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <form onSubmit={handleSave} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
+        <div className="fixed inset-x-0 bottom-0 top-14 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/30 px-4 py-4 sm:top-[72px]">
+          <form onSubmit={handleSave} className="max-h-full min-h-0 w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
             <h2 className="text-lg font-bold">{formMode === "pay" ? "Record Payment" : formMode === "edit" ? "Edit Invoice" : "Create Invoice"}</h2>
             {formMode === "pay" && editing ? (
               <div className="mt-4 space-y-3 text-sm">
                 <p>Invoice <strong>{editing.invoice_number}</strong></p>
                 <p>Tenant <strong>{editing.tenant_name}</strong></p>
                 <p>Outstanding <strong>{formatTzs(editing.balance)}</strong></p>
-                <label className="block">Payment date<input type="date" required value={payment.payment_date} onChange={(event) => setPayment({ ...payment, payment_date: event.target.value })} className="mt-1 w-full rounded-xl border px-3 py-2" /></label>
-                <label className="block">Amount received<input type="number" min="1" step="0.01" required value={payment.amount} onChange={(event) => setPayment({ ...payment, amount: event.target.value })} className="mt-1 w-full rounded-xl border px-3 py-2" /></label>
-                <label className="block">Payment method<select value={payment.payment_method} onChange={(event) => setPayment({ ...payment, payment_method: event.target.value })} className="mt-1 w-full rounded-xl border px-3 py-2">{PAYMENT_METHODS.map((method) => <option key={method}>{method}</option>)}</select></label>
-                <label className="block">Transaction reference<input value={payment.transaction_reference} onChange={(event) => setPayment({ ...payment, transaction_reference: event.target.value })} className="mt-1 w-full rounded-xl border px-3 py-2" /></label>
-                <label className="block">Notes<textarea value={payment.notes} onChange={(event) => setPayment({ ...payment, notes: event.target.value })} className="mt-1 w-full rounded-xl border px-3 py-2" /></label>
+                <label className="block">Payment date<input type="date" required value={payment.payment_date} onChange={(event) => setPayment({ ...payment, payment_date: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                <label className="block">Amount received<input type="number" min="1" step="0.01" required value={payment.amount} onChange={(event) => setPayment({ ...payment, amount: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                <label className="block">Payment method<select value={payment.payment_method} onChange={(event) => setPayment({ ...payment, payment_method: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">{PAYMENT_METHODS.map((method) => <option key={method}>{method}</option>)}</select></label>
+                <label className="block">Transaction reference<input value={payment.transaction_reference} onChange={(event) => setPayment({ ...payment, transaction_reference: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                <label className="block">Notes<textarea value={payment.notes} onChange={(event) => setPayment({ ...payment, notes: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+              </div>
+            ) : formMode === "create" ? (
+              <div className="mt-4 grid gap-3 text-sm">
+                {contracts.length === 0 ? <p className="text-slate-500">No tenant has a contract yet.</p> : (
+                  <>
+                    <label>Tenant
+                      <select required value={draft.contract_id} onChange={(event) => chooseContract(event.target.value)} className={fieldClass}>
+                        <option value="">Select tenant</option>
+                        {contracts.map((contract) => <option key={contract.id} value={contract.id}>{contract.tenant_name} · {contract.property_name} / {contract.unit_name}</option>)}
+                      </select>
+                    </label>
+                    <label>Months paid
+                      <select value={monthsPaid} onChange={(event) => setMonthsPaid(event.target.value)} className={fieldClass}>
+                        {Array.from({ length: 24 }, (_, index) => String(index + 1)).map((count) => <option key={count} value={count}>{count}</option>)}
+                      </select>
+                    </label>
+                    {selectedContract && covered ? (
+                      <div className="grid grid-cols-2 gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+                        <div><div className="text-xs text-slate-400">Start date</div><div className="font-semibold">{formatDate(covered.start)}</div></div>
+                        <div><div className="text-xs text-slate-400">End date</div><div className="font-semibold">{formatDate(covered.end)}</div></div>
+                        <div className="col-span-2"><div className="text-xs text-slate-400">Amount paid</div><div className="font-semibold">{formatTzs(covered.amount)}</div></div>
+                      </div>
+                    ) : null}
+                    {selectedContract && !periodFits ? <p className="text-rose-700">Those months go past the contract end on {formatDate(selectedContract.end_date)}.</p> : null}
+                  </>
+                )}
               </div>
             ) : (
               <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-                {formMode === "create" ? (
-                  <label className="sm:col-span-2 block">Select Contract
-                    <input value={contractQuery} onChange={(event) => setContractQuery(event.target.value)} placeholder="Search contracts" className="mt-1 w-full rounded-xl border px-3 py-2" />
-                    <select required value={draft.contract_id} onChange={(event) => chooseContract(event.target.value)} className="mt-2 w-full rounded-xl border px-3 py-2">
-                      <option value="">Select a contract</option>
-                      {contractChoices.map((contract) => <option key={contract.id} value={contract.id}>{contract.contract_number} · {contract.tenant_name} · {contract.property_name} / {contract.unit_name}</option>)}
-                    </select>
-                  </label>
-                ) : null}
-                <p>Invoice number<br /><strong>{formMode === "edit" ? editing?.invoice_number : nextSerial(items.map((invoice) => invoice.invoice_number), "INV", 1)}</strong></p>
-                <p>Tenant<br /><strong>{formMode === "edit" ? editing?.tenant_name : selectedContract?.tenant_name || "—"}</strong></p>
-                <p>Property<br /><strong>{formMode === "edit" ? editing?.property_name : selectedContract?.property_name || "—"}</strong></p>
-                <p>Unit<br /><strong>{formMode === "edit" ? editing?.unit_name : selectedContract?.unit_name || "—"}</strong></p>
-                <p>Billing frequency<br /><strong>{selectedContract?.billing_frequency || "—"}</strong></p>
-                <label>Billing period start<input type="date" required disabled={locked} value={draft.billing_period_start} onChange={(event) => setDraft({ ...draft, billing_period_start: event.target.value })} className="mt-1 w-full rounded-xl border px-3 py-2 disabled:bg-slate-50" /></label>
-                <label>Billing period end<input type="date" required disabled={locked} value={draft.billing_period_end} onChange={(event) => setDraft({ ...draft, billing_period_end: event.target.value })} className="mt-1 w-full rounded-xl border px-3 py-2 disabled:bg-slate-50" /></label>
-                <label>Invoice date<input type="date" required disabled={locked} value={draft.issue_date} onChange={(event) => setDraft({ ...draft, issue_date: event.target.value })} className="mt-1 w-full rounded-xl border px-3 py-2 disabled:bg-slate-50" /></label>
-                <label>Due date<input type="date" required disabled={locked} value={draft.due_date} onChange={(event) => setDraft({ ...draft, due_date: event.target.value })} className="mt-1 w-full rounded-xl border px-3 py-2 disabled:bg-slate-50" /></label>
-                <label>Rent amount<input type="number" min="0" step="0.01" required disabled={locked} value={draft.rent_amount} onChange={(event) => setDraft({ ...draft, rent_amount: event.target.value })} className="mt-1 w-full rounded-xl border px-3 py-2 disabled:bg-slate-50" /></label>
-                <label>Additional charges<input type="number" min="0" step="0.01" disabled={locked} value={draft.additional_charges} onChange={(event) => setDraft({ ...draft, additional_charges: event.target.value })} className="mt-1 w-full rounded-xl border px-3 py-2 disabled:bg-slate-50" /></label>
-                <label>Discount<input type="number" min="0" step="0.01" disabled={locked} value={draft.discount} onChange={(event) => setDraft({ ...draft, discount: event.target.value })} className="mt-1 w-full rounded-xl border px-3 py-2 disabled:bg-slate-50" /></label>
+                <p>Invoice number<br /><strong>{editing?.invoice_number}</strong></p>
+                <p>Tenant<br /><strong>{editing?.tenant_name || "—"}</strong></p>
+                <p>Property<br /><strong>{editing?.property_name || "—"}</strong></p>
+                <p>Unit<br /><strong>{editing?.unit_name || "—"}</strong></p>
+                <label>Billing period start<input type="date" required disabled={locked} value={draft.billing_period_start} onChange={(event) => setDraft({ ...draft, billing_period_start: event.target.value })} className={`${fieldClass} disabled:bg-slate-50`} /></label>
+                <label>Billing period end<input type="date" required disabled={locked} value={draft.billing_period_end} onChange={(event) => setDraft({ ...draft, billing_period_end: event.target.value })} className={`${fieldClass} disabled:bg-slate-50`} /></label>
+                <label>Invoice date<input type="date" required disabled={locked} value={draft.issue_date} onChange={(event) => setDraft({ ...draft, issue_date: event.target.value })} className={`${fieldClass} disabled:bg-slate-50`} /></label>
+                <label>Due date<input type="date" required disabled={locked} value={draft.due_date} onChange={(event) => setDraft({ ...draft, due_date: event.target.value })} className={`${fieldClass} disabled:bg-slate-50`} /></label>
+                <label>Rent amount<input type="number" min="0" step="0.01" required disabled={locked} value={draft.rent_amount} onChange={(event) => setDraft({ ...draft, rent_amount: event.target.value })} className={`${fieldClass} disabled:bg-slate-50`} /></label>
+                <label>Additional charges<input type="number" min="0" step="0.01" disabled={locked} value={draft.additional_charges} onChange={(event) => setDraft({ ...draft, additional_charges: event.target.value })} className={`${fieldClass} disabled:bg-slate-50`} /></label>
+                <label>Discount<input type="number" min="0" step="0.01" disabled={locked} value={draft.discount} onChange={(event) => setDraft({ ...draft, discount: event.target.value })} className={`${fieldClass} disabled:bg-slate-50`} /></label>
                 <p>Total amount<br /><strong>{formatTzs(previewTotal)}</strong></p>
-                <label className="sm:col-span-2">Notes<textarea value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} className="mt-1 w-full rounded-xl border px-3 py-2" /></label>
+                <label className="sm:col-span-2">Notes<textarea value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} className={fieldClass} /></label>
                 {locked ? <p className="sm:col-span-2 text-amber-700">Payments are already recorded. Only notes can be changed.</p> : null}
               </div>
             )}
@@ -382,57 +433,71 @@ export default function InvoicesView({ initialItems, contracts }: { initialItems
             {notice ? <p className="mt-3 text-sm text-slate-600">{notice}</p> : null}
             <div className="mt-5 flex justify-end gap-2">
               <button type="button" onClick={() => saveState === "idle" && setFormMode(null)} className="rounded-xl px-4 py-2 text-sm">Close</button>
-              <SaveButton state={saveState} label={formMode === "pay" ? "Record Payment" : "Save"} />
+              <SaveButton state={saveState} label={formMode === "pay" ? "Record Payment" : formMode === "create" ? "Generate and download" : "Save"} />
             </div>
           </form>
         </div>
       ) : null}
 
       {selected ? (
-        <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/30" onClick={() => setSelected(null)}>
-          <aside className="h-full w-full max-w-md overflow-y-auto bg-white p-6 shadow-xl" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-start justify-between">
-              <h2 className="text-lg font-bold">{selected.invoice_number}</h2>
-              <button type="button" onClick={() => setSelected(null)} className="text-sm text-slate-500">Close</button>
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/30 backdrop-blur-sm" onClick={() => setSelected(null)}>
+          <aside className="mt-[72px] mr-4 mb-4 flex h-[calc(100vh-72px)] w-full flex-col overflow-y-auto rounded-3xl border border-slate-100 bg-white/95 shadow-2xl shadow-slate-900/10 backdrop-blur-md sm:w-[480px] lg:w-[520px]" onClick={(event) => event.stopPropagation()}>
+            <div className="sticky top-0 z-10 flex items-start justify-between border-b border-slate-100 bg-white/90 px-8 pt-8 pb-4 backdrop-blur-md">
+              <div>
+                <div className="mb-1 flex items-center gap-2">
+                  <h2 className="text-2xl font-extrabold leading-tight text-slate-900">{selected.invoice_number}</h2>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${statusClass(selected.effective_status)}`}>{selected.effective_status}</span>
+                </div>
+                <p className="text-sm text-slate-500">{selected.tenant_name || "Tenant"} · {selected.property_name || "Property"} · {formatTzs(selected.total_amount)}</p>
+              </div>
+              <button type="button" onClick={() => setSelected(null)} className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-800" aria-label="Close"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
             </div>
-            <span className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusClass(selected.effective_status)}`}>{selected.effective_status}</span>
-            <Section title="Invoice information" rows={[
-              ["Invoice date", formatDate(selected.issue_date)],
-              ["Billing period", `${formatDate(selected.billing_period_start)} – ${formatDate(selected.billing_period_end)}`],
-              ["Due date", formatDate(selected.due_date)],
-              ["Rent", formatTzs(selected.rent_amount)],
-              ["Additional charges", formatTzs(selected.additional_charges)],
-              ["Discount", formatTzs(selected.discount)],
-              ["Total", formatTzs(selected.total_amount)],
-              ["Amount paid", formatTzs(selected.amount_paid)],
-              ["Outstanding", formatTzs(selected.balance)],
-            ]} />
-            <Section title="Tenant" rows={[["Name", selected.tenant_name], ["Phone", selected.tenant_phone || "—"], ["Email", selected.tenant_email || "—"]]} />
-            <Section title="Property" rows={[["Name", selected.property_name], ["Address", selected.property_address || "—"]]} />
-            <Section title="Unit" rows={[["Unit", selected.unit_name], ["Type", selected.unit_type || "—"]]} />
-            <Section title="Contract" rows={[["Number", selected.contract_number], ["Start", formatDate(selected.contract_start)], ["End", formatDate(selected.contract_end)], ["Agreed rent", formatTzs(selected.agreed_rent)]]} />
-            <h3 className="mt-5 text-xs font-semibold uppercase tracking-wider text-slate-400">Payment history</h3>
-            {selected.payments.length === 0 ? <p className="mt-2 text-sm text-slate-500">No payments recorded.</p> : (
-              <ul className="mt-2 space-y-2 text-sm">
-                {selected.payments.map((item) => (
-                  <li key={item.id} className="rounded-xl border border-slate-100 p-3">
-                    <p className="font-medium">{formatDate(item.payment_date)} · {formatTzs(item.amount)}</p>
-                    <p className="text-slate-500">{item.payment_method}{item.transaction_reference ? ` · ${item.transaction_reference}` : ""} · {item.status}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="mt-5 flex flex-wrap gap-2">
-              <button type="button" className="rounded-xl border px-3 py-2 text-sm" onClick={() => openEdit(selected)}>Edit</button>
-              {selected.effective_status !== "Paid" && selected.effective_status !== "Cancelled" ? <button type="button" className="rounded-xl bg-[#0b2244] px-3 py-2 text-sm text-white" onClick={() => openPay(selected)}>Record Payment</button> : null}
-              <a className="rounded-xl border px-3 py-2 text-sm" href={`/property/invoices/${selected.id}/print`} target="_blank" rel="noreferrer">Print</a>
+            <div className="flex gap-1 border-b border-slate-100 px-8 pt-4">
+              <button type="button" className="rounded-t-xl border-b-2 border-[#0b2244] px-3 py-2 text-sm font-medium text-[#0b2244]">Details</button>
+            </div>
+            <div className="flex-1 px-8 py-6">
+              <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">Invoice</h3>
+              <div className="mb-8 grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
+                <div><div className="text-xs text-slate-400">Invoice date</div><div className="font-semibold text-slate-900">{formatDate(selected.issue_date)}</div></div>
+                <div><div className="text-xs text-slate-400">Due date</div><div className="font-semibold text-slate-900">{formatDate(selected.due_date)}</div></div>
+                <div className="col-span-2"><div className="text-xs text-slate-400">Billing period</div><div className="font-semibold text-slate-900">{formatDate(selected.billing_period_start)} – {formatDate(selected.billing_period_end)}</div></div>
+                <div><div className="text-xs text-slate-400">Rent</div><div className="font-semibold text-slate-900">{formatTzs(selected.rent_amount)}</div></div>
+                <div><div className="text-xs text-slate-400">Charges</div><div className="font-semibold text-slate-900">{formatTzs(selected.additional_charges)}</div></div>
+                <div><div className="text-xs text-slate-400">Discount</div><div className="font-semibold text-slate-900">{formatTzs(selected.discount)}</div></div>
+                <div><div className="text-xs text-slate-400">Total</div><div className="font-semibold text-slate-900">{formatTzs(selected.total_amount)}</div></div>
+                <div><div className="text-xs text-slate-400">Paid</div><div className="font-semibold text-slate-900">{formatTzs(selected.amount_paid)}</div></div>
+                <div><div className="text-xs text-slate-400">Balance</div><div className="font-semibold text-slate-900">{formatTzs(selected.balance)}</div></div>
+              </div>
+              <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">Tenant</h3>
+              <div className="mb-8 grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
+                <div><div className="text-xs text-slate-400">Name</div><div className="font-semibold text-slate-900">{selected.tenant_name || "—"}</div></div>
+                <div><div className="text-xs text-slate-400">Phone</div><div className="font-semibold text-slate-900">{selected.tenant_phone || "—"}</div></div>
+                <div className="col-span-2"><div className="text-xs text-slate-400">Email</div><div className="font-semibold text-slate-900">{selected.tenant_email || "—"}</div></div>
+              </div>
+              <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">Property</h3>
+              <div className="mb-8 grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
+                <div><div className="text-xs text-slate-400">Property</div><div className="font-semibold text-slate-900">{selected.property_name || "—"}</div></div>
+                <div><div className="text-xs text-slate-400">Unit</div><div className="font-semibold text-slate-900">{selected.unit_name || "—"}</div></div>
+                <div className="col-span-2"><div className="text-xs text-slate-400">Address</div><div className="font-semibold text-slate-900">{selected.property_address || "—"}</div></div>
+                <div><div className="text-xs text-slate-400">Contract</div><div className="font-semibold text-slate-900">{selected.contract_number || "—"}</div></div>
+                <div><div className="text-xs text-slate-400">Agreed rent</div><div className="font-semibold text-slate-900">{formatTzs(selected.agreed_rent)}</div></div>
+              </div>
+              <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">Payment history</h3>
+              {selected.payments.length === 0 ? <p className="text-sm text-slate-500">No payments recorded.</p> : (
+                <ul className="space-y-2 text-sm">{selected.payments.map((item) => <li key={item.id} className="rounded-2xl bg-slate-50 px-4 py-3"><p className="font-semibold text-slate-900">{formatDate(item.payment_date)} · {formatTzs(item.amount)}</p><p className="text-slate-500">{item.payment_method}{item.transaction_reference ? ` · ${item.transaction_reference}` : ""}</p></li>)}</ul>
+              )}
+              <div className="mt-8 flex gap-3 border-t border-slate-100 pt-6">
+                <button type="button" className="flex-1 rounded-2xl border border-slate-200 bg-white px-5 py-3 font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50" onClick={() => openEdit(selected)}>Edit</button>
+                {selected.effective_status !== "Paid" && selected.effective_status !== "Cancelled" ? <button type="button" className="flex-1 rounded-2xl bg-[#0b2244] px-5 py-3 font-semibold text-white" onClick={() => openPay(selected)}>Record Payment</button> : null}
+                <a className="flex-1 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-center font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50" href={`/property/invoices/${selected.id}/print`} target="_blank" rel="noreferrer">Print</a>
+              </div>
             </div>
           </aside>
         </div>
       ) : null}
 
       {cancelTarget ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+        <div className="fixed inset-x-0 bottom-0 top-14 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/30 px-4 py-4 sm:top-[72px]">
           <div className="w-full max-w-md rounded-2xl bg-white p-6">
             <h2 className="text-lg font-bold">Cancel {cancelTarget.invoice_number}</h2>
             <p className="mt-2 text-sm text-slate-600">The invoice stays in the records. Invoices that already have payments cannot be cancelled.</p>
@@ -445,18 +510,5 @@ export default function InvoicesView({ initialItems, contracts }: { initialItems
         </div>
       ) : null}
     </div>
-  );
-}
-
-function Section({ title, rows }: { title: string; rows: [string, string][] }) {
-  return (
-    <section className="mt-5">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">{title}</h3>
-      <dl className="mt-2 space-y-1 text-sm">
-        {rows.map(([label, value]) => (
-          <div key={label} className="flex justify-between gap-4"><dt className="text-slate-500">{label}</dt><dd className="text-right font-medium">{value || "—"}</dd></div>
-        ))}
-      </dl>
-    </section>
   );
 }

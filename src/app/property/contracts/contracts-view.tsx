@@ -55,7 +55,7 @@ const emptyDraft: Draft = {
   billing_frequency: "Monthly",
   payment_due_day: "1",
   contract_terms: "",
-  status: "Pending",
+  status: "Active",
 };
 
 function draftFrom(contract: ContractRecord): Draft {
@@ -70,7 +70,7 @@ function draftFrom(contract: ContractRecord): Draft {
     billing_frequency: contract.billing_frequency || "Monthly",
     payment_due_day: String(contract.payment_due_day || 1),
     contract_terms: contract.contract_terms || "",
-    status: contract.effective_status === "Active" ? "Active" : "Pending",
+    status: "Active",
   };
 }
 
@@ -106,6 +106,7 @@ export default function ContractsView({
   const [tenantQuery, setTenantQuery] = useState("");
   const [propertyQuery, setPropertyQuery] = useState("");
   const [unitQuery, setUnitQuery] = useState("");
+  const [monthsPaid, setMonthsPaid] = useState("1");
 
   const propertyUnits = units.filter((unit) => unit.property_id === draft.property_id);
   const visible = items.filter((contract) => {
@@ -133,6 +134,7 @@ export default function ContractsView({
     setTenantQuery("");
     setPropertyQuery("");
     setUnitQuery("");
+    setMonthsPaid("1");
   }
 
   function openEdit(contract: ContractRecord) {
@@ -147,7 +149,8 @@ export default function ContractsView({
 
   function openRenew(contract: ContractRecord) {
     setEditing(contract);
-    setDraft({ ...draftFrom(contract), start_date: "", end_date: "", status: "Pending", contract_terms: "" });
+    setDraft({ ...draftFrom(contract), start_date: "", end_date: "", status: "Active", contract_terms: "" });
+    setMonthsPaid("1");
     setFormMode("renew");
     setSelected(null);
     setOpenMenuId(null);
@@ -167,9 +170,11 @@ export default function ContractsView({
     setSaveError("");
     const payload = {
       ...draft,
+      status: formMode === "edit" ? draft.status : "Active",
       rent_amount: Number(draft.rent_amount),
       deposit_amount: Number(draft.deposit_amount || 0),
       payment_due_day: Number(draft.payment_due_day),
+      months_paid: formMode === "edit" ? undefined : Number(monthsPaid),
     };
     try {
       const response = await fetch(formMode === "edit" && editing ? `/api/property/contracts/${editing.id}` : formMode === "renew" && editing ? `/api/property/contracts/${editing.id}/renew` : "/api/property/contracts", {
@@ -282,13 +287,14 @@ export default function ContractsView({
                 <th className="px-4 py-3">Start Date</th>
                 <th className="px-4 py-3">End Date</th>
                 <th className="px-4 py-3">Monthly Rent</th>
+                <th className="px-4 py-3">Amount Paid</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Action</th>
               </tr>
             </thead>
             <tbody>
               {visible.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-500">{items.length === 0 ? "No rental contracts yet." : "No contracts match these filters."}</td></tr>
+                <tr><td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-500">{items.length === 0 ? "No rental contracts yet." : "No contracts match these filters."}</td></tr>
               ) : listPage.rows.map((contract) => (
                 <tr key={contract.id}>
                   <td className="px-4 py-3 font-medium text-slate-800">{contract.contract_number}</td>
@@ -297,6 +303,7 @@ export default function ContractsView({
                   <td className="px-4 py-3 text-slate-600">{formatDate(contract.start_date)}</td>
                   <td className="px-4 py-3 text-slate-600">{formatDate(contract.end_date)}</td>
                   <td className="px-4 py-3 text-slate-800">{formatTzs(contract.rent_amount)}</td>
+                  <td className="px-4 py-3 text-slate-800">{formatTzs(contract.amount_paid)}</td>
                   <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${statusClass(contract.effective_status)}`}>{contract.effective_status}</span></td>
                   <td className="px-4 py-3">
                     <button type="button" aria-label="Contract actions" onClick={(event) => {
@@ -340,32 +347,32 @@ export default function ContractsView({
       )}
 
       {formMode && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={(event) => { if (event.target === event.currentTarget && saveState === "idle") setFormMode(null); }}>
-          <form onSubmit={handleSave} className="bg-white rounded-2xl p-6 shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-x-0 bottom-0 top-14 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/30 px-4 py-4 sm:top-[72px]" onClick={(event) => { if (event.target === event.currentTarget && saveState === "idle") setFormMode(null); }}>
+          <form onSubmit={handleSave} className="bg-white rounded-2xl p-6 shadow-2xl w-full max-w-2xl max-h-full min-h-0 overflow-y-auto">
             <h3 className="text-xl font-bold mb-1">{formMode === "renew" ? "Renew Contract" : formMode === "edit" ? "Edit Contract" : "Create Contract"}</h3>
             <p className="text-sm text-slate-500 mb-5">{formMode === "renew" ? `A new agreement will be created from ${editing?.contract_number}. The current agreement stays in the history.` : "The agreement is saved against the selected tenant, property, and unit."}</p>
             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Tenant & Property</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
               <label className="text-sm">
                 <span className="text-xs font-semibold text-slate-500">Search tenant</span>
-                <input value={tenantQuery} onChange={(event) => setTenantQuery(event.target.value)} disabled={lockedParties} placeholder="Search tenant" className="mt-1 w-full px-3 py-2 border rounded-lg" />
-                <select required value={draft.tenant_id} disabled={lockedParties} onChange={(event) => setDraft({ ...draft, tenant_id: event.target.value })} className="mt-2 w-full px-3 py-2 border rounded-lg">
+                <input value={tenantQuery} onChange={(event) => setTenantQuery(event.target.value)} disabled={lockedParties} placeholder="Search tenant" className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
+                <select required value={draft.tenant_id} disabled={lockedParties} onChange={(event) => setDraft({ ...draft, tenant_id: event.target.value })} className="mt-2 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
                   <option value="">Select tenant</option>
                   {tenantChoices.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
                 </select>
               </label>
               <label className="text-sm">
                 <span className="text-xs font-semibold text-slate-500">Search property</span>
-                <input value={propertyQuery} onChange={(event) => setPropertyQuery(event.target.value)} disabled={lockedParties} placeholder="Search property" className="mt-1 w-full px-3 py-2 border rounded-lg" />
-                <select required value={draft.property_id} disabled={lockedParties} onChange={(event) => setDraft({ ...draft, property_id: event.target.value, unit_id: "" })} className="mt-2 w-full px-3 py-2 border rounded-lg">
+                <input value={propertyQuery} onChange={(event) => setPropertyQuery(event.target.value)} disabled={lockedParties} placeholder="Search property" className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
+                <select required value={draft.property_id} disabled={lockedParties} onChange={(event) => setDraft({ ...draft, property_id: event.target.value, unit_id: "" })} className="mt-2 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
                   <option value="">Select property</option>
                   {propertyChoices.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
                 </select>
               </label>
               <label className="text-sm sm:col-span-2">
                 <span className="text-xs font-semibold text-slate-500">Search unit</span>
-                <input value={unitQuery} onChange={(event) => setUnitQuery(event.target.value)} disabled={lockedParties || !draft.property_id} placeholder="Search unit" className="mt-1 w-full px-3 py-2 border rounded-lg" />
-                <select required value={draft.unit_id} disabled={lockedParties || !draft.property_id} onChange={(event) => chooseUnit(event.target.value)} className="mt-2 w-full px-3 py-2 border rounded-lg">
+                <input value={unitQuery} onChange={(event) => setUnitQuery(event.target.value)} disabled={lockedParties || !draft.property_id} placeholder="Search unit" className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
+                <select required value={draft.unit_id} disabled={lockedParties || !draft.property_id} onChange={(event) => chooseUnit(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
                   <option value="">{draft.property_id ? "Select unit" : "Select a property first"}</option>
                   {unitChoices.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
                 </select>
@@ -373,17 +380,22 @@ export default function ContractsView({
             </div>
             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Contract Details</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
-              <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Contract number</span><input readOnly value={formMode === "edit" ? editing?.contract_number || "" : nextSerial(items.map((contract) => contract.contract_number), "CON", 0)} className="mt-1 w-full px-3 py-2 rounded-lg bg-slate-50 text-slate-700" /></label>
-              <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Status</span><select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })} className="mt-1 w-full px-3 py-2 border rounded-lg"><option>Pending</option><option>Active</option></select></label>
-              <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Start date</span><input required type="date" value={draft.start_date} onChange={(event) => setDraft({ ...draft, start_date: event.target.value })} className="mt-1 w-full px-3 py-2 border rounded-lg" /></label>
-              <label className="text-sm"><span className="text-xs font-semibold text-slate-500">End date</span><input required type="date" value={draft.end_date} onChange={(event) => setDraft({ ...draft, end_date: event.target.value })} className="mt-1 w-full px-3 py-2 border rounded-lg" /></label>
-              <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Monthly rent</span><input required type="number" min="0" step="1" value={draft.rent_amount} onChange={(event) => setDraft({ ...draft, rent_amount: event.target.value })} className="mt-1 w-full px-3 py-2 border rounded-lg" /></label>
-              <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Security deposit</span><input required type="number" min="0" step="1" value={draft.deposit_amount} onChange={(event) => setDraft({ ...draft, deposit_amount: event.target.value })} className="mt-1 w-full px-3 py-2 border rounded-lg" /></label>
-              <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Payment frequency</span><select value={draft.billing_frequency} onChange={(event) => setDraft({ ...draft, billing_frequency: event.target.value })} className="mt-1 w-full px-3 py-2 border rounded-lg">{CONTRACT_FREQUENCIES.map((frequency) => <option key={frequency}>{frequency}</option>)}</select></label>
-              <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Rent due day</span><input required type="number" min="1" max="28" value={draft.payment_due_day} onChange={(event) => setDraft({ ...draft, payment_due_day: event.target.value })} className="mt-1 w-full px-3 py-2 border rounded-lg" /></label>
+              <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Contract number</span><input readOnly value={formMode === "edit" ? editing?.contract_number || "" : nextSerial(items.map((contract) => contract.contract_number), "CON", 0)} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-slate-50/70 px-3 py-2 text-sm text-slate-500 outline-none" /></label>
+              {formMode === "edit" ? (
+                <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Status</span><input readOnly value="Active" className="mt-1 w-full rounded-xl border border-slate-200/50 bg-slate-50/70 px-3 py-2 text-sm text-slate-500 outline-none" /></label>
+              ) : (
+                <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Months paid</span><input required type="number" min="1" max="24" value={monthsPaid} onChange={(event) => setMonthsPaid(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+              )}
+              <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Start date</span><input required type="date" value={draft.start_date} onChange={(event) => setDraft({ ...draft, start_date: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+              <label className="text-sm"><span className="text-xs font-semibold text-slate-500">End date</span><input required type="date" value={draft.end_date} onChange={(event) => setDraft({ ...draft, end_date: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+              <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Monthly rent</span><input required type="number" min="0" step="1" value={draft.rent_amount} onChange={(event) => setDraft({ ...draft, rent_amount: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+              <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Security deposit</span><input required type="number" min="0" step="1" value={draft.deposit_amount} onChange={(event) => setDraft({ ...draft, deposit_amount: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+              <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Payment frequency</span><select value={draft.billing_frequency} onChange={(event) => setDraft({ ...draft, billing_frequency: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">{CONTRACT_FREQUENCIES.map((frequency) => <option key={frequency}>{frequency}</option>)}</select></label>
+              <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Rent due day</span><input required type="number" min="1" max="28" value={draft.payment_due_day} onChange={(event) => setDraft({ ...draft, payment_due_day: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
             </div>
+            {formMode !== "edit" && <p className="mb-4 text-sm text-slate-600">Amount paid {formatTzs(Math.round(Number(draft.rent_amount || 0) * Math.max(1, Number(monthsPaid) || 1)))}. Saving creates the invoice and records this payment.</p>}
             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Agreement</h4>
-            <textarea value={draft.contract_terms} onChange={(event) => setDraft({ ...draft, contract_terms: event.target.value })} rows={4} placeholder="Special terms" className="w-full px-3 py-2 border rounded-lg mb-4" />
+            <textarea value={draft.contract_terms} onChange={(event) => setDraft({ ...draft, contract_terms: event.target.value })} rows={4} placeholder="Special terms" className="mb-4 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
             <div className="flex gap-3 items-center">
               <SaveButton state={saveState} label={formMode === "renew" ? "Renew" : "Save"} />
               <button type="button" onClick={() => setFormMode(null)} className="px-4 py-2 border rounded-xl">Cancel</button>
@@ -413,6 +425,7 @@ export default function ContractsView({
                   <Info label="Start" value={formatDate(selected.start_date)} />
                   <Info label="End" value={formatDate(selected.end_date)} />
                   <Info label="Monthly rent" value={formatTzs(selected.rent_amount)} />
+                  <Info label="Amount paid" value={formatTzs(selected.amount_paid)} />
                   <Info label="Security deposit" value={formatTzs(selected.deposit_amount)} />
                   <Info label="Payment frequency" value={selected.billing_frequency} />
                   <Info label="Rent due day" value={String(selected.payment_due_day)} />
@@ -449,7 +462,6 @@ export default function ContractsView({
                   <Info label="Created" value={selected.created_at ? formatDate(selected.created_at) : "—"} />
                   <Info label="Updated" value={selected.updated_at ? formatDate(selected.updated_at) : "—"} />
                 </div>
-                <p className="mt-3 text-xs text-slate-400">There is no signature workflow on this agreement. A contract becomes active only when that status is chosen and the dates are current.</p>
               </section>
             </div>
           </div>
@@ -457,12 +469,12 @@ export default function ContractsView({
       )}
 
       {terminateTarget && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+        <div className="fixed inset-x-0 bottom-0 top-14 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/30 px-4 py-4 sm:top-[72px]">
           <form onSubmit={handleTerminate} className="bg-white rounded-2xl p-6 shadow-2xl w-full max-w-md">
             <h3 className="text-xl font-bold mb-2">Terminate {terminateTarget.contract_number}</h3>
             <p className="text-sm text-slate-500 mb-4">The agreement stays on record. It will no longer count as the current tenancy.</p>
-            <input type="date" required value={terminationDate} onChange={(event) => setTerminationDate(event.target.value)} className="w-full mb-3 px-3 py-2 border rounded-lg" />
-            <textarea required value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Reason" rows={3} className="w-full mb-4 px-3 py-2 border rounded-lg" />
+            <input type="date" required value={terminationDate} onChange={(event) => setTerminationDate(event.target.value)} className="mb-3 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
+            <textarea required value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Reason" rows={3} className="mb-4 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
             <div className="flex gap-3">
               <SaveButton state={terminateState} label="Terminate" />
               <button type="button" onClick={() => setTerminateTarget(null)} className="px-4 py-2 border rounded-xl">Cancel</button>

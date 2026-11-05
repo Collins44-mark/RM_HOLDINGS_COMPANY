@@ -134,7 +134,7 @@ export default function HallBookingsView({ initialItems, halls, customers }: { i
   const [hallFilter, setHallFilter] = useState("");
   const [eventFilter, setEventFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [datePreset, setDatePreset] = useState("");
+  const [datePreset, setDatePreset] = useState("month");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [view, setView] = useState<"list" | "calendar">("list");
@@ -160,7 +160,7 @@ export default function HallBookingsView({ initialItems, halls, customers }: { i
   const visible = items.filter((booking) => {
     const text = query.trim().toLowerCase();
     const matchesText = !text || [booking.booking_number, booking.customer_name, booking.customer_phone, booking.hall_name, booking.event_type].some((value) => value.toLowerCase().includes(text));
-    const matchesDate = !period || (booking.event_date >= period.from && booking.event_date <= period.to);
+    const matchesDate = view === "calendar" || !period || (booking.event_date >= period.from && booking.event_date <= period.to);
     return matchesText && matchesDate && (!hallFilter || booking.property_id === hallFilter) && (!eventFilter || booking.event_type === eventFilter) && (!statusFilter || booking.booking_status === statusFilter);
   });
   const listPage = useListPage(visible, `${query}|${hallFilter}|${eventFilter}|${statusFilter}|${datePreset}|${fromDate}|${toDate}`);
@@ -307,7 +307,6 @@ export default function HallBookingsView({ initialItems, halls, customers }: { i
         <select value={eventFilter} onChange={(event) => setEventFilter(event.target.value)} className="rounded-xl bg-white px-3 py-2 text-sm shadow-sm"><option value="">All events</option>{EVENT_TYPES.map((type) => <option key={type}>{type}</option>)}</select>
         <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-xl bg-white px-3 py-2 text-sm shadow-sm"><option value="">All statuses</option>{["Pending", "Confirmed", "Completed", "Cancelled", "Rejected"].map((status) => <option key={status}>{status}</option>)}</select>
         <select value={datePreset} onChange={(event) => setDatePreset(event.target.value)} className="rounded-xl bg-white px-3 py-2 text-sm shadow-sm">
-          <option value="">All dates</option>
           <option value="today">Today</option>
           <option value="week">This Week</option>
           <option value="month">This Month</option>
@@ -340,7 +339,7 @@ export default function HallBookingsView({ initialItems, halls, customers }: { i
                   <td>{booking.start_time} – {booking.end_time}</td>
                   <td>{formatTzs(booking.booking_amount)}</td>
                   <td>{formatTzs(booking.balance)}</td>
-                  <td><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusClass(booking.booking_status)}`}>{booking.booking_status}</span> <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusClass(booking.payment_status)}`}>{booking.payment_status}</span></td>
+                  <td><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusClass(booking.booking_status)}`}>{booking.booking_status}</span></td>
                   <td className="pr-3 text-right"><RowMenu booking={booking} open={openMenuId === booking.id} onOpen={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setMenuPos({ top: rect.bottom + 4, left: rect.right - 188 }); setOpenMenuId(openMenuId === booking.id ? null : booking.id); }} onView={() => { setSelected(booking); setOpenMenuId(null); }} onEdit={() => openEdit(booking, "edit")} onPay={() => openPay(booking)} onReschedule={() => openEdit(booking, "reschedule")} onConfirm={() => confirm(booking)} onCancel={() => { setCloseTarget({ booking, kind: "cancel" }); setReason(""); setCloseError(""); setCloseState("idle"); setOpenMenuId(null); }} onReject={() => { setCloseTarget({ booking, kind: "reject" }); setReason(""); setCloseError(""); setCloseState("idle"); setOpenMenuId(null); }} pos={menuPos} /></td>
                 </tr>
               ))}
@@ -368,39 +367,39 @@ export default function HallBookingsView({ initialItems, halls, customers }: { i
       )}
 
       {formMode ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <form onSubmit={handleSave} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
+        <div className="fixed inset-x-0 bottom-0 top-14 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/30 px-4 pt-4 pb-4 sm:top-[72px]">
+          <form onSubmit={handleSave} className="max-h-full w-full max-w-2xl overflow-y-auto rounded-3xl border border-slate-100 bg-white p-6 shadow-2xl">
             <h2 className="text-lg font-bold">{formMode === "pay" ? "Record Payment" : formMode === "reschedule" ? "Reschedule Booking" : formMode === "edit" ? "Edit Booking" : "New Booking"}</h2>
             {formMode === "pay" && editing ? (
               <div className="mt-4 space-y-3 text-sm">
                 <p>Booking <strong>{editing.booking_number}</strong></p>
                 <p>Customer <strong>{editing.customer_name}</strong></p>
                 <p>Outstanding <strong>{formatTzs(editing.balance)}</strong></p>
-                <label className="block">Payment date<input type="date" required value={payment.payment_date} onChange={(event) => setPayment({ ...payment, payment_date: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
-                <label className="block">Amount received<input type="number" min="1" step="0.01" required value={payment.amount} onChange={(event) => setPayment({ ...payment, amount: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
-                <label className="block">Payment method<select value={payment.payment_method} onChange={(event) => setPayment({ ...payment, payment_method: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2">{PAYMENT_METHODS.map((method) => <option key={method}>{method}</option>)}</select></label>
-                <label className="block">Transaction reference<input value={payment.transaction_reference} onChange={(event) => setPayment({ ...payment, transaction_reference: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
-                <label className="block">Notes<textarea value={payment.notes} onChange={(event) => setPayment({ ...payment, notes: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
+                <label className="block">Payment date<input type="date" required value={payment.payment_date} onChange={(event) => setPayment({ ...payment, payment_date: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                <label className="block">Amount received<input type="number" min="1" step="0.01" required value={payment.amount} onChange={(event) => setPayment({ ...payment, amount: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                <label className="block">Payment method<select value={payment.payment_method} onChange={(event) => setPayment({ ...payment, payment_method: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">{PAYMENT_METHODS.map((method) => <option key={method}>{method}</option>)}</select></label>
+                <label className="block">Transaction reference<input value={payment.transaction_reference} onChange={(event) => setPayment({ ...payment, transaction_reference: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                <label className="block">Notes<textarea value={payment.notes} onChange={(event) => setPayment({ ...payment, notes: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
               </div>
             ) : (
               <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                 {formMode !== "reschedule" ? (
                   <>
                     <label className="sm:col-span-2">Customer
-                      <input value={customerQuery} onChange={(event) => setCustomerQuery(event.target.value)} placeholder="Search saved customers" className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" />
-                      <select value="" onChange={(event) => { const customer = knownCustomers.find((item) => item.phone === event.target.value); if (!customer) return; setDraft({ ...draft, customer_name: customer.name, customer_phone: customer.phone, customer_email: customer.email, company: customer.company }); }} className="mt-2 w-full rounded-xl bg-slate-50 px-3 py-2">
+                      <input value={customerQuery} onChange={(event) => setCustomerQuery(event.target.value)} placeholder="Search saved customers" className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
+                      <select value="" onChange={(event) => { const customer = knownCustomers.find((item) => item.phone === event.target.value); if (!customer) return; setDraft({ ...draft, customer_name: customer.name, customer_phone: customer.phone, customer_email: customer.email, company: customer.company }); }} className="mt-2 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
                         <option value="">New customer</option>
                         {customerChoices.map((customer) => <option key={customer.phone} value={customer.phone}>{customer.name} · {customer.phone}</option>)}
                       </select>
                     </label>
-                    <label>Customer name<input required value={draft.customer_name} onChange={(event) => setDraft({ ...draft, customer_name: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
-                    <label>Phone<input required value={draft.customer_phone} onChange={(event) => setDraft({ ...draft, customer_phone: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
-                    <label>Email<input type="email" value={draft.customer_email} onChange={(event) => setDraft({ ...draft, customer_email: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
-                    <label>Company<input value={draft.company} onChange={(event) => setDraft({ ...draft, company: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
+                    <label>Customer name<input required value={draft.customer_name} onChange={(event) => setDraft({ ...draft, customer_name: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                    <label>Phone<input required value={draft.customer_phone} onChange={(event) => setDraft({ ...draft, customer_phone: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                    <label>Email<input type="email" value={draft.customer_email} onChange={(event) => setDraft({ ...draft, customer_email: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                    <label>Company<input value={draft.company} onChange={(event) => setDraft({ ...draft, company: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
                   </>
                 ) : null}
                 <label className="sm:col-span-2">Hall
-                  <select required value={draft.property_id} onChange={(event) => setDraft({ ...draft, property_id: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2">
+                  <select required value={draft.property_id} onChange={(event) => setDraft({ ...draft, property_id: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
                     <option value="">Select a hall</option>
                     {activeHalls.map((hall) => <option key={hall.id} value={hall.id}>{hall.name}</option>)}
                   </select>
@@ -408,30 +407,30 @@ export default function HallBookingsView({ initialItems, halls, customers }: { i
                 <p>Booking number<br /><strong>{editing?.booking_number || nextSerial(items.map((booking) => booking.booking_number), "HB", 1)}</strong></p>
                 <p>Capacity<br /><strong>Not stored</strong></p>
                 <p className="sm:col-span-2 text-slate-500">{selectedHall ? selectedHall.address || "No address stored." : "Halls are properties whose type is Hall. There is no separate capacity or price field."}</p>
-                <label>Event date<input type="date" required value={draft.event_date} onChange={(event) => setDraft({ ...draft, event_date: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
-                <label>Expected guests<input type="number" min="0" required value={draft.expected_guests} onChange={(event) => setDraft({ ...draft, expected_guests: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
-                <label>Start time<input type="time" required value={draft.start_time} onChange={(event) => setDraft({ ...draft, start_time: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
-                <label>End time<input type="time" required value={draft.end_time} onChange={(event) => setDraft({ ...draft, end_time: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
+                <label>Event date<input type="date" required value={draft.event_date} onChange={(event) => setDraft({ ...draft, event_date: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                <label>Expected guests<input type="number" min="0" required value={draft.expected_guests} onChange={(event) => setDraft({ ...draft, expected_guests: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                <label>Start time<input type="time" required value={draft.start_time} onChange={(event) => setDraft({ ...draft, start_time: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                <label>End time<input type="time" required value={draft.end_time} onChange={(event) => setDraft({ ...draft, end_time: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
                 {formMode !== "reschedule" ? (
                   <>
-                    <label>Event type<select value={draft.event_type} onChange={(event) => setDraft({ ...draft, event_type: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2">{EVENT_TYPES.map((type) => <option key={type}>{type}</option>)}</select></label>
-                    <label>Hall rental price<input type="number" min="0" step="0.01" required value={draft.rental} onChange={(event) => setDraft({ ...draft, rental: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
-                    <label>Additional charges<input type="number" min="0" step="0.01" value={draft.charges} onChange={(event) => setDraft({ ...draft, charges: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
-                    <label>Discount<input type="number" min="0" step="0.01" value={draft.discount} onChange={(event) => setDraft({ ...draft, discount: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
-                    <label>Required deposit<input type="number" min="0" step="0.01" value={draft.deposit_required} onChange={(event) => setDraft({ ...draft, deposit_required: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
+                    <label>Event type<select value={draft.event_type} onChange={(event) => setDraft({ ...draft, event_type: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">{EVENT_TYPES.map((type) => <option key={type}>{type}</option>)}</select></label>
+                    <label>Hall rental price<input type="number" min="0" step="0.01" required value={draft.rental} onChange={(event) => setDraft({ ...draft, rental: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                    <label>Additional charges<input type="number" min="0" step="0.01" value={draft.charges} onChange={(event) => setDraft({ ...draft, charges: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                    <label>Discount<input type="number" min="0" step="0.01" value={draft.discount} onChange={(event) => setDraft({ ...draft, discount: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                    <label>Required deposit<input type="number" min="0" step="0.01" value={draft.deposit_required} onChange={(event) => setDraft({ ...draft, deposit_required: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
                     <p>Total<br /><strong>{formatTzs(previewTotal)}</strong></p>
                     {formMode === "create" ? (
                       <>
-                        <label>Payment made<input type="number" min="0" step="0.01" value={draft.amount_paid} onChange={(event) => setDraft({ ...draft, amount_paid: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
-                        <label>Payment method<select value={draft.payment_method} onChange={(event) => setDraft({ ...draft, payment_method: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2">{PAYMENT_METHODS.map((method) => <option key={method}>{method}</option>)}</select></label>
-                        <label>Payment date<input type="date" value={draft.payment_date} onChange={(event) => setDraft({ ...draft, payment_date: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
-                        <label>Transaction reference<input value={draft.transaction_reference} onChange={(event) => setDraft({ ...draft, transaction_reference: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
+                        <label>Payment made<input type="number" min="0" step="0.01" value={draft.amount_paid} onChange={(event) => setDraft({ ...draft, amount_paid: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                        <label>Payment method<select value={draft.payment_method} onChange={(event) => setDraft({ ...draft, payment_method: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">{PAYMENT_METHODS.map((method) => <option key={method}>{method}</option>)}</select></label>
+                        <label>Payment date<input type="date" value={draft.payment_date} onChange={(event) => setDraft({ ...draft, payment_date: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                        <label>Transaction reference<input value={draft.transaction_reference} onChange={(event) => setDraft({ ...draft, transaction_reference: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
                         <p>Outstanding<br /><strong>{formatTzs(previewBalance)}</strong></p>
                       </>
                     ) : null}
-                    <label className="sm:col-span-2">Event description<textarea value={draft.event_description} onChange={(event) => setDraft({ ...draft, event_description: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
-                    <label className="sm:col-span-2">Special requirements<textarea value={draft.requirements} onChange={(event) => setDraft({ ...draft, requirements: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
-                    <label className="sm:col-span-2">Internal notes<textarea value={draft.internal} onChange={(event) => setDraft({ ...draft, internal: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
+                    <label className="sm:col-span-2">Event description<textarea value={draft.event_description} onChange={(event) => setDraft({ ...draft, event_description: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                    <label className="sm:col-span-2">Special requirements<textarea value={draft.requirements} onChange={(event) => setDraft({ ...draft, requirements: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                    <label className="sm:col-span-2">Internal notes<textarea value={draft.internal} onChange={(event) => setDraft({ ...draft, internal: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
                   </>
                 ) : null}
               </div>
@@ -446,32 +445,67 @@ export default function HallBookingsView({ initialItems, halls, customers }: { i
       ) : null}
 
       {selected ? (
-        <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/30" onClick={() => setSelected(null)}>
-          <aside className="h-full w-full max-w-md overflow-y-auto bg-white p-6 shadow-xl" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-start justify-between"><h2 className="text-lg font-bold">{selected.booking_number}</h2><button type="button" onClick={() => setSelected(null)} className="text-sm text-slate-500">Close</button></div>
-            <div className="mt-2 flex gap-2"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusClass(selected.booking_status)}`}>{selected.booking_status}</span><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusClass(selected.payment_status)}`}>{selected.payment_status}</span></div>
-            <Section title="Booking" rows={[["Created", formatDate(selected.created_at)], ["Event", selected.event_type], ["Description", selected.event_description || "—"], ["Date", formatDate(selected.event_date)], ["Time", `${selected.start_time} – ${selected.end_time}`], ["Guests", String(selected.expected_guests)], ["Requirements", selected.requirements || "—"]]} />
-            <Section title="Customer" rows={[["Name", selected.customer_name], ["Phone", selected.customer_phone], ["Email", selected.customer_email || "—"], ["Company", selected.company || "—"]]} />
-            <Section title="Hall" rows={[["Name", selected.hall_name], ["Address", selected.hall_address || "—"], ["Capacity", "Not stored"]]} />
-            <Section title="Financial" rows={[["Rental", formatTzs(selected.rental)], ["Charges", formatTzs(selected.charges)], ["Discount", formatTzs(selected.discount)], ["Total", formatTzs(selected.booking_amount)], ["Deposit required", formatTzs(selected.deposit_required)], ["Paid", formatTzs(selected.amount_paid)], ["Outstanding", formatTzs(selected.balance)]]} />
-            <h3 className="mt-5 text-xs font-semibold uppercase tracking-wider text-slate-400">Payment history</h3>
-            {selected.payments.length === 0 ? <p className="mt-2 text-sm text-slate-500">No payments recorded.</p> : <ul className="mt-2 space-y-2 text-sm">{selected.payments.map((item) => <li key={item.id} className="rounded-xl bg-slate-50 p-3"><p className="font-medium">{formatDate(item.payment_date)} · {formatTzs(item.amount)}</p><p className="text-slate-500">{item.payment_method}{item.transaction_reference ? ` · ${item.transaction_reference}` : ""} · {item.status}</p></li>)}</ul>}
-            {selected.cancel_reason ? <p className="mt-4 text-sm text-slate-600">Reason: {selected.cancel_reason}</p> : null}
-            <div className="mt-5 flex flex-wrap gap-2">
-              <button type="button" className="rounded-xl bg-slate-100 px-3 py-2 text-sm" onClick={() => openEdit(selected, "edit")}>Edit</button>
-              {selected.balance > 0 && selected.booking_status !== "Cancelled" && selected.booking_status !== "Rejected" ? <button type="button" className="rounded-xl bg-[#0b2244] px-3 py-2 text-sm text-white" onClick={() => openPay(selected)}>Record Payment</button> : null}
-              <a className="rounded-xl bg-slate-100 px-3 py-2 text-sm" href={`/property/hall-bookings/${selected.id}/print`} target="_blank" rel="noreferrer">Print</a>
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/30 backdrop-blur-sm" onClick={() => setSelected(null)}>
+          <aside className="mt-[72px] mr-4 mb-4 flex h-[calc(100vh-72px)] w-full flex-col overflow-y-auto rounded-3xl border border-slate-100 bg-white/95 shadow-2xl shadow-slate-900/10 backdrop-blur-md sm:w-[480px] lg:w-[520px]" onClick={(event) => event.stopPropagation()}>
+            <div className="sticky top-0 z-10 flex items-start justify-between border-b border-slate-100 bg-white/90 px-8 pt-8 pb-4 backdrop-blur-md">
+              <div>
+                <div className="mb-1 flex items-center gap-2">
+                  <h2 className="text-2xl font-extrabold leading-tight text-slate-900">{selected.customer_name}</h2>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${statusClass(selected.booking_status)}`}>{selected.booking_status}</span>
+                </div>
+                <p className="text-sm text-slate-500">{selected.booking_number} · {selected.hall_name || "Hall"} · {formatTzs(selected.booking_amount)}</p>
+              </div>
+              <button type="button" onClick={() => setSelected(null)} className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-800" aria-label="Close"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+            </div>
+            <div className="flex gap-1 border-b border-slate-100 px-8 pt-4">
+              <button type="button" className="rounded-t-xl border-b-2 border-[#0b2244] px-3 py-2 text-sm font-medium text-[#0b2244]">Details</button>
+            </div>
+            <div className="flex-1 px-8 py-6">
+              <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">Booking</h3>
+              <div className="mb-8 grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
+                <div><div className="text-xs text-slate-400">Event</div><div className="font-semibold text-slate-900">{selected.event_type}</div></div>
+                <div><div className="text-xs text-slate-400">Date</div><div className="font-semibold text-slate-900">{formatDate(selected.event_date)}</div></div>
+                <div><div className="text-xs text-slate-400">Time</div><div className="font-semibold text-slate-900">{selected.start_time} – {selected.end_time}</div></div>
+                <div><div className="text-xs text-slate-400">Guests</div><div className="font-semibold text-slate-900">{selected.expected_guests}</div></div>
+                <div><div className="text-xs text-slate-400">Hall</div><div className="font-semibold text-slate-900">{selected.hall_name || "—"}</div></div>
+                <div><div className="text-xs text-slate-400">Created</div><div className="font-semibold text-slate-900">{formatDate(selected.created_at)}</div></div>
+                <div className="col-span-2"><div className="text-xs text-slate-400">Description</div><div className="font-semibold text-slate-900">{selected.event_description || "—"}</div></div>
+                {selected.requirements ? <div className="col-span-2"><div className="text-xs text-slate-400">Requirements</div><div className="font-semibold text-slate-900">{selected.requirements}</div></div> : null}
+              </div>
+              <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">Customer</h3>
+              <div className="mb-8 grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
+                <div><div className="text-xs text-slate-400">Phone</div><div className="font-semibold text-slate-900">{selected.customer_phone || "—"}</div></div>
+                <div><div className="text-xs text-slate-400">Email</div><div className="font-semibold text-slate-900">{selected.customer_email || "—"}</div></div>
+                <div className="col-span-2"><div className="text-xs text-slate-400">Company</div><div className="font-semibold text-slate-900">{selected.company || "—"}</div></div>
+              </div>
+              <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">Payment</h3>
+              <div className="mb-8 grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
+                <div><div className="text-xs text-slate-400">Total</div><div className="font-semibold text-slate-900">{formatTzs(selected.booking_amount)}</div></div>
+                <div><div className="text-xs text-slate-400">Paid</div><div className="font-semibold text-slate-900">{formatTzs(selected.amount_paid)}</div></div>
+                <div><div className="text-xs text-slate-400">Balance</div><div className="font-semibold text-slate-900">{formatTzs(selected.balance)}</div></div>
+                <div><div className="text-xs text-slate-400">Deposit</div><div className="font-semibold text-slate-900">{formatTzs(selected.deposit_required)}</div></div>
+              </div>
+              <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">Payment history</h3>
+              {selected.payments.length === 0 ? <p className="text-sm text-slate-500">No payments recorded.</p> : (
+                <ul className="space-y-2 text-sm">{selected.payments.map((item) => <li key={item.id} className="rounded-2xl bg-slate-50 px-4 py-3"><p className="font-semibold text-slate-900">{formatDate(item.payment_date)} · {formatTzs(item.amount)}</p><p className="text-slate-500">{item.payment_method}{item.transaction_reference ? ` · ${item.transaction_reference}` : ""}</p></li>)}</ul>
+              )}
+              {selected.cancel_reason ? <p className="mt-4 text-sm text-slate-600">Reason: {selected.cancel_reason}</p> : null}
+              <div className="mt-8 flex gap-3 border-t border-slate-100 pt-6">
+                <button type="button" className="flex-1 rounded-2xl border border-slate-200 bg-white px-5 py-3 font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50" onClick={() => openEdit(selected, "edit")}>Edit</button>
+                {selected.balance > 0 && selected.booking_status !== "Cancelled" && selected.booking_status !== "Rejected" ? <button type="button" className="flex-1 rounded-2xl bg-[#0b2244] px-5 py-3 font-semibold text-white" onClick={() => openPay(selected)}>Record Payment</button> : null}
+                <a className="flex-1 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-center font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50" href={`/property/hall-bookings/${selected.id}/print`} target="_blank" rel="noreferrer">Print</a>
+              </div>
             </div>
           </aside>
         </div>
       ) : null}
 
       {closeTarget ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+        <div className="fixed inset-x-0 bottom-0 top-14 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/30 px-4 py-4 sm:top-[72px]">
           <div className="w-full max-w-md rounded-2xl bg-white p-6">
             <h2 className="text-lg font-bold">{closeTarget.kind === "cancel" ? "Cancel" : "Reject"} {closeTarget.booking.booking_number}</h2>
             <p className="mt-2 text-sm text-slate-600">The booking stays in the records. Payments are not refunded.</p>
-            <textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Reason" className="mt-3 w-full rounded-xl bg-slate-50 px-3 py-2 text-sm" />
+            <textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Reason" className="mt-3 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
             {closeError ? <p className="mt-3 text-sm text-rose-700">{closeError}</p> : null}
             <div className="mt-5 flex justify-end gap-2">
               <button type="button" className="rounded-xl px-4 py-2 text-sm" onClick={() => setCloseTarget(null)}>Keep booking</button>
@@ -502,14 +536,5 @@ function RowMenu({ booking, open, onOpen, onView, onEdit, onPay, onReschedule, o
         </div>
       ) : null}
     </>
-  );
-}
-
-function Section({ title, rows }: { title: string; rows: [string, string][] }) {
-  return (
-    <section className="mt-5">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">{title}</h3>
-      <dl className="mt-2 space-y-1 text-sm">{rows.map(([label, value]) => <div key={label} className="flex justify-between gap-4"><dt className="text-slate-500">{label}</dt><dd className="text-right font-medium">{value || "—"}</dd></div>)}</dl>
-    </section>
   );
 }

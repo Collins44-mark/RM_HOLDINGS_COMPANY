@@ -270,17 +270,17 @@ export default function UnitsView({
                   <form onSubmit={handleUpdate}>
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Edit Unit</h3>
                     <div className="grid grid-cols-2 gap-3 mb-4">
-                      <input required value={draftName} onChange={(e) => setDraftName(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100" placeholder="Unit Name" />
-                      <select required value={draftPropertyId} onChange={(e) => setDraftPropertyId(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm">
+                      <input required value={draftName} onChange={(e) => setDraftName(e.target.value)} className="w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" placeholder="Unit Name" />
+                      <select required value={draftPropertyId} onChange={(e) => setDraftPropertyId(e.target.value)} className="w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
                         <option value="">Select Property</option>
                         {properties.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                       </select>
-                      <select value={draftStatus} onChange={(e) => setDraftStatus(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm">
+                      <select value={draftStatus} onChange={(e) => setDraftStatus(e.target.value)} className="w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
                         <option>Vacant</option>
                         <option>Occupied</option>
                         <option>Maintenance</option>
                       </select>
-                      <input type="number" value={draftRent} onChange={(e) => setDraftRent(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100" placeholder="Monthly Rent" />
+                      <input type="number" value={draftRent} onChange={(e) => setDraftRent(e.target.value)} className="w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" placeholder="Monthly Rent" />
                     </div>
                     <div className="flex gap-3">
                       <button type="submit" disabled={updateState !== "idle"} className={`px-6 py-2.5 rounded-xl font-semibold shadow-lg min-w-[140px] flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-90 ${updateState === "saved" ? "bg-emerald-600 text-white shadow-emerald-200/40" : "bg-[#0b2244] text-white shadow-indigo-200/40"}`}>
@@ -302,14 +302,14 @@ export default function UnitsView({
         )}
 
         {formOpen && (
-          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setFormOpen(false); }}>
+          <div className="fixed inset-x-0 bottom-0 top-14 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/30 px-4 py-4 sm:top-[72px]" onClick={e => { if (e.target === e.currentTarget) setFormOpen(false); }}>
             <div className="bg-white rounded-2xl p-6 shadow-2xl w-full max-w-md">
               <h3 className="text-xl font-bold mb-4">Add Unit</h3>
               <form onSubmit={handleSave} className="space-y-3">
-                <input required value={name} onChange={e => setName(e.target.value)} placeholder="Unit Name" className="w-full px-3 py-2 border rounded-lg" />
-                <select required value={propertyId} onChange={e => setPropertyId(e.target.value)} className="w-full px-3 py-2 border rounded-lg"><option value="">Select Property</option>{properties.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-                <select value={status} onChange={e => setStatus(e.target.value)} className="w-full px-3 py-2 border rounded-lg"><option>Vacant</option><option>Occupied</option><option>Maintenance</option></select>
-                <input type="number" value={rent} onChange={e => setRent(e.target.value)} placeholder="Monthly Rent" className="w-full px-3 py-2 border rounded-lg" />
+                <input required value={name} onChange={e => setName(e.target.value)} placeholder="Unit Name" className="w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
+                <select required value={propertyId} onChange={e => setPropertyId(e.target.value)} className="w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300"><option value="">Select Property</option>{properties.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                <select value={status} onChange={e => setStatus(e.target.value)} className="w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300"><option>Vacant</option><option>Occupied</option><option>Maintenance</option></select>
+                <input type="number" value={rent} onChange={e => setRent(e.target.value)} placeholder="Monthly Rent" className="w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
                 <div className="flex gap-3">
                   <button type="submit" disabled={saveState !== "idle"} className={`bg-[#0b2244] text-white px-4 py-2 rounded-xl ${saveState === "saving" ? "opacity-70" : ""}`}><span className="flex items-center justify-center gap-2">{saveState === "saving" ? <span className="inline-block h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : saveState === "saved" ? "✓ Saved" : "Save"}</span></button>
                   {saveError && <p className="text-red-600 text-sm">{saveError}</p>}

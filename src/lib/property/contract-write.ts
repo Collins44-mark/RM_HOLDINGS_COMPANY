@@ -1,5 +1,7 @@
-import { CONTRACT_FREQUENCIES, isCurrentContract, presentContracts, todayIso } from "@/lib/property/contracts";
+import { CONTRACT_FREQUENCIES, isCurrentContract, paidByContract, presentContracts, todayIso } from "@/lib/property/contracts";
 import { nextSerial } from "@/lib/property/serial";
+import { businessToday } from "@/lib/property/invoices";
+import { issuePaidRentInvoice } from "@/lib/property/invoice-write";
 
 const CONTRACT_COLUMNS = "id, business_unit_id, property_id, unit_id, tenant_id, contract_number, start_date, end_date, rent_amount, billing_frequency, deposit_amount, payment_due_day, contract_terms, status, created_at, updated_at";
 
@@ -14,24 +16,42 @@ export function contractNumber(existing: string[]) {
 }
 
 async function loadDirectory(admin: any, buId: string) {
-  const [contractsResult, tenantsResult, propertiesResult, unitsResult] = await Promise.all([
+  const [contractsResult, tenantsResult, propertiesResult, unitsResult, invoicesResult] = await Promise.all([
     admin.from("rental_contracts").select(CONTRACT_COLUMNS).eq("business_unit_id", buId),
     admin.from("tenants").select("id, full_name, phone_number, email, business_unit_id").eq("business_unit_id", buId),
     admin.from("properties").select("id, name, street_address, ward, district, region, business_unit_id").eq("business_unit_id", buId),
     admin.from("property_units").select("id, unit_name, unit_code, property_id, monthly_rent, unit_type, floor, business_unit_id").eq("business_unit_id", buId),
+    admin.from("rent_invoices").select("contract_id, amount_paid, status").eq("business_unit_id", buId),
   ]);
   return {
     contracts: contractsResult.data || [],
     tenants: tenantsResult.data || [],
     properties: propertiesResult.data || [],
     units: unitsResult.data || [],
+    paid: paidByContract(invoicesResult.data || []),
   };
 }
 
 function presentOne(directory: Awaited<ReturnType<typeof loadDirectory>>, id: string) {
   const row = directory.contracts.find((contract: any) => contract.id === id);
   if (!row) return null;
-  return presentContracts([row], directory.tenants, directory.properties, directory.units)[0];
+  return presentContracts([row], directory.tenants, directory.properties, directory.units, directory.paid)[0];
+}
+
+export async function settlePendingContracts(admin: any, buId: string) {
+  const today = businessToday();
+  const pending = await admin.from("rental_contracts").select("id, contract_number, start_date, end_date, rent_amount, unit_id").eq("business_unit_id", buId).eq("status", "Pending");
+  for (const contract of pending.data || []) {
+    const end = String(contract.end_date || "").slice(0, 10);
+    const nextStatus = end && end < today ? "Completed" : "Active";
+    await admin.from("rental_contracts").update({ status: nextStatus, updated_at: new Date().toISOString() }).eq("id", contract.id).eq("business_unit_id", buId);
+    await syncUnitOccupancy(admin, buId, contract.unit_id);
+    if (nextStatus !== "Active") continue;
+    const existing = await admin.from("rent_invoices").select("id").eq("business_unit_id", buId).eq("contract_id", contract.id);
+    if ((existing.data || []).length > 0) continue;
+    const issued = await issuePaidRentInvoice(admin, buId, contract, 1);
+    if (issued.error) console.error("Pending contract invoice was not created:", contract.contract_number, issued.error);
+  }
 }
 
 export async function syncUnitOccupancy(admin: any, buId: string, unitId: string) {
@@ -51,7 +71,7 @@ function validateTerms(body: any, directory: Awaited<ReturnType<typeof loadDirec
   const deposit = money(body.deposit_amount ?? 0);
   const frequency = String(body.billing_frequency || "Monthly");
   const dueDay = Number(body.payment_due_day || 1);
-  const requested = body.status === "Active" ? "Active" : "Pending";
+  const requested = "Active";
   if (!directory.tenants.some((tenant: any) => tenant.id === tenantId)) return { error: "Select a tenant from this business" };
   const property = directory.properties.find((item: any) => item.id === propertyId);
   if (!property) return { error: "Select a property from this business" };
@@ -101,7 +121,7 @@ async function insertContract(admin: any, buId: string, value: any, existingNumb
 
 export async function createContract(admin: any, buId: string, body: any) {
   const directory = await loadDirectory(admin, buId);
-  const checked = validateTerms(body, directory);
+  const checked = validateTerms({ ...body, status: "Active" }, directory);
   if (checked.error || !checked.value) return { error: checked.error || "Invalid contract" };
   const inserted = await insertContract(admin, buId, checked.value, directory.contracts.map((contract: any) => contract.contract_number));
   if (inserted.error || !inserted.data) return { error: inserted.error?.message || "Save failed" };
@@ -161,7 +181,7 @@ export async function renewContract(admin: any, buId: string, id: string, body: 
     unit_id: existing.unit_id,
     contract_terms: [`Renewed from ${existing.contract_number}.`, String(body.contract_terms || "").trim()].filter(Boolean).join("\n"),
   };
-  const checked = validateTerms(renewal, directory, existing.status === "Active" ? id : "");
+  const checked = validateTerms({ ...renewal, status: "Active" }, directory, existing.status === "Active" ? id : "");
   if (checked.error || !checked.value) return { error: checked.error || "Invalid renewal" };
   const previousStatus = existing.status;
   if (checked.value.status === "Active" && existing.status === "Active") {
@@ -179,5 +199,5 @@ export async function renewContract(admin: any, buId: string, id: string, body: 
   }
   directory.contracts.push(inserted.data);
   await syncUnitOccupancy(admin, buId, existing.unit_id);
-  return { data: presentOne(directory, inserted.data.id), previous: presentOne(directory, id) };
+  return { data: presentOne(directory, inserted.data.id), previous: presentOne(directory, id), closedPrevious: previousStatus === "Active" };
 }

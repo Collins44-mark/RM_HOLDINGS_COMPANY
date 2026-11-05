@@ -39,6 +39,12 @@ export default function ReportsView({ options }: { options: { properties: Report
   const units = useMemo(() => options.units.filter((unit) => !filters.propertyId || unit.property_id === filters.propertyId), [options.units, filters.propertyId]);
 
   function openModule(id: string) {
+    if (moduleId === id) {
+      setModuleId("");
+      setState("idle");
+      setError("");
+      return;
+    }
     setModuleId(id);
     setReport(REPORT_TYPES[id][0].id);
     setFilters(emptyFilters);
@@ -74,45 +80,50 @@ export default function ReportsView({ options }: { options: { properties: Report
     }
   }
 
+  const rows: (typeof REPORT_MODULES)[number][][] = [];
+  for (let index = 0; index < REPORT_MODULES.length; index += 3) rows.push(REPORT_MODULES.slice(index, index + 3));
+
   return (
     <main className="pb-10 text-slate-900">
-      <div className="mb-6">
+      <div className="mb-5">
         <h1 className="text-3xl font-extrabold">Reports</h1>
-        <p className="text-sm text-slate-500">Choose a module, select a report, and download a PDF.</p>
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {REPORT_MODULES.map((item) => {
-          const Icon = ICONS[item.id];
+      <div className="space-y-3">
+        {rows.map((row) => {
+          const open = row.some((item) => item.id === moduleId);
           return (
-            <button key={item.id} type="button" onClick={() => openModule(item.id)} className="rounded-2xl bg-white p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-[#0b2244]"><Icon size={18} /></span>
-              <span className="mt-4 block text-lg font-bold">{item.name}</span>
-              <span className="mt-1 block text-sm text-slate-500">{item.description}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {moduleName ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => state === "idle" && setModuleId("")}>
-          <form onSubmit={download} onClick={(event) => event.stopPropagation()} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
-            <h2 className="text-xl font-bold">{moduleName.name}</h2>
-            <p className="text-sm text-slate-500">{moduleName.description}</p>
-            <label className="mt-4 block text-sm">Report
-              <select value={report} onChange={(event) => { setReport(event.target.value); setError(""); }} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2">
-                {REPORT_TYPES[moduleId].map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-              </select>
-            </label>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div key={row[0].id}>
+              <div className="grid grid-cols-3 gap-3">
+                {row.map((item) => {
+                  const Icon = ICONS[item.id];
+                  const selected = item.id === moduleId;
+                  return (
+                    <button key={item.id} type="button" onClick={() => openModule(item.id)} className={`relative flex h-[76px] items-center overflow-hidden rounded-2xl px-4 text-left shadow-sm transition duration-200 ${selected ? "bg-[#0b2244] text-white shadow-md" : "bg-white text-slate-900 hover:shadow-md"}`}>
+                      <Icon size={64} strokeWidth={1.25} className={`pointer-events-none absolute -right-1 -bottom-3 ${selected ? "text-white/15" : "text-[#0b2244]/10"}`} />
+                      <span className="relative text-sm font-bold">{item.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+                <div className="overflow-hidden">
+                  {moduleName && open ? (
+                    <form onSubmit={download} className="mt-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        <label className="text-sm">Report
+                          <select value={report} onChange={(event) => { setReport(event.target.value); setError(""); }} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
+                            {REPORT_TYPES[moduleId].map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                          </select>
+                        </label>
               {visible.dates ? (
                 <>
-                  <label className="text-sm">Start date<input type="date" value={filters.from} onChange={(event) => setFilters({ ...filters, from: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
-                  <label className="text-sm">End date<input type="date" value={filters.to} onChange={(event) => setFilters({ ...filters, to: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2" /></label>
+                  <label className="text-sm">Start date<input type="date" value={filters.from} onChange={(event) => setFilters({ ...filters, from: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                  <label className="text-sm">End date<input type="date" value={filters.to} onChange={(event) => setFilters({ ...filters, to: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
                 </>
               ) : null}
               {visible.property ? (
                 <label className="text-sm">Property
-                  <select required={visible.propertyRequired} value={filters.propertyId} onChange={(event) => setFilters({ ...filters, propertyId: event.target.value, unitId: "" })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2">
+                  <select required={visible.propertyRequired} value={filters.propertyId} onChange={(event) => setFilters({ ...filters, propertyId: event.target.value, unitId: "" })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
                     {visible.propertyRequired ? <option value="">Select property</option> : <option value="">All properties</option>}
                     {options.properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
                   </select>
@@ -120,7 +131,7 @@ export default function ReportsView({ options }: { options: { properties: Report
               ) : null}
               {visible.unit ? (
                 <label className="text-sm">Unit
-                  <select value={filters.unitId} onChange={(event) => setFilters({ ...filters, unitId: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2">
+                  <select value={filters.unitId} onChange={(event) => setFilters({ ...filters, unitId: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
                     <option value="">All units</option>
                     {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
                   </select>
@@ -128,7 +139,7 @@ export default function ReportsView({ options }: { options: { properties: Report
               ) : null}
               {visible.tenant ? (
                 <label className="text-sm">Tenant
-                  <select required={visible.tenantRequired} value={filters.tenantId} onChange={(event) => setFilters({ ...filters, tenantId: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2">
+                  <select required={visible.tenantRequired} value={filters.tenantId} onChange={(event) => setFilters({ ...filters, tenantId: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
                     {visible.tenantRequired ? <option value="">Select tenant</option> : <option value="">All tenants</option>}
                     {options.tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
                   </select>
@@ -136,7 +147,7 @@ export default function ReportsView({ options }: { options: { properties: Report
               ) : null}
               {visible.hall ? (
                 <label className="text-sm">Hall
-                  <select value={filters.hallId} onChange={(event) => setFilters({ ...filters, hallId: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2">
+                  <select value={filters.hallId} onChange={(event) => setFilters({ ...filters, hallId: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
                     <option value="">All halls</option>
                     {options.halls.map((hall) => <option key={hall.id} value={hall.id}>{hall.name}</option>)}
                   </select>
@@ -144,7 +155,7 @@ export default function ReportsView({ options }: { options: { properties: Report
               ) : null}
               {visible.category ? (
                 <label className="text-sm">Category
-                  <select value={filters.category} onChange={(event) => setFilters({ ...filters, category: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2">
+                  <select value={filters.category} onChange={(event) => setFilters({ ...filters, category: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
                     <option value="">All categories</option>
                     {EXPENSE_CATEGORIES.map((item) => <option key={item}>{item}</option>)}
                   </select>
@@ -152,23 +163,27 @@ export default function ReportsView({ options }: { options: { properties: Report
               ) : null}
               {visible.status ? (
                 <label className="text-sm">Status
-                  <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })} className="mt-1 w-full rounded-xl bg-slate-50 px-3 py-2">
+                  <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
                     <option value="">All statuses</option>
                     {(moduleId === "units" ? ["Occupied", "Vacant", "Maintenance"] : moduleId === "contracts" ? ["Pending", "Active", "Completed", "Terminated"] : moduleId === "invoices" ? ["Paid", "Unpaid", "Partially Paid", "Overdue", "Cancelled"] : moduleId === "halls" ? ["Pending", "Confirmed", "Completed", "Cancelled", "Rejected"] : ["Pending", "Partially Paid", "Paid", "Overdue", "Cancelled"]).map((item) => <option key={item}>{item}</option>)}
                   </select>
                 </label>
               ) : null}
+                        {error ? <p className="text-sm text-rose-700 sm:col-span-2 lg:col-span-3">{error}</p> : null}
+                      </div>
+                      <div className="mt-4 flex justify-end">
+                        <button type="submit" disabled={state === "generating"} className={`flex min-w-[160px] items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-white ${state === "downloaded" ? "bg-emerald-600" : "bg-[#0b2244]"}`}>
+                          {state === "generating" ? <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : state === "downloaded" ? "Downloaded" : "Download report"}
+                        </button>
+                      </div>
+                    </form>
+                  ) : null}
+                </div>
+              </div>
             </div>
-            {error ? <p className="mt-3 text-sm text-rose-700">{error}</p> : null}
-            <div className="mt-5 flex justify-end gap-2">
-              <button type="button" onClick={() => state === "idle" && setModuleId("")} className="rounded-xl px-4 py-2 text-slate-600">Close</button>
-              <button type="submit" disabled={state === "generating"} className={`flex min-w-[140px] items-center justify-center rounded-xl px-4 py-2 font-semibold text-white ${state === "downloaded" ? "bg-emerald-600" : "bg-[#0b2244]"}`}>
-                {state === "generating" ? <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : state === "downloaded" ? "Downloaded" : "Download PDF"}
-              </button>
-            </div>
-          </form>
-        </div>
-      ) : null}
+          );
+        })}
+      </div>
     </main>
   );
 }
