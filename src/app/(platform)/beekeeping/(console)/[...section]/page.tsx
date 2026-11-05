@@ -1,4 +1,4 @@
-import { ModuleSection } from "@/components/modules/ModuleSection";
+import { redirect } from "next/navigation";
 
 export default async function BeekeepingSectionRoute({
   params,
@@ -6,5 +6,7 @@ export default async function BeekeepingSectionRoute({
   params: Promise<{ section: string[] }>;
 }) {
   const { section } = await params;
-  return <ModuleSection module="beekeeping" section={section} />;
+  const head = section[0];
+  if (head === "hives" || head === "harvests" || head === "sales") redirect(`/beekeeping/${head}`);
+  redirect("/beekeeping");
 }

@@ -143,6 +143,10 @@ const ROUTE_PERMISSION_RULES: RoutePermissionRule[] = [
   { prefix: "/farm/suppliers", any: ["farm.customers.view", "farm.jobs.view"] },
   { prefix: "/farm/staff", any: ["farm.staff.view", "farm.jobs.view"] },
   { prefix: "/farm/settings", any: ["farm.settings.view", "farm.settings.manage"] },
+  { prefix: "/beekeeping/hives", any: ["beekeeping.hives.view", "beekeeping.hives.create", "beekeeping.hives.edit"] },
+  { prefix: "/beekeeping/harvests", any: ["beekeeping.harvests.view", "beekeeping.harvests.create"] },
+  { prefix: "/beekeeping/sales", any: ["beekeeping.sales.view", "beekeeping.expenses.view"] },
+  { prefix: "/beekeeping", exact: true, any: ["beekeeping.dashboard.view", "beekeeping.hives.view", "beekeeping.sales.view"] },
 ];
 
 const SORTED_RULES = [...ROUTE_PERMISSION_RULES].sort((a, b) => b.prefix.length - a.prefix.length);

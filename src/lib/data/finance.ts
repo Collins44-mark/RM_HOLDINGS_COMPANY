@@ -143,6 +143,8 @@ type PeriodPoints = {
   farmExpenses: ExpensePoint[];
   propertyCollections: SalePoint[];
   propertyExpenses: ExpensePoint[];
+  beeCollections: SalePoint[];
+  beeExpenses: ExpensePoint[];
 };
 
 const EMPTY_POINTS: PeriodPoints = {
@@ -154,6 +156,8 @@ const EMPTY_POINTS: PeriodPoints = {
   farmExpenses: [],
   propertyCollections: [],
   propertyExpenses: [],
+  beeCollections: [],
+  beeExpenses: [],
 };
 
 export type SchoolPeriodLedger = {
@@ -262,8 +266,8 @@ function schoolLedgerFromPoints(points: PeriodPoints): SchoolPeriodLedger {
 
 function combinedPoints(points: PeriodPoints): { sales: SalePoint[]; expenses: ExpensePoint[] } {
   return {
-    sales: [...points.sales, ...points.schoolCollections, ...points.farmCollections, ...points.propertyCollections],
-    expenses: [...points.expenses, ...points.schoolExpenses, ...points.farmExpenses, ...points.propertyExpenses],
+    sales: [...points.sales, ...points.schoolCollections, ...points.farmCollections, ...points.propertyCollections, ...points.beeCollections],
+    expenses: [...points.expenses, ...points.schoolExpenses, ...points.farmExpenses, ...points.propertyExpenses, ...points.beeExpenses],
   };
 }
 
@@ -275,6 +279,17 @@ function farmLedgerFromPoints(points: PeriodPoints): FarmPeriodLedger {
     expenses,
     netProfit: revenue - expenses,
     collectionCount: points.farmCollections.length,
+  };
+}
+
+function beeLedgerFromPoints(points: PeriodPoints): FarmPeriodLedger {
+  const revenue = points.beeCollections.reduce((sum, row) => sum + row.total, 0);
+  const expenses = points.beeExpenses.reduce((sum, row) => sum + row.amount, 0);
+  return {
+    revenue,
+    expenses,
+    netProfit: revenue - expenses,
+    collectionCount: points.beeCollections.length,
   };
 }
 
@@ -363,7 +378,7 @@ function buildCategoryRows(points: PeriodPoints): FinanceCategoryRow[] {
   const propertyRevenue = points.propertyCollections.reduce((sum, row) => sum + row.total, 0);
   const cogs = points.sales.reduce((sum, row) => sum + row.cogs, 0);
   const expenseGroups = new Map<string, number>();
-  for (const expense of [...points.expenses, ...points.schoolExpenses, ...points.farmExpenses, ...points.propertyExpenses]) {
+  for (const expense of [...points.expenses, ...points.schoolExpenses, ...points.farmExpenses, ...points.propertyExpenses, ...points.beeExpenses]) {
     const name = expense.category.trim() || "Uncategorized";
     expenseGroups.set(name, (expenseGroups.get(name) ?? 0) + expense.amount);
   }
@@ -495,6 +510,8 @@ async function loadSupermarketPeriodPoints(from: Date, to: Date): Promise<Period
       farmExpenses: [],
       propertyCollections: [],
       propertyExpenses: [],
+      beeCollections: [],
+      beeExpenses: [],
     };
   } catch (error) {
     console.error(
@@ -749,12 +766,36 @@ async function loadPropertyPeriodSlice(from: Date, to: Date): Promise<Pick<Perio
   }
 }
 
+async function loadBeekeepingPeriodSlice(from: Date, to: Date): Promise<Pick<PeriodPoints, "beeCollections" | "beeExpenses">> {
+  const empty = { beeCollections: [] as SalePoint[], beeExpenses: [] as ExpensePoint[] };
+  try {
+    const supabase = createSupabaseAdminClient() ?? (await createSupabaseServerClient());
+    if (!supabase) return empty;
+    const { data: bu } = await supabase.from("business_units").select("id").eq("code", "beekeeping").maybeSingle();
+    if (!bu?.id) return empty;
+    const fromDate = formatLocalDate(from);
+    const toDate = formatLocalDate(to);
+    const [salesRes, expensesRes] = await Promise.all([
+      supabase.from("bee_sale_payments").select("payment_date, amount, status").eq("business_unit_id", bu.id).eq("status", "Completed").gte("payment_date", fromDate).lte("payment_date", toDate),
+      supabase.from("bee_expense_payments").select("payment_date, amount, status").eq("business_unit_id", bu.id).eq("status", "Completed").gte("payment_date", fromDate).lte("payment_date", toDate),
+    ]);
+    if (salesRes.error || expensesRes.error) return empty;
+    return {
+      beeCollections: (salesRes.data ?? []).map((row) => ({ saleDate: dayKey(String(row.payment_date ?? "")), total: Number(row.amount || 0), cogs: 0 })),
+      beeExpenses: (expensesRes.data ?? []).map((row) => ({ expenseDate: dayKey(String(row.payment_date ?? "")), amount: Number(row.amount || 0), category: "Beekeeping" })),
+    };
+  } catch {
+    return empty;
+  }
+}
+
 async function loadConsolidatedPeriodPoints(from: Date, to: Date): Promise<PeriodPoints> {
-  const [supermarket, school, farm, property] = await Promise.all([
+  const [supermarket, school, farm, property, beekeeping] = await Promise.all([
     loadSupermarketPeriodPoints(from, to),
     loadSchoolPeriodSlice(from, to),
     loadFarmPeriodSlice(from, to),
     loadPropertyPeriodSlice(from, to),
+    loadBeekeepingPeriodSlice(from, to),
   ]);
   return {
     ...supermarket,
@@ -764,6 +805,8 @@ async function loadConsolidatedPeriodPoints(from: Date, to: Date): Promise<Perio
     farmExpenses: farm.farmExpenses,
     propertyCollections: property.propertyCollections,
     propertyExpenses: property.propertyExpenses,
+    beeCollections: beekeeping.beeCollections,
+    beeExpenses: beekeeping.beeExpenses,
   };
 }
 
@@ -777,6 +820,8 @@ function buildUnitRow(
   previousFarm: FarmPeriodLedger = EMPTY_FARM,
   property: FarmPeriodLedger = EMPTY_FARM,
   previousProperty: FarmPeriodLedger = EMPTY_FARM,
+  beekeeping: FarmPeriodLedger = EMPTY_FARM,
+  previousBeekeeping: FarmPeriodLedger = EMPTY_FARM,
 ): UnitFinanceRow {
   const current =
     unit.code === "supermarket"
@@ -787,7 +832,9 @@ function buildUnitRow(
           ? farm
           : unit.code === "property"
             ? property
-            : EMPTY_SCHOOL;
+            : unit.code === "beekeeping"
+              ? beekeeping
+              : EMPTY_SCHOOL;
   const previous =
     unit.code === "supermarket"
       ? previousSupermarket
@@ -797,7 +844,9 @@ function buildUnitRow(
           ? previousFarm
           : unit.code === "property"
             ? previousProperty
-            : EMPTY_SCHOOL;
+            : unit.code === "beekeeping"
+              ? previousBeekeeping
+              : EMPTY_SCHOOL;
   const revenue = current.revenue;
   const expenses = current.expenses;
   const operatingPosition = "netProfit" in current ? current.netProfit : 0;
@@ -845,6 +894,8 @@ async function consolidateLedgers(
   const previousFarm = farmLedgerFromPoints(previousPoints);
   const currentProperty = propertyLedgerFromPoints(currentPoints);
   const previousProperty = propertyLedgerFromPoints(previousPoints);
+  const currentBee = beeLedgerFromPoints(currentPoints);
+  const previousBee = beeLedgerFromPoints(previousPoints);
   const trendSource = combinedPoints(currentPoints);
 
   const rows: UnitFinanceRow[] = units.map((unit) =>
@@ -858,6 +909,8 @@ async function consolidateLedgers(
       previousFarm,
       currentProperty,
       previousProperty,
+      currentBee,
+      previousBee,
     ),
   );
 
@@ -868,9 +921,9 @@ async function consolidateLedgers(
   );
 
   const previousTotals = snapshot(
-    previousLedger.revenue + previousSchool.revenue + previousFarm.revenue + previousProperty.revenue,
-    previousLedger.expenses + previousSchool.expenses + previousFarm.expenses + previousProperty.expenses,
-    previousLedger.netProfit + previousSchool.netProfit + previousFarm.netProfit + previousProperty.netProfit,
+    previousLedger.revenue + previousSchool.revenue + previousFarm.revenue + previousProperty.revenue + previousBee.revenue,
+    previousLedger.expenses + previousSchool.expenses + previousFarm.expenses + previousProperty.expenses + previousBee.expenses,
+    previousLedger.netProfit + previousSchool.netProfit + previousFarm.netProfit + previousProperty.netProfit + previousBee.netProfit,
   );
 
   const comparison: FinanceDelta = {
@@ -903,7 +956,8 @@ async function consolidateLedgers(
  * Live supermarket sales/expenses, school fee collections, school expenses,
  * completed farm jobs, farm expenses, and property cash: completed rent payments,
  * completed hall booking payments, and completed property expense payments.
- * Rice, livestock, and beekeeping remain 0 until those modules have cash ledgers.
+ * Rice and livestock remain 0 until those modules have cash ledgers.
+ * Beekeeping cash is completed honey-sale payments minus completed expense payments.
  * Never falls back to sample-finance or Prisma FinanceTransaction.
  */
 export async function getConsolidatedFinance(input: {

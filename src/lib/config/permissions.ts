@@ -162,19 +162,18 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "sales", actions: ["view", "create"] },
     ]).map((code) => ({ module: "livestock", code, name: titleize(code) })),
     ...expand("beekeeping", [
-      { resource: "apiaries", actions: [...CRUD] },
-      { resource: "hives", actions: [...CRUD] },
-      { resource: "colonies", actions: ["view", "create", "edit"] },
-      { resource: "inspections", actions: ["view", "create"] },
-      { resource: "harvests", actions: ["view", "create"] },
-      { resource: "stock", actions: ["view", "edit"] },
-      { resource: "sales", actions: ["view", "create"] },
+      { resource: "dashboard", actions: ["view"] },
+      { resource: "hives", actions: ["view", "create", "edit", "archive"] },
+      { resource: "harvests", actions: ["view", "create", "edit", "cancel"] },
+      { resource: "sales", actions: ["view", "create", "edit", "pay", "cancel"] },
+      { resource: "expenses", actions: ["view", "create", "edit", "pay", "cancel"] },
+      { resource: "reports", actions: ["view"] },
     ]).map((code) => ({ module: "beekeeping", code, name: titleize(code) })),
   ];
 
 /** Permissions that map to live application capabilities. */
-export const OPERABLE_PERMISSION_MODULES = ["platform", "supermarket", "school", "rice"] as const;
-export const IMPLEMENTED_BUSINESS_MODULES = ["supermarket", "school", "rice"] as const;
+export const OPERABLE_PERMISSION_MODULES = ["platform", "supermarket", "school", "rice", "beekeeping"] as const;
+export const IMPLEMENTED_BUSINESS_MODULES = ["supermarket", "school", "rice", "beekeeping"] as const;
 export const OWNER_DISPLAY_NAME = "Owner";
 /** Unique `roles.name` for code SUPER_ADMIN. Never shown in the UI. */
 export const OWNER_LEGACY_DB_NAME = "Owner Legacy";
@@ -184,6 +183,7 @@ export function isOperablePermission(code: string) {
     code.startsWith("platform.") ||
     code.startsWith("supermarket.") ||
     code.startsWith("rice.") ||
+    code.startsWith("beekeeping.") ||
     code === "school.settings.view" ||
     code === "school.settings.manage" ||
     code === "school.classes.view" ||
