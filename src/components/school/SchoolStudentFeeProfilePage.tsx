@@ -39,6 +39,7 @@ import {
 } from "@/lib/school/fee-types";
 import { formatCompactStudentNumber } from "@/lib/school/student-number";
 import { SchoolStudentTransportPanel } from "@/components/school/SchoolStudentTransportPanel";
+import type { StudentTransportWorkspace } from "@/lib/school/transport-types";
 import { patchFeesListSnapshotAccount } from "@/lib/school/admission-flash";
 
 type Caps = {
@@ -88,6 +89,7 @@ export function SchoolStudentFeeProfilePage({
   pending = false,
   heading = null,
   openPay = false,
+  transport = null,
 }: {
   account: StudentFeeAccount | null;
   capabilities: Caps | null;
@@ -95,6 +97,7 @@ export function SchoolStudentFeeProfilePage({
   pending?: boolean;
   heading?: { studentName?: string; studentNumber?: string } | null;
   openPay?: boolean;
+  transport?: StudentTransportWorkspace | null;
 }) {
   const [account, setAccount] = useState(initialAccount);
   const [caps, setCaps] = useState<Caps>(
@@ -371,7 +374,7 @@ export function SchoolStudentFeeProfilePage({
         <Fact label="This year balance" value={money(account.outstandingAmount)} />
       </section>
 
-      <SchoolStudentTransportPanel studentId={account.studentId} enrollmentId={account.enrollmentId} initial={null} />
+      <SchoolStudentTransportPanel studentId={account.studentId} enrollmentId={account.enrollmentId} initial={transport} />
 
       <section className={glassPanel}>
         <h2 className="px-4 pt-4 text-[15px] font-semibold text-navy">Fee breakdown</h2>

@@ -45,6 +45,87 @@ function num(value: unknown) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function aggregateNumber(data: unknown, key: string) {
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row !== "object") return null;
+  const value = (row as Record<string, unknown>)[key];
+  if (value == null || value === "") return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+type LooseRow = Record<string, unknown>;
+type LooseResult = {
+  data: LooseRow[] | null;
+  error: { message: string; code?: string } | null;
+  count: number | null;
+};
+type LooseQuery = {
+  eq: (column: string, value: string | number | boolean) => LooseQuery;
+  or: (filters: string) => LooseQuery;
+  gt: (column: string, value: number) => LooseQuery;
+  gte: (column: string, value: string) => LooseQuery;
+  lte: (column: string, value: string) => LooseQuery;
+  order: (column: string) => LooseQuery;
+  in: (column: string, values: string[]) => LooseQuery;
+  range: (from: number, to: number) => Promise<LooseResult>;
+} & PromiseLike<LooseResult>;
+
+function looseQuery(query: unknown) {
+  return query as LooseQuery;
+}
+
+type FeeAccountScope = {
+  businessUnitId: string;
+  yearId: string;
+  levelId: string;
+  classId: string;
+  status: string;
+  q: string;
+};
+
+function scopeFeeAccounts(query: LooseQuery, scope: FeeAccountScope) {
+  let next = query.eq("business_unit_id", scope.businessUnitId);
+  if (scope.yearId) next = next.eq("academic_year_id", scope.yearId);
+  if (scope.levelId) next = next.eq("level_id", scope.levelId);
+  if (scope.classId) next = next.eq("class_id", scope.classId);
+  if (scope.status === "outstanding" || scope.status === "partial" || scope.status === "paid" || scope.status === "no_structure") {
+    next = next.eq("fee_status", scope.status);
+  }
+  if (scope.q) {
+    next = next.or(`student_name.ilike.%${scope.q}%,student_number.ilike.%${scope.q}%,admission_number.ilike.%${scope.q}%`);
+  }
+  return next;
+}
+
+async function sumPostedFeePayments(
+  supabase: SchoolContext["supabase"],
+  businessUnitId: string,
+  from: string,
+  to: string,
+  enrollmentIds: string[] | null,
+) {
+  const base = () =>
+    supabase
+      .from("sch_fee_payments")
+      .select("total:amount.sum()")
+      .eq("business_unit_id", businessUnitId)
+      .eq("status", "posted")
+      .gte("payment_date", from)
+      .lte("payment_date", to);
+  if (!enrollmentIds) {
+    const result = await base();
+    if (result.error) return null;
+    return aggregateNumber(result.data, "total") ?? 0;
+  }
+  if (!enrollmentIds.length) return 0;
+  const chunks: string[][] = [];
+  for (let i = 0; i < enrollmentIds.length; i += 100) chunks.push(enrollmentIds.slice(i, i + 100));
+  const parts = await Promise.all(chunks.map((chunk) => base().in("enrollment_id", chunk)));
+  if (parts.some((part) => part.error)) return null;
+  return parts.reduce((sum, part) => sum + (aggregateNumber(part.data, "total") ?? 0), 0);
+}
+
 function searchNeedle(value: unknown) {
   return str(value).replace(/[%_,()]/g, " ").slice(0, 80);
 }
@@ -165,18 +246,24 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
   const showExpenses = slice !== "fees" && slice !== "salaries";
   const showSalaries = slice === "salaries";
 
-  const [typesRes, busesRes, postedExpRes] = await Promise.all([
+  const postedExpenses = (columns: string, head = false) => {
+    let query = looseQuery(
+      supabase.from("sch_expenses").select(columns, head ? { count: "exact", head: true } : undefined),
+    )
+      .eq("business_unit_id", businessUnitId)
+      .eq("is_active", true)
+      .gte("expense_date", base.from)
+      .lte("expense_date", base.to);
+    if (categoryId) query = query.eq("category_id", categoryId);
+    if (busId) query = query.eq("bus_id", busId);
+    return query;
+  };
+  const [typesRes, busesRes, postedSumRes, postedCountRes, postedTypeRes] = await Promise.all([
     supabase.from("sch_expense_categories").select("id, name, is_active").eq("business_unit_id", businessUnitId).order("name"),
     supabase.from("sch_buses").select("id, registration_number, name").eq("business_unit_id", businessUnitId).order("registration_number"),
-    showExpenses
-      ? supabase
-          .from("sch_expenses")
-          .select("amount, category_id, bus_id")
-          .eq("business_unit_id", businessUnitId)
-          .eq("is_active", true)
-          .gte("expense_date", base.from)
-          .lte("expense_date", base.to)
-      : Promise.resolve({ data: [] as Array<{ amount: number; category_id: string; bus_id: string | null }>, error: null }),
+    showExpenses ? postedExpenses("total:amount.sum()") : Promise.resolve({ data: null, error: null }),
+    showExpenses ? postedExpenses("id", true) : Promise.resolve({ count: 0, error: null }),
+    showExpenses ? postedExpenses("category_id") : Promise.resolve({ data: [] as Array<{ category_id: string | null }>, error: null }),
   ]);
 
   let billed = 0;
@@ -187,21 +274,19 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
   let feeTotal = 0;
 
   if (showFees) {
-    let accounts = supabase
-      .from("sch_v_fee_accounts")
-      .select(
-        "enrollment_id, student_name, student_number, level_name, class_name, academic_year_name, due_amount, paid_amount, outstanding_amount, fee_status, charge_id, academic_year_id, level_id, class_id",
-        { count: "exact" },
-      )
-      .eq("business_unit_id", businessUnitId)
-      .order("student_name");
-    if (yearId) accounts = accounts.eq("academic_year_id", yearId);
-    if (levelId) accounts = accounts.eq("level_id", levelId);
-    if (classId) accounts = accounts.eq("class_id", classId);
-    if (status === "outstanding" || status === "partial" || status === "paid" || status === "no_structure") {
-      accounts = accounts.eq("fee_status", status);
-    }
-    if (q) accounts = accounts.or(`student_name.ilike.%${q}%,student_number.ilike.%${q}%,admission_number.ilike.%${q}%`);
+    const feeScope = { businessUnitId, yearId, levelId, classId, status, q };
+    const accounts = scopeFeeAccounts(
+      looseQuery(
+        supabase
+          .from("sch_v_fee_accounts")
+          .select(
+            "enrollment_id, student_name, student_number, level_name, class_name, academic_year_name, due_amount, paid_amount, outstanding_amount, fee_status, charge_id, academic_year_id, level_id, class_id",
+            { count: "exact" },
+          )
+          .order("student_name"),
+      ),
+      feeScope,
+    );
     const list = await accounts.range(from, to);
     if (list.error && !isSchoolUnconfiguredRead(list.error)) mapSchoolDbError(list.error, "load");
     const rows = list.data ?? [];
@@ -228,40 +313,70 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
       };
     });
     if (slice === "fees" || slice === "all") {
-      let summaryQuery = supabase.from("sch_v_fee_accounts").select("enrollment_id, due_amount, paid_amount, outstanding_amount");
-      summaryQuery = summaryQuery.eq("business_unit_id", businessUnitId);
-      if (yearId) summaryQuery = summaryQuery.eq("academic_year_id", yearId);
-      if (levelId) summaryQuery = summaryQuery.eq("level_id", levelId);
-      if (classId) summaryQuery = summaryQuery.eq("class_id", classId);
-      if (status === "outstanding" || status === "partial" || status === "paid" || status === "no_structure") {
-        summaryQuery = summaryQuery.eq("fee_status", status);
-      }
-      if (q) summaryQuery = summaryQuery.or(`student_name.ilike.%${q}%,student_number.ilike.%${q}%,admission_number.ilike.%${q}%`);
-      const allAccounts = await summaryQuery;
-      billed = 0;
-      outstanding = 0;
-      withBalance = 0;
-      const allRows = allAccounts.data ?? [];
-      const enrollmentIds = [...new Set(allRows.map((row) => str(row.enrollment_id)).filter(Boolean))];
-      for (let i = 0; i < enrollmentIds.length; i += 100) {
-        const chunk = enrollmentIds.slice(i, i + 100);
-        const periodPay = await supabase
-          .from("sch_fee_payments")
-          .select("amount")
-          .eq("business_unit_id", businessUnitId)
-          .eq("status", "posted")
-          .gte("payment_date", base.from)
-          .lte("payment_date", base.to)
-          .in("enrollment_id", chunk);
-        collected += (periodPay.data ?? []).reduce((sum, row) => sum + num(row.amount), 0);
-      }
-      for (const row of allRows) {
-        const billedAmt = row.due_amount == null ? null : num(row.due_amount);
-        const remaining = row.outstanding_amount == null ? null : num(row.outstanding_amount);
-        if (billedAmt != null) billed += billedAmt;
-        if (remaining != null) {
-          outstanding += remaining;
-          if (remaining > 0) withBalance += 1;
+      const filtered = Boolean(yearId || levelId || classId || status || q);
+      const [sumRes, balanceRes, idRes] = await Promise.all([
+        scopeFeeAccounts(
+          looseQuery(supabase.from("sch_v_fee_accounts").select("billed:due_amount.sum(),outstanding:outstanding_amount.sum()")),
+          feeScope,
+        ),
+        scopeFeeAccounts(
+          looseQuery(
+            supabase.from("sch_v_fee_accounts").select("enrollment_id", { count: "exact", head: true }).gt("outstanding_amount", 0),
+          ),
+          feeScope,
+        ),
+        filtered
+          ? scopeFeeAccounts(looseQuery(supabase.from("sch_v_fee_accounts").select("enrollment_id")), feeScope)
+          : Promise.resolve({ data: null, error: null, count: null }),
+      ]);
+      const paymentTotal = await sumPostedFeePayments(
+        supabase,
+        businessUnitId,
+        base.from,
+        base.to,
+        filtered ? [...new Set((idRes.data ?? []).map((row) => str(row.enrollment_id)).filter(Boolean))] : null,
+      );
+      if (!sumRes.error && !balanceRes.error && typeof balanceRes.count === "number" && paymentTotal != null && !idRes.error) {
+        billed = aggregateNumber(sumRes.data, "billed") ?? 0;
+        outstanding = aggregateNumber(sumRes.data, "outstanding") ?? 0;
+        withBalance = balanceRes.count;
+        collected = paymentTotal;
+      } else {
+        const allAccounts = await scopeFeeAccounts(
+          looseQuery(supabase.from("sch_v_fee_accounts").select("enrollment_id, due_amount, paid_amount, outstanding_amount")),
+          feeScope,
+        );
+        billed = 0;
+        outstanding = 0;
+        withBalance = 0;
+        collected = 0;
+        const allRows = allAccounts.data ?? [];
+        const enrollmentIds = [...new Set(allRows.map((row) => str(row.enrollment_id)).filter(Boolean))];
+        const chunks: string[][] = [];
+        for (let i = 0; i < enrollmentIds.length; i += 100) chunks.push(enrollmentIds.slice(i, i + 100));
+        const periodPays = await Promise.all(
+          chunks.map((chunk) =>
+            supabase
+              .from("sch_fee_payments")
+              .select("amount")
+              .eq("business_unit_id", businessUnitId)
+              .eq("status", "posted")
+              .gte("payment_date", base.from)
+              .lte("payment_date", base.to)
+              .in("enrollment_id", chunk),
+          ),
+        );
+        for (const periodPay of periodPays) {
+          collected += (periodPay.data ?? []).reduce((sum, row) => sum + num(row.amount), 0);
+        }
+        for (const row of allRows) {
+          const billedAmt = row.due_amount == null ? null : num(row.due_amount);
+          const remaining = row.outstanding_amount == null ? null : num(row.outstanding_amount);
+          if (billedAmt != null) billed += billedAmt;
+          if (remaining != null) {
+            outstanding += remaining;
+            if (remaining > 0) withBalance += 1;
+          }
         }
       }
     }
@@ -300,12 +415,19 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
       bus: busName.get(str(row.bus_id)) || "—",
       status: row.is_active ? "Posted" : "Reversed",
     }));
-    for (const row of postedExpRes.data ?? []) {
-      if (categoryId && str(row.category_id) !== categoryId) continue;
-      if (busId && str(row.bus_id) !== busId) continue;
-      expPosted += num(row.amount);
-      expCount += 1;
-      if (row.category_id) typeUsed.add(str(row.category_id));
+    if (!postedSumRes.error && !postedCountRes.error && !postedTypeRes.error) {
+      expPosted = aggregateNumber(postedSumRes.data, "total") ?? 0;
+      expCount = postedCountRes.count ?? 0;
+      for (const row of postedTypeRes.data ?? []) {
+        if (row.category_id) typeUsed.add(str(row.category_id));
+      }
+    } else if (showExpenses) {
+      const fallback = await postedExpenses("amount, category_id");
+      for (const row of fallback.data ?? []) {
+        expPosted += num(row.amount);
+        expCount += 1;
+        if (row.category_id) typeUsed.add(str(row.category_id));
+      }
     }
   }
 

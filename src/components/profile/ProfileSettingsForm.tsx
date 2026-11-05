@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Lock } from "lucide-react";
 import { updateAvatarAction, updateProfileAction, type ProfileState } from "@/actions/profile";
+import { publishProfileAvatar, useProfileAvatar } from "@/lib/auth/profile-avatar";
 import { readFittedImage } from "@/lib/images/read-image";
 import { SaveLabel } from "@/components/ui/SaveMark";
 import { useAuth } from "@/components/auth/AuthProvider";
@@ -39,14 +40,16 @@ export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
     updateProfileAction,
     null,
   );
+  const savedAvatar = useProfileAvatar(user?.id);
   const [photo, setPhoto] = useState(user?.avatarUrl || "");
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoFailed, setPhotoFailed] = useState(false);
   const [photoError, setPhotoError] = useState("");
 
   useEffect(() => {
-    if (user?.avatarUrl) setPhoto(user.avatarUrl);
-  }, [user?.avatarUrl]);
+    if (!savedAvatar.ready) return;
+    setPhoto(savedAvatar.url ?? "");
+  }, [savedAvatar.ready, savedAvatar.url]);
 
   if (!user) return null;
 
@@ -88,6 +91,7 @@ export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
                     setPhotoError(result.error);
                   } else {
                     setPhoto(image);
+                    publishProfileAvatar(user.id, image);
                     router.refresh();
                   }
                 } catch (error) {
@@ -111,6 +115,30 @@ export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
             </p>
             <p className="mt-1.5 truncate text-[13px] text-slate-500">{user.email}</p>
             <p className="mt-1 text-[12px] text-slate-400">{t("profile.photoHint")}</p>
+            {photo ? (
+              <button
+                type="button"
+                disabled={photoBusy}
+                className="mt-1 text-[12px] font-semibold text-rose-700 disabled:opacity-60"
+                onClick={async () => {
+                  setPhotoBusy(true);
+                  setPhotoFailed(false);
+                  setPhotoError("");
+                  const result = await updateAvatarAction(null);
+                  if (result?.error) {
+                    setPhotoFailed(true);
+                    setPhotoError(result.error);
+                  } else {
+                    setPhoto("");
+                    publishProfileAvatar(user.id, null);
+                    router.refresh();
+                  }
+                  setPhotoBusy(false);
+                }}
+              >
+                {t("profile.photoRemove")}
+              </button>
+            ) : null}
             {photoError ? <p className="mt-1 text-[12px] text-rose-600">{photoError}</p> : null}
           </div>
         </div>

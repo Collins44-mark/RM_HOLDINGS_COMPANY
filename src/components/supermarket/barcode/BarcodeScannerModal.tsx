@@ -6,6 +6,38 @@ import { normalizeBarcode } from "@/lib/supermarket/barcode";
 
 type ScannerControls = { stop: () => void };
 
+type BarcodeDetectorLike = {
+  detect: (source: CanvasImageSource) => Promise<Array<{ rawValue?: string }>>;
+};
+
+const DETECTOR_FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf", "codabar"];
+
+function createBarcodeDetector() {
+  const Detector = (window as unknown as {
+    BarcodeDetector?: new (options: { formats: string[] }) => BarcodeDetectorLike;
+  }).BarcodeDetector;
+  if (!Detector) return null;
+  try {
+    return new Detector({ formats: DETECTOR_FORMATS });
+  } catch {
+    return null;
+  }
+}
+
+function drawScanBand(video: HTMLVideoElement, canvas: HTMLCanvasElement, context: CanvasRenderingContext2D) {
+  const width = video.videoWidth;
+  const height = video.videoHeight;
+  if (!width || !height) return false;
+  const bandWidth = Math.max(1, Math.floor(width * 0.9));
+  const bandHeight = Math.max(1, Math.floor(height * 0.46));
+  const x = Math.floor((width - bandWidth) / 2);
+  const y = Math.floor((height - bandHeight) / 2);
+  if (canvas.width !== bandWidth) canvas.width = bandWidth;
+  if (canvas.height !== bandHeight) canvas.height = bandHeight;
+  context.drawImage(video, x, y, bandWidth, bandHeight, 0, 0, bandWidth, bandHeight);
+  return true;
+}
+
 export function BarcodeScannerModal({
   open,
   onClose,
@@ -47,61 +79,128 @@ export function BarcodeScannerModal({
       }
     }, 12000);
 
+    async function openCamera() {
+      const attempts: MediaStreamConstraints[] = [
+        {
+          audio: false,
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            advanced: [{ focusMode: "continuous" }],
+          } as unknown as MediaTrackConstraints,
+        },
+        {
+          audio: false,
+          video: { facingMode: { ideal: "environment" } },
+        },
+      ];
+      let lastError: unknown;
+      for (const constraints of attempts) {
+        try {
+          return await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw lastError;
+    }
+
     async function start() {
       if (!navigator.mediaDevices?.getUserMedia) {
         setStatus("Camera scanning is unavailable in this browser.");
         return;
       }
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: {
-            facingMode: { ideal: "environment" },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-        });
+        const stream = await openCamera();
         if (cancelled || closedRef.current) {
           stream.getTracks().forEach((track) => track.stop());
           return;
         }
         streamRef.current = stream;
         const video = videoRef.current;
-
-        const { BrowserMultiFormatReader, BarcodeFormat } = await import("@zxing/browser");
-        const { DecodeHintType } = await import("@zxing/library");
+        if (!video) {
+          stopScanner();
+          return;
+        }
+        video.srcObject = stream;
+        await video.play();
         if (cancelled || closedRef.current) {
           stopScanner();
           return;
         }
-        const hints = new Map();
-        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-          BarcodeFormat.EAN_13,
-          BarcodeFormat.EAN_8,
-          BarcodeFormat.UPC_A,
-          BarcodeFormat.UPC_E,
-          BarcodeFormat.CODE_128,
-          BarcodeFormat.CODE_39,
-          BarcodeFormat.ITF,
-        ]);
-        hints.set(DecodeHintType.TRY_HARDER, true);
-        const reader = new BrowserMultiFormatReader(hints);
-        const controls = await reader.decodeFromStream(stream, video ?? undefined, (result, error) => {
-          if (error && !result) return;
-          if (!result || cancelled || closedRef.current) return;
-          const code = normalizeBarcode(result.getText());
-          if (!code) return;
+        setStatus("Point the camera at a barcode");
+
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d", { willReadFrequently: true });
+        if (!context) {
+          setStatus("Camera scanning is unavailable in this browser.");
+          return;
+        }
+        const detector = createBarcodeDetector();
+        let reader: { decode: (source: HTMLCanvasElement) => string | null } | null = null;
+        if (!detector) {
+          const [{ BrowserMultiFormatOneDReader }, { BarcodeFormat, DecodeHintType }] = await Promise.all([
+            import("@zxing/browser"),
+            import("@zxing/library"),
+          ]);
+          if (cancelled || closedRef.current) {
+            stopScanner();
+            return;
+          }
+          const hints = new Map();
+          hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+            BarcodeFormat.EAN_13,
+            BarcodeFormat.EAN_8,
+            BarcodeFormat.UPC_A,
+            BarcodeFormat.UPC_E,
+            BarcodeFormat.CODE_128,
+            BarcodeFormat.CODE_39,
+            BarcodeFormat.ITF,
+          ]);
+          const fallback = new BrowserMultiFormatOneDReader(hints);
+          reader = {
+            decode(source) {
+              try {
+                return fallback.decodeFromCanvas(source).getText();
+              } catch {
+                return null;
+              }
+            },
+          };
+        }
+
+        let busy = false;
+        const finish = (raw: string) => {
+          const code = normalizeBarcode(raw);
+          if (!code || cancelled || closedRef.current) return;
           closedRef.current = true;
           stopScanner();
           onDetected(code);
           onClose();
-        });
-        if (cancelled || closedRef.current) {
-          controls.stop();
-          stopScanner();
-          return;
-        }
-        controlsRef.current = controls;
+        };
+        const tick = () => {
+          if (cancelled || closedRef.current) return;
+          if (!busy && video.readyState >= 2 && drawScanBand(video, canvas, context)) {
+            busy = true;
+            const read = detector
+              ? detector.detect(canvas).then((codes) => codes.find((item) => item.rawValue)?.rawValue ?? null)
+              : Promise.resolve(reader?.decode(canvas) ?? null);
+            void read
+              .then((raw) => {
+                if (raw) finish(raw);
+              })
+              .catch(() => undefined)
+              .finally(() => {
+                busy = false;
+              });
+          }
+          if (!cancelled && !closedRef.current) {
+            window.requestAnimationFrame(tick);
+          }
+        };
+        controlsRef.current = { stop: () => undefined };
+        tick();
       } catch (error) {
         if (cancelled || closedRef.current) return;
         const name = error instanceof DOMException ? error.name : "";

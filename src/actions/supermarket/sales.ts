@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { APP_TIMEZONE } from "@/lib/config/app";
 import { requireAuth } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/rbac";
 import { identityFromUser } from "@/lib/auth/types";
@@ -1091,6 +1092,81 @@ export async function listPaymentsAction(): Promise<
   }
 }
 
+type RecentSaleRow = {
+  id: string;
+  invoice_number: string;
+  total: number;
+  sale_date: string;
+  status: string;
+  cashier_id: string | null;
+  sm_sale_items: { quantity: number }[] | null;
+  sm_sale_payments: { method: string }[] | null;
+};
+
+function darDate(date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE }).format(date);
+}
+
+function darStart(isoDate: string) {
+  return `${isoDate}T00:00:00+03:00`;
+}
+
+function darEnd(isoDate: string) {
+  return `${isoDate}T23:59:59+03:00`;
+}
+
+function shiftIsoDate(isoDate: string, days: number) {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  utc.setUTCDate(utc.getUTCDate() + days);
+  return utc.toISOString().slice(0, 10);
+}
+
+function mondayOffset(isoDate: string) {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  return (weekday + 6) % 7;
+}
+
+function darClock(isoDate: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: APP_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(isoDate));
+}
+
+function dayLabel(isoDate: string, kind: "weekday" | "day") {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  if (kind === "day") return String(day);
+  return new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "UTC" }).format(
+    new Date(Date.UTC(year, month - 1, day)),
+  );
+}
+
+function fillDays(from: string, to: string, amounts: Map<string, number>, kind: "weekday" | "day") {
+  const rows: { label: string; amount: number }[] = [];
+  let cursor = from;
+  while (cursor <= to) {
+    rows.push({ label: dayLabel(cursor, kind), amount: amounts.get(cursor) ?? 0 });
+    cursor = shiftIsoDate(cursor, 1);
+  }
+  return rows;
+}
+
+function percentChange(current: number, previous: number) {
+  if (previous === 0) return current === 0 ? 0 : 100;
+  return Math.round(((current - previous) / previous) * 1000) / 10;
+}
+
+function saleStatusLabel(status: string) {
+  const value = status.toUpperCase();
+  if (value === "REFUNDED" || value === "VOID") return "Refunded" as const;
+  if (value === "PENDING" || value === "HELD") return "Pending" as const;
+  return "Completed" as const;
+}
+
 export async function getDashboardMetricsAction() {
   try {
     const user = await requireAuth();
@@ -1102,31 +1178,29 @@ export async function getDashboardMetricsAction() {
     const canInventory = hasPermission(identity, "supermarket.stock.view");
     const canPurchases = hasPermission(identity, "supermarket.purchases.view");
 
-    const today = new Date();
-    const start = new Date(today);
-    start.setHours(0, 0, 0, 0);
-    const todayIso = today.toISOString().slice(0, 10);
-    const soon = new Date(today);
+    const todayIso = darDate();
+    const yesterdayIso = shiftIsoDate(todayIso, -1);
+    const weekStart = shiftIsoDate(todayIso, -mondayOffset(todayIso));
+    const monthStart = `${todayIso.slice(0, 8)}01`;
+    const rangeStart = [weekStart, monthStart, yesterdayIso].sort()[0];
+    const soon = new Date();
     soon.setDate(soon.getDate() + 30);
-    const soonIso = soon.toISOString().slice(0, 10);
+    const soonIso = darDate(soon);
 
-    const emptySales = { data: [] as Array<{ total?: number; cogs?: number }>, error: null };
     const emptyProducts = {
       data: [] as Array<{ id: string; name: string; reorder_level: number | null }>,
       error: null,
     };
     const emptyRecentSales = {
-      data: [] as Array<{
-        id: string;
-        invoice_number: string;
-        total: number;
-        sale_date: string;
-        customer_name: string | null;
-      }>,
+      data: [] as RecentSaleRow[],
       error: null,
     };
-    const emptyReceipts = {
-      data: [] as Array<{ id: string; receipt_number: string; total_cost: number; received_at: string }>,
+    const emptyMonthSales = {
+      data: [] as Array<{ total?: number; cogs?: number; sale_date?: string }>,
+      error: null,
+    };
+    const emptyTopLines = {
+      data: [] as Array<{ product_id?: string; quantity?: number }>,
       error: null,
     };
     const emptyBatches = {
@@ -1139,14 +1213,16 @@ export async function getDashboardMetricsAction() {
       error: null,
     };
 
-    const [salesToday, lowStock, recentSales, recentReceipts, batchesRes] = await Promise.all([
+    const [monthSales, lowStock, recentSales, topLines, batchesRes] = await Promise.all([
       canSales
         ? supabase
             .from("sm_sales")
-            .select("total, cogs")
+            .select("total, cogs, sale_date")
             .eq("business_unit_id", businessUnitId)
-            .gte("sale_date", start.toISOString())
-        : Promise.resolve(emptySales),
+            .gte("sale_date", darStart(rangeStart))
+            .lte("sale_date", darEnd(todayIso))
+            .limit(5000)
+        : Promise.resolve(emptyMonthSales),
       canInventory
         ? supabase
             .from("sm_products")
@@ -1157,19 +1233,22 @@ export async function getDashboardMetricsAction() {
       canSales
         ? supabase
             .from("sm_sales")
-            .select("id, invoice_number, total, sale_date, customer_name")
+            .select(
+              "id, invoice_number, total, sale_date, status, cashier_id, sm_sale_items(quantity), sm_sale_payments(method)",
+            )
             .eq("business_unit_id", businessUnitId)
             .order("sale_date", { ascending: false })
-            .limit(8)
+            .limit(4)
         : Promise.resolve(emptyRecentSales),
-      canPurchases
+      canSales
         ? supabase
-            .from("sm_goods_receipts")
-            .select("id, receipt_number, total_cost, received_at")
-            .eq("business_unit_id", businessUnitId)
-            .order("received_at", { ascending: false })
-            .limit(8)
-        : Promise.resolve(emptyReceipts),
+            .from("sm_sale_items")
+            .select("product_id, quantity, sm_sales!inner(sale_date, business_unit_id)")
+            .eq("sm_sales.business_unit_id", businessUnitId)
+            .gte("sm_sales.sale_date", darStart(monthStart))
+            .lte("sm_sales.sale_date", darEnd(todayIso))
+            .limit(5000)
+        : Promise.resolve(emptyTopLines),
       canInventory
         ? supabase
             .from("sm_stock_batches")
@@ -1179,19 +1258,44 @@ export async function getDashboardMetricsAction() {
     ]);
 
     const firstError =
-      salesToday.error ||
-      lowStock.error ||
-      recentSales.error ||
-      recentReceipts.error ||
-      batchesRes.error;
+      monthSales.error || lowStock.error || recentSales.error || topLines.error || batchesRes.error;
     if (firstError) mapDbError(firstError);
 
-    const revenue = canSales
-      ? (salesToday.data ?? []).reduce((sum, s) => sum + Number(s.total || 0), 0)
+    const periodSales = monthSales.data ?? [];
+    const dayKey = (iso: string | undefined) => (iso ? darDate(new Date(iso)) : "");
+    const inDay = (iso: string | undefined, day: string) => dayKey(iso) === day;
+    const sumField = (
+      rows: Array<{ total?: number; cogs?: number; sale_date?: string }>,
+      field: "total" | "cogs",
+      day?: string,
+    ) =>
+      rows.reduce((sum, row) => {
+        if (day && !inDay(row.sale_date, day)) return sum;
+        return sum + Number(row[field] || 0);
+      }, 0);
+    const countDay = (day: string) => periodSales.filter((row) => inDay(row.sale_date, day)).length;
+    const todayRevenue = canSales ? sumField(periodSales, "total", todayIso) : 0;
+    const yesterdayRevenue = canSales ? sumField(periodSales, "total", yesterdayIso) : 0;
+    const todayCogs = canProfit ? sumField(periodSales, "cogs", todayIso) : 0;
+    const yesterdayCogs = canProfit ? sumField(periodSales, "cogs", yesterdayIso) : 0;
+    const weekRevenue = canSales
+      ? periodSales.reduce((sum, row) => {
+          const day = dayKey(row.sale_date);
+          return day >= weekStart && day <= todayIso ? sum + Number(row.total || 0) : sum;
+        }, 0)
       : 0;
-    const cogs = canProfit
-      ? (salesToday.data ?? []).reduce((sum, s) => sum + Number(s.cogs || 0), 0)
+    const monthRevenue = canSales
+      ? periodSales.reduce((sum, row) => {
+          const day = dayKey(row.sale_date);
+          return day >= monthStart && day <= todayIso ? sum + Number(row.total || 0) : sum;
+        }, 0)
       : 0;
+    const byDay = new Map<string, number>();
+    for (const row of periodSales) {
+      const day = dayKey(row.sale_date);
+      if (!day) continue;
+      byDay.set(day, (byDay.get(day) ?? 0) + Number(row.total || 0));
+    }
 
     const stockByProduct = new Map<string, number>();
     let inventoryValue = 0;
@@ -1215,6 +1319,28 @@ export async function getDashboardMetricsAction() {
     });
     const out = (lowStock.data ?? []).filter((p) => (stockByProduct.get(p.id) ?? 0) <= 0);
 
+    const soldByProduct = new Map<string, number>();
+    for (const line of topLines.data ?? []) {
+      const productId = String(line.product_id ?? "");
+      if (!productId) continue;
+      soldByProduct.set(productId, (soldByProduct.get(productId) ?? 0) + Number(line.quantity || 0));
+    }
+    const ranked = [...soldByProduct.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
+    const nameById = new Map((lowStock.data ?? []).map((product) => [product.id, product.name]));
+    const missingNames = ranked.map(([id]) => id).filter((id) => !nameById.has(id));
+    if (missingNames.length) {
+      const names = await supabase.from("sm_products").select("id, name").in("id", missingNames);
+      for (const row of names.data ?? []) nameById.set(String(row.id), String(row.name));
+    }
+
+    const recentRows = recentSales.data ?? [];
+    const cashierIds = [...new Set(recentRows.map((row) => String(row.cashier_id ?? "")).filter(Boolean))];
+    const cashierNames = new Map<string, string>();
+    if (cashierIds.length) {
+      const profiles = await supabase.from("profiles").select("id, full_name").in("id", cashierIds);
+      for (const row of profiles.data ?? []) cashierNames.set(String(row.id), String(row.full_name ?? ""));
+    }
+
     return {
       ok: true as const,
       widgets: {
@@ -1224,25 +1350,40 @@ export async function getDashboardMetricsAction() {
         purchases: canPurchases,
       },
       metrics: {
-        todayRevenue: canSales ? revenue : 0,
-        todaySalesCount: canSales ? (salesToday.data?.length ?? 0) : 0,
-        todayProfit: canProfit ? revenue - cogs : 0,
+        todayRevenue,
+        todaySalesCount: canSales ? countDay(todayIso) : 0,
+        todaySalesDelta: percentChange(todayRevenue, yesterdayRevenue),
+        todayOrdersDelta: percentChange(countDay(todayIso), countDay(yesterdayIso)),
+        todayProfit: canProfit ? todayRevenue - todayCogs : 0,
+        todayProfitDelta: percentChange(todayRevenue - todayCogs, yesterdayRevenue - yesterdayCogs),
+        weekRevenue,
+        monthRevenue,
+        todayTrend: [{ label: dayLabel(todayIso, "weekday"), amount: todayRevenue }],
+        weekTrend: fillDays(weekStart, todayIso, byDay, "weekday"),
+        monthTrend: fillDays(monthStart, todayIso, byDay, "day"),
         inventoryValue: canInventory ? inventoryValue : 0,
         stockUnits: canInventory ? stockUnits : 0,
         lowStockCount: canInventory ? low.length : 0,
         outOfStockCount: canInventory ? out.length : 0,
         expiringSoonCount: canInventory ? expiringSoonCount : 0,
         expiredCount: canInventory ? expiredCount : 0,
-        recentSales: canSales ? (recentSales.data ?? []) : [],
-        recentPurchases: canPurchases ? (recentReceipts.data ?? []) : [],
-        topLowStock: canInventory
-          ? low.slice(0, 5).map((p) => ({
-              id: p.id,
-              name: p.name,
-              stock: stockByProduct.get(p.id) ?? 0,
-              reorderLevel: p.reorder_level,
-            }))
-          : [],
+        recentSales: recentRows.map((sale) => {
+          const methods = [...new Set((sale.sm_sale_payments ?? []).map((payment) => paymentMethodFromDb(payment.method)))];
+          const itemCount = (sale.sm_sale_items ?? []).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+          return {
+            invoice: sale.invoice_number,
+            time: darClock(sale.sale_date),
+            items: itemCount,
+            cashier: cashierNames.get(String(sale.cashier_id ?? "")) || "Cashier",
+            payment: methods.length > 1 ? "Mixed" : methods[0] ?? "Cash",
+            amount: Number(sale.total) || 0,
+            status: saleStatusLabel(String(sale.status ?? "")),
+          };
+        }),
+        topProducts: ranked.map(([id, sold]) => ({
+          name: nameById.get(id) || "Product",
+          sold,
+        })),
       },
     };
   } catch (error) {

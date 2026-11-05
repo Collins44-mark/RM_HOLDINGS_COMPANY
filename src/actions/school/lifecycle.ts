@@ -15,7 +15,7 @@ import {
   type SchoolContext,
 } from "@/lib/school/access";
 import { catalogLookup, loadSchoolStructureCatalog, type SchoolStructureCatalog } from "@/lib/school/structure-catalog";
-import { findApplicableFeeStructure } from "@/lib/school/fee-structure";
+import { loadClassAnnualFees } from "@/lib/school/fee-structure";
 import { loadPlacementByClassIds, loadPlacementByStreamIds } from "@/lib/school/placement-query";
 
 const STUDENTS_MANAGE = "school.students.manage";
@@ -229,6 +229,35 @@ function suggestNextClass(
   };
 }
 
+async function targetEnrollmentIds(
+  supabase: SchoolContext["supabase"],
+  businessUnitId: string,
+  toYearId: string,
+  studentIds: string[],
+) {
+  const ids = [...new Set(studentIds.filter(Boolean))];
+  const enrolled = new Set<string>();
+  if (!ids.length) return enrolled;
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100));
+  const parts = await Promise.all(
+    chunks.map((chunk) =>
+      supabase
+        .from("sch_student_enrollments")
+        .select("student_id")
+        .eq("business_unit_id", businessUnitId)
+        .eq("academic_year_id", toYearId)
+        .eq("status", "active")
+        .in("student_id", chunk),
+    ),
+  );
+  for (const part of parts) {
+    if (part.error && !isSchoolUnconfiguredRead(part.error)) mapSchoolDbError(part.error, "load");
+    for (const row of part.data ?? []) enrolled.add(String(row.student_id));
+  }
+  return enrolled;
+}
+
 export async function previewSchoolPromotionsAction(input: { fromYearId: string; toYearId: string; classId: string }) {
   try {
     const ctx = await requireAnySchoolPermission([PROMOTIONS_VIEW, PROMOTIONS_MANAGE, STUDENTS_MANAGE]);
@@ -246,29 +275,17 @@ export async function previewSchoolPromotionsAction(input: { fromYearId: string;
     if (!toYear) throw new SchoolError("The target academic year is not active.", "VALIDATION");
     if (!catalog.classes.some((row) => row.id === classIdFilter)) throw new SchoolError("That class was not found.", "NOT_FOUND");
 
-    const enrollments = await supabase
-      .from("sch_student_enrollments")
-      .select("id, student_id, class_id, stream_id, sch_students!inner(id, student_number, admission_number, first_name, middle_name, last_name, status)")
-      .eq("business_unit_id", businessUnitId)
-      .eq("academic_year_id", fromYearId)
-      .eq("class_id", classIdFilter)
-      .eq("status", "active")
-      .eq("sch_students.status", "active");
-    if (enrollments.error && !isSchoolUnconfiguredRead(enrollments.error)) mapSchoolDbError(enrollments.error, "load");
-
-    const existingTarget = await supabase
-      .from("sch_student_enrollments")
-      .select("student_id")
-      .eq("business_unit_id", businessUnitId)
-      .eq("academic_year_id", toYearId)
-      .eq("status", "active");
-    const alreadyPromoted = new Set((existingTarget.data ?? []).map((row) => String(row.student_id)));
-
     const classIds = [...new Set(catalog.classes.map((row) => row.id))];
-    const streamIds = [...new Set((enrollments.data ?? []).map((row) => str(row.stream_id)).filter(Boolean))];
-    const [byClass, byStream, subjectRes, feeRes] = await Promise.all([
+    const [enrollments, byClass, subjectRes, feesByClass, priorRuns] = await Promise.all([
+      supabase
+        .from("sch_student_enrollments")
+        .select("id, student_id, class_id, stream_id, sch_students!inner(id, student_number, admission_number, first_name, middle_name, last_name, status)")
+        .eq("business_unit_id", businessUnitId)
+        .eq("academic_year_id", fromYearId)
+        .eq("class_id", classIdFilter)
+        .eq("status", "active")
+        .eq("sch_students.status", "active"),
       loadPlacementByClassIds(ctx, classIds),
-      loadPlacementByStreamIds(ctx, streamIds),
       classIds.length
         ? supabase
             .from("sch_class_subjects")
@@ -277,19 +294,24 @@ export async function previewSchoolPromotionsAction(input: { fromYearId: string;
             .eq("is_active", true)
             .in("class_id", classIds)
         : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
-      Promise.all(
-        classIds.map(async (classId) => {
-          const fee = await findApplicableFeeStructure({
-            supabase,
-            businessUnitId,
-            academicYearId: toYearId,
-            classId,
-          });
-          return [classId, fee] as const;
-        }),
-      ),
+      loadClassAnnualFees({ supabase, businessUnitId, academicYearId: toYearId }),
+      supabase
+        .from("sch_promotion_runs")
+        .select("id, created_at, promoted_count, retained_count, transferred_count, graduated_count, excluded_count, failed_count")
+        .eq("business_unit_id", businessUnitId)
+        .eq("from_year_id", fromYearId)
+        .eq("to_year_id", toYearId)
+        .order("created_at", { ascending: false })
+        .limit(5),
     ]);
-    const feesByClass = new Map(feeRes);
+    if (enrollments.error && !isSchoolUnconfiguredRead(enrollments.error)) mapSchoolDbError(enrollments.error, "load");
+
+    const streamIds = [...new Set((enrollments.data ?? []).map((row) => str(row.stream_id)).filter(Boolean))];
+    const classStudentIds = [...new Set((enrollments.data ?? []).map((row) => str(row.student_id)).filter(Boolean))];
+    const [byStream, alreadyPromoted] = await Promise.all([
+      loadPlacementByStreamIds(ctx, streamIds),
+      targetEnrollmentIds(supabase, businessUnitId, toYearId, classStudentIds),
+    ]);
     const subjectsByClass = new Map<string, string[]>();
     for (const row of subjectRes.data ?? []) {
       const classId = str((row as { class_id?: string }).class_id);
@@ -337,15 +359,6 @@ export async function previewSchoolPromotionsAction(input: { fromYearId: string;
       annualAmount: feesByClass.get(row.id)?.annualAmount ?? null,
       subjects: subjectsByClass.get(row.id) ?? [],
     }));
-
-    const priorRuns = await supabase
-      .from("sch_promotion_runs")
-      .select("id, created_at, promoted_count, retained_count, transferred_count, graduated_count, excluded_count, failed_count")
-      .eq("business_unit_id", businessUnitId)
-      .eq("from_year_id", fromYearId)
-      .eq("to_year_id", toYearId)
-      .order("created_at", { ascending: false })
-      .limit(5);
 
     return {
       ok: true as const,
@@ -457,24 +470,26 @@ async function loadPromotionClassBoard(
   const { supabase, businessUnitId } = ctx;
   if (!fromYearId) throw new SchoolError("Select the current academic year.", "VALIDATION");
   if (!catalog.years.some((row) => row.id === fromYearId)) throw new SchoolError("The current academic year was not found.", "NOT_FOUND");
-  const enrollments = await supabase
-    .from("sch_student_enrollments")
-    .select("student_id, class_id, sch_students!inner(status)")
-    .eq("business_unit_id", businessUnitId)
-    .eq("academic_year_id", fromYearId)
-    .eq("status", "active")
-    .eq("sch_students.status", "active");
+  const [enrollments, existingTarget] = await Promise.all([
+    supabase
+      .from("sch_student_enrollments")
+      .select("student_id, class_id, sch_students!inner(status)")
+      .eq("business_unit_id", businessUnitId)
+      .eq("academic_year_id", fromYearId)
+      .eq("status", "active")
+      .eq("sch_students.status", "active"),
+    toYearId && toYearId !== fromYearId
+      ? supabase
+          .from("sch_student_enrollments")
+          .select("student_id")
+          .eq("business_unit_id", businessUnitId)
+          .eq("academic_year_id", toYearId)
+          .eq("status", "active")
+      : Promise.resolve({ data: [] as Array<{ student_id: string }>, error: null }),
+  ]);
   if (enrollments.error && !isSchoolUnconfiguredRead(enrollments.error)) mapSchoolDbError(enrollments.error, "load");
   const already = new Set<string>();
-  if (toYearId && toYearId !== fromYearId) {
-    const existingTarget = await supabase
-      .from("sch_student_enrollments")
-      .select("student_id")
-      .eq("business_unit_id", businessUnitId)
-      .eq("academic_year_id", toYearId)
-      .eq("status", "active");
-    for (const row of existingTarget.data ?? []) already.add(str(row.student_id));
-  }
+  for (const row of existingTarget.data ?? []) already.add(str(row.student_id));
   const enrolled = new Map<string, number>();
   const awaiting = new Map<string, number>();
   for (const row of enrollments.data ?? []) {

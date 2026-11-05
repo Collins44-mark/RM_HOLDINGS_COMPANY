@@ -8,6 +8,7 @@ import { logoutAction } from "@/actions/auth";
 import { SyncStatusIndicator } from "@/components/offline/SyncStatusIndicator";
 import { searchIndexForUser } from "@/lib/auth/nav";
 import { isOwnerRole } from "@/lib/auth/rbac";
+import { useProfileAvatar } from "@/lib/auth/profile-avatar";
 import type { AuthUser } from "@/lib/auth/types";
 import { useLocale } from "@/components/i18n/LocaleProvider";
 import { navKeyForHref } from "@/lib/i18n";
@@ -26,12 +27,6 @@ function initials(name: string) {
 function profileCaption(user: AuthUser, ownerCaption: string) {
   if (isOwnerRole(user.roleCode)) return ownerCaption;
   return user.roleName;
-}
-
-function profileImage(user: AuthUser) {
-  if (user.avatarUrl) return user.avatarUrl;
-  if (isOwnerRole(user.roleCode)) return "/images/owner-avatar.jpg";
-  return null;
 }
 
 function SignOutButton() {
@@ -97,7 +92,8 @@ export function Header({
   const [profileOpen, setProfileOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
-  const avatar = profileImage(user);
+  const savedAvatar = useProfileAvatar(user.id);
+  const avatar = savedAvatar.ready ? savedAvatar.url : user.avatarUrl;
   const caption = profileCaption(user, t("chrome.ownerCaption"));
 
   const searchIndex = useMemo(() => searchIndexForUser(user), [user]);

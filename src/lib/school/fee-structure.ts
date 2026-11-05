@@ -31,6 +31,30 @@ function isCurrentTerm(startDate: string, endDate: string, today: string) {
   return Boolean(startDate && endDate && startDate <= today && today <= endDate);
 }
 
+/** Annual fee for every class in one year, in a single query. */
+export async function loadClassAnnualFees(input: {
+  supabase: SupabaseClient;
+  businessUnitId: string;
+  academicYearId: string;
+}): Promise<Map<string, { annualAmount: number }>> {
+  const academicYearId = String(input.academicYearId ?? "").trim();
+  const fees = new Map<string, { annualAmount: number }>();
+  if (!academicYearId) return fees;
+  const result = await input.supabase
+    .from("sch_fee_structures")
+    .select("class_id, annual_amount")
+    .eq("business_unit_id", input.businessUnitId)
+    .eq("academic_year_id", academicYearId)
+    .eq("is_active", true);
+  if (result.error && !isSchoolUnconfiguredRead(result.error)) return fees;
+  for (const row of result.data ?? []) {
+    const classId = String(row.class_id ?? "");
+    if (!classId || fees.has(classId)) continue;
+    fees.set(classId, { annualAmount: Number(row.annual_amount) || 0 });
+  }
+  return fees;
+}
+
 export async function findApplicableFeeStructure(input: {
   supabase: SupabaseClient;
   businessUnitId: string;

@@ -17,6 +17,7 @@ import { SchoolSalaryPage } from "@/components/school/SchoolSalaryPage";
 import { SchoolParentsPage } from "@/components/school/SchoolParentsPage";
 import { SchoolReportsPage } from "@/components/school/SchoolReportsPage";
 import { SchoolStorePage } from "@/components/school/SchoolStorePage";
+import { SchoolOverviewPage } from "@/components/school/SchoolOverviewPage";
 import { SchoolPromotionsPage } from "@/components/school/SchoolPromotionsPage";
 import { schoolPageMeta } from "@/lib/school/pagination";
 import { peekAdmissionView, peekAdmissionsListSnapshot, peekFeeView, peekFeesListSnapshot } from "@/lib/school/admission-flash";
@@ -180,6 +181,30 @@ export default function SchoolConsoleLoading() {
         pending
         heading={heading ?? undefined}
       />
+    );
+  }
+  if (pathname === "/school") return <SchoolOverviewPage overview={null} error={null} />;
+  const shellTitle =
+    pathname === "/school/settings"
+      ? "School Settings"
+      : pathname === "/school/classes"
+        ? "Classes"
+        : pathname === "/school/transport"
+          ? "Transport"
+          : pathname === "/school/transport/buses"
+            ? "School Buses"
+            : pathname === "/school/transport/drivers"
+              ? "Drivers"
+              : pathname === "/school/transport/routes"
+                ? "Routes"
+                : pathname.startsWith("/school/transport/")
+                  ? "Service"
+                  : null;
+  if (shellTitle) {
+    return (
+      <div className="min-w-0 max-w-full space-y-5 pb-10">
+        <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">{shellTitle}</h1>
+      </div>
     );
   }
   return <div className="min-w-0 max-w-full pb-10" />;

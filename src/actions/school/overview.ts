@@ -37,6 +37,41 @@ async function teacherMetric(
   };
 }
 
+async function sumFeeAccounts(
+  supabase: Awaited<ReturnType<typeof requireSchoolContext>>["supabase"],
+  businessUnitId: string,
+  yearId: string | null,
+): Promise<{ collected: OverviewMetric<number>; outstanding: OverviewMetric<number> }> {
+  let query = supabase
+    .from("sch_v_fee_accounts")
+    .select("paid_amount, outstanding_amount")
+    .eq("business_unit_id", businessUnitId);
+  if (yearId) query = query.eq("academic_year_id", yearId);
+  const feeRes = await query;
+  if (feeRes.error && !isSchoolUnconfiguredRead(feeRes.error)) {
+    return { collected: { status: "error" }, outstanding: { status: "error" } };
+  }
+  let collected = 0;
+  let outstanding = 0;
+  for (const row of feeRes.data ?? []) {
+    collected += Number(row.paid_amount ?? 0) || 0;
+    if (row.outstanding_amount != null) outstanding += Number(row.outstanding_amount) || 0;
+  }
+  return {
+    collected: { status: "ok", value: collected },
+    outstanding: { status: "ok", value: outstanding },
+  };
+}
+
+function aggregateNumber(data: unknown, key: string) {
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row !== "object") return null;
+  const value = (row as Record<string, unknown>)[key];
+  if (value == null || value === "") return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : null;
+}
+
 function configFromRow(exists: boolean, kind: "flag" | "presence", enabled?: boolean): ConfigStatus {
   if (kind === "flag") {
     if (!exists) return "not_configured";
@@ -53,17 +88,16 @@ export async function getSchoolOverviewAction(): Promise<
     const { supabase, businessUnitId } = await requireSchoolContext();
     const identity = identityFromUser(user);
 
+    const calendarYear = new Date().getFullYear();
     const [
       buRes,
       profileRes,
       currentYearsRes,
       classCountRes,
-      enrollmentCountRes,
       teacherCountRes,
       gradingRes,
       feeCountRes,
       transportRes,
-      expensesRes,
     ] = await Promise.all([
       supabase.from("business_units").select("name, location").eq("id", businessUnitId).maybeSingle(),
       supabase
@@ -82,12 +116,6 @@ export async function getSchoolOverviewAction(): Promise<
         .select("id", { count: "exact", head: true })
         .eq("business_unit_id", businessUnitId)
         .eq("is_active", true),
-      supabase
-        .from("sch_student_enrollments")
-        .select("id, sch_students!inner(status)", { count: "exact", head: true })
-        .eq("business_unit_id", businessUnitId)
-        .eq("status", "active")
-        .eq("sch_students.status", "active"),
       supabase
         .from("sch_staff")
         .select("id, role_id, sch_staff_types(kind)")
@@ -110,13 +138,6 @@ export async function getSchoolOverviewAction(): Promise<
         .select("enabled")
         .eq("business_unit_id", businessUnitId)
         .maybeSingle(),
-      supabase
-        .from("sch_expenses")
-        .select("amount")
-        .eq("business_unit_id", businessUnitId)
-        .eq("is_active", true)
-        .gte("expense_date", `${new Date().getFullYear()}-01-01`)
-        .lte("expense_date", `${new Date().getFullYear()}-12-31`),
     ]);
 
     if (buRes.error && !isSchoolUnconfiguredRead(buRes.error) && profileRes.error && !isSchoolUnconfiguredRead(profileRes.error)) {
@@ -143,15 +164,43 @@ export async function getSchoolOverviewAction(): Promise<
     let currentTerm: SchoolOverviewView["currentTerm"] = { status: "none" };
     const yearId =
       academicYear.status === "ok" && currentYearsRes.data?.[0]?.id ? String(currentYearsRes.data[0].id) : null;
+    let enrollmentQuery = supabase
+      .from("sch_student_enrollments")
+      .select("id, sch_students!inner(status)", { count: "exact", head: true })
+      .eq("business_unit_id", businessUnitId)
+      .eq("status", "active")
+      .eq("sch_students.status", "active");
+    if (yearId) enrollmentQuery = enrollmentQuery.eq("academic_year_id", yearId);
+    let feeQuery = supabase
+      .from("sch_v_fee_accounts")
+      .select("paid:paid_amount.sum(),outstanding:outstanding_amount.sum()")
+      .eq("business_unit_id", businessUnitId);
+    if (yearId) feeQuery = feeQuery.eq("academic_year_id", yearId);
+
+    const [termsRes, enrollmentCount, feeRes, expenseRes, teachers] = await Promise.all([
+      yearId
+        ? supabase
+            .from("sch_terms")
+            .select("id, name")
+            .eq("business_unit_id", businessUnitId)
+            .eq("academic_year_id", yearId)
+            .eq("is_active", true)
+        : Promise.resolve(null),
+      enrollmentQuery,
+      feeQuery,
+      supabase
+        .from("sch_expenses")
+        .select("total:amount.sum()")
+        .eq("business_unit_id", businessUnitId)
+        .eq("is_active", true)
+        .gte("expense_date", `${calendarYear}-01-01`)
+        .lte("expense_date", `${calendarYear}-12-31`),
+      teacherMetric(supabase, teacherCountRes),
+    ]);
+
     if (academicYear.status === "error") currentTerm = { status: "error" };
     else if (academicYear.status === "conflict") currentTerm = { status: "none" };
-    else if (yearId) {
-      const termsRes = await supabase
-        .from("sch_terms")
-        .select("id, name")
-        .eq("business_unit_id", businessUnitId)
-        .eq("academic_year_id", yearId)
-        .eq("is_active", true);
+    else if (termsRes) {
       if (termsRes.error && !isSchoolUnconfiguredRead(termsRes.error)) currentTerm = { status: "error" };
       else if ((termsRes.data ?? []).length === 1) {
         currentTerm = { status: "ok", name: String(termsRes.data![0].name) };
@@ -159,47 +208,36 @@ export async function getSchoolOverviewAction(): Promise<
       else currentTerm = { status: "none" };
     }
 
-    let enrollmentCount = enrollmentCountRes;
-    if (yearId) {
-      const currentEnroll = await supabase
-        .from("sch_student_enrollments")
-        .select("id, sch_students!inner(status)", { count: "exact", head: true })
-        .eq("business_unit_id", businessUnitId)
-        .eq("status", "active")
-        .eq("academic_year_id", yearId)
-        .eq("sch_students.status", "active");
-      if (!currentEnroll.error || isSchoolUnconfiguredRead(currentEnroll.error)) enrollmentCount = currentEnroll;
-    }
-
     let feesCollected: OverviewMetric<number> = { status: "ok", value: 0 };
     let outstandingFees: OverviewMetric<number> = { status: "ok", value: 0 };
-    let feeQuery = supabase
-      .from("sch_v_fee_accounts")
-      .select("due_amount, paid_amount, outstanding_amount")
-      .eq("business_unit_id", businessUnitId);
-    if (yearId) feeQuery = feeQuery.eq("academic_year_id", yearId);
-    const feeRes = await feeQuery;
+    const paidTotal = aggregateNumber(feeRes.data, "paid");
+    const outstandingTotal = aggregateNumber(feeRes.data, "outstanding");
     if (feeRes.error && !isSchoolUnconfiguredRead(feeRes.error)) {
-      feesCollected = { status: "error" };
-      outstandingFees = { status: "error" };
+      const fallback = await sumFeeAccounts(supabase, businessUnitId, yearId);
+      feesCollected = fallback.collected;
+      outstandingFees = fallback.outstanding;
     } else {
-      let collected = 0;
-      let outstanding = 0;
-      for (const row of feeRes.data ?? []) {
-        collected += Number(row.paid_amount ?? 0) || 0;
-        if (row.outstanding_amount != null) outstanding += Number(row.outstanding_amount) || 0;
-      }
-      feesCollected = { status: "ok", value: collected };
-      outstandingFees = { status: "ok", value: outstanding };
+      feesCollected = { status: "ok", value: paidTotal ?? 0 };
+      outstandingFees = { status: "ok", value: outstandingTotal ?? 0 };
     }
 
-    const operatingExpenses: OverviewMetric<number> =
-      expensesRes.error && !isSchoolUnconfiguredRead(expensesRes.error)
-        ? { status: "error" }
-        : {
-            status: "ok",
-            value: (expensesRes.data ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
-          };
+    let operatingExpenses: OverviewMetric<number> = { status: "ok", value: aggregateNumber(expenseRes.data, "total") ?? 0 };
+    if (expenseRes.error && !isSchoolUnconfiguredRead(expenseRes.error)) {
+      const fallback = await supabase
+        .from("sch_expenses")
+        .select("amount")
+        .eq("business_unit_id", businessUnitId)
+        .eq("is_active", true)
+        .gte("expense_date", `${calendarYear}-01-01`)
+        .lte("expense_date", `${calendarYear}-12-31`);
+      operatingExpenses =
+        fallback.error && !isSchoolUnconfiguredRead(fallback.error)
+          ? { status: "error" }
+          : {
+              status: "ok",
+              value: (fallback.data ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
+            };
+    }
 
     const classLevels: OverviewMetric<number> =
       classCountRes.error && !isSchoolUnconfiguredRead(classCountRes.error)
@@ -245,7 +283,7 @@ export async function getSchoolOverviewAction(): Promise<
             : typeof enrollmentCount.count === "number"
               ? { status: "ok" as const, value: enrollmentCount.count }
               : { status: "ok" as const, value: 0 },
-        teachers: await teacherMetric(supabase, teacherCountRes),
+        teachers,
         feesCollected,
         outstandingFees,
         operatingExpenses,

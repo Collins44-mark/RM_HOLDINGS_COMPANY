@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { assignSchoolStudentStreamAction, type StudentGuardianRow, type StudentProfile } from "@/actions/school/students";
@@ -122,6 +123,7 @@ function StudentLifecycleActions({
   canWithdraw: boolean;
   canTransfer: boolean;
 }) {
+  const router = useRouter();
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -164,7 +166,7 @@ function StudentLifecycleActions({
               {
                 onBusy: setBusy,
                 onError: setError,
-                onDone: () => window.location.reload(),
+                onDone: () => router.refresh(),
               },
             )
           }
@@ -184,7 +186,7 @@ function StudentLifecycleActions({
             streamId: student.streamId,
           }}
           onClose={() => setTransferOpen(false)}
-          onSaved={() => window.location.reload()}
+          onSaved={() => router.refresh()}
         />
       ) : null}
     </section>

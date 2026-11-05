@@ -20,7 +20,6 @@ import { cn } from "@/lib/cn";
 import { formatTzs } from "@/lib/format/currency";
 import { useAuth } from "@/components/auth/AuthProvider";
 import type {
-  SupermarketPurchaseRow,
   SupermarketSaleRow,
   SupermarketSampleDashboard,
   SupermarketStockAlert,
@@ -173,13 +172,13 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
       </section>
       ) : null}
 
-      {(widgets.sales && data.topProducts.length > 0) || widgets.purchases || quickActions.length > 0 ? (
-      <section className="grid min-w-0 grid-cols-1 items-stretch gap-2.5 sm:gap-3 lg:grid-cols-2 2xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1.35fr)_minmax(0,0.7fr)]">
+      {(widgets.sales && data.topProducts.length > 0) || quickActions.length > 0 ? (
+      <section className="flex min-w-0 flex-col gap-2.5 sm:gap-3">
         {widgets.sales && data.topProducts.length > 0 ? (
-        <article className={cn(glass, "flex h-full min-w-0 flex-col px-4 py-3.5 sm:px-5 sm:py-4")}>
+        <article className={cn(glass, "flex w-full min-w-0 flex-col px-4 py-3.5 sm:px-5 sm:py-4")}>
           <CardTitle title="Top Selling Products" href="/supermarket/products" />
           <ol className="mt-3 space-y-2">
-            {data.topProducts.map((product, index) => (
+            {data.topProducts.slice(0, 4).map((product, index) => (
               <li key={product.name} className="min-w-0">
                 <div className="flex items-center gap-2.5">
                   <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#eef2f6] text-[11px] font-semibold text-slate-500">
@@ -204,59 +203,22 @@ export function SupermarketDashboard({ data }: { data: SupermarketSampleDashboar
         </article>
         ) : null}
 
-        {widgets.purchases ? (
-        <article className={cn(glass, "flex h-full min-w-0 flex-col px-4 py-3.5 sm:px-5 sm:py-4")}>
-          <CardTitle title="Recent Purchases" href="/supermarket/purchases" />
-          <div className={cn(tableWrap, "hidden md:block")}>
-            <table className="w-full table-fixed text-left text-[12.5px]">
-              <thead className={tableHead}>
-                <tr>
-                  <th className="w-[28%] px-2.5 py-2 font-medium">Supplier</th>
-                  <th className="w-[18%] px-2 py-2 font-medium">PO Number</th>
-                  <th className="w-[18%] px-2 py-2 font-medium">Date</th>
-                  <th className="w-[20%] px-2 py-2 font-medium">Amount</th>
-                  <th className="w-[16%] px-2 py-2 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.recentPurchases.map((purchase) => (
-                  <tr key={purchase.reference} className="border-t border-[#d5dee8]/55">
-                    <td className="truncate px-2.5 py-2 font-medium text-navy">{purchase.supplier}</td>
-                    <td className="whitespace-nowrap px-2 py-2 text-slate-500">{purchase.reference}</td>
-                    <td className="whitespace-nowrap px-2 py-2 text-slate-500">{purchase.date}</td>
-                    <td className="whitespace-nowrap px-2 py-2 font-semibold text-navy">{formatTzs(purchase.amount)}</td>
-                    <td className="whitespace-nowrap px-2 py-2">
-                      <PurchaseStatus status={purchase.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <ul className="mt-3 divide-y divide-black/[0.04] md:hidden">
-            {data.recentPurchases.map((purchase) => (
-              <PurchaseRow key={purchase.reference} purchase={purchase} />
-            ))}
-          </ul>
-        </article>
-        ) : null}
-
         {quickActions.length > 0 ? (
-        <article className={cn(glass, "flex h-full min-w-0 flex-col px-4 py-3.5 sm:px-5 sm:py-4 lg:col-span-2 2xl:col-span-1")}>
+        <article className={cn(glass, "flex w-full min-w-0 flex-col px-4 py-3.5 sm:px-5 sm:py-4")}>
           <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy sm:text-[17px]">
             Quick Actions
           </h2>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 2xl:grid-cols-1 2xl:gap-2">
+          <div className="mt-3 grid w-full grid-cols-4 gap-2.5">
             {quickActions.map((action) => (
               <Link
                 key={action.href + action.label}
                 href={action.href}
-                className="flex min-w-0 items-center gap-2.5 rounded-[14px] border border-white/80 bg-white/75 px-3 py-2 shadow-[0_4px_12px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-md transition hover:bg-white sm:px-3"
+                className="flex min-w-0 items-center gap-3 rounded-[16px] border border-white/80 bg-white/75 px-4 py-3 shadow-[0_4px_12px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-md transition hover:bg-white"
               >
-                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] bg-[#f4f7fb] text-navy">
-                  <action.icon className="h-3.5 w-3.5" strokeWidth={1.7} />
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-white/80 bg-[#f4f7fb] text-navy">
+                  <action.icon className="h-5 w-5" strokeWidth={1.75} />
                 </span>
-                <span className="min-w-0 truncate text-[12.5px] font-semibold leading-4 text-navy sm:text-[13px]">
+                <span className="min-w-0 text-[13.5px] font-semibold leading-5 text-navy">
                   {action.label}
                 </span>
               </Link>
@@ -334,18 +296,45 @@ function KpiCard({
   );
 }
 
+function chartScale(peak: number) {
+  if (peak <= 0) return { axisMax: 4, ticks: [4, 3, 2, 1, 0] };
+  const rough = peak / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(rough));
+  const step = Math.max(1, Math.ceil(rough / magnitude) * magnitude);
+  const axisMax = step * 4;
+  return { axisMax, ticks: [axisMax, step * 3, step * 2, step, 0] };
+}
+
+function chartTick(value: number) {
+  if (value === 0) return "0";
+  if (value >= 1_000_000) {
+    const millions = value / 1_000_000;
+    return `${Number.isInteger(millions) ? millions : millions.toFixed(1)}M`;
+  }
+  if (value >= 1_000) {
+    const thousands = value / 1_000;
+    return `${Number.isInteger(thousands) ? thousands : thousands.toFixed(1)}k`;
+  }
+  return String(value);
+}
+
 function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
   const [period, setPeriod] = useState<"today" | "week" | "month">("week");
-  const peak = Math.max(...data.salesOverview.trend.map((item) => item.amount), 1);
-  const axisStep = 2_000_000;
-  const axisMax = Math.max(axisStep * 4, Math.ceil(peak / axisStep) * axisStep);
-  const ticks = Array.from({ length: axisMax / axisStep + 1 }, (_, index) => axisMax - index * axisStep);
+  const trend = data.salesOverview.trends[period];
+  const peak = Math.max(...trend.map((item) => item.amount), 0);
+  const { axisMax, ticks } = chartScale(peak);
   const amount =
     period === "today"
       ? data.salesOverview.today
       : period === "month"
         ? data.salesOverview.month
         : data.salesOverview.week;
+  const caption =
+    period === "today"
+      ? "Sales recorded today."
+      : period === "month"
+        ? "This month, by day."
+        : "This week, by day.";
   const delta = period === "today" ? data.kpis.todaySalesDelta : null;
 
   return (
@@ -367,7 +356,7 @@ function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
       </div>
 
       <div className="mt-1 flex items-end justify-between gap-3">
-        <p className="min-w-0 flex-1 text-[13px] text-slate-500">This week compared with daily store trading.</p>
+        <p className="min-w-0 flex-1 text-[13px] text-slate-500">{caption}</p>
         <div className="min-w-0 shrink-0 text-right">
           <p className="rm-kpi-value text-[15px] font-semibold tracking-[-0.04em] text-navy sm:text-[18px]">
             {formatTzs(amount)}
@@ -385,7 +374,7 @@ function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
           <div className="hidden w-6 shrink-0 flex-col justify-between pt-0.5 text-right sm:flex" aria-hidden>
             {ticks.map((tick) => (
               <span key={tick} className="text-[10px] font-medium leading-none text-slate-400">
-                {tick === 0 ? "0" : `${tick / 1_000_000}M`}
+                {chartTick(tick)}
               </span>
             ))}
           </div>
@@ -399,9 +388,9 @@ function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
               }}
             />
             <div className="relative flex h-full items-end" aria-hidden>
-              {data.salesOverview.trend.map((day, index) => {
-                const height = (day.amount / axisMax) * 100;
-                const latest = index === data.salesOverview.trend.length - 1;
+              {trend.map((day, index) => {
+                const height = peak <= 0 ? 0 : (day.amount / axisMax) * 100;
+                const latest = index === trend.length - 1;
                 return (
                   <div key={day.label} className="flex h-full min-w-0 flex-1 items-end justify-center">
                     <div
@@ -422,7 +411,7 @@ function SalesOverviewCard({ data }: { data: SupermarketSampleDashboard }) {
         <div className="mt-1.5 flex items-center gap-1.5">
           <div className="hidden w-6 shrink-0 sm:block" aria-hidden />
           <div className="flex min-w-0 flex-1">
-            {data.salesOverview.trend.map((day) => (
+            {trend.map((day) => (
               <span
                 key={day.label}
                 className="min-w-0 flex-1 text-center text-[10px] font-medium text-slate-400"
@@ -444,36 +433,36 @@ function StockAlertsCard({ alerts }: { alerts: SupermarketStockAlert[] }) {
         Stock Alerts
       </h2>
       <p className="mt-1 text-[13px] text-slate-500">Items that need attention on the shop floor.</p>
-      <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+      <div className="mt-3 grid w-full grid-cols-4 gap-2">
         {alerts.map((alert) => (
           <Link
             key={alert.id}
             href={alert.href}
-            className="flex min-w-0 items-center gap-3 rounded-[16px] border border-white/80 bg-white/65 px-3 py-3 shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition hover:bg-white"
+            className="flex min-w-0 items-center gap-2 rounded-[14px] border border-white/80 bg-white/65 px-2.5 py-2 shadow-[0_1px_2px_rgba(15,35,64,0.04)] transition hover:bg-white"
           >
             <span
               className={cn(
-                "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px]",
+                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]",
                 alert.tone === "critical" && "bg-[#f8eaea] text-[#b42318]",
                 alert.tone === "watch" && "bg-[#f8efd8] text-[#b0892e]",
                 alert.tone === "soon" && "bg-[#e8eef6] text-[#4d6480]",
               )}
             >
               {alert.tone === "soon" ? (
-                <Clock3 className="h-4 w-4" strokeWidth={1.7} />
+                <Clock3 className="h-3.5 w-3.5" strokeWidth={1.7} />
               ) : (
-                <AlertTriangle className="h-4 w-4" strokeWidth={1.7} />
+                <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.7} />
               )}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-[13.5px] font-semibold text-navy">{alert.label}</span>
-              <span className="mt-0.5 block text-[12px] text-slate-500">{alert.hint}</span>
+              <span className="block truncate text-[12.5px] font-semibold text-navy">{alert.label}</span>
+              <span className="mt-0.5 block truncate text-[11px] text-slate-500">{alert.hint}</span>
             </span>
             <span className="shrink-0 text-right">
-              <span className="block text-[16px] font-semibold tracking-[-0.03em] text-navy">
+              <span className="block text-[15px] font-semibold leading-none tracking-[-0.03em] text-navy">
                 {alert.count}
               </span>
-              <span className="text-[11px] text-slate-400">products</span>
+              <span className="text-[10px] text-slate-400">products</span>
             </span>
           </Link>
         ))}
@@ -482,12 +471,14 @@ function StockAlertsCard({ alerts }: { alerts: SupermarketStockAlert[] }) {
   );
 }
 
-function RecentSalesCard({ sales }: { sales: SupermarketSaleRow[] }) {
+function RecentSalesCard({ sales: allSales }: { sales: SupermarketSaleRow[] }) {
+  const sales = allSales.slice(0, 4);
   return (
     <article className={cn(glass, "flex h-full min-w-0 flex-col px-4 py-3.5 sm:px-5 sm:py-4")}>
       <CardTitle title="Recent Sales" href="/supermarket/sales" actionLabel="View All" />
+      {sales.length === 0 ? <p className="mt-3 text-[13px] text-slate-500">No sales yet.</p> : null}
 
-      <div className={cn(tableWrap, "hidden md:block")}>
+      <div className={cn(tableWrap, "hidden md:block", sales.length === 0 && "hidden")}>
         <table className="w-full min-w-[640px] text-left text-[12.5px]">
           <thead className={tableHead}>
             <tr>
@@ -544,25 +535,6 @@ function RecentSalesCard({ sales }: { sales: SupermarketSaleRow[] }) {
   );
 }
 
-function PurchaseRow({ purchase }: { purchase: SupermarketPurchaseRow }) {
-  return (
-    <li className="flex min-w-0 items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
-      <div className="min-w-0">
-        <p className="truncate text-[13.5px] font-semibold text-navy">{purchase.supplier}</p>
-        <p className="mt-0.5 text-[12px] text-slate-500">
-          {purchase.reference} · {purchase.date}
-        </p>
-      </div>
-      <div className="shrink-0 text-right">
-        <p className="text-[13px] font-semibold text-navy">{formatTzs(purchase.amount)}</p>
-        <p className="mt-1">
-          <PurchaseStatus status={purchase.status} />
-        </p>
-      </div>
-    </li>
-  );
-}
-
 function CardTitle({
   title,
   href,
@@ -598,16 +570,3 @@ function SaleStatus({ status }: { status: SupermarketSaleRow["status"] }) {
   );
 }
 
-function PurchaseStatus({ status }: { status: SupermarketPurchaseRow["status"] }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium",
-        status === "Received" && "bg-[#e7f4ea] text-[#3f8a5a]",
-        status === "Pending" && "bg-[#f8efd8] text-[#b0892e]",
-      )}
-    >
-      {status}
-    </span>
-  );
-}

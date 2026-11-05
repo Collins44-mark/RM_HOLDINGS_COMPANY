@@ -313,7 +313,7 @@ export async function getSchoolStudentAction(id: string) {
     const streamId = str(enrollment?.stream_id);
     const classId = str(enrollment?.class_id);
     const lookup = catalogLookup(catalog);
-    const [yearRes, termRes, streamFallback, classFallback] = await Promise.all([
+    const [yearRes, termRes, streamFallback, classFallback, transport] = await Promise.all([
       enrollment?.academic_year_id
         ? supabase.from("sch_academic_years").select("name").eq("id", String(enrollment.academic_year_id)).maybeSingle()
         : Promise.resolve({ data: null }),
@@ -324,6 +324,9 @@ export async function getSchoolStudentAction(id: string) {
       !streamId && classId && !lookup.placementByClass(classId)
         ? loadPlacementByClassIds(ctx, [classId])
         : Promise.resolve(new Map()),
+      enrollment?.id
+        ? getStudentTransportWorkspaceAction({ studentId: String(row.id), enrollmentId: String(enrollment.id) })
+        : Promise.resolve({ ok: false as const, error: "" }),
     ]);
     const place = streamId
       ? lookup.placement(streamId) ?? streamFallback.get(streamId)
@@ -349,9 +352,6 @@ export async function getSchoolStudentAction(id: string) {
         isPrimary: Boolean(link.is_primary),
       };
     });
-    const transport = enrollment?.id
-      ? await getStudentTransportWorkspaceAction({ studentId: String(row.id), enrollmentId: String(enrollment.id) })
-      : { ok: false as const, error: "" };
     const profile: StudentProfile = {
       id: String(row.id),
       studentNumber: str(row.student_number),

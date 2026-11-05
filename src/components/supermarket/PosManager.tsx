@@ -73,12 +73,37 @@ const glass =
   "rounded-[26px] border border-white/75 bg-white/78 shadow-[0_12px_32px_rgba(15,35,64,0.045),inset_0_1px_0_rgba(255,255,255,0.92)] backdrop-blur-xl";
 const control =
   "h-11 w-full rounded-full border border-white/80 bg-white/88 px-4 text-[13px] text-navy shadow-[0_6px_16px_rgba(15,35,64,0.04),inset_0_1px_0_rgba(255,255,255,0.95)] outline-none backdrop-blur-xl transition duration-200 placeholder:text-slate-400 focus:border-white focus:bg-white";
-const chip =
-  "inline-flex h-[30px] shrink-0 items-center rounded-full px-3.5 text-[12.5px] font-medium transition duration-200";
 const glassBtn =
   "inline-flex items-center justify-center rounded-full border border-white/80 bg-white/82 text-navy shadow-[0_6px_16px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-xl transition duration-200 hover:-translate-y-px hover:bg-white hover:shadow-[0_10px_20px_rgba(15,35,64,0.08)] active:translate-y-0 active:scale-[0.98]";
 const addBtn =
-  "mt-auto inline-flex h-9 w-full items-center justify-center gap-1 rounded-full border border-white/80 bg-[#e8eef6]/78 text-[12.5px] font-medium text-navy shadow-[0_5px_14px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.92)] backdrop-blur-md transition duration-200 hover:-translate-y-px hover:bg-[#dfe8f2]/90 hover:shadow-[0_10px_18px_rgba(15,35,64,0.08)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-38 disabled:hover:translate-y-0 disabled:hover:shadow-[0_5px_14px_rgba(15,35,64,0.05)]";
+  "mt-2 inline-flex h-8 w-full items-center justify-center gap-1 rounded-full border border-white/80 bg-[#e8eef6]/78 text-[12px] font-medium text-navy shadow-[0_5px_14px_rgba(15,35,64,0.05),inset_0_1px_0_rgba(255,255,255,0.92)] backdrop-blur-md transition duration-200 hover:-translate-y-px hover:bg-[#dfe8f2]/90 hover:shadow-[0_10px_18px_rgba(15,35,64,0.08)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-38 disabled:hover:translate-y-0 disabled:hover:shadow-[0_5px_14px_rgba(15,35,64,0.05)] sm:mt-3.5 sm:h-9 sm:text-[12.5px]";
+
+const HELD_SALES_KEY = "rm-pos-held-sales";
+
+function readHeldSales(): PosHeldSale[] {
+  try {
+    const raw = sessionStorage.getItem(HELD_SALES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as PosHeldSale[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((sale) => sale && Array.isArray(sale.items) && sale.items.length > 0)
+      .map((sale) => ({
+        ...sale,
+        invoiceStamp: new Date(sale.invoiceStamp),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function writeHeldSales(sales: PosHeldSale[]) {
+  try {
+    sessionStorage.setItem(HELD_SALES_KEY, JSON.stringify(sales));
+  } catch {
+    // The list still stays on this page if storage is unavailable.
+  }
+}
 
 const PAYMENT_META: Record<
   PosPaymentMethod,
@@ -93,6 +118,7 @@ const PAYMENT_META: Record<
 export function PosManager() {
   const inventory = useSupermarketInventory();
   const searchRef = useRef<HTMLInputElement>(null);
+  const searchTimer = useRef<number | null>(null);
   const products = useMemo<PosProduct[]>(
     () =>
       inventory.products
@@ -113,10 +139,23 @@ export function PosManager() {
         }),
     [inventory.products, inventory.batches],
   );
+  const productByCode = useMemo(() => {
+    const map = new Map<string, PosProduct>();
+    for (const product of products) {
+      const sku = normalizeBarcode(product.sku).toLowerCase();
+      const barcode = normalizeBarcode(product.barcode).toLowerCase();
+      if (sku) map.set(sku, product);
+      if (barcode) map.set(barcode, product);
+    }
+    return map;
+  }, [products]);
   const [invoiceNumber, setInvoiceNumber] = useState(1);
   const [invoiceStamp, setInvoiceStamp] = useState<Date | null>(null);
   const [query, setQuery] = useState("");
+  const [filterQuery, setFilterQuery] = useState("");
   const [scanNotice, setScanNotice] = useState("");
+  const [scanOk, setScanOk] = useState(false);
+  const pendingScanRef = useRef<string | null>(null);
   const [category, setCategory] = useState<string>("all");
   const [items, setItems] = useState<PosCartItem[]>([]);
   const [customers, setCustomers] = useState<string[]>([]);
@@ -146,7 +185,7 @@ export function PosManager() {
   const [escPosReady, setEscPosReady] = useState(false);
   const [taxRates, setTaxRates] = useState<Array<{ name: string; rate: number; pricingMode: TaxPricingMode }>>([]);
 
-  const catalog = useMemo(() => filterPosProducts(products, query, category), [products, query, category]);
+  const catalog = useMemo(() => filterPosProducts(products, filterQuery, category), [products, filterQuery, category]);
   const totals = useMemo(
     () => posTotals(items, discountPercent, taxRates),
     [items, discountPercent, taxRates],
@@ -185,9 +224,21 @@ export function PosManager() {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- stamp is client-only
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- stamp and held sales are client-only
     setInvoiceStamp((current) => current ?? new Date());
+    setHeldSales(readHeldSales());
+    searchRef.current?.focus();
+    void import("@zxing/browser");
+    void import("@zxing/library");
   }, []);
+
+  function rememberHeldSales(updater: (current: PosHeldSale[]) => PosHeldSale[]) {
+    setHeldSales((current) => {
+      const next = updater(current);
+      writeHeldSales(next);
+      return next;
+    });
+  }
 
   useEffect(() => {
     let active = true;
@@ -299,7 +350,10 @@ export function PosManager() {
     setCardConfirmed(false);
     setAllocations([newPosPaymentSplit("Cash"), newPosPaymentSplit("Mobile Money", mobileProviders[0]?.id ?? "")]);
     setCompleted(null);
+    if (searchTimer.current) window.clearTimeout(searchTimer.current);
+    if (searchRef.current) searchRef.current.value = "";
     setQuery("");
+    setFilterQuery("");
     setCategory("all");
     setAddCustomerOpen(false);
     setMoreOpen(false);
@@ -323,7 +377,7 @@ export function PosManager() {
   function holdSale() {
     if (completed || items.length === 0) return;
     const held = snapshot();
-    setHeldSales((current) => [held, ...current]);
+    rememberHeldSales((current) => [held, ...current]);
     resetWorkspace(invoiceNumber + 1);
   }
 
@@ -332,9 +386,9 @@ export function PosManager() {
     if (!match) return;
     if (items.length > 0 && !completed) {
       const current = snapshot();
-      setHeldSales((list) => [current, ...list.filter((sale) => sale.id !== id)]);
+      rememberHeldSales((list) => [current, ...list.filter((sale) => sale.id !== id)]);
     } else {
-      setHeldSales((list) => list.filter((sale) => sale.id !== id));
+      rememberHeldSales((list) => list.filter((sale) => sale.id !== id));
     }
     applySnapshot(match);
     setMoreOpen(false);
@@ -385,42 +439,62 @@ export function PosManager() {
     setItems((current) => current.filter((item) => item.id !== id));
   }
 
-  function submitSearch() {
-    const barcode = normalizeBarcode(query);
-    if (!barcode) return;
-    const match = exactBarcodeMatch(products, barcode);
-    if (match) {
-      if (remainingStock(match, items) <= 0) {
-        setScanNotice(`Insufficient stock for ${match.name}.`);
-        return;
-      }
-      setScanNotice("");
-      addProduct(match);
-      setQuery("");
-    }
+  function clearSearchSoon() {
+    if (searchTimer.current) window.clearTimeout(searchTimer.current);
+    searchTimer.current = null;
   }
 
-  function applyBarcode(code: string) {
-    const barcode = normalizeBarcode(code);
-    if (!barcode) return;
-    const match = exactBarcodeMatch(products, barcode);
+  function commitScan(raw: string) {
+    const barcode = normalizeBarcode(raw);
+    if (!barcode) return false;
+    const match = productByCode.get(barcode.toLowerCase()) ?? exactBarcodeMatch(products, barcode);
     if (!match) {
+      if (!inventory.productsLoaded) {
+        pendingScanRef.current = barcode;
+        return true;
+      }
+      setScanOk(false);
       setScanNotice("Product not found");
       setQuery(barcode);
-      return;
+      setFilterQuery(barcode);
+      return false;
     }
+    clearSearchSoon();
     if (remainingStock(match, items) <= 0) {
+      setScanOk(false);
       setScanNotice(`Insufficient stock for ${match.name}.`);
+      if (searchRef.current) searchRef.current.value = "";
       setQuery("");
-      return;
+      setFilterQuery("");
+      return true;
     }
-    setScanNotice("");
+    setScanOk(true);
+    setScanNotice(`Added ${match.name}`);
     addProduct(match);
+    if (searchRef.current) searchRef.current.value = "";
     setQuery("");
+    setFilterQuery("");
+    searchRef.current?.focus();
+    return true;
   }
 
-  const applyBarcodeRef = useRef(applyBarcode);
-  applyBarcodeRef.current = applyBarcode;
+  function submitSearch() {
+    const barcode = normalizeBarcode(searchRef.current?.value || "");
+    if (!barcode) return;
+    if (commitScan(barcode)) return;
+    setQuery(barcode);
+    setFilterQuery(barcode);
+  }
+
+  const applyBarcodeRef = useRef(commitScan);
+  applyBarcodeRef.current = commitScan;
+
+  useEffect(() => {
+    if (!inventory.productsLoaded || !pendingScanRef.current) return;
+    const code = pendingScanRef.current;
+    pendingScanRef.current = null;
+    applyBarcodeRef.current(code);
+  }, [inventory.productsLoaded, productByCode]);
 
   useHardwareBarcodeScan({
     inputRef: searchRef,
@@ -428,6 +502,7 @@ export function PosManager() {
     enabled: !completed,
     captureUnfocused: !completed,
     handleFocusedEnter: false,
+    duplicateWindowMs: 80,
   });
 
   async function completeSale() {
@@ -632,33 +707,44 @@ export function PosManager() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[minmax(0,1.78fr)_minmax(20rem,0.82fr)]">
-        <section className={cn(glass, "min-w-0 p-4 sm:p-5")}>
+      <div className="grid grid-cols-1 items-start gap-3.5 md:grid-cols-[minmax(0,1fr)_minmax(22rem,28rem)]">
+        <section className={cn(glass, "min-w-0 p-3 sm:p-5")}>
           <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">Products</h2>
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="mt-3 flex items-center gap-2">
             <label className="relative min-w-0 flex-1">
               <span className="sr-only">Search products, SKU, barcode</span>
               <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={1.9} />
               <input
                 ref={searchRef}
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  const code = normalizeBarcode(value);
+                  if (code.length >= 4 && productByCode.has(code.toLowerCase())) {
+                    commitScan(code);
+                    return;
+                  }
+                  clearSearchSoon();
+                  searchTimer.current = window.setTimeout(() => {
+                    setQuery(value);
+                    setFilterQuery(value);
+                  }, 160);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
                     submitSearch();
                   }
                 }}
-                placeholder="Search products, SKU, barcode..."
+                placeholder="Scan barcode or search products..."
                 className={cn(control, "pl-10")}
                 autoComplete="off"
               />
             </label>
             <BarcodeScanButton
-              onDetected={applyBarcode}
+              onDetected={commitScan}
               className={cn(glassBtn, "h-11 w-11 shrink-0 rounded-[16px] text-slate-500")}
             />
-            <label className="sm:w-[11.5rem]">
+            <label className="w-[7.4rem] shrink-0 sm:w-[11.5rem]">
               <span className="sr-only">All Categories</span>
               <span className="relative block">
                 <select
@@ -678,7 +764,7 @@ export function PosManager() {
             </label>
           </div>
           {scanNotice ? (
-            <p className="mt-2 text-[13px] text-[#8a5a5a]" role="status">
+            <p className={cn("mt-2 text-[13px]", scanOk ? "font-medium text-[#1f8a4c]" : "text-[#8a5a5a]")} role="status">
               {scanNotice}
               {scanNotice === "Product not found" && query.trim() ? (
                 <>
@@ -695,37 +781,7 @@ export function PosManager() {
             </p>
           ) : null}
 
-          <div className="mt-3.5 flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={() => setCategory("all")}
-              className={cn(
-                chip,
-                category === "all"
-                  ? "bg-[#0b2244] text-white shadow-[0_6px_14px_rgba(11,34,68,0.18)]"
-                  : "border border-white/80 bg-white/70 text-slate-500 hover:bg-white hover:text-navy",
-              )}
-            >
-              All
-            </button>
-            {inventory.categories.filter((c) => c.isActive).map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setCategory(item.name)}
-                className={cn(
-                  chip,
-                  category === item.name
-                    ? "bg-[#0b2244] text-white shadow-[0_6px_14px_rgba(11,34,68,0.18)]"
-                    : "border border-white/80 bg-white/70 text-slate-500 hover:bg-white hover:text-navy",
-                )}
-              >
-                {item.name}
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:gap-2.5">
             {catalog.map((product) => {
               const remaining = remainingStock(product, items);
               const out = remaining <= 0;
@@ -734,23 +790,23 @@ export function PosManager() {
                 <article
                   key={flashing ? `${product.id}-${flashKey}` : product.id}
                   className={cn(
-                    "flex min-w-0 flex-col rounded-[20px] border border-white/80 bg-white/72 p-3.5 shadow-[0_8px_20px_rgba(15,35,64,0.035),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md transition duration-200",
+                    "flex min-w-0 flex-col rounded-[14px] border border-white/80 bg-white/72 p-2.5 shadow-[0_8px_20px_rgba(15,35,64,0.035),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-md transition duration-200 sm:rounded-[20px] sm:p-3.5",
                     !out && "hover:-translate-y-0.5 hover:bg-white/90 hover:shadow-[0_14px_28px_rgba(15,35,64,0.07)]",
                     out && "opacity-80",
                   )}
                   style={flashing ? { animation: "pos-added 260ms ease-out" } : undefined}
                 >
-                  <h3 className="truncate text-[14px] font-semibold tracking-[-0.02em] text-navy">{product.name}</h3>
-                  <p className="mt-0.5 text-[11.5px] text-slate-400">SKU: {product.sku}</p>
-                  <p className="mt-3 text-[16px] font-semibold tracking-[-0.03em] text-navy">{formatTzs(product.price)}</p>
-                  <p className={cn("mt-1 text-[12px] font-medium", out ? "text-[#c24646]" : "text-[#1f8a4c]")}>
+                  <h3 className="truncate text-[12.5px] font-semibold tracking-[-0.02em] text-navy sm:text-[14px]">{product.name}</h3>
+                  <p className="mt-0.5 truncate text-[10.5px] text-slate-400 sm:text-[11.5px]">SKU: {product.sku}</p>
+                  <p className="mt-1.5 text-[13px] font-semibold tracking-[-0.03em] text-navy sm:mt-3 sm:text-[16px]">{formatTzs(product.price)}</p>
+                  <p className={cn("mt-0.5 text-[11px] font-medium sm:mt-1 sm:text-[12px]", out ? "text-[#c24646]" : "text-[#1f8a4c]")}>
                     {out ? `Out of Stock: ${product.stock}` : `In Stock: ${product.stock}`}
                   </p>
                   <button
                     type="button"
                     disabled={out || Boolean(completed)}
                     onClick={() => addProduct(product)}
-                    className={cn(addBtn, "mt-3.5")}
+                    className={addBtn}
                   >
                     <Plus className="h-3.5 w-3.5" strokeWidth={2.2} />
                     Add
@@ -764,7 +820,7 @@ export function PosManager() {
           ) : null}
         </section>
 
-        <section className={cn(glass, "relative min-w-0 p-4 sm:p-5 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6.5rem)] lg:self-start lg:overflow-y-auto")}>
+        <section className={cn(glass, "relative min-w-0 p-4 sm:p-5 md:sticky md:top-20 md:max-h-[calc(100dvh-6.5rem)] md:self-start md:overflow-y-auto")}>
           {completed ? (
             <SuccessState
               sale={completed}
@@ -783,7 +839,11 @@ export function PosManager() {
                 <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">Current Sale</h2>
                 <button
                   type="button"
-                  onClick={() => setItems([])}
+                  onClick={() => {
+                    setItems([]);
+                    setScanNotice("");
+                    setScanOk(false);
+                  }}
                   className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-slate-400 transition duration-200 hover:text-navy"
                 >
                   <Trash2 className="h-3.5 w-3.5" strokeWidth={1.9} />
@@ -827,30 +887,17 @@ export function PosManager() {
                     </p>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[26.5rem] border-separate border-spacing-x-0 border-spacing-y-0">
-                      <thead>
-                        <tr className="text-[10.5px] font-medium uppercase tracking-[0.14em] text-slate-400">
-                          <th className="pb-2.5 pr-6 text-left font-medium">Item</th>
-                          <th className="px-4 pb-2.5 text-left font-medium">Price</th>
-                          <th className="px-4 pb-2.5 text-center font-medium">Qty</th>
-                          <th className="px-4 pb-2.5 text-right font-medium">Total</th>
-                          <th className="w-10 pb-2.5" />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map((item) => (
-                          <CartRow
-                            key={item.id}
-                            item={item}
-                            onDecrease={() => setQuantity(item.id, item.quantity - 1)}
-                            onIncrease={() => setQuantity(item.id, item.quantity + 1)}
-                            onRemove={() => removeItem(item.id)}
-                          />
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <ul>
+                    {items.map((item) => (
+                      <CartRow
+                        key={item.id}
+                        item={item}
+                        onDecrease={() => setQuantity(item.id, item.quantity - 1)}
+                        onIncrease={() => setQuantity(item.id, item.quantity + 1)}
+                        onRemove={() => removeItem(item.id)}
+                      />
+                    ))}
+                  </ul>
                 )}
               </div>
 
@@ -897,7 +944,7 @@ export function PosManager() {
 
               <div className="mt-5">
                 <p className="text-[13px] font-semibold text-navy">Payment</p>
-                <div className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="mt-2.5 grid grid-cols-2 gap-2">
                   {POS_PAYMENT_METHODS.map((method) => {
                     const Icon = PAYMENT_META[method].icon;
                     const active = payment === method;
@@ -1201,48 +1248,44 @@ function CartRow({
 }) {
   const atMax = item.quantity >= item.stock;
   return (
-    <tr className="align-middle" style={{ animation: "pos-cart-in 180ms ease-out" }}>
-      <td className="whitespace-nowrap py-3 pr-6">
-        <span className="text-[13.5px] font-medium tracking-[-0.01em] text-navy">{item.name}</span>
-      </td>
-      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-slate-500">{formatTzs(item.unitPrice)}</td>
-      <td className="px-4 py-3">
-        <div className="mx-auto flex h-8 w-[6.1rem] items-center justify-between rounded-full border border-white/80 bg-white/90 px-1 shadow-[0_4px_10px_rgba(15,35,64,0.04)]">
-          <button
-            type="button"
-            aria-label={`Decrease ${item.name}`}
-            onClick={onDecrease}
-            disabled={item.quantity <= 1}
-            className="inline-flex h-6 w-6 items-center justify-center rounded-full text-navy transition duration-150 hover:bg-[#eef3f8] active:scale-95 disabled:opacity-30"
-          >
-            <Minus className="h-3 w-3" strokeWidth={2.2} />
-          </button>
-          <span className="w-5 text-center text-[12.5px] font-semibold text-navy">{item.quantity}</span>
-          <button
-            type="button"
-            aria-label={`Increase ${item.name}`}
-            onClick={onIncrease}
-            disabled={atMax}
-            className="inline-flex h-6 w-6 items-center justify-center rounded-full text-navy transition duration-150 hover:bg-[#eef3f8] active:scale-95 disabled:opacity-30"
-          >
-            <Plus className="h-3 w-3" strokeWidth={2.2} />
-          </button>
-        </div>
-      </td>
-      <td className="whitespace-nowrap px-4 py-3 text-right text-[13.5px] font-semibold tracking-[-0.02em] text-navy">
-        {formatTzs(item.unitPrice * item.quantity)}
-      </td>
-      <td className="py-3 pl-3 text-right">
+    <li className="flex items-center gap-2 border-t border-[#e8eef4] py-2.5" style={{ animation: "pos-cart-in 180ms ease-out" }}>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13.5px] font-medium tracking-[-0.01em] text-navy">{item.name}</p>
+        <p className="text-[12px] text-slate-500">{formatTzs(item.unitPrice)}</p>
+      </div>
+      <div className="flex h-8 w-[6.1rem] shrink-0 items-center justify-between rounded-full border border-white/80 bg-white/90 px-1 shadow-[0_4px_10px_rgba(15,35,64,0.04)]">
         <button
           type="button"
-          aria-label={`Remove ${item.name}`}
-          onClick={onRemove}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition duration-150 hover:bg-[#f4f6f9] hover:text-[#c24646] active:scale-95"
+          aria-label={`Decrease ${item.name}`}
+          onClick={onDecrease}
+          disabled={item.quantity <= 1}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-full text-navy transition duration-150 hover:bg-[#eef3f8] active:scale-95 disabled:opacity-30"
         >
-          <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
+          <Minus className="h-3 w-3" strokeWidth={2.2} />
         </button>
-      </td>
-    </tr>
+        <span className="w-5 text-center text-[12.5px] font-semibold text-navy">{item.quantity}</span>
+        <button
+          type="button"
+          aria-label={`Increase ${item.name}`}
+          onClick={onIncrease}
+          disabled={atMax}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-full text-navy transition duration-150 hover:bg-[#eef3f8] active:scale-95 disabled:opacity-30"
+        >
+          <Plus className="h-3 w-3" strokeWidth={2.2} />
+        </button>
+      </div>
+      <p className="w-[4.75rem] shrink-0 text-right text-[13px] font-semibold tracking-[-0.02em] text-navy">
+        {formatTzs(item.unitPrice * item.quantity)}
+      </p>
+      <button
+        type="button"
+        aria-label={`Remove ${item.name}`}
+        onClick={onRemove}
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition duration-150 hover:bg-[#f4f6f9] hover:text-[#c24646] active:scale-95"
+      >
+        <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
+      </button>
+    </li>
   );
 }
 

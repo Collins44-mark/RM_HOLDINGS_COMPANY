@@ -16,7 +16,7 @@ export type SupermarketSaleRow = {
   time: string;
   items: number;
   cashier: string;
-  payment: SupermarketPayment;
+  payment: string;
   amount: number;
   status: SupermarketSaleStatus;
 };
@@ -59,7 +59,11 @@ export type SupermarketSampleDashboard = {
     today: number;
     week: number;
     month: number;
-    trend: { label: string; amount: number }[];
+    trends: {
+      today: { label: string; amount: number }[];
+      week: { label: string; amount: number }[];
+      month: { label: string; amount: number }[];
+    };
   };
   stockAlerts: SupermarketStockAlert[];
   recentSales: SupermarketSaleRow[];
@@ -85,15 +89,19 @@ export const SUPERMARKET_SAMPLE: SupermarketSampleDashboard = {
     today: 4_850_000,
     week: 28_640_000,
     month: 112_450_000,
-    trend: [
-      { label: "Mon", amount: 3_240_000 },
-      { label: "Tue", amount: 3_810_000 },
-      { label: "Wed", amount: 4_120_000 },
-      { label: "Thu", amount: 3_560_000 },
-      { label: "Fri", amount: 4_980_000 },
-      { label: "Sat", amount: 5_220_000 },
-      { label: "Sun", amount: 4_850_000 },
-    ],
+    trends: {
+      today: [{ label: "Today", amount: 4_850_000 }],
+      week: [
+        { label: "Mon", amount: 3_240_000 },
+        { label: "Tue", amount: 3_810_000 },
+        { label: "Wed", amount: 4_120_000 },
+        { label: "Thu", amount: 3_560_000 },
+        { label: "Fri", amount: 4_980_000 },
+        { label: "Sat", amount: 5_220_000 },
+        { label: "Sun", amount: 4_850_000 },
+      ],
+      month: [{ label: "1", amount: 4_850_000 }],
+    },
   },
   stockAlerts: [
     {

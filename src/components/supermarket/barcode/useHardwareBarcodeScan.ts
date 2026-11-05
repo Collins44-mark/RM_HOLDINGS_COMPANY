@@ -3,7 +3,8 @@
 import { useEffect, type RefObject } from "react";
 import { createScanGate, normalizeBarcode } from "@/lib/supermarket/barcode";
 
-const WEDGE_GAP_MS = 45;
+const WEDGE_GAP_MS = 120;
+const WEDGE_RESET_MS = 500;
 
 export function useHardwareBarcodeScan({
   inputRef,
@@ -11,16 +12,18 @@ export function useHardwareBarcodeScan({
   enabled = true,
   captureUnfocused = false,
   handleFocusedEnter = true,
+  duplicateWindowMs = 400,
 }: {
   inputRef: RefObject<HTMLInputElement | null>;
   onScan: (barcode: string) => void;
   enabled?: boolean;
   captureUnfocused?: boolean;
   handleFocusedEnter?: boolean;
+  duplicateWindowMs?: number;
 }) {
   useEffect(() => {
     if (!enabled) return;
-    const gate = createScanGate();
+    const gate = createScanGate(duplicateWindowMs);
     let buffer = "";
     let lastKeyAt = 0;
 
@@ -66,7 +69,7 @@ export function useHardwareBarcodeScan({
       const now = Date.now();
       const gap = lastKeyAt ? now - lastKeyAt : Number.POSITIVE_INFINITY;
       lastKeyAt = now;
-      if (gap > WEDGE_GAP_MS * 4) buffer = "";
+      if (gap > WEDGE_RESET_MS) buffer = "";
 
       if (inField) return;
 
@@ -78,5 +81,5 @@ export function useHardwareBarcodeScan({
 
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [captureUnfocused, enabled, handleFocusedEnter, inputRef, onScan]);
+  }, [captureUnfocused, duplicateWindowMs, enabled, handleFocusedEnter, inputRef, onScan]);
 }

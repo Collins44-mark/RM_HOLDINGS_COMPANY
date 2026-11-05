@@ -19,7 +19,7 @@ function emptyDashboard(error?: string): SupermarketSampleDashboard {
       expiringSoon: 0,
       expired: 0,
     },
-    salesOverview: { today: 0, week: 0, month: 0, trend: [] },
+    salesOverview: { today: 0, week: 0, month: 0, trends: { today: [], week: [], month: [] } },
     stockAlerts: error
       ? [
           {
@@ -52,11 +52,11 @@ export default async function SupermarketHomePage() {
       widgets,
       kpis: {
         todaySales: metrics.todayRevenue,
-        todaySalesDelta: 0,
+        todaySalesDelta: metrics.todaySalesDelta,
         todayOrders: metrics.todaySalesCount,
-        todayOrdersDelta: 0,
+        todayOrdersDelta: metrics.todayOrdersDelta,
         grossProfit: metrics.todayProfit,
-        grossProfitDelta: 0,
+        grossProfitDelta: metrics.todayProfitDelta,
         inventoryValue: metrics.inventoryValue ?? 0,
         stockUnits: metrics.stockUnits ?? 0,
         expiringSoon: metrics.expiringSoonCount ?? 0,
@@ -64,9 +64,13 @@ export default async function SupermarketHomePage() {
       },
       salesOverview: {
         today: metrics.todayRevenue,
-        week: metrics.todayRevenue,
-        month: metrics.todayRevenue,
-        trend: [],
+        week: metrics.weekRevenue,
+        month: metrics.monthRevenue,
+        trends: {
+          today: metrics.todayTrend,
+          week: metrics.weekTrend,
+          month: metrics.monthTrend,
+        },
       },
       stockAlerts: widgets.inventory
         ? [
@@ -104,45 +108,9 @@ export default async function SupermarketHomePage() {
             },
           ]
         : [],
-      recentSales: widgets.sales
-        ? (
-            metrics.recentSales as {
-              invoice_number: string;
-              sale_date: string;
-              total: number;
-              customer_name: string;
-            }[]
-          ).map((sale) => ({
-            invoice: sale.invoice_number,
-            time: String(sale.sale_date).slice(11, 16) || "—",
-            items: 0,
-            cashier: "—",
-            payment: "Cash" as const,
-            amount: Number(sale.total) || 0,
-            status: "Completed" as const,
-          }))
-        : [],
-      topProducts: widgets.sales
-        ? metrics.topLowStock.map((item) => ({
-            name: item.name,
-            sold: item.stock,
-          }))
-        : [],
-      recentPurchases: widgets.purchases
-        ? (
-            metrics.recentPurchases as {
-              receipt_number: string;
-              received_at: string;
-              total_cost: number;
-            }[]
-          ).map((purchase) => ({
-            supplier: "Supplier",
-            reference: purchase.receipt_number,
-            date: String(purchase.received_at).slice(0, 10),
-            amount: Number(purchase.total_cost) || 0,
-            status: "Received" as const,
-          }))
-        : [],
+      recentSales: widgets.sales ? metrics.recentSales : [],
+      topProducts: widgets.sales ? metrics.topProducts : [],
+      recentPurchases: [],
     };
     }
   } catch (error) {

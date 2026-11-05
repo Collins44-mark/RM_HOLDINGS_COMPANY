@@ -57,10 +57,21 @@ export async function updateProfileAction(
   return { success: true };
 }
 
-export async function updateAvatarAction(image: string): Promise<ProfileState> {
+export async function getMyAvatarAction(): Promise<{ ok: true; avatarUrl: string | null } | { ok: false }> {
+  const actor = await getVerifiedAuthUser();
+  if (!actor) return { ok: false };
+  const admin = createSupabaseAdminClient();
+  if (!admin) return { ok: false };
+  const { data, error } = await admin.from("profiles").select("avatar_url").eq("id", actor.id).maybeSingle();
+  if (error) return { ok: false };
+  const avatarUrl = typeof data?.avatar_url === "string" && data.avatar_url ? data.avatar_url : null;
+  return { ok: true, avatarUrl };
+}
+
+export async function updateAvatarAction(image: string | null): Promise<ProfileState> {
   const actor = await getVerifiedAuthUser();
   if (!actor) return { error: "You must be signed in to update your profile." };
-  if (!isStoredImage(image)) return { error: "Choose a smaller photo." };
+  if (image !== null && !isStoredImage(image)) return { error: "Choose a smaller photo." };
 
   const admin = createSupabaseAdminClient();
   if (!admin) return { error: "Profile photos are not available right now." };
@@ -69,12 +80,12 @@ export async function updateAvatarAction(image: string): Promise<ProfileState> {
     .from("profiles")
     .update({ avatar_url: image, updated_at: new Date().toISOString() })
     .eq("id", actor.id);
-  if (error) return { error: "Unable to save your photo. Please try again." };
+  if (error) return { error: image ? "Unable to save your photo. Please try again." : "Unable to remove your photo. Please try again." };
 
   await writeAuditEvent({
     action: "profile.updated",
     module: "profile",
-    description: "Updated profile photo",
+    description: image ? "Updated profile photo" : "Removed profile photo",
     severity: "low",
     entityType: "user",
     entityId: actor.id,
