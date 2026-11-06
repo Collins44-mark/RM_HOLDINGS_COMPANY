@@ -44,6 +44,26 @@ function actorOf(user: { id: string; name: string; email: string }) {
   return { id: user.id, name: user.name, email: user.email };
 }
 
+async function ensurePermissionRows(
+  admin: NonNullable<ReturnType<typeof createSupabaseAdminClient>>,
+  codes: string[],
+) {
+  const byCode = new Map(OPERABLE_PERMISSION_CATALOG.map((item) => [item.code, item]));
+  const rows = codes.map((code) => {
+    const item = byCode.get(code);
+    const parts = code.split(".");
+    return {
+      code,
+      module: item?.module ?? parts[0] ?? "platform",
+      resource: parts[1] ?? "access",
+      action: parts.slice(2).join(".") || "view",
+      name: item?.name ?? code,
+    };
+  });
+  const { error } = await admin.from("permissions").upsert(rows, { onConflict: "code", ignoreDuplicates: true });
+  return error;
+}
+
 export async function loadRoleSummariesAction(): Promise<RoleSummary[]> {
   await requireOwner();
   return listRoleSummaries();
@@ -96,6 +116,8 @@ export async function saveRolePermissionsAction(
     if (error) return { error: "Unable to save role permissions. Apply the latest database migration." };
   }
   if (added.length) {
+    const catalogError = await ensurePermissionRows(ready.admin, added);
+    if (catalogError) return { error: "Unable to save role permissions. Apply the latest database migration." };
     const { error } = await ready.admin.from("role_permissions").insert(
       added.map((permission_code) => ({ role_id: roleId, permission_code })),
     );
@@ -171,6 +193,7 @@ export async function createCustomRoleAction(input: {
   name: string;
   description?: string;
   module: string;
+  permissionCodes: string[];
 }): Promise<{ error?: string; role?: RoleSummary }> {
   const actor = await requireOwner();
   const ready = adminOrError();
@@ -182,6 +205,11 @@ export async function createCustomRoleAction(input: {
   }
   if (!isImplementedBusinessModule(moduleCode)) {
     return { error: "Select a module for this role." };
+  }
+  const allowed = new Set(catalogForModule(moduleCode).map((item) => item.code));
+  const permissionCodes = [...new Set(input.permissionCodes.filter((code) => allowed.has(code) && isOperablePermission(code)))];
+  if (!permissionCodes.length) {
+    return { error: "Tick at least one permission for this role." };
   }
 
   let code = codeFromRoleName(name);
@@ -211,6 +239,19 @@ export async function createCustomRoleAction(input: {
   if (inserted.error || !inserted.data) {
     return { error: "Unable to create the role. Apply the latest database migration." };
   }
+  const roleId = String(inserted.data.id);
+  const catalogError = await ensurePermissionRows(ready.admin, permissionCodes);
+  if (catalogError) {
+    await ready.admin.from("roles").delete().eq("id", roleId);
+    return { error: "Unable to save the role permissions." };
+  }
+  const granted = await ready.admin.from("role_permissions").insert(
+    permissionCodes.map((permission_code) => ({ role_id: roleId, permission_code })),
+  );
+  if (granted.error) {
+    await ready.admin.from("roles").delete().eq("id", roleId);
+    return { error: "Unable to save the role permissions." };
+  }
 
   updateTag(ACCESS_CATALOG_CACHE_TAG);
   revalidatePath("/owner/users");
@@ -222,8 +263,8 @@ export async function createCustomRoleAction(input: {
         moduleCode === "school" ? `School role created · ${name}` : `Role created · ${name}`,
       severity: "medium",
       entityType: "role",
-      entityId: String(inserted.data.id),
-      metadata: { module: moduleCode, code },
+      entityId: roleId,
+      metadata: { module: moduleCode, code, permissions: permissionCodes },
       actor: actorOf(actor),
     },
   ]);
@@ -235,10 +276,10 @@ export async function createCustomRoleAction(input: {
       name: String(inserted.data.name),
       description: String(inserted.data.description ?? ""),
       moduleCount: 1,
-      permissionCount: 0,
+      permissionCount: permissionCodes.length,
       moduleLabel: permissionModuleLabel(moduleCode),
       moduleCode,
-      permissionCodes: [],
+      permissionCodes,
       locked: false,
       slug: roleSlug(String(inserted.data.code)),
     },

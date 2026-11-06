@@ -21,7 +21,8 @@ import {
   displayRoleName,
   rolesForSelectedModules,
 } from "@/lib/auth/role-options";
-import { IMPLEMENTED_BUSINESS_MODULES, isImplementedBusinessModule, permissionModuleLabel } from "@/lib/config/permissions";
+import { IMPLEMENTED_BUSINESS_MODULES, catalogForModule, groupPermissions, isImplementedBusinessModule, permissionModuleLabel } from "@/lib/config/permissions";
+import { PermissionTile } from "@/components/users/PermissionTile";
 import { createCustomRoleAction } from "@/actions/rbac";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import type { ManagedUser, ManagedUserStatus } from "@/lib/data/app-users";
@@ -383,23 +384,20 @@ export function UsersManager({
         </div>
       ) : tab === "roles" ? (
         <div className="space-y-4">
-          <div className="flex flex-wrap gap-1 rounded-full bg-[#eef3f8] p-1 w-fit">
-            {roleModuleFilters.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setRoleModuleFilter(item.id)}
-                className={cn(
-                  "h-8 rounded-full px-3.5 text-[12.5px] font-semibold transition duration-200",
-                  roleModuleFilter === item.id
-                    ? "bg-white text-navy shadow-[0_4px_12px_rgba(15,35,64,0.08)]"
-                    : "text-slate-500 hover:text-navy",
-                )}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+          <label className="block w-full max-w-[280px]">
+            <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Module</span>
+            <select
+              value={roleModuleFilter}
+              onChange={(event) => setRoleModuleFilter(event.target.value)}
+              className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
+            >
+              {roleModuleFilters.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {visibleRoleCards.map((role) => (
               <RoleCard key={role.id} role={role} onOpen={() => openRole(role)} />
@@ -1076,11 +1074,22 @@ function CreateRoleDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [moduleCode, setModuleCode] = useState<(typeof IMPLEMENTED_BUSINESS_MODULES)[number]>("school");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const groups = useMemo(() => groupPermissions(catalogForModule(moduleCode)), [moduleCode]);
+
+  function toggle(code: string) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  }
 
   return (
-    <Modal onClose={onClose} title="Create Role">
+    <Modal onClose={onClose} title="Create Role" wide>
       <form
         className="space-y-3.5"
         onSubmit={(event) => {
@@ -1088,7 +1097,17 @@ function CreateRoleDialog({
           if (saving || pending) return;
           setSaving(true);
           setError(null);
-          void createCustomRoleAction({ name, description, module: moduleCode }).then((result) => {
+          if (!selected.size) {
+            setSaving(false);
+            setError("Tick at least one permission for this role.");
+            return;
+          }
+          void createCustomRoleAction({
+            name,
+            description,
+            module: moduleCode,
+            permissionCodes: [...selected],
+          }).then((result) => {
             setSaving(false);
             if (result.error || !result.role) {
               setError(result.error || "Unable to create the role.");
@@ -1103,7 +1122,10 @@ function CreateRoleDialog({
           <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Module</span>
           <select
             value={moduleCode}
-            onChange={(event) => setModuleCode(event.target.value as typeof moduleCode)}
+            onChange={(event) => {
+              setModuleCode(event.target.value as typeof moduleCode);
+              setSelected(new Set());
+            }}
             className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
           >
             {IMPLEMENTED_BUSINESS_MODULES.map((code) => (
@@ -1130,6 +1152,31 @@ function CreateRoleDialog({
             className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy outline-none focus:border-[#9bb6e0]"
           />
         </label>
+        <div className="max-h-[46vh] space-y-4 overflow-y-auto rounded-[16px] border border-black/[0.05] bg-[#f8fafc] p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+            Permissions for {permissionModuleLabel(moduleCode)}
+          </p>
+          {groups.map((group) =>
+            group.resources.map((resource) => (
+              <div key={resource.resource}>
+                <p className="mb-1.5 text-[12px] font-semibold text-navy">{resource.label}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {resource.permissions.map((permission) => {
+                    const action = permission.code.split(".")[2] ?? permission.name;
+                    return (
+                      <PermissionTile
+                        key={permission.code}
+                        label={action.charAt(0).toUpperCase() + action.slice(1)}
+                        checked={selected.has(permission.code)}
+                        onChange={() => toggle(permission.code)}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )),
+          )}
+        </div>
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 text-[14px] font-medium text-slate-600">
             Cancel
@@ -1151,15 +1198,17 @@ function Modal({
   title,
   onClose,
   children,
+  wide = false,
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  wide?: boolean;
 }) {
   return (
     <div className="fixed inset-x-0 bottom-0 top-16 z-50 flex items-start justify-center overflow-y-auto bg-navy/30 px-4 py-4 sm:top-[88px]">
       <button type="button" className="absolute inset-0" aria-label="Close" onClick={onClose} />
-      <div className="relative my-1 max-h-full w-full overflow-y-auto rounded-[24px] bg-white p-5 shadow-2xl sm:max-w-[560px] sm:p-6">
+      <div className={cn("relative my-1 max-h-full w-full overflow-y-auto rounded-[24px] bg-white p-5 shadow-2xl sm:p-6", wide ? "sm:max-w-[760px]" : "sm:max-w-[560px]")}>
         <div className="mb-4 flex items-start justify-between gap-3">
           <h2 className="text-[18px] font-bold tracking-[-0.03em] text-navy">{title}</h2>
           <button type="button" onClick={onClose} className="text-[13px] font-medium text-slate-500">
