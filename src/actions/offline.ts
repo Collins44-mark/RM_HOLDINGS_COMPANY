@@ -36,6 +36,7 @@ import { recordTransportFuelAction, recordTransportMaintenanceAction } from "@/a
 import { createPurchaseOrderAction } from "@/actions/supermarket/catalog";
 import { completeSaleAction } from "@/actions/supermarket/sales";
 import { posIdempotencyRpcMissing } from "@/lib/supermarket/pos-idempotency";
+import { replayModuleCommand } from "@/lib/offline/replay-module";
 import { writeAuditEvent } from "@/lib/audit";
 import { requireAuth } from "@/lib/auth/session";
 import { classifyActionError } from "@/lib/offline/classify";
@@ -160,6 +161,18 @@ async function dispatchQueued(input: QueuedSubmitInput): Promise<ActionResult> {
     }
     case "supermarket.create_purchase_order": {
       const result = await createPurchaseOrderAction(payload as Parameters<typeof createPurchaseOrderAction>[0]);
+      if (!result.ok) return result;
+      return { ok: true as const, id: result.id, duplicate: false };
+    }
+    case "property.sync":
+    case "livestock.sync":
+    case "beekeeping.sync": {
+      const command = payload as { method?: string; path?: string; body?: unknown };
+      const result = await replayModuleCommand({
+        method: String(command.method || ""),
+        path: String(command.path || ""),
+        body: command.body,
+      });
       if (!result.ok) return result;
       return { ok: true as const, id: result.id, duplicate: false };
     }

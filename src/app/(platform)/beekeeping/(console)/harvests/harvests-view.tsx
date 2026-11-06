@@ -50,6 +50,11 @@ export default function HarvestsView({ initial }: { initial: BeeDirectory }) {
     setError("");
     try {
       const data = await saveJson(mode === "edit" && editing ? `/api/beekeeping/harvests/${editing.id}` : "/api/beekeeping/harvests", mode === "edit" ? "PATCH" : "POST", { ...draft, quantity_kg: Number(draft.quantity_kg) });
+      if (data.queued) {
+        setSaveState("saved");
+        setTimeout(() => setMode(null), 500);
+        return;
+      }
       setDirectory(data.directory);
       setSaveState("saved");
       setTimeout(() => setMode(null), 500);
@@ -63,7 +68,7 @@ export default function HarvestsView({ initial }: { initial: BeeDirectory }) {
     setMenu(null);
     try {
       const data = await saveJson(`/api/beekeeping/harvests/${harvest.id}`, "PATCH", { cancel: true });
-      setDirectory(data.directory);
+      if (!data.queued) setDirectory(data.directory);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Cancel failed");
     }

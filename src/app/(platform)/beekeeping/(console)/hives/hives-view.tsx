@@ -60,6 +60,11 @@ export default function HivesView({ initial }: { initial: BeeDirectory }) {
     setError("");
     try {
       const data = await saveJson(mode === "edit" && editing ? `/api/beekeeping/hives/${editing.id}` : "/api/beekeeping/hives", mode === "edit" ? "PATCH" : "POST", draft);
+      if (data.queued) {
+        setSaveState("saved");
+        setTimeout(() => setMode(null), 500);
+        return;
+      }
       setDirectory(data.directory);
       setSaveState("saved");
       setTimeout(() => setMode(null), 500);
@@ -72,7 +77,7 @@ export default function HivesView({ initial }: { initial: BeeDirectory }) {
   async function archive(hive: BeeHive) {
     setMenu(null);
     const data = await saveJson(`/api/beekeeping/hives/${hive.id}`, "PATCH", { archive: true });
-    setDirectory(data.directory);
+    if (!data.queued) setDirectory(data.directory);
     setSelected(null);
   }
 

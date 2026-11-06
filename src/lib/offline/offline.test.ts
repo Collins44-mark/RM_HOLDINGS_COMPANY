@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseOperationPayload } from "./catalog";
+import { moduleWriteAllowed, moduleWriteOnlineOnly } from "./module-write-policy";
 import {
   navigationPageCacheName,
   shouldBypassServiceWorkerCache,
@@ -515,4 +516,23 @@ test("rice stock adjustments and school lifecycle posts are accepted by the shar
     students: [{ studentId: "stu-1", outcome: "PROMOTE", classId: "c2" }],
   });
   assert.equal(promo.ok, true);
+});
+
+test("property, livestock, and beekeeping saves can be queued, and approvals cannot", () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+  assert.equal(moduleWriteAllowed("/api/property/contracts", "POST", { tenant_id: "t1" }), true);
+  assert.equal(moduleWriteAllowed(`/api/property/hall-bookings/${id}/payments`, "POST", { amount: 10 }), true);
+  assert.equal(moduleWriteAllowed(`/api/property/contracts/${id}/terminate`, "POST", { reason: "end" }), false);
+  assert.equal(moduleWriteAllowed(`/api/property/hall-bookings/${id}/confirm`, "POST", {}), false);
+  assert.equal(moduleWriteAllowed("/api/livestock", "POST", { action: "sale", quantity: 1 }), true);
+  assert.equal(moduleWriteOnlineOnly("/api/livestock", { action: "sale-cancel" }), true);
+  assert.equal(moduleWriteAllowed("/api/beekeeping/hives", "POST", { hive_name: "A" }), true);
+  assert.equal(moduleWriteAllowed(`/api/beekeeping/hives/${id}`, "PATCH", { archive: true }), false);
+  const parsed = parseOperationPayload("property.sync", {
+    requestId: id,
+    method: "POST",
+    path: "/api/property/expenses",
+    body: { title: "Repair", amount: 1000 },
+  });
+  assert.equal(parsed.ok, true);
 });

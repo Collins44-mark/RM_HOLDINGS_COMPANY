@@ -74,6 +74,11 @@ export default function SalesView({ initial, initialTab }: { initial: BeeDirecto
               : mode === "edit-expense" && expense
                 ? await saveJson(`/api/beekeeping/expenses/${expense.id}`, "PATCH", { ...draft, amount: Number(draft.amount) })
                 : await saveJson(`/api/beekeeping/expenses/${expense?.id}/payments`, "POST", { ...draft, amount: Number(draft.amount), request_key: requestKey });
+      if (data.queued) {
+        setSaveState("saved");
+        setTimeout(() => { setMode(null); setSelectedSale(null); setSelectedExpense(null); }, 500);
+        return;
+      }
       setDirectory(data.directory);
       setSaveState("saved");
       setTimeout(() => { setMode(null); setSelectedSale(null); setSelectedExpense(null); }, 500);
@@ -87,7 +92,7 @@ export default function SalesView({ initial, initialTab }: { initial: BeeDirecto
     setMenu(null);
     try {
       const data = await saveJson(kind === "sale" ? `/api/beekeeping/sales/${id}` : `/api/beekeeping/expenses/${id}`, "PATCH", { cancel: true });
-      setDirectory(data.directory);
+      if (!data.queued) setDirectory(data.directory);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Cancel failed");
     }

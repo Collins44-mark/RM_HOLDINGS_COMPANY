@@ -309,6 +309,13 @@ export const schoolConfirmPromotionsPayload = z.object({
     .min(1),
 });
 
+export const moduleSyncPayload = z.object({
+  requestId: uuid,
+  method: z.enum(["POST", "PATCH"]),
+  path: z.string().min(8).max(180),
+  body: z.unknown().optional(),
+});
+
 export const supermarketCompleteSalePayload = z.object({
   requestId: uuid,
   customerName: optionalText,
@@ -388,6 +395,9 @@ const schemas: Record<OfflineOperationType, z.ZodType<Record<string, unknown>>> 
   "school.confirm_promotions": schoolConfirmPromotionsPayload,
   "supermarket.create_purchase_order": supermarketPurchaseOrderPayload,
   "supermarket.complete_sale": supermarketCompleteSalePayload,
+  "property.sync": moduleSyncPayload,
+  "livestock.sync": moduleSyncPayload,
+  "beekeeping.sync": moduleSyncPayload,
 };
 
 export const OPERATION_RISK: Record<OfflineOperationType, OfflineRiskClass> = {
@@ -419,6 +429,9 @@ export const OPERATION_RISK: Record<OfflineOperationType, OfflineRiskClass> = {
   "school.confirm_promotions": 3,
   "supermarket.create_purchase_order": 2,
   "supermarket.complete_sale": 3,
+  "property.sync": 2,
+  "livestock.sync": 2,
+  "beekeeping.sync": 2,
 };
 
 export const MODULE_LABEL: Record<string, string> = {
@@ -426,9 +439,12 @@ export const MODULE_LABEL: Record<string, string> = {
   rice: "Rice Mill & Warehouse",
   school: "School Management",
   supermarket: "Supermarket",
+  property: "Properties & Rentals",
+  livestock: "Livestock Farm",
+  beekeeping: "Beekeeping",
 };
 
-export const QUEUEABLE_MODULES = ["farm", "rice", "school", "supermarket"] as const;
+export const QUEUEABLE_MODULES = ["farm", "rice", "school", "supermarket", "property", "livestock", "beekeeping"] as const;
 
 export function isQueueableModule(code: string): code is (typeof QUEUEABLE_MODULES)[number] {
   return (QUEUEABLE_MODULES as readonly string[]).includes(code);
@@ -480,6 +496,9 @@ const OPERATION_TITLE: Record<OfflineOperationType, string> = {
   "school.confirm_promotions": "Promotions",
   "supermarket.create_purchase_order": "Purchase order",
   "supermarket.complete_sale": "Shop sale",
+  "property.sync": "Property record",
+  "livestock.sync": "Livestock record",
+  "beekeeping.sync": "Beekeeping record",
 };
 
 export function operationTitle(type: OfflineOperationType) {

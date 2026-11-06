@@ -3,6 +3,7 @@ import { useState } from "react";
 import { MoreVertical } from "lucide-react";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useListPage } from "@/lib/property/use-list-page";
+import { saveModuleJson } from "@/lib/offline/module-save";
 
 const PROPERTY_TYPES = ["House", "Apartment", "Commercial", "Hall", "Plot", "Office"];
 
@@ -41,19 +42,25 @@ export default function PropertiesView({ initialItems }: { initialItems: any[] }
     setAddState("saving");
     setError("");
     try {
-      const response = await fetch("/api/property/properties", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, address, property_type: propType, status, business_unit_id: "" }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        setError(data.error || "Save failed");
+      const result = await saveModuleJson("/api/property/properties", "POST", { name, address, property_type: propType, status, business_unit_id: "" });
+      if (!result.ok) {
+        setError(result.error);
         setAddState("idle");
         return;
       }
-      const created = data.data || {};
+      if (result.queued) {
+        setAddState("saved");
+        setTimeout(() => {
+          setFormOpen(false);
+          setAddState("idle");
+          setName("");
+          setAddress("");
+          setPropType("House");
+          setStatus("Active");
+        }, 700);
+        return;
+      }
+      const created = (result.data.data as Record<string, unknown>) || {};
       setItems((prev) => [{ ...created, units: [], rentals: [], tenants: [], unit_count: 0, occupied_count: 0, vacant_count: 0, maintenance_count: 0 }, ...prev]);
       setAddState("saved");
       setTimeout(() => {
@@ -235,7 +242,7 @@ export default function PropertiesView({ initialItems }: { initialItems: any[] }
             </div>
           </>
         ) : (
-          <form onSubmit={async(e)=>{e.preventDefault(); if(saveState!=="idle") return; const original=selectedProperty; setSaveState("saving"); setSaveError(""); try{const r=await fetch(`/api/property/properties/${selectedProperty.id}`,{method:"PATCH",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:selectedProperty.name,property_type:selectedProperty.property_type,status:selectedProperty.status,street_address:selectedProperty.street_address,region:selectedProperty.region,district:selectedProperty.district,ward:selectedProperty.ward,description:selectedProperty.description,property_code:selectedProperty.property_code})}); if(r.ok){ const data=await r.json(); const saved=data.data||data; const linked={units:selectedProperty.units,rentals:selectedProperty.rentals,tenants:selectedProperty.tenants,unit_count:selectedProperty.unit_count,occupied_count:selectedProperty.occupied_count,vacant_count:selectedProperty.vacant_count,maintenance_count:selectedProperty.maintenance_count}; setSaveState("saved"); setSelectedProperty({...saved,...linked}); setItems((prev:any)=>prev.map((p:any)=>p.id===selectedProperty.id?{...p,...saved,...linked}:p)); setTimeout(()=>{setEditMode(false);setSaveState("idle");},900); } else{ let msg="Save failed"; try{const d=await r.json(); msg=d.error||msg;}catch{} setSaveError(msg); setSaveState("idle"); } } catch(err){ setSaveError("Network error"); setSaveState("idle"); }}}>
+          <form onSubmit={async(e)=>{e.preventDefault(); if(saveState!=="idle") return; const original=selectedProperty; setSaveState("saving"); setSaveError(""); try{const result=await saveModuleJson(`/api/property/properties/${selectedProperty.id}`,"PATCH",{name:selectedProperty.name,property_type:selectedProperty.property_type,status:selectedProperty.status,street_address:selectedProperty.street_address,region:selectedProperty.region,district:selectedProperty.district,ward:selectedProperty.ward,description:selectedProperty.description,property_code:selectedProperty.property_code}); if(result.ok){ if(result.queued){ setSaveState("saved"); setTimeout(()=>{setEditMode(false);setSaveState("idle");},900); return;} const saved=result.data.data||result.data; const linked={units:selectedProperty.units,rentals:selectedProperty.rentals,tenants:selectedProperty.tenants,unit_count:selectedProperty.unit_count,occupied_count:selectedProperty.occupied_count,vacant_count:selectedProperty.vacant_count,maintenance_count:selectedProperty.maintenance_count}; setSaveState("saved"); setSelectedProperty({...saved,...linked}); setItems((prev:any)=>prev.map((p:any)=>p.id===selectedProperty.id?{...p,...saved,...linked}:p)); setTimeout(()=>{setEditMode(false);setSaveState("idle");},900); } else{ setSaveError(result.error||"Save failed"); setSaveState("idle"); } } catch(err){ setSaveError("Network error"); setSaveState("idle"); }}}>
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Edit Property</h3>
             <div className="grid grid-cols-2 gap-3 mb-4">
               <input required value={selectedProperty.name} onChange={e=>setSelectedProperty({...selectedProperty,name:e.target.value})} className="w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" placeholder="Property Name" />

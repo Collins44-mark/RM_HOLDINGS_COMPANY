@@ -11,7 +11,7 @@ export function classifyActionError(error: string): SubmitQueuedResult {
   if (/already posted|duplicate|conflict|stale|not enough stock|insufficient stock|out of stock|quantity exceeds/.test(text)) {
     return { ok: false, retryable: false, code: "CONFLICT", error };
   }
-  if (/must be|invalid|cannot be|greater than|below zero|insufficient|not found|enter |required|between zero/.test(text)) {
+  if (/do not send this queued|must be|invalid|cannot be|greater than|below zero|insufficient|not found|enter |required|between zero/.test(text)) {
     return { ok: false, retryable: false, code: "VALIDATION", error };
   }
   return { ok: false, retryable: true, code: "UNKNOWN", error };

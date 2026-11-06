@@ -6,6 +6,8 @@ import { PaginationBar } from "@/components/ui/PaginationBar";
 import { formatTzs } from "@/lib/format/currency";
 import { useListPage } from "@/lib/property/use-list-page";
 import { PAYMENT_METHODS, businessToday, summarizeInvoices, type InvoiceContractOption, type InvoiceRecord } from "@/lib/property/invoices";
+import { saveModuleJson } from "@/lib/offline/module-save";
+import { isLikelyOffline } from "@/lib/offline/errors";
 function formatDate(value: string) {
   if (!value) return "—";
   const [year, month, day] = value.slice(0, 10).split("-");
@@ -203,14 +205,26 @@ export default function InvoicesView({ initialItems, contracts }: { initialItems
           };
     const url = formMode === "edit" && editing ? `/api/property/invoices/${editing.id}` : formMode === "pay" && editing ? `/api/property/invoices/${editing.id}/payments` : "/api/property/invoices";
     try {
-      const response = await fetch(url, {
-        method: formMode === "edit" ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.data) {
-        setSaveError(data.error || "Save failed");
+      const queuedBody = isLikelyOffline() && formMode === "create" && covered
+        ? { ...payload, offlinePayment: { payment_date: businessToday(), amount: covered.amount, payment_method: "Cash", transaction_reference: "", notes: "" } }
+        : payload;
+      const result = await saveModuleJson(url, formMode === "edit" ? "PATCH" : "POST", queuedBody);
+      if (!result.ok) {
+        setSaveError(result.error);
+        setSaveState("idle");
+        return;
+      }
+      if (result.queued) {
+        setSaveState("saved");
+        window.setTimeout(() => {
+          setFormMode(null);
+          setSaveState("idle");
+        }, 700);
+        return;
+      }
+      const data = result.data as { data?: InvoiceRecord; notice?: string };
+      if (!data.data) {
+        setSaveError("Save failed");
         setSaveState("idle");
         return;
       }

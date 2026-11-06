@@ -23,6 +23,8 @@ import {
   type SalesPeriodPreset,
 } from "@/lib/data/sample-supermarket-sales";
 import { getFinanceSummaryAction } from "@/actions/supermarket/finance";
+import { isLikelyOffline, isTransportError } from "@/lib/offline/errors";
+import { readOfflineSnapshot, writeOfflineSnapshot } from "@/lib/offline/snapshots";
 import { primaryButton } from "@/components/supermarket/purchasing-ui";
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
 import { useAuth } from "@/components/auth/AuthProvider";
@@ -128,18 +130,35 @@ export function FinanceOverview() {
   useEffect(() => {
     let active = true;
     void getFinanceSummaryAction({ from: period.start, to: period.end })
-      .then((result) => {
+      .then(async (result) => {
         if (!active) return;
         if (!result.ok) {
-          // Keep any prior successful summary visible; do not invent zeros on failure.
+          if (isLikelyOffline() || isTransportError(result.error)) {
+            const cached = await readOfflineSnapshot<FinanceSummary>(`finance:${period.start}:${period.end}`, "supermarket");
+            if (cached && active) {
+              setSummaryError(null);
+              setSummary(normalizeFinanceSummary(cached, period.start, period.end));
+              return;
+            }
+          }
           setSummaryError(result.error);
           return;
         }
         setSummaryError(null);
-        setSummary(normalizeFinanceSummary(result.summary, period.start, period.end));
+        const next = normalizeFinanceSummary(result.summary, period.start, period.end);
+        setSummary(next);
+        void writeOfflineSnapshot({ kind: `finance:${period.start}:${period.end}`, businessUnitCode: "supermarket", payload: next });
       })
-      .catch((error: unknown) => {
+      .catch(async (error: unknown) => {
         if (!active) return;
+        if (isLikelyOffline() || isTransportError(error)) {
+          const cached = await readOfflineSnapshot<FinanceSummary>(`finance:${period.start}:${period.end}`, "supermarket");
+          if (cached && active) {
+            setSummaryError(null);
+            setSummary(normalizeFinanceSummary(cached, period.start, period.end));
+            return;
+          }
+        }
         const message = error instanceof Error ? error.message : "Failed to load finance summary.";
         setSummaryError(message);
       });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { writeOfflineSnapshot } from "@/lib/offline/snapshots";
 import { FinanceCategoryTable } from "@/components/finance/FinanceCategoryTable";
 import { FinanceHeader } from "@/components/finance/FinanceHeader";
 import { FinanceSummaryCards } from "@/components/finance/FinanceSummaryCards";
@@ -54,6 +55,14 @@ export function FinanceWorkspace({
     const href = query ? `/owner/finance?${query}` : "/owner/finance";
     window.history.replaceState(window.history.state, "", href);
   }, []);
+
+  useEffect(() => {
+    void writeOfflineSnapshot({
+      kind: `owner-finance:${label}`,
+      businessUnitCode: "owner",
+      payload: { label, rows, totals, comparison, comparisonLabel, trend, trendGrain, categories },
+    });
+  }, [label, rows, totals, comparison, comparisonLabel, trend, trendGrain, categories]);
 
   useEffect(() => {
     function onPopState() {

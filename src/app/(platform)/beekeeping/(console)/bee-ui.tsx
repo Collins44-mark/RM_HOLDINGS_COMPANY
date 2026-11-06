@@ -49,8 +49,9 @@ export function ActionMenuItem({ label, onClick }: { label: string; onClick: () 
 }
 
 export async function saveJson(url: string, method: "POST" | "PATCH", body: unknown) {
-  const response = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "Save failed");
-  return data;
+  const { saveModuleJson } = await import("@/lib/offline/module-save");
+  const result = await saveModuleJson(url, method, body);
+  if (!result.ok) throw new Error(result.error);
+  if (result.queued) return { queued: true as const };
+  return result.data as { queued?: false; directory: any };
 }

@@ -33,6 +33,9 @@ export const OFFLINE_OPERATION_TYPES = [
   "school.confirm_promotions",
   "supermarket.create_purchase_order",
   "supermarket.complete_sale",
+  "property.sync",
+  "livestock.sync",
+  "beekeeping.sync",
 ] as const;
 export type OfflineOperationType = (typeof OFFLINE_OPERATION_TYPES)[number];
 

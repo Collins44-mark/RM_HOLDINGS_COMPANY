@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { LivestockDirectory } from "@/lib/livestock/directory";
+import { saveModuleJson } from "@/lib/offline/module-save";
 
 export const fieldClass = "mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none";
 
@@ -36,17 +37,21 @@ export function useLivestock(initial: LivestockDirectory) {
     setState("saving");
     setError("");
     try {
-      const response = await fetch("/api/livestock", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-      const json = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        setError(json.error || "Save failed");
+      const action = String(payload.action || "");
+      const requestKey = typeof payload.request_key === "string" && payload.request_key ? payload.request_key : crypto.randomUUID();
+      const body = action.includes("payment") ? { ...payload, request_key: requestKey } : payload;
+      const result = await saveModuleJson("/api/livestock", "POST", body);
+      if (!result.ok) {
+        setError(result.error || "Save failed");
         setState("idle");
         setMark("");
         return false;
       }
-      setData(json.directory);
+      if (!result.queued) {
+        setData((result.data.directory || data) as LivestockDirectory);
+        router.refresh();
+      }
       setState("saved");
-      router.refresh();
       await wait(700);
       options?.close?.();
       setState("idle");

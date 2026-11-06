@@ -3,6 +3,7 @@ import { useState } from "react";
 import { MoreVertical } from "lucide-react";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useListPage } from "@/lib/property/use-list-page";
+import { saveModuleJson } from "@/lib/offline/module-save";
 
 type UnitRow = {
   id: string;
@@ -88,14 +89,13 @@ export default function UnitsView({
     setSaveState("saving");
     setSaveError("");
     try {
-      const res = await fetch("/api/property/units", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, unit_type: unitType, status, monthly_rent: rent ? parseFloat(rent) : 0, property_id: propertyId }) });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
+      const result = await saveModuleJson("/api/property/units", "POST", { name, unit_type: unitType, status, monthly_rent: rent ? parseFloat(rent) : 0, property_id: propertyId });
+      if (result.ok) {
         setSaveState("saved");
-        setItems((prev: any[]) => [...prev, data.data || data]);
+        if (!result.queued) setItems((prev: any[]) => [...prev, result.data.data || result.data]);
         setTimeout(() => { setFormOpen(false); setSaveState("idle"); setName(""); setRent(""); setPropertyId(""); }, 800);
       } else {
-        setSaveError(data.error || "Save failed");
+        setSaveError(result.error || "Save failed");
         setSaveState("idle");
       }
     } catch (err: any) {
@@ -110,22 +110,23 @@ export default function UnitsView({
     setUpdateState("saving");
     setUpdateError("");
     try {
-      const res = await fetch(`/api/property/units/${selectedUnit.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: draftName,
-          status: draftStatus,
-          monthly_rent: draftRent ? parseFloat(draftRent) : 0,
-          property_id: draftPropertyId,
-        }),
+      const result = await saveModuleJson(`/api/property/units/${selectedUnit.id}`, "PATCH", {
+        name: draftName,
+        status: draftStatus,
+        monthly_rent: draftRent ? parseFloat(draftRent) : 0,
+        property_id: draftPropertyId,
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setUpdateError(data.error || "Update failed");
+      if (!result.ok) {
+        setUpdateError(result.error || "Update failed");
         setUpdateState("idle");
         return;
       }
+      if (result.queued) {
+        setUpdateState("saved");
+        setTimeout(() => setUpdateState("idle"), 800);
+        return;
+      }
+      const data = result.data;
       const updated = data.data || { ...selectedUnit, name: draftName, status: draftStatus, monthly_rent: draftRent ? parseFloat(draftRent) : 0, property_id: draftPropertyId };
       setSelectedUnit(updated);
       setItems((prev) => prev.map((item) => item.id === updated.id ? { ...item, ...updated } : item));

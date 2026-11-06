@@ -8,6 +8,7 @@ import { useListPage } from "@/lib/property/use-list-page";
 import { PAYMENT_METHODS, businessToday } from "@/lib/property/invoices";
 import { EVENT_TYPES, summarizeBookings, type BookingCustomer, type BookingRecord, type HallOption } from "@/lib/property/halls";
 import { nextSerial } from "@/lib/property/serial";
+import { saveModuleJson } from "@/lib/offline/module-save";
 
 function dateWindow(preset: string, fromDate: string, toDate: string) {
   const today = businessToday();
@@ -218,14 +219,18 @@ export default function HallBookingsView({ initialItems, halls, customers }: { i
       : { ...draft, expected_guests: Number(draft.expected_guests || 0), rental: Number(draft.rental || 0), charges: Number(draft.charges || 0), discount: Number(draft.discount || 0), deposit_required: Number(draft.deposit_required || 0), amount_paid: formMode === "create" ? Number(draft.amount_paid || 0) : 0 };
     const url = formMode === "pay" && editing ? `/api/property/hall-bookings/${editing.id}/payments` : formMode !== "create" && editing ? `/api/property/hall-bookings/${editing.id}` : "/api/property/hall-bookings";
     try {
-      const response = await fetch(url, { method: formMode === "create" || formMode === "pay" ? "POST" : "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.data) {
-        setSaveError(data.error || "Save failed");
+      const result = await saveModuleJson(url, formMode === "create" || formMode === "pay" ? "POST" : "PATCH", payload);
+      if (!result.ok || (result.queued === false && !result.data.data)) {
+        setSaveError(result.ok ? "Save failed" : result.error);
         setSaveState("idle");
         return;
       }
-      replaceBooking(data.data);
+      if (result.queued) {
+        setSaveState("saved");
+        window.setTimeout(() => { setFormMode(null); setSaveState("idle"); }, 700);
+        return;
+      }
+      replaceBooking(result.data.data as BookingRecord);
       setSaveState("saved");
       window.setTimeout(() => { setFormMode(null); setSaveState("idle"); }, 700);
     } catch {

@@ -13,6 +13,7 @@ import {
   type ExpenseOption,
   type ExpenseRecord,
 } from "@/lib/property/expenses";
+import { saveModuleJson } from "@/lib/offline/module-save";
 
 type Draft = {
   title: string;
@@ -146,14 +147,18 @@ export default function ExpensesView({
     const method = formMode === "edit" ? "PATCH" : "POST";
     const payload = formMode === "pay" ? payment : { ...draft, amount: Number(draft.amount || 0), amount_paid: 0, payment_date: draft.expense_date || draft.payment_date };
     try {
-      const response = await fetch(path, { method, credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.data) {
-        setSaveError(data.error || "Save failed");
+      const result = await saveModuleJson(path, method, payload);
+      if (!result.ok || (result.queued === false && !result.data.data)) {
+        setSaveError(result.ok ? "Save failed" : result.error);
         setSaveState("idle");
         return;
       }
-      replaceExpense(data.data);
+      if (result.queued) {
+        setSaveState("saved");
+        setTimeout(() => { setFormMode(null); setSaveState("idle"); }, 700);
+        return;
+      }
+      replaceExpense(result.data.data as ExpenseRecord);
       setSaveState("saved");
       setTimeout(() => { setFormMode(null); setSaveState("idle"); }, 700);
     } catch (error: any) {

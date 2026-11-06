@@ -5,6 +5,7 @@ import { MoreVertical } from "lucide-react";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useListPage } from "@/lib/property/use-list-page";
 import type { TenantOption, TenantRecord } from "@/lib/property/tenants";
+import { saveModuleJson } from "@/lib/offline/module-save";
 
 function statusClass(status: string) {
   return status === "Active" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700";
@@ -68,18 +69,13 @@ export default function TenantsView({ initialItems, properties, units }: { initi
     setAddState("saving");
     setAddError("");
     try {
-      const response = await fetch("/api/property/tenants", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ full_name: name, phone_number: phone, email, property_id: propertyId, unit_id: unitId, status }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        setAddError(data.error || "Save failed");
+      const result = await saveModuleJson("/api/property/tenants", "POST", { full_name: name, phone_number: phone, email, property_id: propertyId, unit_id: unitId, status });
+      if (!result.ok) {
+        setAddError(result.error);
         setAddState("idle");
         return;
       }
-      setItems((prev) => [data.data, ...prev]);
+      if (!result.queued) setItems((prev) => [result.data.data as TenantRecord, ...prev]);
       setAddState("saved");
       setTimeout(() => {
         setFormOpen(false);
@@ -106,24 +102,25 @@ export default function TenantsView({ initialItems, properties, units }: { initi
     setSaveState("saving");
     setSaveError("");
     try {
-      const response = await fetch(`/api/property/tenants/${selected.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          full_name: draft.full_name,
-          phone_number: draft.phone_number,
-          email: draft.email,
-          status: draft.status,
-          property_id: draft.property_id,
-          unit_id: draft.unit_id,
-        }),
+      const result = await saveModuleJson(`/api/property/tenants/${selected.id}`, "PATCH", {
+        full_name: draft.full_name,
+        phone_number: draft.phone_number,
+        email: draft.email,
+        status: draft.status,
+        property_id: draft.property_id,
+        unit_id: draft.unit_id,
       });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        setSaveError(data.error || "Update failed");
+      if (!result.ok) {
+        setSaveError(result.error);
         setSaveState("idle");
         return;
       }
+      if (result.queued) {
+        setSaveState("saved");
+        setTimeout(() => setSaveState("idle"), 700);
+        return;
+      }
+      const data = result.data as { data: TenantRecord };
       setSelected(data.data);
       setDraft(data.data);
       setItems((prev) => prev.map((item) => item.id === data.data.id ? data.data : item));

@@ -7,6 +7,7 @@ import { formatTzs } from "@/lib/format/currency";
 import { useListPage } from "@/lib/property/use-list-page";
 import { CONTRACT_FREQUENCIES, type ContractOption, type ContractRecord } from "@/lib/property/contracts";
 import { nextSerial } from "@/lib/property/serial";
+import { saveModuleJson } from "@/lib/offline/module-save";
 
 function formatDate(value: string) {
   if (!value) return "—";
@@ -177,20 +178,26 @@ export default function ContractsView({
       months_paid: formMode === "edit" ? undefined : Number(monthsPaid),
     };
     try {
-      const response = await fetch(formMode === "edit" && editing ? `/api/property/contracts/${editing.id}` : formMode === "renew" && editing ? `/api/property/contracts/${editing.id}/renew` : "/api/property/contracts", {
-        method: formMode === "edit" ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        setSaveError(data.error || "Save failed");
+      const path = formMode === "edit" && editing ? `/api/property/contracts/${editing.id}` : formMode === "renew" && editing ? `/api/property/contracts/${editing.id}/renew` : "/api/property/contracts";
+      const result = await saveModuleJson(path, formMode === "edit" ? "PATCH" : "POST", payload);
+      if (!result.ok) {
+        setSaveError(result.error);
         setSaveState("idle");
         return;
       }
+      if (result.queued) {
+        setSaveState("saved");
+        setTimeout(() => {
+          setFormMode(null);
+          setSaveState("idle");
+        }, 700);
+        return;
+      }
+      const data = result.data as { data: (typeof items)[number]; previous?: (typeof items)[number] };
+      const previous = data.previous;
       setItems((prev) => {
         const next = formMode === "edit" ? prev.map((item) => item.id === data.data.id ? data.data : item) : [data.data, ...prev];
-        if (formMode === "renew" && data.previous) return next.map((item) => item.id === data.previous.id ? data.previous : item);
+        if (formMode === "renew" && previous) return next.map((item) => item.id === previous.id ? previous : item);
         return next;
       });
       setSaveState("saved");
