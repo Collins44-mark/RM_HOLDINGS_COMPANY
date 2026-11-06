@@ -41,11 +41,30 @@ export function canAccessPath(identity: AccessIdentity, pathname: string) {
   return canAccessRoutePermissions(identity, pathname);
 }
 
+const MODULE_ENTRY_PAGES: Record<string, string[]> = {
+  livestock: ["/livestock", "/livestock/animals", "/livestock/houses", "/livestock/expenses", "/livestock/reports"],
+  beekeeping: ["/beekeeping", "/beekeeping/hives", "/beekeeping/harvests", "/beekeeping/sales", "/beekeeping/reports"],
+  property: [
+    "/property",
+    "/property/properties",
+    "/property/units",
+    "/property/tenants",
+    "/property/contracts",
+    "/property/invoices",
+    "/property/hall-bookings",
+    "/property/expenses",
+    "/property/reports",
+  ],
+};
+
 export function landingPathFor(identity: AccessIdentity) {
   if (isOwnerRole(identity.role)) return "/dashboard";
 
   const assigned = identity.modules.filter((item) => item !== "*");
-  if (assigned.length === 1) return `/${assigned[0]}`;
+  if (assigned.length === 1) {
+    const pages = MODULE_ENTRY_PAGES[assigned[0]] ?? [`/${assigned[0]}`];
+    return pages.find((path) => canAccessPath(identity, path)) ?? `/${assigned[0]}`;
+  }
   if (assigned.length > 1) return WORKSPACE_PATH;
 
   if (isFinanceRole(identity.role) || identity.permissions.includes("platform.finance.view")) {

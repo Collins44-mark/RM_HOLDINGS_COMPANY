@@ -24,7 +24,7 @@ export function GroupOverviewSection({
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-[18px] font-bold tracking-[-0.03em] text-navy sm:text-[20px]">Group Overview</h2>
-          <p className="mt-1 text-[13.5px] leading-5 text-slate-500">
+          <p className="mt-1 text-[14px] font-semibold leading-5 text-navy [text-shadow:0_0_10px_rgba(255,255,255,0.95)]">
             Consolidated performance across all RM Holdings business units.
           </p>
         </div>

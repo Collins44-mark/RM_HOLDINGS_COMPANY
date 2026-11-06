@@ -19,9 +19,12 @@ import { formatCompactStaffNumber } from "@/lib/school/student-number";
 import { upsertSalaryArrangement } from "@/lib/school/salary-arrangement";
 import {
   parseMoney,
+  readSalaryDeduction,
   remainingSalary,
+  salaryDeductionNote,
   salaryPayStatus,
   salaryPeriodFromRange,
+  splitSalaryPayment,
   type SalaryAllocationRow,
   type SalaryCaps,
   type SalaryStaffRow,
@@ -226,12 +229,17 @@ export async function loadSchoolSalaryWorkspaceAction(input: {
 
     const paidKey = (staffId: string, costId: string) => `${staffId}:${costId}`;
     const paidByKey = new Map<string, number>();
+    const settledByKey = new Map<string, number>();
     for (const row of payments) {
       if (!row.is_active) continue;
       const staffId = String(row.staff_id);
       const costId = str(row.cost_business_unit_id) || businessUnitId;
       const key = paidKey(staffId, costId);
-      paidByKey.set(key, (paidByKey.get(key) ?? 0) + num(row.amount));
+      const deduction = readSalaryDeduction(str(row.notes));
+      const settled = num(row.amount);
+      const cash = Math.max(0, Math.round((settled - Math.min(deduction.amount, settled)) * 100) / 100);
+      paidByKey.set(key, (paidByKey.get(key) ?? 0) + cash);
+      settledByKey.set(key, (settledByKey.get(key) ?? 0) + settled);
     }
 
     const filterUnit = unitCode ? unitByCode.get(unitCode) : null;
@@ -245,7 +253,8 @@ export async function loadSchoolSalaryWorkspaceAction(input: {
       const cost = unitById.get(costId) ?? schoolUnit;
       if (filterUnit && cost.id !== filterUnit.id) continue;
       const paidInPeriod = paidByKey.get(paidKey(staff.id, costId)) ?? 0;
-      const outstanding = remainingSalary(amount, paidInPeriod);
+      const settledInPeriod = settledByKey.get(paidKey(staff.id, costId)) ?? 0;
+      const outstanding = remainingSalary(amount, settledInPeriod);
       const allocation: SalaryAllocationRow = {
         id: String(row.id),
         costBusinessUnitId: costId,
@@ -276,7 +285,7 @@ export async function loadSchoolSalaryWorkspaceAction(input: {
         salaryEffectiveOn: allocation.effectiveOn,
         paidInPeriod,
         outstandingInPeriod: outstanding,
-        payStatus: salaryPayStatus(amount, paidInPeriod),
+        payStatus: salaryPayStatus(amount, settledInPeriod),
         allocations: [allocation],
       });
     }
@@ -315,20 +324,27 @@ export async function loadSchoolSalaryWorkspaceAction(input: {
       workspace: {
         employees: pageRows,
         payees: rows.filter((row) => row.salaryActive && row.monthlySalary != null),
-        payments: payments.map((row) => ({
-          id: String(row.id),
-          staffId: String(row.staff_id),
-          staffName: names.get(String(row.staff_id)) || staffById.get(String(row.staff_id))?.name || "Staff",
-          periodYear: num(row.period_year),
-          periodMonth: num(row.period_month),
-          amount: num(row.amount),
-          paymentDate: String(row.payment_date ?? ""),
-          method: str(row.method),
-          reference: str(row.reference),
-          notes: str(row.notes),
-          expenseId: row.expense_id ? String(row.expense_id) : null,
-          isActive: Boolean(row.is_active),
-        })),
+        payments: payments.map((row) => {
+          const stored = readSalaryDeduction(str(row.notes));
+          const settled = num(row.amount);
+          const deduction = Math.min(stored.amount, settled);
+          return {
+            id: String(row.id),
+            staffId: String(row.staff_id),
+            staffName: names.get(String(row.staff_id)) || staffById.get(String(row.staff_id))?.name || "Staff",
+            periodYear: num(row.period_year),
+            periodMonth: num(row.period_month),
+            amount: Math.max(0, Math.round((settled - deduction) * 100) / 100),
+            deduction,
+            deductionReason: stored.reason,
+            paymentDate: String(row.payment_date ?? ""),
+            method: str(row.method),
+            reference: str(row.reference),
+            notes: stored.notes,
+            expenseId: row.expense_id ? String(row.expense_id) : null,
+            isActive: Boolean(row.is_active),
+          };
+        }),
         history: (histRes.data ?? []).map((row) => ({
           id: String(row.id),
           staffId: String(row.staff_id),
@@ -428,6 +444,8 @@ export async function recordSchoolSalaryPaymentAction(input: {
   periodYear: number | string;
   periodMonth: number | string;
   amount: number | string;
+  deduction?: number | string;
+  deductionReason?: string;
   paymentDate: string;
   method: string;
   reference?: string;
@@ -437,9 +455,17 @@ export async function recordSchoolSalaryPaymentAction(input: {
   try {
     const { supabase, businessUnitId, userId } = await requireSchoolPermission(PAY);
     const staffId = str(input.staffId);
-    const amount = parseMoney(input.amount);
+    const cashInput = parseMoney(input.amount);
+    const deductionInput = input.deduction == null || input.deduction === "" ? 0 : parseMoney(input.deduction);
     if (!staffId) throw new SchoolError("Select an employee.", "VALIDATION");
-    if (amount == null || !(amount > 0)) throw new SchoolError("Amount must be greater than zero.", "VALIDATION");
+    if (cashInput == null || cashInput < 0) throw new SchoolError("Amount must be zero or more.", "VALIDATION");
+    if (deductionInput == null || deductionInput < 0) throw new SchoolError("Deduction must be zero or more.", "VALIDATION");
+    const payment = splitSalaryPayment(cashInput, deductionInput);
+    const deductionReason = str(input.deductionReason);
+    if (payment.settled <= 0) throw new SchoolError("Amount must be greater than zero.", "VALIDATION");
+    if (payment.deduction > 0 && deductionReason.length < 3) {
+      throw new SchoolError("Enter the reason for this deduction.", "VALIDATION");
+    }
     const year = Number(input.periodYear);
     const month = Number(input.periodMonth);
     if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
@@ -457,15 +483,16 @@ export async function recordSchoolSalaryPaymentAction(input: {
     if (!requestId) throw new SchoolError("Salary payment request is invalid.", "VALIDATION");
     const costBusinessUnitId = str(input.costBusinessUnitId) || businessUnitId;
 
+    const notes = payment.deduction > 0 ? salaryDeductionNote(payment.deduction, deductionReason, str(input.notes)) : str(input.notes);
     const payloadArgs = {
       p_staff_id: staffId,
       p_period_year: year,
       p_period_month: month,
-      p_amount: amount,
+      p_amount: payment.settled,
       p_payment_date: paymentDate,
       p_method: method,
       p_reference: reference,
-      p_notes: str(input.notes),
+      p_notes: notes,
       p_request_id: requestId,
       p_actor_id: userId,
       p_cost_business_unit_id: costBusinessUnitId,
@@ -476,11 +503,11 @@ export async function recordSchoolSalaryPaymentAction(input: {
         p_staff_id: staffId,
         p_period_year: year,
         p_period_month: month,
-        p_amount: amount,
+        p_amount: payment.settled,
         p_payment_date: paymentDate,
         p_method: method,
         p_reference: reference,
-        p_notes: str(input.notes),
+        p_notes: notes,
         p_request_id: requestId,
         p_actor_id: userId,
       });
@@ -489,10 +516,36 @@ export async function recordSchoolSalaryPaymentAction(input: {
     }
     if (error) throw new SchoolError(error.message || "Couldn't record this salary payment.", "DATABASE");
     const payload = (data ?? {}) as { id?: string; expense_id?: string; expense_number?: string; duplicate?: boolean };
+    if (payment.deduction > 0 && payload.expense_id) {
+      const expense = await supabase
+        .from("sch_expenses")
+        .select("amount, description, is_active")
+        .eq("id", payload.expense_id)
+        .eq("business_unit_id", businessUnitId)
+        .maybeSingle();
+      if (expense.error && !isSchoolUnconfiguredRead(expense.error)) mapSchoolDbError(expense.error, "load");
+      const storedExpense = Number(expense.data?.amount);
+      if (expense.data && Math.abs(storedExpense - payment.settled) < 0.005) {
+        const description = `${str(expense.data.description)} · Deduction ${payment.deduction.toFixed(2)} (${deductionReason})`;
+        const patch =
+          payment.cash > 0
+            ? { amount: payment.cash, description }
+            : { is_active: false, description };
+        const updated = await supabase
+          .from("sch_expenses")
+          .update(patch)
+          .eq("id", payload.expense_id)
+          .eq("business_unit_id", businessUnitId);
+        if (updated.error) mapSchoolDbError(updated.error, "save");
+      }
+    }
     if (!payload.duplicate) {
       await audit({
         action: "school.salary_paid",
-        description: `Salary payment recorded · ${payload.expense_number ?? ""} · ${amount}`,
+        description:
+          payment.deduction > 0
+            ? `Salary payment recorded · ${payload.expense_number ?? ""} · paid ${payment.cash} · deduction ${payment.deduction}`
+            : `Salary payment recorded · ${payload.expense_number ?? ""} · ${payment.cash}`,
         entityType: "sch_staff_salary_payments",
         entityId: payload.id ?? null,
         businessUnitId,

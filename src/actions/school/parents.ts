@@ -188,13 +188,13 @@ async function hydrateGuardians(ctx: SchoolContext, ids: string[]): Promise<Guar
 
 async function pageGuardianIds(
   ctx: SchoolContext,
-  input: { q: string; allowedIds: string[] | null; from: number; pageSize: number },
+  input: { q: string; studentIds: string[] | null; guardianIds: string[] | null; from: number; pageSize: number },
 ) {
   const { supabase, businessUnitId } = ctx;
   const paged = await supabase.rpc("sch_page_guardian_ids", {
     p_bu: businessUnitId,
     p_q: input.q,
-    p_student_ids: input.allowedIds,
+    p_student_ids: input.studentIds,
     p_offset: input.from,
     p_limit: input.pageSize,
   });
@@ -234,9 +234,9 @@ async function pageGuardianIds(
     .eq("business_unit_id", businessUnitId)
     .order("full_name")
     .range(input.from, input.from + input.pageSize - 1);
-  if (input.allowedIds) query = query.in("id", input.allowedIds);
+  if (input.guardianIds) query = query.in("id", input.guardianIds);
   if (input.q) {
-    const ids = input.allowedIds ? [...matching].filter((id) => input.allowedIds?.includes(id)) : [...matching];
+    const ids = input.guardianIds ? [...matching].filter((id) => input.guardianIds?.includes(id)) : [...matching];
     if (!ids.length) return { ids: [] as string[], total: 0 };
     query = query.in("id", ids);
   }
@@ -286,7 +286,8 @@ export async function listSchoolGuardiansAction(
     };
     const placementFilter = resolveEnrollmentPlacementFilterFromCatalog(catalog, input, scope);
     const placementOr = enrollmentPlacementOr(placementFilter);
-    let allowedIds: string[] | null = null;
+    let studentIds: string[] | null = null;
+    let guardianIds: string[] | null = null;
     if (placementOr) {
       if (placementFilter.kind === "empty") return empty;
       const enrollments = await supabase
@@ -295,18 +296,24 @@ export async function listSchoolGuardiansAction(
         .eq("business_unit_id", businessUnitId)
         .eq("status", "active")
         .or(placementOr);
-      const studentIds = [...new Set((enrollments.data ?? []).map((row) => String(row.student_id)))];
+      if (enrollments.error && !isSchoolUnconfiguredRead(enrollments.error)) mapSchoolDbError(enrollments.error, "load");
+      studentIds = [...new Set((enrollments.data ?? []).map((row) => String(row.student_id)))];
       if (!studentIds.length) return empty;
       const links = await supabase
         .from("sch_student_guardians")
         .select("guardian_id")
         .eq("business_unit_id", businessUnitId)
         .in("student_id", studentIds);
-      allowedIds = [...new Set((links.data ?? []).map((row) => String(row.guardian_id)))];
-      if (!allowedIds.length) return empty;
+      if (links.error && !isSchoolUnconfiguredRead(links.error)) mapSchoolDbError(links.error, "load");
+      guardianIds = [...new Set((links.data ?? []).map((row) => String(row.guardian_id)))];
+      if (!guardianIds.length) return empty;
     }
-    const paged = await pageGuardianIds(ctx, { q, allowedIds, from, pageSize });
-    const guardians = await hydrateGuardians(ctx, paged.ids);
+    const paged = await pageGuardianIds(ctx, { q, studentIds, guardianIds, from, pageSize });
+    const guardians = (await hydrateGuardians(ctx, paged.ids)).map((row) =>
+      studentIds
+        ? { ...row, students: row.students.filter((student) => student.studentId && studentIds.includes(student.studentId)) }
+        : row,
+    );
     return {
       ok: true as const,
       guardians,

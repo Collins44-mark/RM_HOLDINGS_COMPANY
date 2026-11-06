@@ -200,6 +200,8 @@ export const schoolSalaryPayload = z.object({
   periodYear: qty,
   periodMonth: qty,
   amount: qty,
+  deduction: z.number().nonnegative().optional(),
+  deductionReason: optionalText,
   paymentDate: z.string().min(8),
   method: z.string().min(1),
   reference: optionalText,

@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseMoney, parsePayday, remainingSalary, salaryPayStatus, salaryPeriodFromRange } from "./salary";
+import {
+  parseMoney,
+  parsePayday,
+  readSalaryDeduction,
+  remainingSalary,
+  salaryDeductionNote,
+  salaryPayStatus,
+  salaryPeriodFromRange,
+  splitSalaryPayment,
+} from "./salary";
 import { formatCompactStaffNumber } from "./student-number";
 
 test("salary is optional and is not fabricated", () => {
@@ -33,6 +42,18 @@ test("partial salary payment reduces outstanding without exceeding the monthly a
   assert.equal(salaryPayStatus(750_000, 300_000), "partial");
   assert.equal(salaryPayStatus(750_000, 750_000), "paid");
   assert.equal(salaryPayStatus(null, 0), null);
+});
+
+test("a deduction closes salary without counting as cash paid", () => {
+  const split = splitSalaryPayment(480_000, 20_000);
+  assert.deepEqual(split, { cash: 480_000, deduction: 20_000, settled: 500_000 });
+  assert.equal(remainingSalary(500_000, split.settled), 0);
+  const note = salaryDeductionNote(20_000, "Absence", "Paid at the office");
+  const read = readSalaryDeduction(note);
+  assert.equal(read.amount, 20_000);
+  assert.equal(read.reason, "Absence");
+  assert.equal(read.notes, "Paid at the office");
+  assert.equal(readSalaryDeduction("Paid at the office").amount, 0);
 });
 
 test("compact staff numbers keep the same sequence without rewriting identity", () => {

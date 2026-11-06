@@ -25,6 +25,8 @@ export type SalaryPaymentRow = {
   periodYear: number;
   periodMonth: number;
   amount: number;
+  deduction: number;
+  deductionReason: string;
   paymentDate: string;
   method: string;
   reference: string;
@@ -120,6 +122,32 @@ export function allocationsReconcile(salary: number, allocations: Array<{ amount
 export function remainingSalary(monthlySalary: number | null, paidInPeriod: number) {
   if (monthlySalary == null) return null;
   return Math.max(0, Math.round((monthlySalary - paidInPeriod) * 100) / 100);
+}
+
+const SALARY_DEDUCTION_NOTE = /^\[\[deduction:(\d+(?:\.\d{1,2})?)\]\](?:[ \t]+([^\n]*))?(?:\n([\s\S]*))?$/;
+
+export function salaryDeductionNote(amount: number, reason: string, notes: string) {
+  const head = `[[deduction:${amount.toFixed(2)}]] ${reason.trim()}`;
+  const rest = notes.trim();
+  return rest ? `${head}\n${rest}` : head;
+}
+
+export function readSalaryDeduction(notes: string) {
+  const match = String(notes ?? "").match(SALARY_DEDUCTION_NOTE);
+  if (!match) return { amount: 0, reason: "", notes: String(notes ?? "") };
+  const amount = Number(match[1]);
+  return {
+    amount: Number.isFinite(amount) ? amount : 0,
+    reason: (match[2] ?? "").trim(),
+    notes: (match[3] ?? "").trim(),
+  };
+}
+
+/** Cash leaves the business. The deduction closes part of the salary without a cash expense. */
+export function splitSalaryPayment(cash: number, deduction: number) {
+  const paid = Math.round(Math.max(0, cash) * 100) / 100;
+  const deducted = Math.round(Math.max(0, deduction) * 100) / 100;
+  return { cash: paid, deduction: deducted, settled: Math.round((paid + deducted) * 100) / 100 };
 }
 
 export function parsePayday(value: unknown): number | null {

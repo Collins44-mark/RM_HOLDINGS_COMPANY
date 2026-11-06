@@ -326,13 +326,15 @@ export function SchoolSalaryPage({
         <section className={glassPanel}>
           <h2 className="px-4 pt-4 text-[15px] font-semibold tracking-[-0.03em] text-navy">Payment history this period</h2>
           <div className={tableScrollClass}>
-            <table className="w-full min-w-[720px] text-left">
+            <table className="w-full min-w-[920px] text-left">
               <thead>
                 <tr className={tableHead}>
                   <th className="px-4 py-3 font-semibold">Employee</th>
                   <th className="px-4 py-3 font-semibold">Date</th>
                   <th className="px-4 py-3 font-semibold">Method</th>
                   <th className="px-4 py-3 font-semibold">Amount</th>
+                  <th className="px-4 py-3 font-semibold">Deduction</th>
+                  <th className="px-4 py-3 font-semibold">Reason</th>
                   <th className="px-4 py-3 font-semibold">Reference</th>
                 </tr>
               </thead>
@@ -346,6 +348,8 @@ export function SchoolSalaryPage({
                       {formatTzs(row.amount)}
                       {row.isActive ? "" : " · reversed"}
                     </td>
+                    <td className="px-4 py-3">{row.deduction > 0 ? formatTzs(row.deduction) : "—"}</td>
+                    <td className="px-4 py-3">{row.deductionReason || "—"}</td>
                     <td className="px-4 py-3">{row.reference || "—"}</td>
                   </tr>
                 ))}
@@ -503,6 +507,9 @@ function SalaryPayDrawer({
   const [year, setYear] = useState(periodYear);
   const [month, setMonth] = useState(periodMonth);
   const [amount, setAmount] = useState(remaining == null ? "" : String(remaining));
+  const [amountEdited, setAmountEdited] = useState(false);
+  const [deduction, setDeduction] = useState("");
+  const [deductionReason, setDeductionReason] = useState("");
   const [paymentDate, setPaymentDate] = useState(todayIso());
   const [method, setMethod] = useState("CASH");
   const [reference, setReference] = useState("");
@@ -516,12 +523,26 @@ function SalaryPayDrawer({
       setError("Select an employee with a salary arrangement.");
       return;
     }
-    if (remaining != null && Number(amount) > remaining + 0.005) {
+    const cash = Number(String(amount).replace(/,/g, ""));
+    const deducted = deduction.trim() === "" ? 0 : Number(String(deduction).replace(/,/g, ""));
+    if (!Number.isFinite(cash) || cash < 0) {
+      setError("Amount must be zero or more.");
+      return;
+    }
+    if (!Number.isFinite(deducted) || deducted < 0) {
+      setError("Deduction must be zero or more.");
+      return;
+    }
+    if (deducted > 0 && deductionReason.trim().length < 3) {
+      setError("Enter the reason for this deduction.");
+      return;
+    }
+    if (remaining != null && cash + deducted > remaining + 0.005) {
       setError(`The maximum remaining amount is ${formatTzs(remaining)}.`);
       return;
     }
-    if (remaining === 0) {
-      setError("This salary period is already paid in full.");
+    if (cash + deducted <= 0 || remaining === 0) {
+      setError(remaining === 0 ? "This salary period is already paid in full." : "Amount must be greater than zero.");
       return;
     }
     setBusy(true);
@@ -531,7 +552,9 @@ function SalaryPayDrawer({
       costBusinessUnitId: selected.costBusinessUnitId,
       periodYear: year,
       periodMonth: month,
-      amount,
+      amount: cash,
+      deduction: deducted,
+      deductionReason: deductionReason.trim(),
       paymentDate,
       method,
       reference,
@@ -582,6 +605,9 @@ function SalaryPayDrawer({
               setStaffKey(event.target.value);
               const next = unitPayees.find((item) => `${item.id}:${item.costBusinessUnitId}` === event.target.value);
               setAmount(next?.outstandingInPeriod == null ? "" : String(next.outstandingInPeriod));
+              setAmountEdited(false);
+              setDeduction("");
+              setDeductionReason("");
             }}
           >
             <option value="">Select an employee</option>
@@ -621,9 +647,46 @@ function SalaryPayDrawer({
             </select>
           </SchoolField>
         </div>
-        <SchoolField label="Amount (TZS)">
-          <input className={inputClass} value={amount} onChange={(event) => setAmount(event.target.value)} />
+        <SchoolField label="Amount to pay (TZS)">
+          <input
+            className={inputClass}
+            value={amount}
+            onChange={(event) => {
+              setAmountEdited(true);
+              setAmount(event.target.value);
+            }}
+          />
         </SchoolField>
+        <SchoolField label="Deduction (TZS)">
+          <input
+            className={inputClass}
+            value={deduction}
+            placeholder="0"
+            onChange={(event) => {
+              const next = event.target.value;
+              setDeduction(next);
+              const deducted = next.trim() === "" ? 0 : Number(next.replace(/,/g, ""));
+              if (!amountEdited && remaining != null && Number.isFinite(deducted) && deducted >= 0) {
+                setAmount(String(Math.max(0, Math.round((remaining - deducted) * 100) / 100)));
+              }
+            }}
+          />
+        </SchoolField>
+        {Number(String(deduction).replace(/,/g, "")) > 0 ? (
+          <>
+            <SchoolField label="Deduction reason">
+              <input
+                className={inputClass}
+                value={deductionReason}
+                placeholder="Why this amount is deducted"
+                onChange={(event) => setDeductionReason(event.target.value)}
+              />
+            </SchoolField>
+            <p className="text-[13px] leading-5 text-slate-500">
+              Cash paid {formatTzs(Number(String(amount).replace(/,/g, "")) || 0)}. The deduction closes that part of the salary and is not posted as an expense.
+            </p>
+          </>
+        ) : null}
         <SchoolField label="Payment date">
           <input type="date" className={inputClass} value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} />
         </SchoolField>

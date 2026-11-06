@@ -164,6 +164,29 @@ export default function ContractsView({
     setDraft((current) => ({ ...current, unit_id: unitId, rent_amount: unit ? String(unit.monthly_rent ?? 0) : current.rent_amount }));
   }
 
+  function chooseTenant(tenantId: string) {
+    const tenant = tenants.find((item) => item.id === tenantId);
+    const propertyId = tenant?.property_id || "";
+    const unitId = tenant?.unit_id || "";
+    const unit = units.find((item) => item.id === unitId);
+    const start = tenant?.arrived_on || "";
+    setDraft((current) => ({
+      ...current,
+      tenant_id: tenantId,
+      property_id: propertyId,
+      unit_id: unitId,
+      rent_amount: unit ? String(unit.monthly_rent ?? 0) : current.rent_amount,
+      start_date: current.start_date || start,
+      end_date: current.end_date || (start ? plusOneYear(start) : ""),
+    }));
+  }
+
+  function plusOneYear(start: string) {
+    const [year, month, day] = start.split("-").map(Number);
+    if (!year || !month || !day) return "";
+    return new Date(Date.UTC(year + 1, month - 1, day)).toISOString().slice(0, 10);
+  }
+
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
     if (saveState !== "idle") return;
@@ -358,32 +381,37 @@ export default function ContractsView({
           <form onSubmit={handleSave} className="bg-white rounded-2xl p-6 shadow-2xl w-full max-w-2xl max-h-full min-h-0 overflow-y-auto">
             <h3 className="text-xl font-bold mb-1">{formMode === "renew" ? "Renew Contract" : formMode === "edit" ? "Edit Contract" : "Create Contract"}</h3>
             <p className="text-sm text-slate-500 mb-5">{formMode === "renew" ? `A new agreement will be created from ${editing?.contract_number}. The current agreement stays in the history.` : "The agreement is saved against the selected tenant, property, and unit."}</p>
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Tenant & Property</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Tenant</h4>
+            <div className="grid grid-cols-1 gap-3 mb-5">
               <label className="text-sm">
-                <span className="text-xs font-semibold text-slate-500">Search tenant</span>
-                <input value={tenantQuery} onChange={(event) => setTenantQuery(event.target.value)} disabled={lockedParties} placeholder="Search tenant" className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
-                <select required value={draft.tenant_id} disabled={lockedParties} onChange={(event) => setDraft({ ...draft, tenant_id: event.target.value })} className="mt-2 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
+                <span className="text-xs font-semibold text-slate-500">Tenant</span>
+                <select required value={draft.tenant_id} disabled={lockedParties} onChange={(event) => chooseTenant(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
                   <option value="">Select tenant</option>
                   {tenantChoices.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
                 </select>
               </label>
-              <label className="text-sm">
-                <span className="text-xs font-semibold text-slate-500">Search property</span>
-                <input value={propertyQuery} onChange={(event) => setPropertyQuery(event.target.value)} disabled={lockedParties} placeholder="Search property" className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
-                <select required value={draft.property_id} disabled={lockedParties} onChange={(event) => setDraft({ ...draft, property_id: event.target.value, unit_id: "" })} className="mt-2 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
-                  <option value="">Select property</option>
-                  {propertyChoices.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
-                </select>
-              </label>
-              <label className="text-sm sm:col-span-2">
-                <span className="text-xs font-semibold text-slate-500">Search unit</span>
-                <input value={unitQuery} onChange={(event) => setUnitQuery(event.target.value)} disabled={lockedParties || !draft.property_id} placeholder="Search unit" className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
-                <select required value={draft.unit_id} disabled={lockedParties || !draft.property_id} onChange={(event) => chooseUnit(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
-                  <option value="">{draft.property_id ? "Select unit" : "Select a property first"}</option>
-                  {unitChoices.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
-                </select>
-              </label>
+              {draft.tenant_id && draft.property_id && draft.unit_id ? (
+                <div className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                  {properties.find((property) => property.id === draft.property_id)?.name || "Property"} · {units.find((unit) => unit.id === draft.unit_id)?.name || "Unit"}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="text-sm">
+                    <span className="text-xs font-semibold text-slate-500">Property</span>
+                    <select required value={draft.property_id} disabled={lockedParties} onChange={(event) => setDraft({ ...draft, property_id: event.target.value, unit_id: "" })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
+                      <option value="">Select property</option>
+                      {propertyChoices.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-sm">
+                    <span className="text-xs font-semibold text-slate-500">Unit</span>
+                    <select required value={draft.unit_id} disabled={lockedParties || !draft.property_id} onChange={(event) => chooseUnit(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">
+                      <option value="">{draft.property_id ? "Select unit" : "Select a property first"}</option>
+                      {unitChoices.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
+                    </select>
+                  </label>
+                </div>
+              )}
             </div>
             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Contract Details</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
@@ -396,13 +424,16 @@ export default function ContractsView({
               <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Start date</span><input required type="date" value={draft.start_date} onChange={(event) => setDraft({ ...draft, start_date: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
               <label className="text-sm"><span className="text-xs font-semibold text-slate-500">End date</span><input required type="date" value={draft.end_date} onChange={(event) => setDraft({ ...draft, end_date: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
               <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Monthly rent</span><input required type="number" min="0" step="1" value={draft.rent_amount} onChange={(event) => setDraft({ ...draft, rent_amount: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
-              <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Security deposit</span><input required type="number" min="0" step="1" value={draft.deposit_amount} onChange={(event) => setDraft({ ...draft, deposit_amount: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
-              <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Payment frequency</span><select value={draft.billing_frequency} onChange={(event) => setDraft({ ...draft, billing_frequency: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">{CONTRACT_FREQUENCIES.map((frequency) => <option key={frequency}>{frequency}</option>)}</select></label>
-              <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Rent due day</span><input required type="number" min="1" max="28" value={draft.payment_due_day} onChange={(event) => setDraft({ ...draft, payment_due_day: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+              {formMode === "edit" ? (
+                <>
+                  <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Security deposit</span><input required type="number" min="0" step="1" value={draft.deposit_amount} onChange={(event) => setDraft({ ...draft, deposit_amount: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                  <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Payment frequency</span><select value={draft.billing_frequency} onChange={(event) => setDraft({ ...draft, billing_frequency: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300">{CONTRACT_FREQUENCIES.map((frequency) => <option key={frequency}>{frequency}</option>)}</select></label>
+                  <label className="text-sm"><span className="text-xs font-semibold text-slate-500">Rent due day</span><input required type="number" min="1" max="28" value={draft.payment_due_day} onChange={(event) => setDraft({ ...draft, payment_due_day: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /></label>
+                </>
+              ) : null}
             </div>
             {formMode !== "edit" && <p className="mb-4 text-sm text-slate-600">Amount paid {formatTzs(Math.round(Number(draft.rent_amount || 0) * Math.max(1, Number(monthsPaid) || 1)))}. Saving creates the invoice and records this payment.</p>}
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Agreement</h4>
-            <textarea value={draft.contract_terms} onChange={(event) => setDraft({ ...draft, contract_terms: event.target.value })} rows={4} placeholder="Special terms" className="mb-4 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
+            {formMode === "edit" ? <textarea value={draft.contract_terms} onChange={(event) => setDraft({ ...draft, contract_terms: event.target.value })} rows={4} placeholder="Special terms" className="mb-4 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" /> : null}
             <div className="flex gap-3 items-center">
               <SaveButton state={saveState} label={formMode === "renew" ? "Renew" : "Save"} />
               <button type="button" onClick={() => setFormMode(null)} className="px-4 py-2 border rounded-xl">Cancel</button>

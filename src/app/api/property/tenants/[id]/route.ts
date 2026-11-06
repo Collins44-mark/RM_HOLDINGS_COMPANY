@@ -39,13 +39,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }).eq("id", id);
     if (updateError) return NextResponse.json({ error: updateError.message }, { status: 400 });
 
+    const arrived = String(body.arrived_on || "").slice(0, 10);
+    if (arrived && !/^\d{4}-\d{2}-\d{2}$/.test(arrived)) {
+      return NextResponse.json({ error: "Enter the arrival date" }, { status: 400 });
+    }
     const assigned = await assignTenant(admin, resolved.buId, {
       ...existing,
       full_name: fullName,
       phone_number: String(body.phone_number ?? existing.phone_number ?? "").trim(),
       email: String(body.email ?? existing.email ?? "").trim(),
       status,
-    }, propertyId, unitId, status);
+    }, propertyId, unitId, status, arrived);
     if (assigned.error) return NextResponse.json({ error: assigned.error }, { status: 400 });
     return auditedPropertyResponse(resolved.buId, { data: assigned.data }, {
       action: "tenant.updated",

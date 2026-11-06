@@ -6,6 +6,8 @@ import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useListPage } from "@/lib/property/use-list-page";
 import type { TenantOption, TenantRecord } from "@/lib/property/tenants";
 import { saveModuleJson } from "@/lib/offline/module-save";
+import { formatTzs } from "@/lib/format/currency";
+import { businessDate, stayLength } from "@/lib/property/stay";
 
 function statusClass(status: string) {
   return status === "Active" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700";
@@ -24,6 +26,8 @@ export default function TenantsView({ initialItems, properties, units }: { initi
   const [query, setQuery] = useState("");
   const [propertyFilter, setPropertyFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [balanceFilter, setBalanceFilter] = useState("");
+  const [arrivedOn, setArrivedOn] = useState(businessDate);
   const [formOpen, setFormOpen] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -46,11 +50,13 @@ export default function TenantsView({ initialItems, properties, units }: { initi
   const visible = items.filter((tenant) => {
     const text = query.trim().toLowerCase();
     const matchesText = !text || [tenant.full_name, tenant.phone_number, tenant.property_name, tenant.unit_name].some((value) => value.toLowerCase().includes(text));
-    return matchesText && (!propertyFilter || tenant.property_id === propertyFilter) && (!statusFilter || tenant.status === statusFilter);
+    const matchesBalance = balanceFilter !== "owing" || tenant.balance > 0;
+    return matchesText && (!propertyFilter || tenant.property_id === propertyFilter) && (!statusFilter || tenant.status === statusFilter) && matchesBalance;
   });
-  const listPage = useListPage(visible, `${query}|${propertyFilter}|${statusFilter}`);
+  const listPage = useListPage(visible, `${query}|${propertyFilter}|${statusFilter}|${balanceFilter}`);
   const active = items.filter((tenant) => tenant.status === "Active").length;
   const assigned = items.filter((tenant) => tenant.unit_id).length;
+  const owing = items.filter((tenant) => tenant.balance > 0);
 
   function resetForm() {
     setName("");
@@ -59,6 +65,7 @@ export default function TenantsView({ initialItems, properties, units }: { initi
     setPropertyId("");
     setUnitId("");
     setStatus("Active");
+    setArrivedOn(businessDate());
     setAddState("idle");
     setAddError("");
   }
@@ -69,7 +76,7 @@ export default function TenantsView({ initialItems, properties, units }: { initi
     setAddState("saving");
     setAddError("");
     try {
-      const result = await saveModuleJson("/api/property/tenants", "POST", { full_name: name, phone_number: phone, email, property_id: propertyId, unit_id: unitId, status });
+      const result = await saveModuleJson("/api/property/tenants", "POST", { full_name: name, phone_number: phone, email, property_id: propertyId, unit_id: unitId, status, arrived_on: arrivedOn });
       if (!result.ok) {
         setAddError(result.error);
         setAddState("idle");
@@ -109,6 +116,7 @@ export default function TenantsView({ initialItems, properties, units }: { initi
         status: draft.status,
         property_id: draft.property_id,
         unit_id: draft.unit_id,
+        arrived_on: draft.arrived_on,
       });
       if (!result.ok) {
         setSaveError(result.error);
@@ -138,7 +146,7 @@ export default function TenantsView({ initialItems, properties, units }: { initi
   return (
     <main className="pb-10 text-slate-900">
       <div>
-        <div className="flex items-center justify-between mb-6">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-extrabold">Tenants</h1>
             <p className="text-slate-500 text-sm">Add tenants and assign them to a property or unit.</p>
@@ -147,11 +155,11 @@ export default function TenantsView({ initialItems, properties, units }: { initi
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {[{ label: "Total Tenants", value: items.length }, { label: "Active", value: active }, { label: "Assigned to a Unit", value: assigned }, { label: "Property Only", value: items.length - assigned }].map((card) => (
-            <div key={card.label} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/60">
-              <div className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{card.label}</div>
-              <div className="text-2xl font-extrabold text-slate-900 mt-1">{card.value}</div>
-            </div>
+          {[{ label: "Total Tenants", value: String(items.length), filter: "" }, { label: "Active", value: String(active), filter: "" }, { label: "Assigned to a Unit", value: String(assigned), filter: "" }, { label: "Owing", value: String(owing.length), filter: "owing" }].map((card) => (
+            <button key={card.label} type="button" onClick={() => setBalanceFilter(card.filter === "owing" ? (balanceFilter === "owing" ? "" : "owing") : "")} className={`rounded-2xl border bg-white p-5 text-left shadow-sm ${card.filter === "owing" && balanceFilter === "owing" ? "border-rose-300" : "border-slate-200/60"}`}>
+              <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">{card.label}</div>
+              <div className="mt-1 text-2xl font-extrabold text-slate-900">{card.value}</div>
+            </button>
           ))}
         </div>
 
@@ -166,29 +174,38 @@ export default function TenantsView({ initialItems, properties, units }: { initi
             <option>Active</option>
             <option>Inactive</option>
           </select>
+          <select value={balanceFilter} onChange={(event) => setBalanceFilter(event.target.value)} className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm">
+            <option value="">All balances</option>
+            <option value="owing">Owing</option>
+          </select>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
-          <table className="w-full text-sm border-collapse">
+        <div className="overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[860px] border-collapse text-sm">
             <thead className="bg-slate-50">
               <tr className="text-left text-xs font-semibold text-slate-500">
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Phone</th>
                 <th className="px-4 py-3">Property</th>
                 <th className="px-4 py-3">Unit</th>
+                <th className="px-4 py-3">Stayed</th>
+                <th className="px-4 py-3">Balance</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
             </thead>
             <tbody>
               {visible.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">{items.length === 0 ? "No tenants registered yet." : "No tenants match these filters."}</td></tr>
+                <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-500">{items.length === 0 ? "No tenants registered yet." : "No tenants match these filters."}</td></tr>
               ) : listPage.rows.map((tenant) => (
                 <tr key={tenant.id} className="border-t border-slate-100">
                   <td className="px-4 py-3 font-medium text-slate-800">{tenant.full_name}</td>
                   <td className="px-4 py-3 text-slate-600">{tenant.phone_number || "—"}</td>
                   <td className="px-4 py-3 text-slate-600">{tenant.property_name || "Not linked"}</td>
                   <td className="px-4 py-3 text-slate-600">{tenant.unit_name || "Property only"}</td>
+                  <td className="px-4 py-3 text-slate-600">{tenant.arrived_on ? stayLength(tenant.arrived_on) : "—"}</td>
+                  <td className="px-4 py-3">{tenant.balance > 0 ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">Owing {formatTzs(tenant.balance)}</span> : <span className="text-slate-500">Clear</span>}</td>
                   <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${statusClass(tenant.status)}`}>{tenant.status}</span></td>
                   <td className="px-4 py-3">
                     <button
@@ -209,6 +226,7 @@ export default function TenantsView({ initialItems, properties, units }: { initi
               ))}
             </tbody>
           </table>
+          </div>
           <div className="px-4"><PaginationBar page={listPage.page} total={visible.length} pageSize={listPage.pageSize} onPage={listPage.setPage} onPageSize={listPage.setPageSize} /></div>
         </div>
       </div>
@@ -236,6 +254,10 @@ export default function TenantsView({ initialItems, properties, units }: { initi
               <option value="">Property only</option>
               {propertyUnits.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
             </select>
+            <label className="mb-3 block text-sm">
+              <span className="mb-1 block text-xs font-semibold text-slate-500">Arrival date</span>
+              <input required type="date" value={arrivedOn} onChange={(event) => setArrivedOn(event.target.value)} className="w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
+            </label>
             <select value={status} onChange={(event) => setStatus(event.target.value)} className="mb-3 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300"><option>Active</option><option>Inactive</option></select>
             <div className="flex gap-3 items-center">
               <SaveButton state={addState} label="Save" />
@@ -270,6 +292,9 @@ export default function TenantsView({ initialItems, properties, units }: { initi
                     <div><div className="text-slate-400 text-xs">Status</div><div className="font-semibold text-slate-900">{selected.status}</div></div>
                     <div><div className="text-slate-400 text-xs">Property</div><div className="font-semibold text-slate-900">{selected.property_name || "Not linked"}</div></div>
                     <div><div className="text-slate-400 text-xs">Unit</div><div className="font-semibold text-slate-900">{selected.unit_name || "Property only"}</div></div>
+                    <div><div className="text-slate-400 text-xs">Arrival date</div><div className="font-semibold text-slate-900">{selected.arrived_on || "—"}</div></div>
+                    <div><div className="text-slate-400 text-xs">Stayed</div><div className="font-semibold text-slate-900">{selected.arrived_on ? stayLength(selected.arrived_on) : "—"}</div></div>
+                    <div><div className="text-slate-400 text-xs">Balance</div><div className="font-semibold text-slate-900">{selected.balance > 0 ? `Owing ${formatTzs(selected.balance)}` : "Clear"}</div></div>
                   </div>
                   <div className="pt-6 border-t border-slate-100">
                     <button type="button" onClick={() => { setDraft(selected); setEditMode(true); setSaveState("idle"); setSaveError(""); }} className="w-full bg-white border border-slate-200 text-slate-900 px-5 py-3 rounded-2xl font-semibold hover:bg-slate-50">Edit Tenant</button>
@@ -291,6 +316,10 @@ export default function TenantsView({ initialItems, properties, units }: { initi
                       <option value="">Property only</option>
                       {draftUnits.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
                     </select>
+                    <label className="text-sm col-span-2">
+                      <span className="mb-1 block text-xs font-semibold text-slate-500">Arrival date</span>
+                      <input required type="date" value={draft.arrived_on} onChange={(event) => setDraft({ ...draft, arrived_on: event.target.value })} className="w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
+                    </label>
                   </div>
                   <div className="flex gap-3">
                     <SaveButton state={saveState} label="Save Changes" />

@@ -29,7 +29,7 @@ import {
   type SchoolReportWorkspace,
 } from "@/lib/school/report-types";
 import { schoolExpenseMethodLabel, schoolExpenseSourceLabel } from "@/lib/school/expense-types";
-import { parseMoney, remainingSalary, salaryPeriodFromRange } from "@/lib/school/salary";
+import { parseMoney, readSalaryDeduction, remainingSalary, salaryPeriodFromRange } from "@/lib/school/salary";
 import { formatCompactStaffNumber } from "@/lib/school/student-number";
 import { catalogLookup, loadSchoolStructureCatalog } from "@/lib/school/structure-catalog";
 import { loadSchoolStructureScope } from "@/lib/school/structure-scope";
@@ -451,7 +451,7 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
         .eq("business_unit_id", businessUnitId),
       supabase
         .from("sch_staff_salary_payments")
-        .select("staff_id, cost_business_unit_id, amount, is_active")
+        .select("staff_id, cost_business_unit_id, amount, notes, is_active")
         .eq("business_unit_id", businessUnitId)
         .eq("period_year", year)
         .eq("period_month", month)
@@ -459,26 +459,33 @@ async function loadFinance(ctx: SchoolContext, input: SchoolReportLoadInput, bas
     ]);
     if (staffRes.error && !isSchoolUnconfiguredRead(staffRes.error)) mapSchoolDbError(staffRes.error, "load");
     const paidByKey = new Map<string, number>();
+    const settledByKey = new Map<string, number>();
     for (const row of payRes.data ?? []) {
       const key = `${str(row.staff_id)}:${str(row.cost_business_unit_id) || businessUnitId}`;
-      paidByKey.set(key, (paidByKey.get(key) ?? 0) + num(row.amount));
+      const settled = num(row.amount);
+      const deduction = Math.min(readSalaryDeduction(str(row.notes)).amount, settled);
+      paidByKey.set(key, (paidByKey.get(key) ?? 0) + Math.max(0, settled - deduction));
+      settledByKey.set(key, (settledByKey.get(key) ?? 0) + settled);
     }
     const staffById = new Map((staffRes.data ?? []).map((row) => [String(row.id), row]));
     const arrangements = (allocRes.data ?? []).filter((row) => row.is_active !== false && parseMoney(row.amount) != null);
     for (const row of arrangements) {
       const salary = parseMoney(row.amount);
       if (salary == null) continue;
-      const paid = paidByKey.get(`${str(row.staff_id)}:${str(row.cost_business_unit_id) || businessUnitId}`) ?? 0;
+      const key = `${str(row.staff_id)}:${str(row.cost_business_unit_id) || businessUnitId}`;
+      const paid = paidByKey.get(key) ?? 0;
+      const settled = settledByKey.get(key) ?? 0;
       salaryCommitment += salary;
       salaryPaid += paid;
-      salaryOutstanding += remainingSalary(salary, paid) ?? 0;
+      salaryOutstanding += remainingSalary(salary, settled) ?? 0;
     }
     salaryTotal = arrangements.length;
     salaryRows = arrangements.slice(from, to + 1).map((row) => {
       const staff = staffById.get(String(row.staff_id));
       const salary = parseMoney(row.amount);
-      const paid = paidByKey.get(`${str(row.staff_id)}:${str(row.cost_business_unit_id) || businessUnitId}`) ?? 0;
-      const outstanding = remainingSalary(salary, paid);
+      const key = `${str(row.staff_id)}:${str(row.cost_business_unit_id) || businessUnitId}`;
+      const paid = paidByKey.get(key) ?? 0;
+      const outstanding = remainingSalary(salary, settledByKey.get(key) ?? 0);
       return {
         employee: staff
           ? [str(staff.first_name), str(staff.middle_name), str(staff.last_name)].filter(Boolean).join(" ")

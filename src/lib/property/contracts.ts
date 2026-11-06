@@ -33,6 +33,8 @@ export type ContractOption = {
   id: string;
   name: string;
   property_id?: string;
+  unit_id?: string;
+  arrived_on?: string;
   monthly_rent?: number;
   unit_type?: string;
   floor?: number | null;

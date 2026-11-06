@@ -10,13 +10,13 @@ export default async function PropertyDashboardPage() {
 
   return (
     <div className="space-y-6 pb-10">
-      <div className="flex items-center justify-between gap-4">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Properties & Rentals</h1>
           <p className="text-sm text-slate-500 mt-1">Manage properties, units, tenants, rentals and hall bookings.</p>
         </div>
         <div className="flex items-center gap-2">
-          <select className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-sm text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-200" defaultValue="This Month">
+          <select className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-200 sm:w-auto" defaultValue="This Month">
             <option>Today</option><option>This Week</option><option>This Month</option><option>This Year</option><option>Custom Range</option>
           </select>
         </div>
