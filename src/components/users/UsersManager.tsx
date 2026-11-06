@@ -60,6 +60,7 @@ const STATUS_LABEL: Record<ManagedUserStatus, string> = {
   pending_password: "Pending Password Change",
   locked: "Locked",
   disabled: "Disabled",
+  no_access: "No access",
 };
 
 function statusOf(user: Pick<ManagedUser, "isActive" | "mustChangePassword" | "lockedAt">): ManagedUserStatus {
@@ -69,15 +70,11 @@ function statusOf(user: Pick<ManagedUser, "isActive" | "mustChangePassword" | "l
   return "active";
 }
 
-function initials(name: string) {
-  const parts = name.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-  return name.slice(0, 2).toUpperCase();
-}
-
 function formatDate(value: string | null) {
   if (!value) return "Never";
   return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Dar_es_Salaam",
+    hourCycle: "h23",
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -117,6 +114,7 @@ export function UsersManager({
   const [statusFilter, setStatusFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [grantUser, setGrantUser] = useState<ManagedUser | null>(null);
   const [selected, setSelected] = useState<ManagedUser | null>(null);
   const [customizeUser, setCustomizeUser] = useState<ManagedUser | null>(null);
   const [editingRole, setEditingRole] = useState<RoleSummary | null>(
@@ -142,7 +140,7 @@ export function UsersManager({
   }, [rows]);
 
   const scopedRows = showingUnitUsers
-    ? rows.filter((user) => user.modules.includes(selectedUnit!.code))
+    ? rows.filter((user) => user.modules.includes(selectedUnit!.code) || user.worker?.moduleCode === selectedUnit!.code)
     : rows;
 
   const filtered = scopedRows.filter((user) => {
@@ -243,7 +241,7 @@ export function UsersManager({
     ...IMPLEMENTED_BUSINESS_MODULES.map((code) => ({ id: code, label: permissionModuleLabel(code) })),
   ];
 
-  function handleResult(result: UsersActionState, close: () => void) {
+  function handleResult(result: UsersActionState, close: () => void, replacedWorkerId?: string) {
     if (result?.error) {
       setError(result.error);
       return;
@@ -252,9 +250,11 @@ export function UsersManager({
     if (result?.createdUser) {
       const created = result.createdUser;
       const belongsToUnit = !unitCode || created.modules.includes(unitCode);
-      if (belongsToUnit) {
-        setRows((current) => (current.some((user) => user.id === created.id) ? current : [...current, created]));
-      }
+      setRows((current) => {
+        const withoutWorker = replacedWorkerId ? current.filter((user) => user.id !== replacedWorkerId) : current;
+        if (!belongsToUnit) return withoutWorker;
+        return withoutWorker.some((user) => user.id === created.id) ? withoutWorker : [...withoutWorker, created];
+      });
     }
     if (result?.credentials) setCredentials(result.credentials);
     close();
@@ -376,7 +376,7 @@ export function UsersManager({
               }}
               code={unit.code}
               name={unit.name}
-              userCount={unit.assignedUserCount ?? 0}
+              userCount={rows.filter((user) => user.modules.includes(unit.code) || user.worker?.moduleCode === unit.code).length}
               accent={unit.accent ?? "#5B7FA6"}
               iconBg={unit.iconBg ?? "rgba(91, 127, 166, 0.14)"}
             />
@@ -452,7 +452,6 @@ export function UsersManager({
                   {showModulesColumn ? <th className="px-5 py-3 font-medium">Module(s)</th> : null}
                   <th className="px-5 py-3 font-medium">Staff / Position</th>
                   <th className="px-5 py-3 font-medium">Status</th>
-                  <th className="px-5 py-3 font-medium">Last Login</th>
                   <th className="px-5 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
@@ -460,10 +459,7 @@ export function UsersManager({
                 {userPage.rows.map((user) => (
                   <tr key={user.id} className="border-b border-black/4 last:border-0">
                     <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-3">
-                        <Avatar name={user.name} />
-                        <p className="font-semibold text-navy">{user.name}</p>
-                      </div>
+                      <p className="font-semibold text-navy">{user.name}</p>
                     </td>
                     <td className="px-5 py-3.5 text-slate-600">
                       <p>{displayEmail(user)}</p>
@@ -471,22 +467,22 @@ export function UsersManager({
                     </td>
                     <td className="px-5 py-3.5 text-slate-600">{user.roleName}</td>
                     {showModulesColumn ? (
-                      <td className="px-5 py-3.5 text-slate-600">{user.moduleNames.join(", ")}</td>
+                      <td className="px-5 py-3.5 text-slate-600">
+                        {user.worker ? "No access" : user.moduleNames.join(", ") || "—"}
+                      </td>
                     ) : null}
-                    <td className="px-5 py-3.5 text-slate-600">
-                      {user.staff ? `${user.staff.positionName || "Staff"} · ${formatCompactStaffNumber(user.staff.staffNumber)}` : "—"}
-                    </td>
+                    <td className="px-5 py-3.5 text-slate-600">{staffLabel(user)}</td>
                     <td className="px-5 py-3.5">
                       <StatusBadge status={user.status} />
                     </td>
-                    <td className="px-5 py-3.5 text-slate-500">{formatDate(user.lastLoginAt)}</td>
                     <td className="px-5 py-3.5">
                       <UserActionsMenu
                         onView={() => setSelected(user)}
                         onCustomize={() => openCustomize(user)}
                         customizeDisabled={user.id === currentUserId || isOwnerRole(user.roleCode)}
-                        onLinkStaff={user.staff ? undefined : () => setStaffTarget({ user, mode: "link" })}
-                        onCreateStaff={user.staff ? undefined : () => setStaffTarget({ user, mode: "create" })}
+                        onGrantAccess={user.status === "no_access" ? () => setGrantUser(user) : undefined}
+                        onLinkStaff={user.staff || user.status === "no_access" ? undefined : () => setStaffTarget({ user, mode: "link" })}
+                        onCreateStaff={user.staff || user.status === "no_access" ? undefined : () => setStaffTarget({ user, mode: "create" })}
                       />
                     </td>
                   </tr>
@@ -501,7 +497,6 @@ export function UsersManager({
                 key={user.id}
                 className="flex w-full min-w-0 items-start gap-3 rounded-[16px] border border-white/90 bg-white px-3 py-3 text-left shadow-[0_6px_20px_rgba(20,40,70,0.04)]"
               >
-                <Avatar name={user.name} />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-start justify-between gap-2">
                     <span className="font-semibold text-navy">{user.name}</span>
@@ -509,20 +504,21 @@ export function UsersManager({
                   </span>
                   <span className="mt-1 block text-[12px] text-slate-500">{user.loginIdentifier}</span>
                   <span className="mt-1 block text-[12px] text-slate-500">
-                    {showModulesColumn ? `${user.roleName} · ${user.moduleNames.join(", ")}` : user.roleName}
+                    {user.worker
+                      ? `${user.roleName} · recorded in ${user.worker.moduleName}`
+                      : showModulesColumn
+                        ? `${user.roleName} · ${user.moduleNames.join(", ")}`
+                        : user.roleName}
                   </span>
-                  <span className="mt-1 block text-[12px] text-slate-500">
-                    {user.staff
-                      ? `${user.staff.positionName || "Staff"} · ${formatCompactStaffNumber(user.staff.staffNumber)}`
-                      : "No staff profile"}
-                  </span>
+                  <span className="mt-1 block text-[12px] text-slate-500">{staffLabel(user)}</span>
                 </span>
                 <UserActionsMenu
                   onView={() => setSelected(user)}
                   onCustomize={() => openCustomize(user)}
                   customizeDisabled={user.id === currentUserId || isOwnerRole(user.roleCode)}
-                  onLinkStaff={user.staff ? undefined : () => setStaffTarget({ user, mode: "link" })}
-                  onCreateStaff={user.staff ? undefined : () => setStaffTarget({ user, mode: "create" })}
+                  onGrantAccess={user.status === "no_access" ? () => setGrantUser(user) : undefined}
+                  onLinkStaff={user.staff || user.status === "no_access" ? undefined : () => setStaffTarget({ user, mode: "link" })}
+                  onCreateStaff={user.staff || user.status === "no_access" ? undefined : () => setStaffTarget({ user, mode: "create" })}
                 />
               </div>
             ))}
@@ -548,6 +544,29 @@ export function UsersManager({
             startTransition(async () => {
               const result = await createUserAction(null, formData);
               handleResult(result, () => setAddOpen(false));
+            });
+          }}
+        />
+      ) : null}
+
+      {grantUser ? (
+        <UserFormDialog
+          title="Grant access"
+          grant={grantUser}
+          currentUserId={currentUserId}
+          businessUnits={units}
+          catalogRoles={roleCards}
+          pending={pending}
+          onClose={() => setGrantUser(null)}
+          onSubmit={(formData) => {
+            const workerId = grantUser.id;
+            setError(null);
+            startTransition(async () => {
+              const result = await createUserAction(null, formData);
+              handleResult(result, () => {
+                setGrantUser(null);
+                setSelected(null);
+              }, workerId);
             });
           }}
         />
@@ -587,6 +606,7 @@ export function UsersManager({
           }}
           onLinkStaff={() => setStaffTarget({ user: selected, mode: "link" })}
           onCreateStaff={() => setStaffTarget({ user: selected, mode: "create" })}
+          onGrantAccess={() => setGrantUser(selected)}
         />
       ) : null}
 
@@ -673,12 +693,10 @@ export function UsersManager({
   );
 }
 
-function Avatar({ name }: { name: string }) {
-  return (
-    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e8eef6] text-[11px] font-semibold text-navy">
-      {initials(name)}
-    </span>
-  );
+function staffLabel(user: ManagedUser) {
+  if (!user.staff) return user.worker ? `Recorded in ${user.worker.moduleName}` : "—";
+  const position = `${user.staff.positionName || "Staff"} · ${formatCompactStaffNumber(user.staff.staffNumber)}`;
+  return user.worker ? `${position} · ${user.worker.moduleName}` : position;
 }
 
 function StatusBadge({ status }: { status: ManagedUserStatus }) {
@@ -690,6 +708,7 @@ function StatusBadge({ status }: { status: ManagedUserStatus }) {
         status === "pending_password" && "bg-[#f8efd8] text-[#b0892e]",
         status === "locked" && "bg-[#f8eaea] text-[#b42318]",
         status === "disabled" && "bg-[#eef0f3] text-slate-500",
+        status === "no_access" && "bg-[#eef2f8] text-[#5b6b82]",
       )}
     >
       {STATUS_LABEL[status]}
@@ -700,6 +719,7 @@ function StatusBadge({ status }: { status: ManagedUserStatus }) {
 function UserFormDialog({
   title,
   user,
+  grant,
   currentUserId,
   businessUnits,
   catalogRoles,
@@ -709,6 +729,7 @@ function UserFormDialog({
 }: {
   title: string;
   user?: ManagedUser;
+  grant?: ManagedUser;
   currentUserId: string;
   businessUnits: UsersUnitOption[];
   catalogRoles: RoleSummary[];
@@ -716,10 +737,11 @@ function UserFormDialog({
   onClose: () => void;
   onSubmit: (formData: FormData) => void;
 }) {
+  const source = user ?? grant;
   const [modules, setModules] = useState<string[]>(
-    user?.modules.includes("*") ? [ALL_MODULES_VALUE] : user?.modules ?? [],
+    grant ? [] : user?.modules.includes("*") ? [ALL_MODULES_VALUE] : user?.modules ?? [],
   );
-  const [roleCode, setRoleCode] = useState(user?.roleCode ?? "");
+  const [roleCode, setRoleCode] = useState(grant ? "" : user?.roleCode ?? "");
   const [moduleRoles, setModuleRoles] = useState<Record<string, string>>({});
   const implementedSelected = modules.filter((code) => isImplementedBusinessModule(code));
   const perModule = implementedSelected.length > 1;
@@ -754,13 +776,20 @@ function UserFormDialog({
         }}
       >
         {user ? <input type="hidden" name="userId" value={user.id} /> : null}
-        <Field label="Full Name" name="name" defaultValue={user?.name} required />
+        {grant?.worker?.source === "school" ? <input type="hidden" name="linkStaffId" value={grant.worker.recordId} /> : null}
+        {grant?.worker?.source === "farm" ? <input type="hidden" name="farmStaffId" value={grant.worker.recordId} /> : null}
+        <Field label="Full Name" name="name" defaultValue={source?.name} required />
         <Field
           label="Email Address"
           name="email"
-          defaultValue={user?.email && !user.email.endsWith("@users.rmholdings.internal") ? user.email : ""}
+          defaultValue={source?.email && !source.email.endsWith("@users.rmholdings.internal") ? source.email : ""}
         />
-        <Field label="Phone Number" name="phone" defaultValue={user?.phone ?? ""} />
+        <Field label="Phone Number" name="phone" defaultValue={source?.phone ?? ""} />
+        {grant?.worker ? (
+          <p className="rounded-[12px] bg-[#f4f7fb] px-3 py-2 text-[12.5px] text-slate-600">
+            Recorded in {grant.worker.moduleName} with no login. Choose a module and a role to give this worker access.
+          </p>
+        ) : null}
         <div>
           <p className="mb-2 text-[13px] font-medium text-slate-500">Module</p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -790,8 +819,14 @@ function UserFormDialog({
             ))}
           </div>
         </div>
-        {!user ? <CreateAsStaffFields businessUnits={businessUnits} /> : null}
-        {user?.staff ? <OptionalSalaryFields businessUnits={businessUnits} /> : null}
+        {!user && !grant ? <CreateAsStaffFields businessUnits={businessUnits} /> : null}
+        {grant || user?.staff ? (
+          <OptionalSalaryFields
+            businessUnits={businessUnits}
+            defaultBusinessUnitCode={grant?.worker?.moduleCode}
+            defaultMonthlySalary={grant?.staff?.monthlySalary}
+          />
+        ) : null}
         {perModule ? (
           <div className="space-y-3">
             {implementedSelected.map((code) => {
@@ -880,6 +915,7 @@ function UserDetails({
   onSave,
   onLinkStaff,
   onCreateStaff,
+  onGrantAccess,
 }: {
   user: ManagedUser;
   currentUserId: string;
@@ -894,6 +930,7 @@ function UserDetails({
   onSave: (formData: FormData) => void;
   onLinkStaff: () => void;
   onCreateStaff: () => void;
+  onGrantAccess: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const self = user.id === currentUserId;
@@ -934,7 +971,10 @@ function UserDetails({
         <section>
           <h3 className="text-[13px] font-semibold uppercase tracking-wide text-slate-400">Access</h3>
           <dl className="mt-3 space-y-2 text-[13.5px]">
-            <Row label="Assigned Module(s)" value={user.moduleNames.join(", ")} />
+            <Row
+              label="Assigned Module(s)"
+              value={user.worker ? `No access · recorded in ${user.worker.moduleName}` : user.moduleNames.join(", ") || "—"}
+            />
             <Row label="Role" value={user.roleName} />
             <Row
               label="Staff / Position"
@@ -950,6 +990,15 @@ function UserDetails({
           </dl>
         </section>
         <div className="flex flex-wrap gap-2">
+          {user.status === "no_access" ? (
+            <button
+              type="button"
+              onClick={onGrantAccess}
+              className="h-10 rounded-[12px] bg-navy px-3 text-[13px] font-semibold text-white"
+            >
+              Grant access
+            </button>
+          ) : (
           <button
             type="button"
             onClick={() => setEditing(true)}
@@ -958,7 +1007,8 @@ function UserDetails({
           >
             Edit User
           </button>
-          {user.status === "locked" ? (
+          )}
+          {user.status !== "no_access" && user.status === "locked" ? (
             <button
               type="button"
               onClick={onUnlock}
@@ -968,6 +1018,7 @@ function UserDetails({
               Unlock Account
             </button>
           ) : null}
+          {user.status === "no_access" ? null : (
           <button
             type="button"
             onClick={onReset}
@@ -976,7 +1027,8 @@ function UserDetails({
           >
             Reset Password
           </button>
-          {user.isActive ? (
+          )}
+          {user.status === "no_access" ? null : user.isActive ? (
             <button
               type="button"
               onClick={onDisable}
@@ -995,7 +1047,7 @@ function UserDetails({
               Enable Account
             </button>
           )}
-          {!user.staff ? (
+          {user.status !== "no_access" && !user.staff ? (
             <>
               <button
                 type="button"
@@ -1256,8 +1308,12 @@ function Row({ label, value }: { label: string; value: string }) {
 
 function OptionalSalaryFields({
   businessUnits,
+  defaultBusinessUnitCode,
+  defaultMonthlySalary,
 }: {
   businessUnits: UsersUnitOption[];
+  defaultBusinessUnitCode?: string;
+  defaultMonthlySalary?: number | null;
 }) {
   const [enabled, setEnabled] = useState(false);
   return (
@@ -1271,11 +1327,19 @@ function OptionalSalaryFields({
           <p className="text-[12.5px] text-slate-500">This is a monthly commitment, not a payment. Leave off for owners and unpaid accounts.</p>
           <label className="block">
             <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Monthly salary (TZS)</span>
-            <input name="monthlySalary" className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy" />
+            <input
+              name="monthlySalary"
+              defaultValue={defaultMonthlySalary ?? ""}
+              className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
+            />
           </label>
           <label className="block">
             <span className="mb-1.5 block text-[13px] font-medium text-slate-500">Business unit</span>
-            <select name="salaryBusinessUnitCode" className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy">
+            <select
+              name="salaryBusinessUnitCode"
+              defaultValue={defaultBusinessUnitCode && businessUnits.some((unit) => unit.code === defaultBusinessUnitCode) ? defaultBusinessUnitCode : businessUnits[0]?.code}
+              className="h-11 w-full rounded-[14px] border border-black/[0.06] bg-white px-3 text-[13.5px] text-navy"
+            >
               {businessUnits.map((unit) => (
                 <option key={unit.code} value={unit.code}>
                   {unit.name}

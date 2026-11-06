@@ -184,13 +184,13 @@ export async function loadFarmOperationsWorkspaceAction(input: { period?: string
   }
 }
 
-export async function loadFarmFinanceWorkspaceAction(input: { period?: string; from?: string; to?: string; page?: number; pageSize?: number }) {
+export async function loadFarmFinanceWorkspaceAction(input: { period?: string; from?: string; to?: string; page?: number; pageSize?: number; expenseKind?: string }) {
   try {
     const ctx = await requireAnyFarmPermission(["farm.finance.view", "farm.jobs.view", "farm.expenses.view"]);
     const { from, to, range } = rangeFrom(input);
     const [summary, expenses, jobs] = await Promise.all([
       loadFarmLedgerSummary(ctx, from, to),
-      loadFarmExpenses(ctx, from, to, { page: input.page, pageSize: input.pageSize }),
+      loadFarmExpenses(ctx, from, to, { page: input.page, pageSize: input.pageSize }, input.expenseKind),
       loadFarmJobs(ctx, from, to, "all"),
     ]);
     return {

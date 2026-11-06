@@ -15,6 +15,7 @@ export function PaginationBar({
   pageSize,
   sizes = PAGE_SIZES,
   pendingPageSize = null,
+  showWhenEmpty = false,
   onPage,
   onPageSize,
 }: {
@@ -23,11 +24,12 @@ export function PaginationBar({
   pageSize: number;
   sizes?: readonly number[];
   pendingPageSize?: number | null;
+  showWhenEmpty?: boolean;
   onPage: (page: number) => void;
   onPageSize?: (pageSize: number) => void;
 }) {
   const t = useT();
-  if (total <= 0) return null;
+  if (total <= 0 && !showWhenEmpty) return null;
   const meta = pageMeta(page, total, pageSize);
   const numbers = pageWindow(meta.page, meta.totalPages);
 

@@ -99,6 +99,7 @@ export type RiceStorageAccount = {
 
 export type RiceStorageMovement = {
   id: string;
+  accountId: string;
   occurredOn: string;
   accountNumber: string;
   partyName: string;

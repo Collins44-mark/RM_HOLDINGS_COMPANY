@@ -12,6 +12,17 @@ export function todayIso() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
+export function formatRiceDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return value;
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "UTC",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+
 export function formatKg(value: number, locale: Locale = "en") {
   const formatted = new Intl.NumberFormat(locale === "sw" ? "sw-TZ" : "en-TZ", { maximumFractionDigits: 2 }).format(value);
   return `${formatted} kg`;

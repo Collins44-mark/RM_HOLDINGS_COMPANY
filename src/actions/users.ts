@@ -381,6 +381,10 @@ export async function createUserAction(
 
   const createAsStaff = String(formData.get("createAsStaff") ?? "") === "1";
   const linkStaffId = String(formData.get("linkStaffId") ?? "").trim();
+  const farmStaffId = String(formData.get("farmStaffId") ?? "").trim();
+  if (farmStaffId) {
+    await admin.from("farm_staff").update({ profile_id: createdUser.id }).eq("id", farmStaffId);
+  }
   const schoolAccessRole = schoolRoleCodeForAssignment({
     assignedModules: metadataModules.map(String),
     roleCode: parsed.data.roleCode,
@@ -458,6 +462,23 @@ export async function createUserAction(
         entityId: staffResult.staff.id,
         businessUnitId: staffResult.businessUnitId,
       });
+    }
+  }
+  if (!createdUser.staff && farmStaffId && String(formData.get("configureSalary") ?? "") === "1") {
+    const staffResult = await insertStaffForProfile(admin, {
+      profileId: createdUser.id,
+      fullName: parsed.data.name,
+      phone: phoneValue ?? "",
+      email: emailValue,
+      jobTitle: "Farm worker",
+      roleId: String(role.id),
+    });
+    if ("error" in staffResult && staffResult.error) {
+      warning = warning
+        ? `${warning} Salary needs a staff profile: ${staffResult.error}`
+        : `User created. Salary needs a staff profile: ${staffResult.error}`;
+    } else if ("staff" in staffResult) {
+      createdUser.staff = staffResult.staff;
     }
   }
   const salaryWarning = await applyOptionalUserSalary(admin, formData, createdUser.staff?.id);

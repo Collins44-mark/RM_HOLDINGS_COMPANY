@@ -9,11 +9,16 @@ import {
 } from "@/actions/rice/workspace";
 import { PageBackButton } from "@/components/ui/PageBackButton";
 import { PaginationBar } from "@/components/ui/PaginationBar";
+import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
 import { useLocale, useT } from "@/components/i18n/LocaleProvider";
 import type { MessageKey } from "@/lib/i18n";
+import type { ReportPeriod } from "@/lib/data/report-period";
 import { formatTzs } from "@/lib/format/currency";
 import { glassCard, glassPanel, secondaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { translateRiceCopy } from "@/lib/rice/error-copy";
+import type { RiceWarehouseMovement } from "@/lib/rice/types";
+import { RiceListPeriodFilter } from "@/components/rice/RiceListPeriodFilter";
+import { RiceMovementDrawer } from "@/components/rice/RiceMovementDrawer";
 import { formatKg, RiceNotice, RicePageHeader } from "@/components/rice/rice-ui";
 import type { RiceWarehouseKindSlug } from "@/lib/rice/warehouse-kind";
 import { loadWorkspaceWithCache, writeOfflineSnapshot } from "@/lib/offline";
@@ -39,6 +44,10 @@ export function RiceWarehouseKindPage({
   const requestId = useRef(0);
   const [workspace, setWorkspace] = useState(initial.ok ? initial.workspace : null);
   const [error, setError] = useState(initial.ok ? null : initial.error);
+  const [listPeriod, setListPeriod] = useState<ReportPeriod>("this-month");
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
+  const [viewing, setViewing] = useState<RiceWarehouseMovement | null>(null);
 
   useEffect(() => {
     if (workspace) {
@@ -46,12 +55,25 @@ export function RiceWarehouseKindPage({
     }
   }, [workspace, slug]);
 
-  async function reload(page = workspace?.listPage.page ?? 1, pageSize = workspace?.listPage.pageSize ?? 10) {
+  async function reload(
+    page = workspace?.listPage.page ?? 1,
+    pageSize = workspace?.listPage.pageSize ?? 10,
+    nextRange: { period: ReportPeriod; from: string; to: string } = { period: listPeriod, from: rangeFrom, to: rangeTo },
+  ) {
+    if (nextRange.period === "custom" && (!nextRange.from || !nextRange.to)) return;
     const id = ++requestId.current;
     const next = await loadWorkspaceWithCache({
       kind: `rice.warehouse.${slug}`,
       businessUnitCode: "rice",
-      load: () => loadRiceWarehouseKindWorkspaceAction({ kind: slug, page, pageSize }),
+      load: () =>
+        loadRiceWarehouseKindWorkspaceAction({
+          kind: slug,
+          page,
+          pageSize,
+          period: nextRange.period,
+          from: nextRange.period === "custom" ? nextRange.from : undefined,
+          to: nextRange.period === "custom" ? nextRange.to : undefined,
+        }),
     });
     if (id !== requestId.current) return;
     if (next.ok) {
@@ -129,17 +151,30 @@ export function RiceWarehouseKindPage({
       </section>
 
       <section className={glassPanel}>
-        <h2 className="text-[16px] font-semibold text-navy">{t("rice.warehouse.movements")}</h2>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <h2 className="text-[16px] font-semibold text-navy">{t("rice.warehouse.movements")}</h2>
+          <RiceListPeriodFilter
+            period={listPeriod}
+            from={rangeFrom}
+            to={rangeTo}
+            onChange={(next) => {
+              setListPeriod(next.period);
+              setRangeFrom(next.from);
+              setRangeTo(next.to);
+              void reload(1, workspace?.listPage.pageSize, next);
+            }}
+          />
+        </div>
         <div className={`${tableScrollClass} mt-4`}>
           <table className="min-w-full text-left text-[13.5px]">
             <thead className={tableHead}>
               <tr>
-                <th className="px-3 py-2">{t("common.date")}</th>
                 <th className="px-3 py-2">{t("common.item")}</th>
                 <th className="px-3 py-2">{t("common.type")}</th>
                 <th className="px-3 py-2">{t("common.quantity")}</th>
                 <th className="px-3 py-2">{t("rice.warehouse.source")}</th>
                 <th className="px-3 py-2">{t("rice.warehouse.reason")}</th>
+                <th className="px-3 py-2" />
               </tr>
             </thead>
             <tbody>
@@ -152,14 +187,19 @@ export function RiceWarehouseKindPage({
               ) : (
                 (workspace?.movements ?? []).map((row) => (
                   <tr key={row.id} className="border-t border-navy/5 text-navy">
-                    <td className="px-3 py-2.5">{row.occurredOn}</td>
-                    <td className="px-3 py-2.5">{row.itemName}</td>
+                    <td className="px-3 py-2.5 font-medium">{row.itemName}</td>
                     <td className="px-3 py-2.5">{t(sourceKey(row.sourceType))}</td>
                     <td className="px-3 py-2.5">{formatKg(row.qtyKg, locale)}</td>
                     <td className="px-3 py-2.5 text-slate-500">
                       {[row.sourceNumber, row.partyName].filter(Boolean).join(" · ") || "—"}
                     </td>
                     <td className="px-3 py-2.5 text-slate-500">{row.notes ?? "—"}</td>
+                    <td className="px-3 py-2.5 text-right">
+                      <CompactActionsMenu
+                        ariaLabel={`${t("rice.warehouse.view")} ${row.itemName}`}
+                        items={[{ label: t("rice.warehouse.view"), onSelect: () => setViewing(row) }]}
+                      />
+                    </td>
                   </tr>
                 ))
               )}
@@ -174,6 +214,7 @@ export function RiceWarehouseKindPage({
           onPageSize={(pageSize) => void reload(1, pageSize)}
         />
       </section>
+      {viewing ? <RiceMovementDrawer movement={viewing} onClose={() => setViewing(null)} /> : null}
     </div>
   );
 }

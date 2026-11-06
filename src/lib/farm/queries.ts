@@ -271,7 +271,7 @@ export async function loadFarmMaintenance(ctx: FarmContext, from?: string, to?: 
   };
 }
 
-export async function loadFarmExpenses(ctx: FarmContext, from?: string, to?: string, paging: FarmPaging = "all"): Promise<{ rows: FarmExpense[]; listPage: PageMeta }> {
+export async function loadFarmExpenses(ctx: FarmContext, from?: string, to?: string, paging: FarmPaging = "all", kind?: string): Promise<{ rows: FarmExpense[]; listPage: PageMeta }> {
   const page = resolvePaging(paging);
   let query = ctx.supabase
     .from("farm_expenses")
@@ -281,18 +281,25 @@ export async function loadFarmExpenses(ctx: FarmContext, from?: string, to?: str
     .order("occurred_on", { ascending: false });
   if (from) query = query.gte("occurred_on", from);
   if (to) query = query.lte("occurred_on", to);
+  if (kind === "FUEL" || kind === "MAINTENANCE") query = query.eq("kind", kind);
   if (page) query = query.range(page.from, page.to);
   const { rows, count } = await farmQuery(ctx, () => query, "Couldn't load expenses.");
+  const seen = new Set<string>();
   return {
-    rows: rows.map((row) => ({
-      id: s(row.id),
-      number: s(row.expense_number),
-      kind: s(row.kind),
-      occurredOn: s(row.occurred_on),
-      amount: n(row.amount),
-      notes: row.notes ? s(row.notes) : null,
-      sourceType: s(row.source_type),
-    })),
+    rows: rows.flatMap((row) => {
+      const id = s(row.id);
+      if (seen.has(id)) return [];
+      seen.add(id);
+      return [{
+        id,
+        number: s(row.expense_number),
+        kind: s(row.kind),
+        occurredOn: s(row.occurred_on),
+        amount: n(row.amount),
+        notes: row.notes ? s(row.notes) : null,
+        sourceType: s(row.source_type),
+      }];
+    }),
     listPage: page ? pageMeta(page.page, count, page.pageSize) : EMPTY_PAGE,
   };
 }

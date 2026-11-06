@@ -7,10 +7,11 @@ import { displayRoleName, permissionsForRoleCode } from "@/lib/auth/role-options
 import { displayLoginIdentifier } from "@/lib/auth/identifiers";
 import { BUSINESS_UNITS } from "@/lib/config/app";
 import { staffByProfileIds, type LinkedStaffInfo } from "@/lib/school/staff-profile-link";
+import { listDirectoryWorkers } from "@/lib/users/directory-workers";
 
 export type { LinkedStaffInfo };
 
-export type ManagedUserStatus = "active" | "pending_password" | "locked" | "disabled";
+export type ManagedUserStatus = "active" | "pending_password" | "locked" | "disabled" | "no_access";
 
 export type ManagedUser = {
   id: string;
@@ -30,6 +31,13 @@ export type ManagedUser = {
   createdAt: string;
   status: ManagedUserStatus;
   staff: LinkedStaffInfo | null;
+  /** Present when this row is a module worker with no login yet. */
+  worker?: {
+    source: "school" | "farm";
+    recordId: string;
+    moduleCode: string;
+    moduleName: string;
+  };
 };
 
 export type LightProfileRecord = {
@@ -175,7 +183,9 @@ export async function listManagedUsers() {
     .order("full_name", { ascending: true });
 
   if (error || !data) return [];
-  return attachStaffLinks((data as unknown as ProfileRecord[]).map(toManagedUser), client, true);
+  const accounts = await attachStaffLinks((data as unknown as ProfileRecord[]).map(toManagedUser), client, true);
+  const workers = await listDirectoryWorkers(client, accounts);
+  return [...accounts, ...workers].sort((left, right) => left.name.localeCompare(right.name));
 }
 
 async function attachStaffLinks(

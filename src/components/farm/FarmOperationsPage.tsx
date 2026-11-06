@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Wheat } from "lucide-react";
 import { loadFarmOperationsWorkspaceAction, type FarmOperationsWorkspace } from "@/actions/farm/workspace";
 import { recordFarmHarvestAction, recordFarmOperationAction, saveFarmPlotAction, saveFarmSeasonAction } from "@/actions/farm/posting";
@@ -10,17 +10,31 @@ import { glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } fr
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useListPage } from "@/lib/property/use-list-page";
 import { formatTzs } from "@/lib/format/currency";
-import type { ReportPeriod } from "@/lib/data/report-period";
+import { reportPeriodRange, type ReportPeriod } from "@/lib/data/report-period";
 import { useT } from "@/components/i18n/LocaleProvider";
 import { FarmField, FarmNotice, FarmPageHeader, todayIso } from "@/components/farm/farm-ui";
 import { translateFarmCopy } from "@/lib/farm/error-copy";
 
+function calendarIso(value: Date) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+function periodBounds(period: ReportPeriod, from?: string, to?: string) {
+  if (period === "custom" && (!from || !to)) return null;
+  const range = reportPeriodRange(period, new Date(), { from, to });
+  return { from: calendarIso(range.from), to: calendarIso(range.to) };
+}
+
 export function FarmOperationsPage({
   initial,
   period,
+  from = "",
+  to = "",
 }: {
   initial: { ok: true; workspace: FarmOperationsWorkspace } | { ok: false; error: string };
   period: ReportPeriod;
+  from?: string;
+  to?: string;
 }) {
   const t = useT();
   const [workspace, setWorkspace] = useState(initial.ok ? initial.workspace : null);
@@ -38,13 +52,27 @@ export function FarmOperationsPage({
   const [op, setOp] = useState({ plotId: "", seasonId: "", tractorId: "", activity: "", occurredOn: todayIso(), areaHa: "", cost: "" });
   const [harvest, setHarvest] = useState({ seasonId: "", quantity: "", unit: "kg", harvestedOn: todayIso() });
   const operations = workspace?.operations ?? [];
-  const operationPage = useListPage(operations, `${period}:${operations.length}`);
+  const operationPage = useListPage(operations, `${period}:${from}:${to}:${operations.length}`);
+  const boundsRef = useRef<{ from: string; to: string } | null>(null);
 
-  async function refresh() {
-    const next = await loadFarmOperationsWorkspaceAction({ period });
+  async function refresh(range = boundsRef.current) {
+    const next = await loadFarmOperationsWorkspaceAction({
+      period: range ? "custom" : period,
+      from: range?.from,
+      to: range?.to,
+    });
     if (next.ok) setWorkspace(next.workspace);
     else setError(next.error);
   }
+
+  useEffect(() => {
+    const range = periodBounds(period, from, to);
+    if (!range) return;
+    boundsRef.current = range;
+    void refresh(range);
+    // Reload when the selected period changes. Saves call refresh directly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, from, to]);
 
   return (
     <div className="space-y-5 pb-10">
@@ -199,7 +227,14 @@ export function FarmOperationsPage({
             </tbody>
           </table>
         </div>
-        <PaginationBar page={operationPage.page} total={operations.length} pageSize={operationPage.pageSize} onPage={operationPage.setPage} onPageSize={operationPage.setPageSize} />
+        <PaginationBar
+          showWhenEmpty
+          page={operationPage.page}
+          total={operations.length}
+          pageSize={operationPage.pageSize}
+          onPage={operationPage.setPage}
+          onPageSize={operationPage.setPageSize}
+        />
       </section>
     </div>
   );

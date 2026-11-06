@@ -16,12 +16,14 @@ export function UserActionsMenu({
   onView,
   onCustomize,
   customizeDisabled,
+  onGrantAccess,
   onLinkStaff,
   onCreateStaff,
 }: {
   onView: () => void;
   onCustomize: () => void;
   customizeDisabled?: boolean;
+  onGrantAccess?: () => void;
   onLinkStaff?: () => void;
   onCreateStaff?: () => void;
 }) {
@@ -105,19 +107,33 @@ export function UserActionsMenu({
               >
                 View
               </button>
-              <button
-                type="button"
-                role="menuitem"
-                disabled={customizeDisabled}
-                className="block w-full px-3 py-2 text-left text-[13px] font-medium text-navy hover:bg-[#f4f7fb] disabled:text-slate-400"
-                onClick={() => {
-                  if (customizeDisabled) return;
-                  setOpen(false);
-                  onCustomize();
-                }}
-              >
-                Customize Access
-              </button>
+              {onGrantAccess ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="block w-full px-3 py-2 text-left text-[13px] font-medium text-navy hover:bg-[#f4f7fb]"
+                  onClick={() => {
+                    setOpen(false);
+                    onGrantAccess();
+                  }}
+                >
+                  Grant access
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={customizeDisabled}
+                  className="block w-full px-3 py-2 text-left text-[13px] font-medium text-navy hover:bg-[#f4f7fb] disabled:text-slate-400"
+                  onClick={() => {
+                    if (customizeDisabled) return;
+                    setOpen(false);
+                    onCustomize();
+                  }}
+                >
+                  Customize Access
+                </button>
+              )}
               {onLinkStaff ? (
                 <button
                   type="button"

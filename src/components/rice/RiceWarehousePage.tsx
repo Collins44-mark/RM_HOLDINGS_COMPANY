@@ -7,11 +7,16 @@ import { loadRiceWarehouseWorkspaceAction, type RiceWarehouseWorkspace } from "@
 import { adjustRiceStockAction } from "@/actions/rice/posting";
 import { loadWorkspaceWithCache, saveWithOutbox, writeOfflineSnapshot } from "@/lib/offline";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
+import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
 import { glassCard, glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useT } from "@/components/i18n/LocaleProvider";
 import type { MessageKey } from "@/lib/i18n";
+import type { ReportPeriod } from "@/lib/data/report-period";
 import { translateRiceCopy } from "@/lib/rice/error-copy";
+import type { RiceStockMovement } from "@/lib/rice/types";
+import { RiceListPeriodFilter } from "@/components/rice/RiceListPeriodFilter";
+import { RiceMovementDrawer } from "@/components/rice/RiceMovementDrawer";
 import { formatKg, RiceField, RiceNotice, RicePageHeader, riceWarehouseSourceKey, todayIso } from "@/components/rice/rice-ui";
 import { RICE_WAREHOUSE_KIND_ORDER, riceWarehouseKindSlug } from "@/lib/rice/warehouse-kind";
 
@@ -26,6 +31,10 @@ export function RiceWarehousePage({
   const [error, setError] = useState(initial.ok ? null : initial.error);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ itemId: "", qtyKg: "", reason: "", occurredOn: todayIso() });
+  const [listPeriod, setListPeriod] = useState<ReportPeriod>("this-month");
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
+  const [viewing, setViewing] = useState<RiceStockMovement | null>(null);
 
   useEffect(() => {
     if (workspace) {
@@ -33,12 +42,24 @@ export function RiceWarehousePage({
     }
   }, [workspace]);
 
-  async function reload(page = workspace?.listPage.page ?? 1, pageSize = workspace?.listPage.pageSize ?? 10) {
+  async function reload(
+    page = workspace?.listPage.page ?? 1,
+    pageSize = workspace?.listPage.pageSize ?? 10,
+    nextRange: { period: ReportPeriod; from: string; to: string } = { period: listPeriod, from: rangeFrom, to: rangeTo },
+  ) {
+    if (nextRange.period === "custom" && (!nextRange.from || !nextRange.to)) return;
     const id = ++requestId.current;
     const next = await loadWorkspaceWithCache({
       kind: "rice.warehouse",
       businessUnitCode: "rice",
-      load: () => loadRiceWarehouseWorkspaceAction({ page, pageSize }),
+      load: () =>
+        loadRiceWarehouseWorkspaceAction({
+          page,
+          pageSize,
+          period: nextRange.period,
+          from: nextRange.period === "custom" ? nextRange.from : undefined,
+          to: nextRange.period === "custom" ? nextRange.to : undefined,
+        }),
     });
     if (id !== requestId.current) return;
     if (next.ok) setWorkspace(next.workspace);
@@ -75,17 +96,17 @@ export function RiceWarehousePage({
       <RicePageHeader icon={Warehouse} title={t("rice.warehouse.title")} subtitle={t("rice.warehouse.subtitle")} />
       {error ? <RiceNotice>{translateRiceCopy(t, error)}</RiceNotice> : null}
 
-      <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-4 gap-3">
         {RICE_WAREHOUSE_KIND_ORDER.map((kind) => {
           const qty = items.filter((row) => row.kind === kind).reduce((sum, row) => sum + row.qtyKg, 0);
           return (
             <Link
               key={kind}
               href={`/rice/warehouse/${riceWarehouseKindSlug(kind)}`}
-              className={`${glassCard} px-5 py-5 transition duration-200 hover:bg-white/80`}
+              className={`${glassCard} min-w-0 px-4 py-4 transition duration-200 hover:bg-white/80`}
             >
-              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{t(`rice.kindGroup.${kind}` as MessageKey)}</p>
-              <p className="mt-2 text-[22px] font-semibold text-navy">{formatKg(qty)}</p>
+              <p className="truncate text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{t(`rice.kindGroup.${kind}` as MessageKey)}</p>
+              <p className="mt-2 truncate text-[20px] font-semibold text-navy">{formatKg(qty)}</p>
             </Link>
           );
         })}
@@ -123,16 +144,29 @@ export function RiceWarehousePage({
       ) : null}
 
       <section className={glassPanel}>
-        <h2 className="text-[16px] font-semibold text-navy">{t("rice.warehouse.movements")}</h2>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <h2 className="text-[16px] font-semibold text-navy">{t("rice.warehouse.movements")}</h2>
+          <RiceListPeriodFilter
+            period={listPeriod}
+            from={rangeFrom}
+            to={rangeTo}
+            onChange={(next) => {
+              setListPeriod(next.period);
+              setRangeFrom(next.from);
+              setRangeTo(next.to);
+              void reload(1, workspace?.listPage.pageSize, next);
+            }}
+          />
+        </div>
         <div className={`${tableScrollClass} mt-4`}>
           <table className="min-w-full text-left text-[13.5px]">
             <thead className={tableHead}>
               <tr>
-                <th className="px-3 py-2">{t("common.date")}</th>
                 <th className="px-3 py-2">{t("common.item")}</th>
                 <th className="px-3 py-2">{t("common.type")}</th>
                 <th className="px-3 py-2">{t("common.quantity")}</th>
                 <th className="px-3 py-2">{t("common.notes")}</th>
+                <th className="px-3 py-2" />
               </tr>
             </thead>
             <tbody>
@@ -145,11 +179,16 @@ export function RiceWarehousePage({
               ) : (
                 (workspace?.movements ?? []).map((row) => (
                   <tr key={row.id} className="border-t border-navy/5 text-navy">
-                    <td className="px-3 py-2.5">{row.occurredOn}</td>
-                    <td className="px-3 py-2.5">{row.itemName}</td>
+                    <td className="px-3 py-2.5 font-medium">{row.itemName}</td>
                     <td className="px-3 py-2.5">{t(riceWarehouseSourceKey(row.sourceType))}</td>
                     <td className="px-3 py-2.5">{formatKg(row.qtyKg)}</td>
                     <td className="px-3 py-2.5 text-slate-500">{row.notes ?? "—"}</td>
+                    <td className="px-3 py-2.5 text-right">
+                      <CompactActionsMenu
+                        ariaLabel={`${t("rice.warehouse.view")} ${row.itemName}`}
+                        items={[{ label: t("rice.warehouse.view"), onSelect: () => setViewing(row) }]}
+                      />
+                    </td>
                   </tr>
                 ))
               )}
@@ -164,6 +203,7 @@ export function RiceWarehousePage({
           onPageSize={(pageSize) => void reload(1, pageSize)}
         />
       </section>
+      {viewing ? <RiceMovementDrawer movement={viewing} onClose={() => setViewing(null)} /> : null}
     </div>
   );
 }

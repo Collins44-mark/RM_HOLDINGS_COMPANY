@@ -1,19 +1,59 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Landmark } from "lucide-react";
 import { loadFarmFinanceWorkspaceAction, type FarmFinanceWorkspace } from "@/actions/farm/workspace";
 import { recordFarmExpenseAction } from "@/actions/farm/posting";
 import { saveWithOutbox } from "@/lib/offline";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
-import { glassCard, glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
+import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
+import { filterClass, glassCard, glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
+import { RiceListPeriodFilter } from "@/components/rice/RiceListPeriodFilter";
+import { ContainedDrawer } from "@/components/ui/ContainedDrawer";
 import { formatTzs } from "@/lib/format/currency";
-import type { ReportPeriod } from "@/lib/data/report-period";
+import { reportPeriodRange, type ReportPeriod } from "@/lib/data/report-period";
 import { PaginationBar } from "@/components/ui/PaginationBar";
+import { useListPage } from "@/lib/property/use-list-page";
 import { useT } from "@/components/i18n/LocaleProvider";
 import { FARM_METHODS, FarmField, FarmNotice, FarmPageHeader, farmMethodKey, todayIso } from "@/components/farm/farm-ui";
 import { translateFarmCopy } from "@/lib/farm/error-copy";
 import { jobBalance } from "@/lib/farm/accounting";
+import type { FarmJob } from "@/lib/farm/types";
+
+function calendarIso(value: Date) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+function periodBounds(period: ReportPeriod, from?: string, to?: string) {
+  if (period === "custom" && (!from || !to)) return null;
+  const range = reportPeriodRange(period, new Date(), { from, to });
+  return { from: calendarIso(range.from), to: calendarIso(range.to) };
+}
+
+type CustomerDebt = {
+  key: string;
+  name: string;
+  total: number;
+  paid: number;
+  balance: number;
+  jobs: FarmJob[];
+};
+
+function groupReceivables(jobs: FarmJob[]): CustomerDebt[] {
+  const grouped = new Map<string, CustomerDebt>();
+  for (const job of jobs) {
+    const balance = jobBalance(job);
+    if (balance.receivable <= 0) continue;
+    const key = job.partyId || job.partyName;
+    const current = grouped.get(key) ?? { key, name: job.partyName, total: 0, paid: 0, balance: 0, jobs: [] };
+    current.total += balance.total;
+    current.paid += balance.paid;
+    current.balance += balance.receivable;
+    current.jobs.push(job);
+    grouped.set(key, current);
+  }
+  return [...grouped.values()];
+}
 
 export function FarmFinancePage({
   initial,
@@ -23,22 +63,55 @@ export function FarmFinancePage({
   period: ReportPeriod;
 }) {
   const [dateFilter, setDateFilter] = useState("This Month");
-  const [methodFilter, setMethodFilter] = useState("All history");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
   const [page, setPage] = useState(1);
+  const [expensePeriod, setExpensePeriod] = useState<ReportPeriod>(period);
+  const [expenseKind, setExpenseKind] = useState<"ALL" | "FUEL" | "MAINTENANCE">("ALL");
+  const [expenseFrom, setExpenseFrom] = useState("");
+  const [expenseTo, setExpenseTo] = useState("");
+  const [viewing, setViewing] = useState<CustomerDebt | null>(null);
+  const expenseBounds = useRef<{ from: string; to: string } | null>(null);
   const t = useT();
   const [workspace, setWorkspace] = useState(initial.ok ? initial.workspace : null);
   const [error, setError] = useState(initial.ok ? null : initial.error);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ kind: "OPERATING", occurredOn: todayIso(), amount: "", paymentMethod: "CASH", paymentReference: "", notes: "" });
   const summary = workspace?.summary;
+  const customers = useMemo(() => groupReceivables(workspace?.jobs ?? []), [workspace?.jobs]);
+  const customerPage = useListPage(customers, String(customers.length));
+
+  async function reloadExpenses(pageNumber = workspace?.listPage.page ?? 1, pageSize = workspace?.listPage.pageSize ?? 10) {
+    const range = expenseBounds.current;
+    const next = await loadFarmFinanceWorkspaceAction({
+      period: range ? "custom" : expensePeriod,
+      from: range?.from,
+      to: range?.to,
+      page: pageNumber,
+      pageSize,
+      expenseKind,
+    });
+    if (!next.ok) {
+      setError(next.error);
+      return;
+    }
+    setWorkspace((current) =>
+      current ? { ...current, expenses: next.workspace.expenses, listPage: next.workspace.listPage } : next.workspace,
+    );
+  }
+
+  useEffect(() => {
+    const range = periodBounds(expensePeriod, expenseFrom, expenseTo);
+    if (!range) return;
+    expenseBounds.current = range;
+    void reloadExpenses(1, workspace?.listPage.pageSize ?? 10);
+    // Reload the expense list only when its date or type filter changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expensePeriod, expenseFrom, expenseTo, expenseKind]);
 
   return (
     <div className="space-y-5 pb-10">
       <FarmPageHeader icon={Landmark} title={t("farm.finance.title")} subtitle={t("farm.finance.subtitle")} period={period} periodLabel={workspace?.periodLabel ?? ""} />
       {error ? <FarmNotice>{translateFarmCopy(t, error)}</FarmNotice> : null}
-      <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <section className="grid grid-cols-3 gap-3">
         <Stat label={t("farm.kpi.income")} value={formatTzs(summary?.serviceIncome ?? 0)} />
         <Stat label={t("farm.finance.received")} value={formatTzs(summary?.received ?? 0)} />
         <Stat label={t("farm.finance.receivables")} value={formatTzs(summary?.receivables ?? 0)} />
@@ -99,22 +172,76 @@ export function FarmFinancePage({
               <tr>
                 <th className="px-3 py-2">{t("farm.job.customer")}</th>
                 <th className="px-3 py-2">{t("common.total")}</th>
+                <th className="px-3 py-2">{t("common.paid")}</th>
                 <th className="px-3 py-2">{t("common.balance")}</th>
+                <th className="px-3 py-2">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {(workspace?.jobs ?? []).filter((row) => jobBalance(row).receivable > 0).length === 0 ? (
-                <tr><td className="px-3 py-6 text-slate-500" colSpan={3}>{t("farm.finance.noReceivables")}</td></tr>
-              ) : (workspace?.jobs ?? []).filter((row) => jobBalance(row).receivable > 0).map((row) => (
-                <tr key={row.id} className="border-t border-navy/5 text-navy">
-                  <td className="px-3 py-2.5">{row.partyName}</td>
-                  <td className="px-3 py-2.5">{formatTzs(row.agreedPrice)}</td>
-                  <td className="px-3 py-2.5">{formatTzs(jobBalance(row).receivable)}</td>
+              {customers.length === 0 ? (
+                <tr><td className="px-3 py-6 text-slate-500" colSpan={5}>{t("farm.finance.noReceivables")}</td></tr>
+              ) : customerPage.rows.map((row) => (
+                <tr key={row.key} className="border-t border-navy/5 text-navy">
+                  <td className="px-3 py-2.5">{row.name}</td>
+                  <td className="px-3 py-2.5">{formatTzs(row.total)}</td>
+                  <td className="px-3 py-2.5">{formatTzs(row.paid)}</td>
+                  <td className="px-3 py-2.5">{formatTzs(row.balance)}</td>
+                  <td className="px-3 py-2.5">
+                    <CompactActionsMenu
+                      ariaLabel="Actions"
+                      items={[{ label: t("rice.storage.view"), onSelect: () => setViewing(row) }]}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          showWhenEmpty
+          page={customerPage.page}
+          total={customers.length}
+          pageSize={customerPage.pageSize}
+          onPage={customerPage.setPage}
+          onPageSize={customerPage.setPageSize}
+        />
+        {viewing ? (
+          <ContainedDrawer title={viewing.name} subtitle={t("farm.finance.customerDebt")} onClose={() => setViewing(null)}>
+            <dl className="grid grid-cols-3 gap-3 text-[13px]">
+              <div>
+                <dt className="text-[11px] uppercase tracking-[0.08em] text-slate-400">{t("common.total")}</dt>
+                <dd className="mt-1 font-semibold text-navy">{formatTzs(viewing.total)}</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] uppercase tracking-[0.08em] text-slate-400">{t("common.paid")}</dt>
+                <dd className="mt-1 font-semibold text-navy">{formatTzs(viewing.paid)}</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] uppercase tracking-[0.08em] text-slate-400">{t("common.balance")}</dt>
+                <dd className="mt-1 font-semibold text-navy">{formatTzs(viewing.balance)}</dd>
+              </div>
+            </dl>
+            <ul className="mt-5 space-y-2">
+              {viewing.jobs.map((job) => {
+                const balance = jobBalance(job);
+                return (
+                  <li key={job.id} className="rounded-[16px] border border-navy/10 px-3 py-3 text-[13px]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-navy">{job.serviceName}</p>
+                        <p className="mt-0.5 text-[12px] text-slate-500">{job.occurredOn}</p>
+                      </div>
+                      <p className="font-semibold text-navy">{formatTzs(balance.receivable)}</p>
+                    </div>
+                    <p className="mt-2 text-[12px] text-slate-500">
+                      {t("common.total")} {formatTzs(balance.total)} · {t("common.paid")} {formatTzs(balance.paid)}
+                    </p>
+                  </li>
+                );
+              })}
+            </ul>
+          </ContainedDrawer>
+        ) : null}
       </section>
             <section className={glassPanel}>
         <div className="flex items-center justify-between gap-3 mb-3">
@@ -138,6 +265,33 @@ export function FarmFinancePage({
         </div>
       </section>
 <section className={glassPanel}>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <h2 className="text-[16px] font-semibold text-navy">{t("farm.finance.expense")}</h2>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="block w-40">
+              <span className="mb-1 block text-[12px] font-medium text-slate-500">{t("common.type")}</span>
+              <select
+                className={filterClass}
+                value={expenseKind}
+                onChange={(event) => setExpenseKind(event.target.value as "ALL" | "FUEL" | "MAINTENANCE")}
+              >
+                <option value="ALL">{t("farm.finance.kindAll")}</option>
+                <option value="FUEL">{t("farm.finance.kindFuel")}</option>
+                <option value="MAINTENANCE">{t("farm.finance.kindMaintenance")}</option>
+              </select>
+            </label>
+            <RiceListPeriodFilter
+              period={expensePeriod}
+              from={expenseFrom}
+              to={expenseTo}
+              onChange={(next) => {
+                setExpensePeriod(next.period);
+                setExpenseFrom(next.from);
+                setExpenseTo(next.to);
+              }}
+            />
+          </div>
+        </div>
         <div className={`${tableScrollClass} mt-4`}>
           <table className="min-w-full text-left text-[13.5px]">
             <thead className={tableHead}>
@@ -153,7 +307,7 @@ export function FarmFinancePage({
               ) : (workspace?.expenses ?? []).map((row) => (
                 <tr key={row.id} className="border-t border-navy/5 text-navy">
                   <td className="px-3 py-2.5">{row.occurredOn}</td>
-                  <td className="px-3 py-2.5">{row.kind}</td>
+                  <td className="px-3 py-2.5">{expenseKindLabel(t, row.kind)}</td>
                   <td className="px-3 py-2.5">{formatTzs(row.amount)}</td>
                 </tr>
               ))}
@@ -161,56 +315,32 @@ export function FarmFinancePage({
           </table>
         </div>
         <PaginationBar
+          showWhenEmpty
           page={workspace?.listPage.page ?? 1}
           total={workspace?.listPage.total ?? 0}
           pageSize={workspace?.listPage.pageSize ?? 10}
-          onPage={(page) => { void loadFarmFinanceWorkspaceAction({ period, page, pageSize: workspace?.listPage.pageSize }).then((next) => { if (next.ok) setWorkspace(next.workspace); }); }}
-          onPageSize={(pageSize) => { void loadFarmFinanceWorkspaceAction({ period, page: 1, pageSize }).then((next) => { if (next.ok) setWorkspace(next.workspace); }); }}
+          onPage={(nextPage) => { void reloadExpenses(nextPage, workspace?.listPage.pageSize ?? 10); }}
+          onPageSize={(pageSize) => { void reloadExpenses(1, pageSize); }}
         />
-      </section>
-      <section className={glassPanel}>
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <div className="flex items-center gap-2"><div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div><h2 className="text-[16px] font-semibold text-navy">Fuel & Maintenance History</h2></div>
-          <span className="text-[11px] text-slate-400">13 records</span>
-        </div>
-        <div className="flex flex-wrap gap-2 mb-3 items-end text-[12px]">
-          <select className="px-2 py-1 rounded-md bg-slate-100 text-slate-600" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}><option>Today</option><option>Yesterday</option><option>This Week</option><option>This Month</option><option>This Year</option><option>Custom Range</option><option>All Time</option></select>
-          <select className="px-2 py-1 rounded-md bg-slate-100 text-[12px] text-slate-600" value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)}><option>All history</option><option>Fuel history</option><option>Maintenance history</option></select>
-        </div>
-        <div className={`${tableScrollClass} mt-2`}>
-          <table className="min-w-full text-left text-[13.5px]">
-            <thead className={tableHead}><tr><th className="px-3 py-2">TYPE</th><th className="px-3 py-2">AMOUNT</th><th className="px-3 py-2">NOTES</th></tr></thead>
-            <tbody>{useMemo(() => {
-              const df = dateFilter;
-              const mf = methodFilter;
-              const sd = startDate ? new Date(startDate) : null;
-              const ed = endDate ? new Date(endDate) : null;
-              const data = [{type:"MAINTENANCE",amount:3600,notes:"Tire repair",d:new Date("2026-10-27")},{type:"FUEL",amount:14400,notes:"Tractor refueling",d:new Date("2026-10-27")},{type:"MAINTENANCE",amount:112000,notes:"Oil change",d:new Date("2026-10-27")},{type:"FUEL",amount:14400,notes:"Tractor refueling",d:new Date("2026-10-26")},{type:"MAINTENANCE",amount:90000,notes:"Service",d:new Date("2026-10-25")}];
-              return data.filter((r:any) => {
-                const rd = r.d ? new Date(r.d) : null;
-                if (!rd) return false;
-                if (df === "Today") { const n = new Date(); return rd.toDateString() === n.toDateString(); }
-                if (df === "Yesterday") { const y = new Date(); y.setDate(y.getDate()-1); return rd.toDateString() === y.toDateString(); }
-                if (df === "This Week") { const s = new Date(); s.setDate(s.getDate()-s.getDay()); return rd >= s; }
-                if (df === "This Month") { return rd.getMonth() === new Date().getMonth() && rd.getFullYear() === new Date().getFullYear(); }
-                if (df === "This Year") { return rd.getFullYear() === new Date().getFullYear(); }
-                if (df === "Custom Range") { if (sd && !(rd >= sd)) return false; if (ed && !(rd <= ed)) return false; return true; }
-                return true;
-              }).filter((r:any) => mf === "All history" || r.type === mf.replace(" history", "").toUpperCase()).slice(0, 10).map((r:any) => (<tr key={r.type+r.amount+String(r.d)} className="border-t border-navy/5 text-navy"><td className="px-3 py-2.5">{r.type}</td><td className="px-3 py-2.5">{"TZS "+r.amount.toLocaleString("en-TZ")}</td><td className="px-3 py-2.5">{r.notes}</td></tr>));
-            }, [dateFilter, methodFilter, startDate, endDate])}</tbody>
-          </table>
-          <div className="flex items-center justify-between mt-3 text-[12px] text-slate-500"><span>Showing 1-5 of 13</span><div className="flex gap-1"><button className="px-2 py-0.5 rounded bg-slate-100">Prev</button><button className="px-2 py-0.5 rounded bg-navy text-white">1</button><button className="px-2 py-0.5 rounded bg-slate-100">Next</button></div></div>
-        </div>
       </section>
     </div>
   );
 }
 
+function expenseKindLabel(t: ReturnType<typeof useT>, kind: string) {
+  if (kind === "FUEL") return t("farm.finance.kindFuel");
+  if (kind === "MAINTENANCE") return t("farm.finance.kindMaintenance");
+  if (kind === "OPERATING") return t("rice.finance.expense.OPERATING");
+  if (kind === "LABOUR") return t("rice.finance.expense.LABOUR");
+  if (kind === "OTHER") return t("rice.finance.expense.OTHER");
+  return kind;
+}
+
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <article className={`${glassCard} px-5 py-4`}>
-      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</p>
-      <p className="mt-1.5 text-[20px] font-semibold text-navy">{value}</p>
+    <article className={`${glassCard} min-w-0 px-3 py-3`}>
+      <p className="text-[10.5px] font-medium uppercase leading-4 tracking-[0.08em] text-slate-400">{label}</p>
+      <p className="mt-1 truncate text-[16px] font-semibold tracking-[-0.03em] text-navy">{value}</p>
     </article>
   );
 }

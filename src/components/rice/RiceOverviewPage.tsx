@@ -65,11 +65,10 @@ function KpiCard({
   const { locale } = useLocale();
   const display = metricText(metric, kind, locale, translateRiceCopy(t, metric.hint));
   return (
-    <article className={cn(glassCard, "px-5 py-5")}>
+    <article className={cn(glassCard, "min-w-0 px-3 py-4")}>
       <IconWell icon={icon} />
-      <p className="mt-3 text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</p>
-      <p className="mt-1.5 min-h-7 text-[22px] font-semibold tracking-[-0.04em] text-navy">{display.value}</p>
-      {display.hint ? <p className="mt-1 text-[12px] leading-4 text-slate-400">{display.hint}</p> : null}
+      <p className="mt-3 text-[11px] font-medium uppercase leading-4 tracking-[0.08em] text-slate-400">{label}</p>
+      <p className="mt-1.5 truncate text-[18px] font-semibold tracking-[-0.04em] text-navy">{display.value}</p>
     </article>
   );
 }
@@ -102,7 +101,7 @@ function GradeDonut({ rows }: { rows: RiceGradeShare[] }) {
 
 function PanelShell({ title, hint }: { title: string; hint?: string }) {
   return (
-    <section className={cn(glassPanel, "flex min-h-[22rem] flex-col")}>
+    <section className={cn(glassPanel, "flex flex-col")}>
       <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">{title}</h2>
       {hint ? <p className="mt-8 flex-1 text-[13.5px] leading-6 text-slate-500">{hint}</p> : null}
     </section>
@@ -137,7 +136,6 @@ export function RiceOverviewPage({
 
   const grades = view?.stockByGrade.status === "ok" ? view.stockByGrade.value ?? [] : [];
   const stock = view?.currentStock.status === "ok" ? view.currentStock.value ?? [] : [];
-  const services = view?.serviceIncome.status === "ok" ? view.serviceIncome.value ?? [] : [];
   const waiting = pending && !view;
 
   return (
@@ -176,7 +174,7 @@ export function RiceOverviewPage({
 
       {loadError && !pending ? <p className="text-[13px] text-[#c45b66]">{translateRiceCopy(t, loadError)}</p> : null}
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid grid-cols-5 gap-3">
         <KpiCard label={t("rice.overview.paddy")} metric={view?.companyPaddyKg ?? PENDING_KPI} kind="kg" icon={Wheat} />
         <KpiCard label={t("rice.overview.riceStock")} metric={view?.riceStockKg ?? PENDING_KPI} kind="kg" icon={Package} />
         <KpiCard label={t("rice.overview.sales")} metric={view?.totalSales ?? PENDING_KPI} kind="money" icon={CircleDollarSign} />
@@ -184,9 +182,9 @@ export function RiceOverviewPage({
         <KpiCard label={t("rice.overview.netProfit")} metric={view?.netProfit ?? PENDING_KPI} kind="money" icon={Landmark} />
       </section>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+      <section className="grid grid-cols-2 gap-4">
         {view?.stockByGrade.status === "ok" && grades.length ? (
-          <section className={cn(glassPanel, "min-h-[22rem]")}>
+          <section className={glassPanel}>
             <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">{t("rice.overview.stockByGrade")}</h2>
             <div className="mt-5">
               <GradeDonut rows={grades} />
@@ -210,7 +208,7 @@ export function RiceOverviewPage({
         )}
 
         {view?.currentStock.status === "ok" && stock.length ? (
-          <section className={cn(glassPanel, "min-h-[22rem]")}>
+          <section className={glassPanel}>
             <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">{t("rice.overview.currentStock")}</h2>
             <ul className="mt-5 space-y-3">
               {stock.map((row, index) => (
@@ -231,35 +229,6 @@ export function RiceOverviewPage({
           <PanelShell
             title={t("rice.overview.currentStock")}
             hint={waiting ? undefined : translateRiceCopy(t, view?.currentStock.hint ?? t("rice.overview.stockUnavailable"))}
-          />
-        )}
-
-        {view?.serviceIncome.status === "ok" && services.length ? (
-          <section className={cn(glassPanel, "min-h-[22rem]")}>
-            <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">
-              {t("rice.overview.serviceIncome", { period: periodLabel })}
-            </h2>
-            <ul className="mt-5 space-y-3">
-              {services.map((row, index) => (
-                <li key={row.name} className="flex items-center gap-3 text-[13.5px] text-navy">
-                  <NumberBadge index={index + 1} />
-                  <span className="min-w-0 flex-1 truncate">{row.name}</span>
-                  <span className="font-medium">{formatTzs(row.amount)}</span>
-                  <span className="w-12 text-right text-slate-500">{Math.round(row.share)}%</span>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-6 border-t border-navy/5 pt-4 text-[14px] font-semibold text-navy">
-              {t("rice.overview.totalService")}{" "}
-              {view.serviceIncomeTotal.status === "ok" && view.serviceIncomeTotal.value != null
-                ? formatTzs(view.serviceIncomeTotal.value)
-                : "—"}
-            </p>
-          </section>
-        ) : (
-          <PanelShell
-            title={t("rice.overview.serviceIncome", { period: periodLabel })}
-            hint={waiting ? undefined : translateRiceCopy(t, view?.serviceIncome.hint ?? t("rice.overview.serviceEmpty"))}
           />
         )}
       </section>

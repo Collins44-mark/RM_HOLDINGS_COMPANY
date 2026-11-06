@@ -6,26 +6,38 @@ import { loadRicePurchasesWorkspaceAction, type RicePurchasesWorkspace } from "@
 import { recordRicePurchaseAction, recordRicePurchasePaymentAction } from "@/actions/rice/posting";
 import { isLikelyOffline, loadWorkspaceWithCache, saveWithOutbox, writeOfflineSnapshot } from "@/lib/offline";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
+import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu";
 import { glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
+import { ContainedDrawer } from "@/components/ui/ContainedDrawer";
 import { formatTzs } from "@/lib/format/currency";
 import type { ReportPeriod } from "@/lib/data/report-period";
 import { PaginationBar } from "@/components/ui/PaginationBar";
-import { useT } from "@/components/i18n/LocaleProvider";
+import { useLocale, useT } from "@/components/i18n/LocaleProvider";
 import { translateRiceCopy } from "@/lib/rice/error-copy";
-import { formatKg, RiceField, RiceNotice, RicePageHeader, RICE_METHODS, riceMethodKey, todayIso } from "@/components/rice/rice-ui";
+import type { RicePurchase } from "@/lib/rice/types";
+import { RiceListPeriodFilter } from "@/components/rice/RiceListPeriodFilter";
+import { formatKg, formatRiceDate, RiceField, RiceNotice, RicePageHeader, RICE_METHODS, riceMethodKey, todayIso } from "@/components/rice/rice-ui";
 import { StatusPill } from "@/components/supermarket/purchasing-ui";
 
 export function RicePurchasesPage({
   initial,
   period,
+  from = "",
+  to = "",
 }: {
   initial: { ok: true; workspace: RicePurchasesWorkspace } | { ok: false; error: string };
   period: ReportPeriod;
+  from?: string;
+  to?: string;
 }) {
   const t = useT();
   const [workspace, setWorkspace] = useState(initial.ok ? initial.workspace : null);
   const [error, setError] = useState(initial.ok ? null : initial.error);
   const [busy, setBusy] = useState(false);
+  const [listPeriod, setListPeriod] = useState<ReportPeriod>(period);
+  const [rangeFrom, setRangeFrom] = useState(from);
+  const [rangeTo, setRangeTo] = useState(to);
+  const [viewing, setViewing] = useState<RicePurchase | null>(null);
   const requestId = useRef(0);
   const paddyItems = useMemo(() => (workspace?.items ?? []).filter((row) => row.kind === "PADDY"), [workspace]);
   const [form, setForm] = useState({
@@ -49,12 +61,24 @@ export function RicePurchasesPage({
     }
   }, [workspace]);
 
-  async function refresh(page = workspace?.listPage.page ?? 1, pageSize = workspace?.listPage.pageSize ?? 10) {
+  async function refresh(
+    page = workspace?.listPage.page ?? 1,
+    pageSize = workspace?.listPage.pageSize ?? 10,
+    nextRange: { period: ReportPeriod; from: string; to: string } = { period: listPeriod, from: rangeFrom, to: rangeTo },
+  ) {
+    if (nextRange.period === "custom" && (!nextRange.from || !nextRange.to)) return;
     const id = ++requestId.current;
     const result = await loadWorkspaceWithCache({
       kind: "rice.purchases",
       businessUnitCode: "rice",
-      load: () => loadRicePurchasesWorkspaceAction({ period, page, pageSize }),
+      load: () =>
+        loadRicePurchasesWorkspaceAction({
+          period: nextRange.period,
+          from: nextRange.period === "custom" ? nextRange.from : undefined,
+          to: nextRange.period === "custom" ? nextRange.to : undefined,
+          page,
+          pageSize,
+        }),
     });
     if (id !== requestId.current) return;
     if (result.ok) setWorkspace(result.workspace);
@@ -98,13 +122,7 @@ export function RicePurchasesPage({
 
   return (
     <div className="space-y-5 pb-10">
-      <RicePageHeader
-        icon={Wheat}
-        title={t("rice.purchases.title")}
-        subtitle={t("rice.purchases.subtitle")}
-        period={period}
-        periodLabel={workspace?.periodLabel ?? ""}
-      />
+      <RicePageHeader icon={Wheat} title={t("rice.purchases.title")} subtitle={t("rice.purchases.subtitle")} />
       {error ? <RiceNotice>{translateRiceCopy(t, error)}</RiceNotice> : null}
 
       {canCreate ? (
@@ -185,12 +203,24 @@ export function RicePurchasesPage({
       ) : null}
 
       <section className={glassPanel}>
-        <h2 className="text-[16px] font-semibold text-navy">{t("rice.purchases.posted")}</h2>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <h2 className="text-[16px] font-semibold text-navy">{t("rice.purchases.posted")}</h2>
+          <RiceListPeriodFilter
+            period={listPeriod}
+            from={rangeFrom}
+            to={rangeTo}
+            onChange={(next) => {
+              setListPeriod(next.period);
+              setRangeFrom(next.from);
+              setRangeTo(next.to);
+              void refresh(1, workspace?.listPage.pageSize, next);
+            }}
+          />
+        </div>
         <div className={`${tableScrollClass} mt-4`}>
           <table className="min-w-full text-left text-[13.5px]">
             <thead className={tableHead}>
               <tr>
-                <th className="px-3 py-2">{t("common.date")}</th>
                 <th className="px-3 py-2">{t("rice.purchases.no")}</th>
                 <th className="px-3 py-2">{t("rice.purchases.supplier")}</th>
                 <th className="px-3 py-2">{t("rice.purchases.qty")}</th>
@@ -198,6 +228,7 @@ export function RicePurchasesPage({
                 <th className="px-3 py-2">{t("common.paid")}</th>
                 <th className="px-3 py-2">{t("common.balance")}</th>
                 <th className="px-3 py-2">{t("common.status")}</th>
+                <th className="px-3 py-2" />
               </tr>
             </thead>
             <tbody>
@@ -210,8 +241,7 @@ export function RicePurchasesPage({
               ) : (
                 (workspace?.purchases ?? []).map((row) => (
                   <tr key={row.id} className="border-t border-navy/5 text-navy">
-                    <td className="px-3 py-2.5">{row.occurredOn}</td>
-                    <td className="px-3 py-2.5">{row.number}</td>
+                    <td className="px-3 py-2.5 font-medium">{row.number}</td>
                     <td className="px-3 py-2.5">{row.partyName}</td>
                     <td className="px-3 py-2.5">{formatKg(row.qtyKg)}</td>
                     <td className="px-3 py-2.5">{formatTzs(row.total)}</td>
@@ -233,6 +263,12 @@ export function RicePurchasesPage({
                         />
                       ) : null}
                     </td>
+                    <td className="px-3 py-2.5 text-right">
+                      <CompactActionsMenu
+                        ariaLabel={`${t("rice.purchases.view")} ${row.number}`}
+                        items={[{ label: t("rice.purchases.view"), onSelect: () => setViewing(row) }]}
+                      />
+                    </td>
                   </tr>
                 ))
               )}
@@ -247,7 +283,46 @@ export function RicePurchasesPage({
           onPageSize={(pageSize) => void refresh(1, pageSize)}
         />
       </section>
+      {viewing ? <PurchaseDrawer purchase={viewing} onClose={() => setViewing(null)} /> : null}
     </div>
+  );
+}
+
+function purchaseStatus(t: ReturnType<typeof useT>, row: RicePurchase) {
+  if (row.balance <= 0) return t("status.paid");
+  if (row.paid > 0) return t("status.partial");
+  return t("status.unpaid");
+}
+
+function PurchaseDrawer({ purchase, onClose }: { purchase: RicePurchase; onClose: () => void }) {
+  const t = useT();
+  const { locale } = useLocale();
+  const facts = [
+    [t("rice.milling.filterDate"), formatRiceDate(purchase.occurredOn)],
+    [t("rice.purchases.supplier"), purchase.partyName],
+    [t("common.item"), purchase.itemName],
+    [t("rice.purchases.bags"), purchase.bags == null ? "—" : String(purchase.bags)],
+    [t("rice.purchases.qty"), formatKg(purchase.qtyKg, locale)],
+    [t("rice.purchases.unitPrice"), formatTzs(purchase.unitPrice)],
+    [t("common.total"), formatTzs(purchase.total)],
+    [t("common.paid"), formatTzs(purchase.paid)],
+    [t("common.balance"), formatTzs(purchase.balance)],
+    [t("common.status"), purchaseStatus(t, purchase)],
+    [t("rice.purchases.method"), purchase.method ? t(riceMethodKey(purchase.method)) : "—"],
+    [t("common.reference"), purchase.reference || "—"],
+  ];
+  return (
+    <ContainedDrawer title={purchase.number} subtitle={t("rice.purchases.details")} onClose={onClose}>
+      <dl className="grid grid-cols-2 gap-3">
+        {facts.map(([label, value]) => (
+          <div key={label} className="rounded-2xl bg-[#f4f7fb] px-3 py-3">
+            <dt className="text-[11.5px] font-medium uppercase tracking-[0.08em] text-slate-400">{label}</dt>
+            <dd className="mt-1 text-[15px] font-semibold text-navy">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {purchase.notes ? <p className="mt-4 text-[13.5px] leading-5 text-slate-600">{purchase.notes}</p> : null}
+    </ContainedDrawer>
   );
 }
 

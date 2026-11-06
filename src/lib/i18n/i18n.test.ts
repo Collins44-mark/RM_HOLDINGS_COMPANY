@@ -59,8 +59,8 @@ test("switching to English restores Customer Storage labels", () => {
 });
 
 test("variable interpolation works in both locales", () => {
-  assert.equal(createTranslator("en")("rice.storage.serviceIncome", { period: "This Month" }), "Service income (This Month)");
-  assert.equal(createTranslator("sw")("rice.storage.serviceIncome", { period: "Mwezi huu" }), "Mapato ya huduma (Mwezi huu)");
+  assert.equal(createTranslator("en")("rice.overview.serviceIncome", { period: "This Month" }), "Service Income (This Month)");
+  assert.equal(createTranslator("sw")("rice.overview.serviceIncome", { period: "Mwezi huu" }), "Mapato ya huduma (Mwezi huu)");
 });
 
 test("nav Customer Storage matches the page title in Kiswahili", () => {

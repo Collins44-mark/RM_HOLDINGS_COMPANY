@@ -47,7 +47,7 @@ export function RiceFinancePage({
       />
       {error ? <RiceNotice>{translateRiceCopy(t, error)}</RiceNotice> : null}
 
-      <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <section className="grid grid-cols-4 gap-3">
         <Stat label={t("rice.finance.sales")} value={formatTzs(summary?.salesTotal ?? 0)} />
         <Stat label={t("rice.finance.service")} value={formatTzs(summary?.serviceIncome ?? 0)} />
         <Stat label={t("rice.finance.cogs")} value={formatTzs(summary?.cogs ?? 0)} />
@@ -186,9 +186,9 @@ export function RiceFinancePage({
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <article className={`${glassCard} px-5 py-4`}>
-      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</p>
-      <p className="mt-1.5 text-[20px] font-semibold text-navy">{value}</p>
+    <article className={`${glassCard} min-w-0 px-4 py-4`}>
+      <p className="text-[11px] font-medium uppercase leading-4 tracking-[0.08em] text-slate-400">{label}</p>
+      <p className="mt-1.5 truncate text-[18px] font-semibold text-navy">{value}</p>
     </article>
   );
 }

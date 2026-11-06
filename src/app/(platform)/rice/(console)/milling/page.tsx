@@ -13,5 +13,5 @@ export default async function RiceMillingRoute({
   const params = await searchParams;
   const period = parseReportPeriod(params.period ?? "this-month");
   const initial = await loadRiceMillingWorkspaceAction({ period, from: params.from, to: params.to });
-  return <RiceMillingPage initial={initial} period={period} />;
+  return <RiceMillingPage initial={initial} period={period} from={params.from} to={params.to} />;
 }

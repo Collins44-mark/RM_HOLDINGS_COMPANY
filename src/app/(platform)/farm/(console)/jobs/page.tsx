@@ -13,5 +13,5 @@ export default async function FarmJobsRoute({
   const params = await searchParams;
   const period = parseReportPeriod(params.period ?? "this-month");
   const initial = await loadFarmJobsWorkspaceAction({ period, from: params.from, to: params.to });
-  return <FarmJobsPage initial={initial} period={period} />;
+  return <FarmJobsPage initial={initial} period={period} from={params.from ?? ""} to={params.to ?? ""} />;
 }

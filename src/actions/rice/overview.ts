@@ -93,7 +93,7 @@ export async function getRiceOverviewAction(input: {
           return { name: row.name, quantityKg: row.qtyKg, share: total > 0 ? (row.qtyKg / total) * 100 : 0 };
         });
       const serviceGroups = new Map<string, number>();
-      for (const row of services) {
+      for (const row of services.rows) {
         serviceGroups.set(row.kind, (serviceGroups.get(row.kind) ?? 0) + row.amount);
       }
       const serviceRows = [...serviceGroups.entries()].map(([name, amount]) => ({

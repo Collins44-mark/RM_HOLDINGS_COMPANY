@@ -199,6 +199,7 @@ export async function loadRiceBatches(
 export async function loadRiceMovements(
   ctx: RiceContext,
   paging: RicePaging = { page: 1, pageSize: 10 },
+  occurred?: { from: string; to: string },
 ): Promise<{ rows: RiceStockMovement[]; page: PageMeta }> {
   const range = resolvePaging(paging === "all" ? "all" : paging);
   let query = ctx.supabase
@@ -206,8 +207,10 @@ export async function loadRiceMovements(
     .select("id, occurred_on, source_type, qty_kg, notes, rice_items(name)", { count: "exact" })
     .eq("business_unit_id", ctx.businessUnitId)
     .eq("is_active", true)
+    .order("occurred_on", { ascending: false })
     .order("created_at", { ascending: false })
     .order("id", { ascending: false });
+  if (occurred) query = query.gte("occurred_on", occurred.from).lte("occurred_on", occurred.to);
   query = range ? query.range(range.from, range.to) : query.limit(500);
   const { data, error, count } = await query;
   if (error) {
@@ -233,6 +236,7 @@ export async function loadRiceKindMovements(
   ctx: RiceContext,
   itemIds: string[],
   paging: RicePaging = { page: 1, pageSize: 10 },
+  occurred?: { from: string; to: string },
 ): Promise<{ rows: RiceWarehouseMovement[]; page: PageMeta }> {
   if (!itemIds.length) return { rows: [], page: EMPTY_PAGE };
   const range = resolvePaging(paging === "all" ? "all" : paging);
@@ -244,6 +248,7 @@ export async function loadRiceKindMovements(
     .in("item_id", itemIds)
     .order("occurred_on", { ascending: false })
     .order("created_at", { ascending: false });
+  if (occurred) query = query.gte("occurred_on", occurred.from).lte("occurred_on", occurred.to);
   query = range ? query.range(range.from, range.to) : query.limit(500);
   const { data, error, count } = await query;
   if (error) {
@@ -369,6 +374,7 @@ export async function loadRiceSales(
 export async function loadRiceStorage(
   ctx: RiceContext,
   paging: RicePaging = "all",
+  occurred?: { from: string; to: string },
 ): Promise<{ accounts: RiceStorageAccount[]; movements: RiceStorageMovement[]; page: PageMeta }> {
   const { data: accounts, error } = await ctx.supabase
     .from("rice_v_storage_balances")
@@ -396,12 +402,14 @@ export async function loadRiceStorage(
     .eq("is_active", true)
     .order("occurred_on", { ascending: false })
     .order("id", { ascending: false });
+  if (occurred) moveQuery = moveQuery.gte("occurred_on", occurred.from).lte("occurred_on", occurred.to);
   moveQuery = range ? moveQuery.range(range.from, range.to) : moveQuery.limit(500);
   const { data: moves, count } = await moveQuery;
   const movements = (moves ?? []).map((row) => {
       const account = accountMap.get(s(row.account_id));
       return {
         id: s(row.id),
+        accountId: s(row.account_id),
         occurredOn: s(row.occurred_on),
         accountNumber: account?.accountNumber ?? "",
         partyName: account?.partyName ?? "",
@@ -419,21 +427,63 @@ export async function loadRiceStorage(
   };
 }
 
-export async function loadRiceServiceIncome(ctx: RiceContext, from: string, to: string): Promise<RiceServiceIncome[]> {
+export async function loadRiceAccountMovements(ctx: RiceContext, accountId: string): Promise<RiceStorageMovement[]> {
+  const { data: accountRow } = await ctx.supabase
+    .from("rice_v_storage_balances")
+    .select("account_number, party_name")
+    .eq("business_unit_id", ctx.businessUnitId)
+    .eq("account_id", accountId)
+    .maybeSingle();
   const { data, error } = await ctx.supabase
+    .from("rice_storage_movements")
+    .select("id, account_id, occurred_on, movement_type, bags, qty_kg, reference, notes")
+    .eq("business_unit_id", ctx.businessUnitId)
+    .eq("is_active", true)
+    .eq("account_id", accountId)
+    .order("occurred_on", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(200);
+  if (error) {
+    if (isRiceMissingRelation(error)) return [];
+    throw new RiceError("Couldn't load customer storage.", "DATABASE");
+  }
+  return (data ?? []).map((row) => ({
+    id: s(row.id),
+    accountId: s(row.account_id),
+    occurredOn: s(row.occurred_on),
+    accountNumber: accountRow?.account_number ? s(accountRow.account_number) : "",
+    partyName: accountRow?.party_name ? s(accountRow.party_name) : "",
+    type: row.movement_type as "DEPOSIT" | "RELEASE",
+    bags: row.bags == null ? null : n(row.bags),
+    qtyKg: n(row.qty_kg),
+    reference: row.reference ? s(row.reference) : null,
+    notes: row.notes ? s(row.notes) : null,
+  }));
+}
+
+export async function loadRiceServiceIncome(
+  ctx: RiceContext,
+  from: string,
+  to: string,
+  paging: RicePaging = "all",
+): Promise<{ rows: RiceServiceIncome[]; page: PageMeta }> {
+  const range = resolvePaging(paging);
+  let query = ctx.supabase
     .from("rice_service_income")
-    .select("id, income_number, occurred_on, kind, amount, notes, rice_parties(name)")
+    .select("id, income_number, occurred_on, kind, amount, notes, rice_parties(name)", { count: "exact" })
     .eq("business_unit_id", ctx.businessUnitId)
     .eq("is_active", true)
     .gte("occurred_on", from)
     .lte("occurred_on", to)
     .order("occurred_on", { ascending: false })
-    .limit(200);
+    .order("id", { ascending: false });
+  query = range ? query.range(range.from, range.to) : query.limit(500);
+  const { data, error, count } = await query;
   if (error) {
-    if (isRiceMissingRelation(error)) return [];
+    if (isRiceMissingRelation(error)) return { rows: [], page: EMPTY_PAGE };
     throw new RiceError("Couldn't load service income.", "DATABASE");
   }
-  return (data ?? []).map((row) => {
+  const rows = (data ?? []).map((row) => {
     const party = row.rice_parties as { name?: string } | { name?: string }[] | null;
     const name = Array.isArray(party) ? party[0]?.name : party?.name;
     return {
@@ -446,6 +496,7 @@ export async function loadRiceServiceIncome(ctx: RiceContext, from: string, to: 
       notes: row.notes ? s(row.notes) : null,
     };
   });
+  return { rows, page: pageMeta(range?.page ?? 1, count ?? rows.length, range?.pageSize ?? Math.max(rows.length, 1)) };
 }
 
 export async function loadRiceExpenses(

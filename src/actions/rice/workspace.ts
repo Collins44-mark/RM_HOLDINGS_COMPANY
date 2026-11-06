@@ -9,6 +9,7 @@ import {
   loadRiceItems,
   loadRiceMovements,
   loadRiceParties,
+  loadRiceAccountMovements,
   loadRicePurchases,
   loadRiceSales,
   loadRiceServiceIncome,
@@ -86,8 +87,8 @@ export type RiceStorageWorkspace = {
   movements: RiceStorageMovement[];
   services: RiceServiceIncome[];
   caps: RiceCaps;
-  periodLabel: string;
-  listPage: PageMeta;
+  movementPage: PageMeta;
+  servicePage: PageMeta;
 };
 
 export type RiceSalesWorkspace = {
@@ -159,7 +160,7 @@ export async function loadRiceMillingWorkspaceAction(
     const { range, from, to } = rangeFrom(input);
     const [items, batches] = await Promise.all([
       loadRiceItems(ctx),
-      loadRiceBatches(ctx, from, to, { page: input.page, pageSize: input.pageSize }),
+      loadRiceBatches(ctx, from, to, { page: input.page ?? 1, pageSize: input.pageSize ?? 10 }),
     ]);
     return {
       ok: true as const,
@@ -176,15 +177,17 @@ export async function loadRiceMillingWorkspaceAction(
   }
 }
 
-export async function loadRiceWarehouseWorkspaceAction(input: { page?: number; pageSize?: number } = {}) {
+export async function loadRiceWarehouseWorkspaceAction(
+  input: { period?: string; from?: string; to?: string; page?: number; pageSize?: number } = {},
+) {
   try {
     const ctx = await requireAnyRicePermission(["rice.warehouse.view", "rice.stock.view", "rice.stock.edit"]);
     const user = await requireAuth();
-    const to = dateIso(new Date());
+    const { from, to } = rangeFrom(input.period || input.from || input.to ? input : { period: "this-month" });
     const [items, movements, ledger] = await Promise.all([
       loadRiceItems(ctx),
-      loadRiceMovements(ctx, { page: input.page, pageSize: input.pageSize }),
-      loadRiceLedgerSummary(ctx, "2000-01-01", to),
+      loadRiceMovements(ctx, { page: input.page, pageSize: input.pageSize }, { from, to }),
+      loadRiceLedgerSummary(ctx, "2000-01-01", dateIso(new Date())),
     ]);
     return {
       ok: true as const,
@@ -201,22 +204,23 @@ export async function loadRiceWarehouseWorkspaceAction(input: { page?: number; p
 }
 
 export async function loadRiceWarehouseKindWorkspaceAction(
-  input: { kind: string; page?: number; pageSize?: number },
+  input: { kind: string; period?: string; from?: string; to?: string; page?: number; pageSize?: number },
 ): Promise<{ ok: true; workspace: RiceWarehouseKindWorkspace } | { ok: false; error: string }> {
   try {
     const kind = parseRiceWarehouseKind(input.kind);
     if (!kind) return { ok: false as const, error: "Unknown warehouse category." };
     const ctx = await requireAnyRicePermission(["rice.warehouse.view", "rice.stock.view", "rice.stock.edit"]);
-    const to = dateIso(new Date());
+    const { from, to } = rangeFrom(input.period || input.from || input.to ? input : { period: "this-month" });
     const [allItems, ledger] = await Promise.all([
       loadRiceItems(ctx),
-      loadRiceLedgerSummary(ctx, "2000-01-01", to),
+      loadRiceLedgerSummary(ctx, "2000-01-01", dateIso(new Date())),
     ]);
     const items = applyRiceInventoryValues(allItems, ledger).filter((row) => row.kind === kind);
     const movements = await loadRiceKindMovements(
       ctx,
       items.map((row) => row.id),
       { page: input.page, pageSize: input.pageSize },
+      { from, to },
     );
     return {
       ok: true as const,
@@ -234,8 +238,38 @@ export async function loadRiceWarehouseKindWorkspaceAction(
   }
 }
 
+export async function loadRiceStorageAccountAction(accountId: string) {
+  try {
+    const ctx = await requireAnyRicePermission([
+      "rice.storage.view",
+      "rice.storage.create",
+      "rice.warehouse.view",
+      "rice.warehouse.receive",
+      "rice.warehouse.release",
+    ]);
+    const movements = await loadRiceAccountMovements(ctx, accountId);
+    return { ok: true as const, movements };
+  } catch (error) {
+    return { ok: false as const, error: riceActionError(error) };
+  }
+}
+
 export async function loadRiceStorageWorkspaceAction(
-  input: { period?: string; from?: string; to?: string; page?: number; pageSize?: number } = {},
+  input: {
+    period?: string;
+    from?: string;
+    to?: string;
+    movementPeriod?: string;
+    movementFrom?: string;
+    movementTo?: string;
+    movementPage?: number;
+    movementPageSize?: number;
+    servicePeriod?: string;
+    serviceFrom?: string;
+    serviceTo?: string;
+    servicePage?: number;
+    servicePageSize?: number;
+  } = {},
 ) {
   try {
     const ctx = await requireAnyRicePermission([
@@ -246,11 +280,24 @@ export async function loadRiceStorageWorkspaceAction(
       "rice.warehouse.release",
     ]);
     const user = await requireAuth();
-    const { range, from, to } = rangeFrom(input);
+    const movement = rangeFrom({
+      period: input.movementPeriod ?? input.period,
+      from: input.movementFrom ?? input.from,
+      to: input.movementTo ?? input.to,
+    });
+    const service = rangeFrom({
+      period: input.servicePeriod ?? input.period,
+      from: input.serviceFrom ?? input.from,
+      to: input.serviceTo ?? input.to,
+    });
     const [parties, storage, services] = await Promise.all([
       loadRiceParties(ctx),
-      loadRiceStorage(ctx, { page: input.page, pageSize: input.pageSize }),
-      loadRiceServiceIncome(ctx, from, to),
+      loadRiceStorage(
+        ctx,
+        { page: input.movementPage, pageSize: input.movementPageSize },
+        { from: movement.from, to: movement.to },
+      ),
+      loadRiceServiceIncome(ctx, service.from, service.to, { page: input.servicePage, pageSize: input.servicePageSize }),
     ]);
     return {
       ok: true as const,
@@ -258,10 +305,10 @@ export async function loadRiceStorageWorkspaceAction(
         parties: parties.filter((row) => row.kind === "CUSTOMER" || row.kind === "BOTH"),
         accounts: storage.accounts,
         movements: storage.movements,
-        services,
+        services: services.rows,
         caps: riceCaps(user),
-        periodLabel: range.label,
-        listPage: storage.page,
+        movementPage: storage.page,
+        servicePage: services.page,
       } satisfies RiceStorageWorkspace,
     };
   } catch (error) {
@@ -313,7 +360,7 @@ export async function loadRiceFinanceWorkspaceAction(
     const [purchases, sales, services, expenses, ledger] = await Promise.all([
       loadRicePurchases(ctx, from, to, "all"),
       loadRiceSales(ctx, from, to, "all"),
-      loadRiceServiceIncome(ctx, from, to),
+      loadRiceServiceIncome(ctx, from, to).then((result) => result.rows),
       loadRiceExpenses(ctx, from, to, { page: input.page, pageSize: input.pageSize }),
       loadRiceLedgerSummary(ctx, from, to),
     ]);
@@ -345,7 +392,7 @@ export async function loadRiceReportsWorkspaceAction(input: { period?: string; f
       loadRicePurchases(ctx, from, to, "all"),
       loadRiceBatches(ctx, from, to, "all"),
       loadRiceSales(ctx, from, to, "all"),
-      loadRiceServiceIncome(ctx, from, to),
+      loadRiceServiceIncome(ctx, from, to).then((result) => result.rows),
       loadRiceExpenses(ctx, from, to, "all"),
       loadRiceStorage(ctx, "all"),
       loadRiceLedgerSummary(ctx, from, to),

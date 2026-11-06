@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Wrench } from "lucide-react";
 import { loadFarmJobsWorkspaceAction, type FarmJobsWorkspace } from "@/actions/farm/workspace";
 import { recordFarmJobAction, recordFarmJobPaymentAction } from "@/actions/farm/posting";
 import { SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
 import { formatTzs } from "@/lib/format/currency";
-import type { ReportPeriod } from "@/lib/data/report-period";
+import { reportPeriodRange, type ReportPeriod } from "@/lib/data/report-period";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useT } from "@/components/i18n/LocaleProvider";
 import { FARM_METHODS, FarmField, FarmNotice, FarmPageHeader, farmJobStatusKey, farmMethodKey, todayIso } from "@/components/farm/farm-ui";
@@ -16,12 +16,27 @@ import { jobBalance } from "@/lib/farm/accounting";
 import { JobDrawer } from "./job-drawer";
 import { loadWorkspaceWithCache, saveWithOutbox, writeOfflineSnapshot } from "@/lib/offline";
 
+function calendarIso(value: Date) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+/** Period bounds follow the calendar the user is looking at, not the server clock. */
+function periodBounds(period: ReportPeriod, from?: string, to?: string) {
+  if (period === "custom" && (!from || !to)) return null;
+  const range = reportPeriodRange(period, new Date(), { from, to });
+  return { from: calendarIso(range.from), to: calendarIso(range.to) };
+}
+
 export function FarmJobsPage({
   initial,
   period,
+  from = "",
+  to = "",
 }: {
   initial: { ok: true; workspace: FarmJobsWorkspace } | { ok: false; error: string };
   period: ReportPeriod;
+  from?: string;
+  to?: string;
 }) {
   const t = useT();
   const [workspace, setWorkspace] = useState(initial.ok ? initial.workspace : null);
@@ -47,21 +62,43 @@ export function FarmJobsPage({
     notes: "",
   });
 
+  const boundsRef = useRef<{ from: string; to: string } | null>(null);
+
   useEffect(() => {
     if (workspace) {
       void writeOfflineSnapshot({ kind: "farm.jobs", businessUnitCode: "farm", payload: workspace });
     }
   }, [workspace]);
 
-  async function refresh(page = workspace?.listPage.page ?? 1, pageSize = workspace?.listPage.pageSize ?? 10) {
+  async function refresh(
+    page = workspace?.listPage.page ?? 1,
+    pageSize = workspace?.listPage.pageSize ?? 10,
+    range = boundsRef.current,
+  ) {
     const next = await loadWorkspaceWithCache({
       kind: "farm.jobs",
       businessUnitCode: "farm",
-      load: () => loadFarmJobsWorkspaceAction({ period, page, pageSize }),
+      load: () =>
+        loadFarmJobsWorkspaceAction({
+          period: range ? "custom" : period,
+          from: range?.from,
+          to: range?.to,
+          page,
+          pageSize,
+        }),
     });
     if (next.ok) setWorkspace(next.workspace);
     else setError(next.error);
   }
+
+  useEffect(() => {
+    const range = periodBounds(period, from, to);
+    if (!range) return;
+    boundsRef.current = range;
+    void refresh(1, workspace?.listPage.pageSize ?? 10, range);
+    // Reload only when the selected period changes. Pagination and posting call refresh directly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, from, to]);
 
   const services = workspace?.services ?? [];
   const serviceId = form.serviceTypeId || services[0]?.id || "";

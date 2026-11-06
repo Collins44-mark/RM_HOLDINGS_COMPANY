@@ -115,6 +115,10 @@ export async function recordRiceMillBatchAction(input: {
     const { supabase, userId, businessUnitId } = await requireAnyRicePermission(["rice.milling.create"]);
     const inputQty = num(input.inputQtyKg);
     if (!(inputQty > 0)) throw new RiceError("Paddy input must be greater than zero.", "VALIDATION");
+    const shift = str(input.shift).toUpperCase();
+    if (shift && shift !== "MORNING" && shift !== "AFTERNOON" && shift !== "NIGHT") {
+      throw new RiceError("Choose a shift.", "VALIDATION");
+    }
     const outputs = (input.outputs ?? [])
       .map((row) => ({ item_id: str(row.itemId), qty_kg: num(row.qtyKg) }))
       .filter((row) => row.item_id && row.qty_kg > 0);
@@ -126,7 +130,7 @@ export async function recordRiceMillBatchAction(input: {
         p_input_item_id: str(input.inputItemId),
         p_produced_on: str(input.producedOn),
         p_machine: str(input.machine) || null,
-        p_shift: str(input.shift) || null,
+        p_shift: shift || null,
         p_input_qty_kg: inputQty,
         p_wastage_kg: str(input.wastageKg) ? num(input.wastageKg) : 0,
         p_processing_cost: str(input.processingCost) ? num(input.processingCost) : 0,

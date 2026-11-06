@@ -13,5 +13,5 @@ export default async function RicePurchasesRoute({
   const params = await searchParams;
   const period = parseReportPeriod(params.period ?? "this-month");
   const initial = await loadRicePurchasesWorkspaceAction({ period, from: params.from, to: params.to });
-  return <RicePurchasesPage initial={initial} period={period} />;
+  return <RicePurchasesPage initial={initial} period={period} from={params.from} to={params.to} />;
 }

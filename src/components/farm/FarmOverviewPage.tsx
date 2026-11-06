@@ -39,9 +39,9 @@ function metricText(metric: FarmMetric<number>, kind: "count" | "money") {
 
 function KpiCard({ label, value }: { label: string; value: string }) {
   return (
-    <article className={cn(glassCard, "px-5 py-5")}>
-      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</p>
-      <p className="mt-1.5 min-h-7 text-[22px] font-semibold tracking-[-0.04em] text-navy">{value}</p>
+    <article className={cn(glassCard, "min-w-0 px-3 py-4")}>
+      <p className="text-[11px] font-medium uppercase leading-4 tracking-[0.08em] text-slate-400">{label}</p>
+      <p className="mt-1.5 truncate text-[18px] font-semibold tracking-[-0.04em] text-navy">{value}</p>
     </article>
   );
 }
@@ -100,7 +100,7 @@ function FarmOverviewPage({
 
       {error ? <p className="text-[13px] text-[#c45b66]">{translateFarmCopy(t, error)}</p> : null}
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid grid-cols-5 gap-3">
         <KpiCard
           label={t("farm.kpi.tractors")}
           value={metricText(view?.tractorCount ?? { status: "unavailable", value: null, hint: "" }, "count")}
@@ -123,20 +123,20 @@ function FarmOverviewPage({
         />
       </section>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <section className={glassPanel}>
-          <div className="flex items-center justify-between gap-3">
+      <section className="grid grid-cols-[max-content_minmax(0,1fr)] gap-4">
+        <section className={cn(glassPanel, "w-max self-start")}>
+          <div className="flex items-center justify-between gap-6">
             <h2 className="text-[16px] font-semibold text-navy">{t("farm.overview.tractors")}</h2>
             <Link href="/farm/tractors" className="text-[13px] font-semibold text-navy/70 hover:text-navy">
               {t("farm.overview.viewAll")}
             </Link>
           </div>
           <div className={`${tableScrollClass} mt-4`}>
-            <table className="min-w-full text-left text-[13.5px]">
+            <table className="w-max text-left text-[13.5px]">
               <thead className={tableHead}>
                 <tr>
-                  <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2">Status</th>
+                  <th className="whitespace-nowrap px-3 py-2">Name</th>
+                  <th className="whitespace-nowrap px-3 py-2">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -151,8 +151,8 @@ function FarmOverviewPage({
                     .slice(0, 5)
                     .map((row) => (
                       <tr key={row.id} className="border-t border-navy/5 text-navy">
-                        <td className="px-3 py-2.5">{row.name}</td>
-                        <td className="px-3 py-2.5">
+                        <td className="whitespace-nowrap px-3 py-2.5">{row.name}</td>
+                        <td className="whitespace-nowrap px-3 py-2.5">
                           <FarmPill status={row.status} label={t(farmTractorStatusKey(row.status))} />
                         </td>
                       </tr>
