@@ -46,7 +46,7 @@ export default async function LivestockDashboardPage({ searchParams }: { searchP
         <table className="mt-3 w-full text-left text-sm">
           <thead><tr>{["Animal Type", "Current Quantity", "Pregnant Animals", `Births in ${period.label}`].map((header) => <th key={header} className="py-2 text-xs uppercase text-slate-400">{header}</th>)}</tr></thead>
           <tbody>
-            {data.stock.filter((row) => row.active).map((row) => (
+            {data.stock.filter((row) => row.active && row.name.toLowerCase() !== "eggs").map((row) => (
               <tr key={row.id} className="border-t border-slate-100">
                 <td className="py-2">{row.name}</td>
                 <td>{row.current}</td>
@@ -60,7 +60,7 @@ export default async function LivestockDashboardPage({ searchParams }: { searchP
       <section className="grid gap-4 lg:grid-cols-3">
         <Info title="Reproduction" rows={[["Pregnant now", String(data.summary.pregnant)], ["Expected deliveries", String(expected)], ["Mothers delivered", String(mothers)], ["Offspring born", String(offspring)]]} />
         <Info title="Movements" rows={[["Purchased", String(purchased)], ["Born", String(offspring)], ["Sold", String(sold)], ["Deaths", String(deaths)], ["Adjustments", String(adjustments)]]} />
-        <Info title="Poultry houses" rows={[["Total", String(data.summary.houses)], ["Rented", String(data.summary.rented)], ["Available", String(data.summary.available)], ["Maintenance", String(data.summary.maintenance)], ["Rent received", format(rentalIncome)]]} />
+        <Info title="Poultry houses" rows={[["Total", String(data.summary.houses)], ["Company owned", String(data.summary.company)], ["Rented", String(data.summary.rented)], ["Available", String(data.summary.available)], ["Egg trays", String(data.summary.eggTrays)], ["Rent received", format(rentalIncome)]]} />
       </section>
       <section className="grid grid-cols-2 gap-3 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm lg:grid-cols-4">
         <Mini label="Purchase costs" value={format(purchaseCosts)} />

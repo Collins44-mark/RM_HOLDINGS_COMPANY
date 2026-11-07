@@ -8,8 +8,8 @@ const money = (value: number) => new Intl.NumberFormat("en-TZ", { style: "curren
 export function buildLivestockReport(reportId: string, data: LivestockDirectory, from: string, to: string, animalType = "", houseId = ""): LivestockReport {
   const inRange = (date: string) => inLivestockWindow(date, from, to);
   const typeOk = (name: string) => !animalType || name === animalType;
-  const stock = data.stock.filter((row) => typeOk(row.name));
-  if (reportId === "ls-inventory") return table("Livestock Inventory", ["Type", "Current", "Pregnant", "Purchased", "Born", "Sold", "Deaths"], stock.map((row) => [row.name, row.current, row.pregnant, row.purchased, row.born, row.sold, row.deaths]), [["Animal types", String(stock.length)]]);
+  const stock = data.stock.filter((row) => typeOk(row.name) && row.name.toLowerCase() !== "eggs");
+  if (reportId === "ls-inventory") return table("Livestock Inventory", ["Type", "Current", "Males", "Females", "Adults", "Young", "Pregnant", "Purchased", "Born", "Sold", "Deaths"], stock.map((row) => [row.name, row.current, row.males, row.females, row.adults, row.young, row.pregnant, row.purchased, row.born, row.sold, row.deaths]), [["Animal types", String(stock.length)]]);
   if (reportId === "ls-purchases") {
     const rows = data.purchases.filter((row) => row.status === "Valid" && inRange(row.purchase_date) && typeOk(row.animal_type));
     return table("Livestock Purchases", ["Reference", "Date", "Type", "Qty", "Cost"], rows.map((row) => [row.purchase_code, String(row.purchase_date).slice(0, 10), row.animal_type, row.quantity, money(Number(row.total_cost))]), [["Purchases", String(rows.length)]]);

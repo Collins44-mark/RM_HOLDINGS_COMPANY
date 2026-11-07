@@ -7,6 +7,16 @@ import { saveModuleJson } from "@/lib/offline/module-save";
 
 export const fieldClass = "mt-1 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none";
 
+export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <label className="block text-sm font-medium text-slate-700">
+      <span>{label}</span>
+      {hint ? <span className="mt-0.5 block text-xs font-normal text-slate-400">{hint}</span> : null}
+      {children}
+    </label>
+  );
+}
+
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }

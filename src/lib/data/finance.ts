@@ -21,7 +21,7 @@ export const FINANCE_DETAIL_HREF: Record<string, string> = {
   farm: "/farm/finance",
   supermarket: "/supermarket/sales",
   property: "/property/invoices",
-  livestock: "/livestock/animals",
+  livestock: "/livestock",
   school: "/school/fees",
   beekeeping: "/beekeeping/sales",
 };

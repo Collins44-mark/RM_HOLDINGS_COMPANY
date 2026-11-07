@@ -1,15 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { MoreVertical } from "lucide-react";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useListPage } from "@/lib/property/use-list-page";
 import { LIVESTOCK_EXPENSE_CATEGORIES } from "@/lib/livestock/actions";
 import type { LivestockDirectory } from "@/lib/livestock/directory";
-import { Panel, RowButton, SaveButton, fieldClass, money, useLivestock } from "../livestock-ui";
+import { Field, Panel, SaveButton, fieldClass, money, useLivestock } from "../livestock-ui";
 
 export function ExpensesView({ initial }: { initial: LivestockDirectory }) {
-  const { data, state, mark, error, save } = useLivestock(initial);
+  const { data, state, error, save } = useLivestock(initial);
   const [form, setForm] = useState("");
+  const [menuId, setMenuId] = useState("");
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const categories = LIVESTOCK_EXPENSE_CATEGORIES.filter((category) => category !== "Livestock Purchase");
   const expensePage = useListPage(data.expenses, `expenses:${data.expenses.length}`);
 
@@ -31,7 +34,7 @@ export function ExpensesView({ initial }: { initial: LivestockDirectory }) {
       {error ? <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
       <section className="overflow-x-auto rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
         <table className="w-full text-left text-sm">
-          <thead><tr>{["Reference", "Date", "Category", "Description", "Amount", "Paid", "Balance", "Status", ""].map((header) => <th key={header} className="px-3 py-2 text-xs uppercase text-slate-400">{header}</th>)}</tr></thead>
+          <thead><tr>{["Reference", "Date", "Category", "Description", "Amount", "Paid", "Balance", "Status", "Action"].map((header) => <th key={header} className="px-3 py-2 text-xs uppercase text-slate-400">{header}</th>)}</tr></thead>
           <tbody>
             {expensePage.rows.map((row) => (
               <tr key={row.id} className="border-t border-slate-100">
@@ -43,27 +46,42 @@ export function ExpensesView({ initial }: { initial: LivestockDirectory }) {
                 <td className="px-3 py-2">{money(row.amount_paid)}</td>
                 <td className="px-3 py-2">{money(row.balance)}</td>
                 <td className="px-3 py-2">{row.status}</td>
-                <td className="px-3 py-2 space-x-2">
-                  {row.status !== "Cancelled" && row.balance > 0 ? <button type="button" className="text-sm font-semibold text-[#0b2244]" onClick={() => setForm(row.id)}>Pay</button> : null}
-                  {row.status !== "Cancelled" && !row.purchase_id ? <RowButton active={mark === row.id} state={state} label="Cancel" className="text-sm text-rose-700" onClick={() => save({ action: "expense-cancel", id: row.id }, { mark: row.id })} /> : null}
+                <td className="px-3 py-2">
+                  {row.status !== "Cancelled" ? <button type="button" aria-label={`${row.expense_code} actions`} onClick={(event) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setMenuPos({ top: rect.bottom + 8, left: Math.max(8, rect.right - 160) });
+                    setMenuId(menuId === row.id ? "" : row.id);
+                  }} className="p-1 text-slate-600"><MoreVertical size={16} /></button> : null}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
         <PaginationBar page={expensePage.page} total={data.expenses.length} pageSize={expensePage.pageSize} onPage={expensePage.setPage} onPageSize={expensePage.setPageSize} />
+        {menuId ? (
+          <div className="fixed inset-0 z-40" onClick={() => setMenuId("")}>
+            <div className="absolute w-40 rounded-2xl border border-slate-100 bg-white py-1 shadow-xl" style={{ top: menuPos.top, left: menuPos.left }} onClick={(event) => event.stopPropagation()}>
+              {data.expenses.filter((row) => row.id === menuId).flatMap((row) => [
+                ...(row.balance > 0 ? [{ label: "Pay", run: () => setForm(row.id) }] : []),
+                ...(!row.purchase_id ? [{ label: "Cancel", run: () => { void save({ action: "expense-cancel", id: row.id }, { mark: row.id }); } }] : []),
+              ]).map((action) => (
+                <button key={action.label} type="button" className={`w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-slate-50 ${action.label === "Cancel" ? "text-rose-700" : "text-slate-800"}`} onClick={() => { setMenuId(""); action.run(); }}>{action.label}</button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </section>
       {form === "expense" ? (
         <Panel title="Add expense" onClose={() => setForm("")} onSubmit={onSubmit}>
-          <input name="date" type="date" required className={fieldClass} />
-          <select name="category" className={fieldClass}>{categories.map((category) => <option key={category}>{category}</option>)}</select>
-          <input name="description" required placeholder="Description" className={fieldClass} />
-          <input name="amount" type="number" min="0.01" step="0.01" required placeholder="Amount" className={fieldClass} />
-          <select name="animal_type_id" className={fieldClass}><option value="">Related animal type</option>{data.types.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select>
-          <select name="house_id" className={fieldClass}><option value="">Related poultry house</option>{data.houses.map((house) => <option key={house.id} value={house.id}>{house.house_name}</option>)}</select>
-          <input name="vendor_name" placeholder="Vendor" className={fieldClass} />
-          <input name="due_date" type="date" className={fieldClass} />
-          <textarea name="notes" placeholder="Notes" className={fieldClass} />
+          <Field label="Date"><input name="date" type="date" required className={fieldClass} /></Field>
+          <Field label="Category"><select name="category" className={fieldClass}>{categories.map((category) => <option key={category}>{category}</option>)}</select></Field>
+          <Field label="Description"><input name="description" required className={fieldClass} /></Field>
+          <Field label="Amount"><input name="amount" type="number" min="0.01" step="0.01" required className={fieldClass} /></Field>
+          <Field label="Animal type" hint="Optional"><select name="animal_type_id" className={fieldClass}><option value="">None</option>{data.types.filter((type) => type.name.toLowerCase() !== "eggs").map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select></Field>
+          <Field label="Poultry house" hint="Optional"><select name="house_id" className={fieldClass}><option value="">None</option>{data.houses.map((house) => <option key={house.id} value={house.id}>{house.house_name}</option>)}</select></Field>
+          <Field label="Vendor"><input name="vendor_name" className={fieldClass} /></Field>
+          <Field label="Due date"><input name="due_date" type="date" className={fieldClass} /></Field>
+          <Field label="Notes"><textarea name="notes" className={fieldClass} /></Field>
           <SaveButton state={state} label="Save expense" />
         </Panel>
       ) : null}
@@ -73,8 +91,8 @@ export function ExpensesView({ initial }: { initial: LivestockDirectory }) {
           const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
           await save({ action: "expense-payment", id: form, amount: payload.amount, date: payload.date, request_key: crypto.randomUUID() }, { close: () => setForm("") });
         }}>
-          <input name="amount" type="number" min="0.01" step="0.01" required placeholder="Amount" className={fieldClass} />
-          <input name="date" type="date" required className={fieldClass} />
+          <Field label="Amount"><input name="amount" type="number" min="0.01" step="0.01" required className={fieldClass} /></Field>
+          <Field label="Date"><input name="date" type="date" required className={fieldClass} /></Field>
           <SaveButton state={state} label="Save payment" />
         </Panel>
       ) : null}
