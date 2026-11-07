@@ -39,9 +39,9 @@ function metricText(metric: FarmMetric<number>, kind: "count" | "money") {
 
 function KpiCard({ label, value }: { label: string; value: string }) {
   return (
-    <article className={cn(glassCard, "min-w-0 px-3 py-4")}>
-      <p className="text-[11px] font-medium uppercase leading-4 tracking-[0.08em] text-slate-400">{label}</p>
-      <p className="mt-1.5 truncate text-[18px] font-semibold tracking-[-0.04em] text-navy">{value}</p>
+    <article className={cn(glassCard, "min-w-0 px-3 py-3.5 md:py-4")}>
+      <p className="break-words text-[11px] font-medium uppercase leading-4 tracking-[0.04em] text-slate-400 md:tracking-[0.08em]">{label}</p>
+      <p className="mt-1.5 break-words text-[16px] font-semibold leading-snug tracking-[-0.03em] text-navy md:truncate md:text-[18px] md:leading-normal md:tracking-[-0.04em]">{value}</p>
     </article>
   );
 }
@@ -100,7 +100,7 @@ function FarmOverviewPage({
 
       {error ? <p className="text-[13px] text-[#c45b66]">{translateFarmCopy(t, error)}</p> : null}
 
-      <section className="grid grid-cols-5 gap-3">
+      <section className="grid grid-cols-2 gap-2.5 md:grid-cols-5 md:gap-3">
         <KpiCard
           label={t("farm.kpi.tractors")}
           value={metricText(view?.tractorCount ?? { status: "unavailable", value: null, hint: "" }, "count")}
@@ -123,8 +123,8 @@ function FarmOverviewPage({
         />
       </section>
 
-      <section className="grid grid-cols-[max-content_minmax(0,1fr)] gap-4">
-        <section className={cn(glassPanel, "w-max self-start")}>
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-[max-content_minmax(0,1fr)]">
+        <section className={cn(glassPanel, "w-full max-w-full md:w-max md:self-start")}>
           <div className="flex items-center justify-between gap-6">
             <h2 className="text-[16px] font-semibold text-navy">{t("farm.overview.tractors")}</h2>
             <Link href="/farm/tractors" className="text-[13px] font-semibold text-navy/70 hover:text-navy">
@@ -132,7 +132,7 @@ function FarmOverviewPage({
             </Link>
           </div>
           <div className={`${tableScrollClass} mt-4`}>
-            <table className="w-max text-left text-[13.5px]">
+            <table className="w-full text-left text-[13.5px] md:w-max">
               <thead className={tableHead}>
                 <tr>
                   <th className="whitespace-nowrap px-3 py-2">Name</th>

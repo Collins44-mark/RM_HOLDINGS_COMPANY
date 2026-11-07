@@ -193,10 +193,10 @@ export default function ExpensesView({
     <main className="pb-10 text-slate-900">
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold">Expenses</h1>
+          <h1 className="text-2xl font-extrabold md:text-3xl">Expenses</h1>
           <p className="text-sm text-slate-500">Manage business expenses, operating costs, and payments.</p>
         </div>
-        <button type="button" onClick={openCreate} className="rounded-xl bg-[#0b2244] px-4 py-2.5 font-medium text-white">+ Add Expense</button>
+        <button type="button" onClick={openCreate} className="shrink-0 whitespace-nowrap rounded-xl bg-[#0b2244] px-2.5 py-1.5 text-[13px] font-medium text-white md:px-4 md:py-2.5 md:text-base">+ Add Expense</button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -232,16 +232,24 @@ export default function ExpensesView({
 
       <div className="mt-4 rounded-2xl bg-white/70 shadow-[0_8px_30px_rgb(0,0,0,0.06)]">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs uppercase tracking-wider text-slate-400"><th className="px-4 py-3">Expense No.</th><th>Category</th><th>Property / Unit</th><th>Amount</th><th /></tr></thead>
+          <table className="w-full min-w-[640px] border-collapse text-sm md:min-w-0">
+            <thead>
+              <tr className="text-left text-xs font-semibold normal-case tracking-normal text-slate-500 md:font-normal md:uppercase md:tracking-wider md:text-slate-400">
+                <th className="px-4 py-3">Expense No.</th>
+                <th className="px-4 py-3 md:p-0">Category</th>
+                <th className="px-4 py-3 md:p-0">Property / Unit</th>
+                <th className="px-4 py-3 md:p-0">Amount</th>
+                <th className="px-4 py-3 md:p-0" />
+              </tr>
+            </thead>
             <tbody>
               {sorted.length === 0 ? <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">{items.length === 0 ? "No expenses yet." : "No expenses match these filters."}</td></tr> : listPage.rows.map((expense) => (
-                <tr key={expense.id}>
-                  <td className="px-4 py-3 font-medium">{expense.expense_number || "—"}</td>
-                  <td>{expense.category}</td>
-                  <td>{expense.property_name || "—"}{expense.unit_name ? ` / ${expense.unit_name}` : ""}</td>
-                  <td>{formatTzs(expense.amount)}</td>
-                  <td className="pr-3 text-right">
+                <tr key={expense.id} className="border-t border-slate-100">
+                  <td className="whitespace-nowrap px-4 py-3 font-medium md:whitespace-normal">{expense.expense_number || "—"}</td>
+                  <td className="whitespace-nowrap px-4 py-3 md:whitespace-normal md:p-0">{expense.category}</td>
+                  <td className="whitespace-nowrap px-4 py-3 md:whitespace-normal md:p-0">{expense.property_name || "—"}{expense.unit_name ? ` / ${expense.unit_name}` : ""}</td>
+                  <td className="whitespace-nowrap px-4 py-3 md:p-0">{formatTzs(expense.amount)}</td>
+                  <td className="px-4 py-3 text-right md:px-0 md:py-0 md:pr-3">
                     <button type="button" aria-label="Expense actions" className="rounded-lg p-1 hover:bg-slate-100" onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setMenuPos({ top: rect.bottom + 4, left: rect.right - 188 }); setOpenMenuId(openMenuId === expense.id ? null : expense.id); }}><MoreVertical size={16} /></button>
                   </td>
                 </tr>

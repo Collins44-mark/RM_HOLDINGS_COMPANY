@@ -111,7 +111,7 @@ export function FarmFinancePage({
     <div className="space-y-5 pb-10">
       <FarmPageHeader icon={Landmark} title={t("farm.finance.title")} subtitle={t("farm.finance.subtitle")} period={period} periodLabel={workspace?.periodLabel ?? ""} />
       {error ? <FarmNotice>{translateFarmCopy(t, error)}</FarmNotice> : null}
-      <section className="grid grid-cols-3 gap-3">
+      <section className="grid grid-cols-2 gap-2.5 md:grid-cols-3 md:gap-3">
         <Stat label={t("farm.kpi.income")} value={formatTzs(summary?.serviceIncome ?? 0)} />
         <Stat label={t("farm.finance.received")} value={formatTzs(summary?.received ?? 0)} />
         <Stat label={t("farm.finance.receivables")} value={formatTzs(summary?.receivables ?? 0)} />
@@ -339,8 +339,8 @@ function expenseKindLabel(t: ReturnType<typeof useT>, kind: string) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <article className={`${glassCard} min-w-0 px-3 py-3`}>
-      <p className="text-[10.5px] font-medium uppercase leading-4 tracking-[0.08em] text-slate-400">{label}</p>
-      <p className="mt-1 truncate text-[16px] font-semibold tracking-[-0.03em] text-navy">{value}</p>
+      <p className="break-words text-[10.5px] font-medium uppercase leading-4 tracking-[0.04em] text-slate-400 md:tracking-[0.08em]">{label}</p>
+      <p className="mt-1 break-words text-[16px] font-semibold leading-snug tracking-[-0.03em] text-navy md:truncate">{value}</p>
     </article>
   );
 }

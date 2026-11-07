@@ -66,7 +66,7 @@ export default async function PropertyDashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <section className="lg:col-span-2 bg-white/70 backdrop-blur-xl rounded-2xl border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.06)] p-6">
+        <section className="hidden md:block lg:col-span-2 bg-white/70 backdrop-blur-xl rounded-2xl border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.06)] p-6">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-semibold text-slate-800">Recent Rent Invoices</h3>
             <a href="/property/invoices" className="text-sm text-[#0b2244] hover:underline">View All</a>

@@ -1,18 +1,30 @@
 "use client";
 
 import { useState } from "react";
+import { MoreVertical } from "lucide-react";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useListPage } from "@/lib/property/use-list-page";
 import type { LivestockDirectory } from "@/lib/livestock/directory";
-import { Drawer, Panel, RowButton, SaveButton, fieldClass, money, useLivestock } from "../livestock-ui";
+import { Drawer, Panel, SaveButton, fieldClass, money, useLivestock } from "../livestock-ui";
 
 export function HousesView({ initial }: { initial: LivestockDirectory }) {
-  const { data, state, mark, error, save } = useLivestock(initial);
+  const { data, state, error, save } = useLivestock(initial);
   const [form, setForm] = useState("");
   const [house, setHouse] = useState<string>("");
+  const [menuId, setMenuId] = useState("");
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const housePage = useListPage(data.houses, `houses:${data.houses.length}`);
   const selected = data.houses.find((item) => item.id === house);
+  const menuHouse = data.houses.find((item) => item.id === menuId);
   const rental = data.rentals.find((item) => item.id === selected?.rental_id) || data.rentals.find((item) => item.house_id === house);
+  const menuActions = menuHouse
+    ? [
+        { label: "View", run: () => { setHouse(menuHouse.id); setForm("details"); } },
+        ...(menuHouse.status !== "Rented" ? [{ label: "Edit", run: () => { setHouse(menuHouse.id); setForm("edit"); } }] : []),
+        ...(menuHouse.status === "Available" ? [{ label: "Assign tenant", run: () => { setHouse(menuHouse.id); setForm("rental-start"); } }] : []),
+        ...(menuHouse.status === "Rented" ? [{ label: "End rental", run: () => { void save({ action: "rental-end", id: menuHouse.rental_id }, { mark: menuHouse.rental_id }); } }] : []),
+      ]
+    : [];
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -38,7 +50,7 @@ export function HousesView({ initial }: { initial: LivestockDirectory }) {
         <button type="button" onClick={() => { setHouse(""); setForm("house"); }} className="mb-3 rounded-xl bg-[#0b2244] px-3 py-2 text-sm font-semibold text-white">Add poultry house</button>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead><tr>{["House", "Location", "Capacity", "Status", "Tenant", "Monthly rent", ""].map((header) => <th key={header} className="px-3 py-2 text-xs uppercase text-slate-400">{header}</th>)}</tr></thead>
+            <thead><tr>{["House", "Location", "Capacity", "Status", "Tenant", "Monthly rent", "Action"].map((header) => <th key={header} className="px-3 py-2 text-xs uppercase text-slate-400">{header}</th>)}</tr></thead>
             <tbody>
               {housePage.rows.map((item) => (
                 <tr key={item.id} className="border-t border-slate-100">
@@ -48,11 +60,22 @@ export function HousesView({ initial }: { initial: LivestockDirectory }) {
                   <td className="px-3 py-2">{item.status}</td>
                   <td className="px-3 py-2">{item.tenant_name || "—"}</td>
                   <td className="px-3 py-2">{money(Number(item.monthly_rent))}</td>
-                  <td className="px-3 py-2 space-x-2">
-                    <button type="button" className="text-sm font-semibold text-[#0b2244]" onClick={() => { setHouse(item.id); setForm("details"); }}>View</button>
-                    {item.status !== "Rented" ? <button type="button" className="text-sm" onClick={() => { setHouse(item.id); setForm("edit"); }}>Edit</button> : null}
-                    {item.status === "Available" ? <button type="button" className="text-sm" onClick={() => { setHouse(item.id); setForm("rental-start"); }}>Assign tenant</button> : null}
-                    {item.status === "Rented" ? <RowButton active={mark === item.rental_id} state={state} label="End rental" className="text-sm text-rose-700" onClick={() => save({ action: "rental-end", id: item.rental_id }, { mark: item.rental_id })} /> : null}
+                  <td className="px-3 py-2 text-right">
+                    <button
+                      type="button"
+                      aria-label={`${item.house_name} actions`}
+                      className="rounded-lg p-1 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      onClick={(event) => {
+                        const rect = event.currentTarget.getBoundingClientRect();
+                        const menuHeight = 36 + (item.status === "Rented" ? 2 : item.status === "Available" ? 3 : 2) * 36;
+                        const below = rect.bottom + 8;
+                        const top = below + menuHeight > window.innerHeight ? Math.max(8, rect.top - menuHeight - 8) : below;
+                        setMenuPos({ top, left: Math.max(8, rect.right - 168) });
+                        setMenuId(menuId === item.id ? "" : item.id);
+                      }}
+                    >
+                      <MoreVertical size={16} />
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -61,6 +84,22 @@ export function HousesView({ initial }: { initial: LivestockDirectory }) {
         </div>
         <PaginationBar page={housePage.page} total={data.houses.length} pageSize={housePage.pageSize} onPage={housePage.setPage} onPageSize={housePage.setPageSize} />
       </section>
+      {menuHouse ? (
+        <div className="fixed inset-0 z-40" onClick={() => setMenuId("")}>
+          <div className="absolute min-w-40 rounded-2xl border border-slate-100 bg-white py-1 shadow-xl" style={{ top: menuPos.top, left: menuPos.left }} onClick={(event) => event.stopPropagation()}>
+            {menuActions.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                className={`w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-slate-50 ${action.label === "End rental" ? "text-rose-700" : "text-slate-800"}`}
+                onClick={() => { setMenuId(""); action.run(); }}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {form === "house" ? <Panel title="Add poultry house" onClose={() => setForm("")} onSubmit={onSubmit}><input name="house_name" required placeholder="House name or number" className={fieldClass} /><input name="location" placeholder="Location" className={fieldClass} /><input name="capacity" type="number" min="0" placeholder="Capacity" className={fieldClass} /><input name="monthly_rent" type="number" min="0" step="0.01" placeholder="Monthly rent" className={fieldClass} /><select name="status" className={fieldClass}><option value="Available">Available</option><option value="Maintenance">Maintenance</option></select><textarea name="notes" placeholder="Notes" className={fieldClass} /><SaveButton state={state} label="Save house" /></Panel> : null}
       {form === "edit" && selected ? <Panel title="Edit house" onClose={() => setForm("")} onSubmit={onSubmit}><input name="location" defaultValue={selected.location} className={fieldClass} /><input name="capacity" type="number" min="0" defaultValue={selected.capacity ?? ""} className={fieldClass} /><input name="monthly_rent" type="number" min="0" step="0.01" defaultValue={selected.monthly_rent} className={fieldClass} /><select name="status" defaultValue={selected.status} className={fieldClass}><option value="Available">Available</option><option value="Maintenance">Maintenance</option></select><textarea name="notes" defaultValue={selected.notes} className={fieldClass} /><SaveButton state={state} label="Save changes" /></Panel> : null}
       {form === "rental-start" && selected ? <Panel title={`Rent ${selected.house_name}`} onClose={() => setForm("")} onSubmit={onSubmit}><input name="tenant_name" required placeholder="Tenant name" className={fieldClass} /><input name="tenant_phone" placeholder="Phone" className={fieldClass} /><input name="start_date" type="date" required className={fieldClass} /><input name="end_date" type="date" className={fieldClass} /><input name="monthly_rent" type="number" min="0" step="0.01" defaultValue={selected.monthly_rent} className={fieldClass} /><input name="due_day" type="number" min="1" max="28" defaultValue="1" className={fieldClass} /><textarea name="notes" placeholder="Agreement notes" className={fieldClass} /><SaveButton state={state} label="Start rental" /></Panel> : null}

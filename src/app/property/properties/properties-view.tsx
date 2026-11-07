@@ -79,12 +79,12 @@ export default function PropertiesView({ initialItems }: { initialItems: any[] }
   return (
     <main className="pb-10 text-slate-900">
       <div>
-        <div className="flex items-center justify-between mb-6">
+        <div className="mb-6 flex flex-col items-start gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-3xl font-extrabold">Properties</h1>
+            <h1 className="text-2xl font-extrabold md:text-3xl">Properties</h1>
             <p className="text-slate-500 text-sm">Manage and organize all your registered properties.</p>
           </div>
-          <button onClick={()=>setFormOpen(true)} className="bg-[#0b2244] hover:bg-[#091e3d] text-white px-4 py-2.5 rounded-xl font-medium shadow-lg shadow-indigo-200/40">+ Add Property</button>
+          <button onClick={()=>setFormOpen(true)} className="whitespace-nowrap rounded-xl bg-[#0b2244] px-3 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-200/40 hover:bg-[#091e3d] md:px-4 md:py-2.5">+ Add Property</button>
         </div>
 
         {/* Summary cards */}
@@ -105,11 +105,35 @@ export default function PropertiesView({ initialItems }: { initialItems: any[] }
         </div>
 
         {/* Table */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50"><tr className="text-left text-xs font-semibold text-slate-500"><th className="px-4 py-3">Property Name</th><th>Type</th><th>Location</th><th>Units</th><th>Occupied</th><th>Vacant</th><th>Status</th><th>Actions</th></tr></thead>
+        <div className="overflow-x-auto rounded-2xl border border-slate-200/60 bg-white shadow-sm md:overflow-hidden">
+          <table className="w-full min-w-[760px] border-collapse text-sm md:min-w-0">
+            <thead className="bg-slate-50">
+              <tr className="text-left text-xs font-semibold text-slate-500">
+                <th className="px-4 py-3">Property Name</th>
+                <th className="px-4 py-3 md:p-0">Type</th>
+                <th className="px-4 py-3 md:p-0">Location</th>
+                <th className="px-4 py-3 md:p-0">Units</th>
+                <th className="px-4 py-3 md:p-0">Occupied</th>
+                <th className="px-4 py-3 md:p-0">Vacant</th>
+                <th className="px-4 py-3 md:p-0">Status</th>
+                <th className="px-4 py-3 md:p-0">Actions</th>
+              </tr>
+            </thead>
             <tbody>
-              {visibleItems.length === 0 ? (<tr><td colSpan={8} className="px-4 py-10 text-center"><span className="text-sm text-slate-500">{items.length === 0 ? "No properties registered yet." : "No properties match these filters."}</span></td></tr>) : (listPage.rows.map((it: any) => (<tr key={it.id} className="border-t border-slate-100"><td className="px-4 py-3 text-slate-800 font-medium">{it.name}</td><td>{it.property_type}</td><td>{it.street_address || it.region || it.district || 'Location not provided'}</td><td>{it.unit_count || 0}</td><td>{it.occupied_count || 0}</td><td>{it.vacant_count || 0}</td><td><span className={`text-xs px-2 py-0.5 rounded-full ${it.status==='Active' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{it.status}</span></td><td><button onClick={()=>{setSelectedProperty(it);setDrawerTab("Details");}} className="text-slate-600 hover:text-slate-900 p-1"><MoreVertical size={16} /></button></td></tr>)))}
+              {visibleItems.length === 0 ? (
+                <tr><td colSpan={8} className="px-4 py-10 text-center"><span className="text-sm text-slate-500">{items.length === 0 ? "No properties registered yet." : "No properties match these filters."}</span></td></tr>
+              ) : listPage.rows.map((it: any) => (
+                <tr key={it.id} className="border-t border-slate-100">
+                  <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-800 md:whitespace-normal">{it.name}</td>
+                  <td className="whitespace-nowrap px-4 py-3 md:whitespace-normal md:p-0">{it.property_type}</td>
+                  <td className="whitespace-nowrap px-4 py-3 md:whitespace-normal md:p-0">{it.street_address || it.region || it.district || "Location not provided"}</td>
+                  <td className="whitespace-nowrap px-4 py-3 md:p-0">{it.unit_count || 0}</td>
+                  <td className="whitespace-nowrap px-4 py-3 md:p-0">{it.occupied_count || 0}</td>
+                  <td className="whitespace-nowrap px-4 py-3 md:p-0">{it.vacant_count || 0}</td>
+                  <td className="whitespace-nowrap px-4 py-3 md:p-0"><span className={`text-xs px-2 py-0.5 rounded-full ${it.status==='Active' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{it.status}</span></td>
+                  <td className="px-4 py-3 md:p-0"><button onClick={()=>{setSelectedProperty(it);setDrawerTab("Details");}} className="text-slate-600 hover:text-slate-900 p-1"><MoreVertical size={16} /></button></td>
+                </tr>
+              ))}
             </tbody>
           </table>
           <div className="px-4"><PaginationBar page={listPage.page} total={visibleItems.length} pageSize={listPage.pageSize} onPage={listPage.setPage} onPageSize={listPage.setPageSize} /></div>

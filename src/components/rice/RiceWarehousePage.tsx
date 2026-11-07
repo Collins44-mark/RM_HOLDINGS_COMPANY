@@ -96,17 +96,17 @@ export function RiceWarehousePage({
       <RicePageHeader icon={Warehouse} title={t("rice.warehouse.title")} subtitle={t("rice.warehouse.subtitle")} />
       {error ? <RiceNotice>{translateRiceCopy(t, error)}</RiceNotice> : null}
 
-      <section className="grid grid-cols-4 gap-3">
+      <section className="grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-3">
         {RICE_WAREHOUSE_KIND_ORDER.map((kind) => {
           const qty = items.filter((row) => row.kind === kind).reduce((sum, row) => sum + row.qtyKg, 0);
           return (
             <Link
               key={kind}
               href={`/rice/warehouse/${riceWarehouseKindSlug(kind)}`}
-              className={`${glassCard} min-w-0 px-4 py-4 transition duration-200 hover:bg-white/80`}
+              className={`${glassCard} min-w-0 px-3 py-3.5 transition duration-200 hover:bg-white/80 md:px-4 md:py-4`}
             >
-              <p className="truncate text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{t(`rice.kindGroup.${kind}` as MessageKey)}</p>
-              <p className="mt-2 truncate text-[20px] font-semibold text-navy">{formatKg(qty)}</p>
+              <p className="break-words text-[11px] font-medium uppercase leading-4 tracking-[0.04em] text-slate-400 md:truncate md:tracking-[0.14em]">{t(`rice.kindGroup.${kind}` as MessageKey)}</p>
+              <p className="mt-2 break-words text-[16px] font-semibold leading-snug text-navy md:truncate md:text-[20px]">{formatKg(qty)}</p>
             </Link>
           );
         })}

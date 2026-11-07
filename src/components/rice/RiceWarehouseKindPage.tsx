@@ -103,14 +103,14 @@ export function RiceWarehouseKindPage({
       />
       {error ? <RiceNotice>{translateRiceCopy(t, error)}</RiceNotice> : null}
 
-      <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <article className={`${glassCard} px-5 py-5`}>
-          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{t("common.quantity")}</p>
-          <p className="mt-2 text-[22px] font-semibold text-navy">{formatKg(qty, locale)}</p>
+      <section className="grid grid-cols-2 gap-2.5 md:gap-3">
+        <article className={`${glassCard} min-w-0 px-3 py-3.5 md:px-5 md:py-5`}>
+          <p className="break-words text-[11px] font-medium uppercase leading-4 tracking-[0.04em] text-slate-400 md:tracking-[0.14em]">{t("common.quantity")}</p>
+          <p className="mt-2 break-words text-[16px] font-semibold leading-snug text-navy md:text-[22px]">{formatKg(qty, locale)}</p>
         </article>
-        <article className={`${glassCard} px-5 py-5`}>
-          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">{t("rice.finance.inventory")}</p>
-          <p className="mt-2 text-[22px] font-semibold text-navy">{formatTzs(value)}</p>
+        <article className={`${glassCard} min-w-0 px-3 py-3.5 md:px-5 md:py-5`}>
+          <p className="break-words text-[11px] font-medium uppercase leading-4 tracking-[0.04em] text-slate-400 md:tracking-[0.14em]">{t("rice.finance.inventory")}</p>
+          <p className="mt-2 break-words text-[16px] font-semibold leading-snug text-navy md:text-[22px]">{formatTzs(value)}</p>
         </article>
       </section>
 

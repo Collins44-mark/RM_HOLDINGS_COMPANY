@@ -65,10 +65,10 @@ function KpiCard({
   const { locale } = useLocale();
   const display = metricText(metric, kind, locale, translateRiceCopy(t, metric.hint));
   return (
-    <article className={cn(glassCard, "min-w-0 px-3 py-4")}>
+    <article className={cn(glassCard, "min-w-0 px-3 py-3.5 md:py-4")}>
       <IconWell icon={icon} />
-      <p className="mt-3 text-[11px] font-medium uppercase leading-4 tracking-[0.08em] text-slate-400">{label}</p>
-      <p className="mt-1.5 truncate text-[18px] font-semibold tracking-[-0.04em] text-navy">{display.value}</p>
+      <p className="mt-3 text-[11px] font-medium uppercase leading-4 tracking-[0.04em] text-slate-400 md:tracking-[0.08em]">{label}</p>
+      <p className="mt-1.5 break-words text-[16px] font-semibold leading-snug tracking-[-0.03em] text-navy md:truncate md:text-[18px] md:leading-normal md:tracking-[-0.04em]">{display.value}</p>
     </article>
   );
 }
@@ -152,11 +152,11 @@ export function RiceOverviewPage({
           aria-hidden
         />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white/92 via-white/78 to-white/40" aria-hidden />
-        <div className="relative flex flex-wrap items-start justify-between gap-4">
+        <div className="relative flex flex-col items-stretch gap-4 md:flex-row md:flex-wrap md:items-start md:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <IconWell icon={Wheat} />
-              <h1 className="text-[26px] font-semibold tracking-[-0.045em] text-navy">
+              <h1 className="text-[22px] font-semibold tracking-[-0.045em] text-navy md:text-[26px]">
                 {view?.unitName ?? t("rice.unit")}
               </h1>
             </div>
@@ -165,7 +165,7 @@ export function RiceOverviewPage({
               {view?.isActive != null ? <StatusPill value={view.isActive ? t("common.active") : t("common.inactive")} /> : null}
             </div>
           </div>
-          <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-col items-start gap-2 md:items-end">
             <p className="text-[12.5px] text-slate-500">{view?.todayLabel ?? ""}</p>
             <OverviewPeriodSelector period={period} label={periodLabel} />
           </div>
@@ -174,7 +174,7 @@ export function RiceOverviewPage({
 
       {loadError && !pending ? <p className="text-[13px] text-[#c45b66]">{translateRiceCopy(t, loadError)}</p> : null}
 
-      <section className="grid grid-cols-5 gap-3">
+      <section className="grid grid-cols-2 gap-2.5 md:grid-cols-5 md:gap-3">
         <KpiCard label={t("rice.overview.paddy")} metric={view?.companyPaddyKg ?? PENDING_KPI} kind="kg" icon={Wheat} />
         <KpiCard label={t("rice.overview.riceStock")} metric={view?.riceStockKg ?? PENDING_KPI} kind="kg" icon={Package} />
         <KpiCard label={t("rice.overview.sales")} metric={view?.totalSales ?? PENDING_KPI} kind="money" icon={CircleDollarSign} />
@@ -182,7 +182,7 @@ export function RiceOverviewPage({
         <KpiCard label={t("rice.overview.netProfit")} metric={view?.netProfit ?? PENDING_KPI} kind="money" icon={Landmark} />
       </section>
 
-      <section className="grid grid-cols-2 gap-4">
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {view?.stockByGrade.status === "ok" && grades.length ? (
           <section className={glassPanel}>
             <h2 className="text-[16px] font-semibold tracking-[-0.03em] text-navy">{t("rice.overview.stockByGrade")}</h2>
@@ -191,11 +191,11 @@ export function RiceOverviewPage({
             </div>
             <ul className="mt-5 space-y-2.5">
               {grades.map((row, index) => (
-                <li key={row.name} className="flex items-center gap-3 text-[13.5px] text-navy">
+                <li key={row.name} className="flex items-start gap-3 text-[13.5px] text-navy md:items-center">
                   <NumberBadge index={index + 1} />
-                  <span className="min-w-0 flex-1 truncate">{row.name}</span>
-                  <span className="font-medium">{formatKg(row.quantityKg, locale)}</span>
-                  <span className="w-12 text-right text-slate-500">{Math.round(row.share)}%</span>
+                  <span className="min-w-0 flex-1 break-words md:truncate">{row.name}</span>
+                  <span className="shrink-0 text-right font-medium">{formatKg(row.quantityKg, locale)}</span>
+                  <span className="w-12 shrink-0 text-right text-slate-500">{Math.round(row.share)}%</span>
                 </li>
               ))}
             </ul>
@@ -213,9 +213,9 @@ export function RiceOverviewPage({
             <ul className="mt-5 space-y-3">
               {stock.map((row, index) => (
                 <li key={row.name} className="space-y-1.5">
-                  <div className="flex items-center gap-3 text-[13.5px] text-navy">
+                  <div className="flex items-start gap-3 text-[13.5px] text-navy md:items-center">
                     <NumberBadge index={index + 1} />
-                    <span className="min-w-0 flex-1 truncate">{row.name}</span>
+                    <span className="min-w-0 flex-1 break-words md:truncate">{row.name}</span>
                     <span className="font-medium">{formatKg(row.quantityKg, locale)}</span>
                   </div>
                   <div className="ml-11 h-1.5 overflow-hidden rounded-full bg-navy/[0.06]">
