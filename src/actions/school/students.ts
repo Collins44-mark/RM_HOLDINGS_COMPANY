@@ -10,7 +10,7 @@ import {
   schoolActionError,
   SchoolError,
 } from "@/lib/school/access";
-import { loadSchoolStructureScope } from "@/lib/school/structure-scope";
+import { allowsClass, allowsStream, loadSchoolStructureScope } from "@/lib/school/structure-scope";
 import { schoolPageMeta, schoolPageRange, SCHOOL_PAGE_SIZE } from "@/lib/school/pagination";
 import {
   enrollmentPlacementOr,
@@ -331,6 +331,10 @@ export async function getSchoolStudentAction(id: string) {
     const place = streamId
       ? lookup.placement(streamId) ?? streamFallback.get(streamId)
       : lookup.placementByClass(classId) ?? classFallback.get(classId);
+    const scope = await loadSchoolStructureScope(ctx);
+    if (!scope.schoolWide && !((classId && allowsClass(scope, classId)) || (streamId && allowsStream(scope, streamId)))) {
+      throw new SchoolError("Student was not found.", "NOT_FOUND");
+    }
     const streams = classId ? catalog.streams.filter((row) => row.classId === classId) : [];
     const guardians: StudentGuardianRow[] = (linksRes.data ?? []).map((link) => {
       const guardian = link.sch_guardians as {

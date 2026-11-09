@@ -9,6 +9,8 @@ import {
   getSchoolStaffAction,
   getStaffClassesAction,
   getStaffStreamsAction,
+  getTeacherClassAccessAction,
+  saveTeacherClassAccessAction,
   grantStaffSystemAccessAction,
   linkStaffToUserAction,
   searchUnlinkedUsersAction,
@@ -21,6 +23,7 @@ import {
   type StaffOption,
   type StaffProfile,
   type SubjectRow,
+  type TeacherClassAccess,
 } from "@/actions/school/staff";
 import { displayRoleName, rolesForSelectedModules } from "@/lib/auth/role-options";
 import { ROLE_CODES } from "@/lib/config/permissions";
@@ -30,6 +33,7 @@ import { CompactActionsMenu } from "@/components/supermarket/CompactActionsMenu"
 import { SchoolConfirmDialog, SchoolField, SchoolGlassModal, SchoolWorkflowButton } from "@/components/school/school-ui";
 import { glassPanel, inputClass, primaryButton, secondaryButton, StatusPill } from "@/components/supermarket/purchasing-ui";
 import { formatCompactStaffNumber } from "@/lib/school/student-number";
+import { isSchoolTeacherRole } from "@/lib/school/teacher-staff";
 
 function Fact({ label, value }: { label: string; value: string }) {
   return (
@@ -91,7 +95,30 @@ export function SchoolStaffProfilePage({
   const [subjectName, setSubjectName] = useState("");
   const [accessOpen, setAccessOpen] = useState(openAccess);
   const [credentials, setCredentials] = useState<CredentialsPayload | null>(null);
+  const [classAccess, setClassAccess] = useState<TeacherClassAccess | null>(null);
+  const [pickedLevels, setPickedLevels] = useState<string[]>([]);
+  const [pickedClasses, setPickedClasses] = useState<string[]>([]);
   const lock = useRef(false);
+
+  const showClassAccess = Boolean(staff && (staff.allowsAcademicAssignments || isSchoolTeacherRole(staff.roleCode)));
+
+  useEffect(() => {
+    if (!staff?.id || !showClassAccess) return;
+    let active = true;
+    void getTeacherClassAccessAction(staff.id).then((result) => {
+      if (!active) return;
+      if (!result.ok) {
+        setSaveError(result.error);
+        return;
+      }
+      setClassAccess(result.access);
+      setPickedLevels(result.access.levelIds);
+      setPickedClasses(result.access.classIds);
+    });
+    return () => {
+      active = false;
+    };
+  }, [staff?.id, showClassAccess]);
 
   useEffect(() => {
     if (!levelId) return;
@@ -288,10 +315,10 @@ export function SchoolStaffProfilePage({
             </button>
           ) : null}
         </div>
-        {!staff.allowsAcademicAssignments ? (
+        {!staff.allowsAcademicAssignments && !showClassAccess ? (
           <p className="text-[13.5px] text-slate-500">This staff type does not take academic assignments. Transport and other duties can be linked later from their modules.</p>
         ) : staff.assignments.filter((row) => row.isActive).length === 0 ? (
-          <p className="text-[13.5px] text-slate-500">No academic assignments yet.</p>
+          showClassAccess ? null : <p className="text-[13.5px] text-slate-500">No academic assignments yet.</p>
         ) : (
           <ul className="space-y-2">
             {staff.assignments
@@ -316,6 +343,88 @@ export function SchoolStaffProfilePage({
               ))}
           </ul>
         )}
+        {showClassAccess ? (
+          <div className="space-y-3 border-t border-navy/8 pt-3">
+            <div>
+              <h3 className="text-[14px] font-semibold text-navy">Classes this teacher can see</h3>
+              <p className="mt-1 text-[12.5px] text-slate-500">
+                Tick a level to include every class in it. Tick classes under that level when this teacher should see only those classes and their students.
+              </p>
+            </div>
+            {classAccess === null ? (
+              <p className="text-[13.5px] text-slate-500">Loading classes…</p>
+            ) : !classAccess.linked ? (
+              <p className="text-[13.5px] text-slate-500">Link this staff member to a login before choosing the classes they can see.</p>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  {classAccess.levels.map((level) => {
+                    const levelClasses = classAccess.classes.filter((row) => row.levelId === level.id);
+                    const levelOn = pickedLevels.includes(level.id);
+                    return (
+                      <div key={level.id} className="rounded-[14px] border border-navy/8 bg-white/70 px-4 py-3">
+                        <label className="flex items-center gap-2 text-[13.5px] font-semibold text-navy">
+                          <input
+                            type="checkbox"
+                            checked={levelOn}
+                            onChange={(event) => {
+                              const on = event.target.checked;
+                              setPickedLevels((current) => (on ? [...current, level.id] : current.filter((id) => id !== level.id)));
+                              if (!on) setPickedClasses((current) => current.filter((id) => !levelClasses.some((row) => row.id === id)));
+                            }}
+                          />
+                          {level.name}
+                        </label>
+                        {levelOn && levelClasses.length ? (
+                          <div className="mt-2 grid gap-2 pl-6 sm:grid-cols-2">
+                            {levelClasses.map((row) => (
+                              <label key={row.id} className="flex items-center gap-2 text-[13px] text-navy">
+                                <input
+                                  type="checkbox"
+                                  checked={pickedClasses.includes(row.id)}
+                                  onChange={(event) => {
+                                    const on = event.target.checked;
+                                    setPickedClasses((current) => (on ? [...current, row.id] : current.filter((id) => id !== row.id)));
+                                  }}
+                                />
+                                {row.name}
+                              </label>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+                {canManage ? (
+                  <button
+                    type="button"
+                    className={primaryButton}
+                    disabled={busy}
+                    onClick={() => {
+                      if (!staff || lock.current) return;
+                      lock.current = true;
+                      setBusy(true);
+                      setSaveError(null);
+                      void saveTeacherClassAccessAction({ staffId: staff.id, levelIds: pickedLevels, classIds: pickedClasses }).then((result) => {
+                        lock.current = false;
+                        setBusy(false);
+                        if (!result.ok) {
+                          setSaveError(result.error);
+                          return;
+                        }
+                        setPickedLevels(result.levelIds);
+                        setPickedClasses(result.classIds);
+                      });
+                    }}
+                  >
+                    Save class access
+                  </button>
+                ) : null}
+              </>
+            )}
+          </div>
+        ) : null}
       </section>
 
       {drawer ? (

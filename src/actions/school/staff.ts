@@ -1511,3 +1511,133 @@ export async function grantStaffSystemAccessAction(input: {
     return { ok: false as const, error: schoolActionError(error) };
   }
 }
+
+export type TeacherClassChoice = { id: string; name: string; levelId: string };
+
+export type TeacherClassAccess = {
+  linked: boolean;
+  levels: StaffOption[];
+  classes: TeacherClassChoice[];
+  levelIds: string[];
+  classIds: string[];
+};
+
+export async function getTeacherClassAccessAction(staffId: string) {
+  try {
+    const { supabase, businessUnitId } = await requireSchoolPermission(VIEW);
+    const id = str(staffId);
+    const [staffRes, levelsRes, classesRes] = await Promise.all([
+      supabase.from("sch_staff").select("profile_id").eq("business_unit_id", businessUnitId).eq("id", id).maybeSingle(),
+      supabase.from("sch_class_levels").select("id, name").eq("business_unit_id", businessUnitId).eq("is_active", true).order("sort_order"),
+      supabase.from("sch_classes").select("id, name, level_id").eq("business_unit_id", businessUnitId).eq("is_active", true).order("sort_order"),
+    ]);
+    if (!staffRes.data) throw new SchoolError("Staff member was not found.", "NOT_FOUND");
+    const levels = (levelsRes.data ?? []).map((row) => ({ id: String(row.id), name: String(row.name) }));
+    const classes = (classesRes.data ?? []).map((row) => ({
+      id: String(row.id),
+      name: String(row.name),
+      levelId: String(row.level_id),
+    }));
+    const profileId = str(staffRes.data.profile_id);
+    if (!profileId) {
+      return { ok: true as const, access: { linked: false, levels, classes, levelIds: [], classIds: [] } satisfies TeacherClassAccess };
+    }
+    const admin = adminOrNull();
+    if (!admin) throw new SchoolError("Server is missing SUPABASE_SERVICE_ROLE_KEY.", "NOT_CONFIGURED");
+    const accessRes = await admin
+      .from("sch_academic_access")
+      .select("scope_kind, target_id")
+      .eq("business_unit_id", businessUnitId)
+      .eq("user_id", profileId);
+    if (accessRes.error) mapSchoolDbError(accessRes.error, "load");
+    const levelIds = new Set(
+      (accessRes.data ?? []).filter((row) => row.scope_kind === "level" && row.target_id).map((row) => String(row.target_id)),
+    );
+    const classIds = (accessRes.data ?? [])
+      .filter((row) => row.scope_kind === "class" && row.target_id)
+      .map((row) => String(row.target_id));
+    for (const row of classes) {
+      if (classIds.includes(row.id)) levelIds.add(row.levelId);
+    }
+    return {
+      ok: true as const,
+      access: { linked: true, levels, classes, levelIds: [...levelIds], classIds } satisfies TeacherClassAccess,
+    };
+  } catch (error) {
+    return { ok: false as const, error: schoolActionError(error) };
+  }
+}
+
+export async function saveTeacherClassAccessAction(input: { staffId: string; levelIds: string[]; classIds: string[] }) {
+  try {
+    const { supabase, businessUnitId } = await requireSchoolPermission(MANAGE);
+    const staffId = str(input.staffId);
+    const staffRes = await supabase
+      .from("sch_staff")
+      .select("id, profile_id, first_name, last_name")
+      .eq("business_unit_id", businessUnitId)
+      .eq("id", staffId)
+      .maybeSingle();
+    if (!staffRes.data) throw new SchoolError("Staff member was not found.", "NOT_FOUND");
+    const profileId = str(staffRes.data.profile_id);
+    if (!profileId) throw new SchoolError("Link this staff member to a login before choosing their classes.", "VALIDATION");
+
+    const [levelsRes, classesRes] = await Promise.all([
+      supabase.from("sch_class_levels").select("id").eq("business_unit_id", businessUnitId).eq("is_active", true),
+      supabase.from("sch_classes").select("id, level_id").eq("business_unit_id", businessUnitId).eq("is_active", true),
+    ]);
+    const validLevels = new Set((levelsRes.data ?? []).map((row) => String(row.id)));
+    const classLevel = new Map((classesRes.data ?? []).map((row) => [String(row.id), String(row.level_id)]));
+    const levelIds = [...new Set(input.levelIds.map(str).filter((id) => validLevels.has(id)))];
+    const classIds = [...new Set(input.classIds.map(str).filter((id) => levelIds.includes(classLevel.get(id) ?? "")))];
+    if (!levelIds.length) throw new SchoolError("Tick at least one level.", "VALIDATION");
+
+    const next = new Map<string, { scope_kind: "level" | "class"; target_id: string }>();
+    for (const levelId of levelIds) {
+      const picked = classIds.filter((id) => classLevel.get(id) === levelId);
+      if (!picked.length) next.set(`level:${levelId}`, { scope_kind: "level", target_id: levelId });
+      else for (const classId of picked) next.set(`class:${classId}`, { scope_kind: "class", target_id: classId });
+    }
+
+    const admin = adminOrNull();
+    if (!admin) throw new SchoolError("Server is missing SUPABASE_SERVICE_ROLE_KEY.", "NOT_CONFIGURED");
+    const current = await admin
+      .from("sch_academic_access")
+      .select("id, scope_kind, target_id")
+      .eq("business_unit_id", businessUnitId)
+      .eq("user_id", profileId);
+    if (current.error) mapSchoolDbError(current.error, "load");
+    const removable = (current.data ?? []).filter((row) => row.scope_kind === "school" || row.scope_kind === "level" || row.scope_kind === "class");
+    const removeIds = removable
+      .filter((row) => row.scope_kind === "school" || !next.has(`${row.scope_kind}:${row.target_id}`))
+      .map((row) => String(row.id));
+    const existingKeys = new Set(removable.map((row) => `${row.scope_kind}:${row.target_id}`));
+    const insertRows = [...next.entries()]
+      .filter(([key]) => !existingKeys.has(key))
+      .map(([, row]) => ({
+        business_unit_id: businessUnitId,
+        user_id: profileId,
+        scope_kind: row.scope_kind,
+        target_id: row.target_id,
+      }));
+    if (removeIds.length) {
+      const removed = await admin.from("sch_academic_access").delete().in("id", removeIds);
+      if (removed.error) mapSchoolDbError(removed.error, "save");
+    }
+    if (insertRows.length) {
+      const inserted = await admin.from("sch_academic_access").insert(insertRows);
+      if (inserted.error) mapSchoolDbError(inserted.error, "save");
+    }
+    const staffName = personName(str(staffRes.data.first_name), "", str(staffRes.data.last_name));
+    await audit({
+      action: "school.staff_assignment_created",
+      description: `Teacher class access updated · ${staffName}`,
+      entityType: "sch_staff",
+      entityId: staffId,
+      businessUnitId,
+    });
+    return { ok: true as const, levelIds, classIds };
+  } catch (error) {
+    return { ok: false as const, error: schoolActionError(error) };
+  }
+}

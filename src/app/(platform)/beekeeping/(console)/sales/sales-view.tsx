@@ -12,11 +12,19 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { ActionMenu, ActionMenuItem, SaveButton, fieldClass, formatDate, overlayClass, placeActionMenu, saveJson, statusClass } from "../bee-ui";
 
 export default function SalesView({ initial, initialTab }: { initial: BeeDirectory; initialTab: "sales" | "expenses" }) {
-  const { hasAnyPermission } = useAuth();
+  const { hasPermission, hasAnyPermission } = useAuth();
   const canSales = hasAnyPermission(["beekeeping.sales.view", "beekeeping.sales.create", "beekeeping.sales.edit", "beekeeping.sales.pay", "beekeeping.sales.cancel"]);
   const canExpenses = hasAnyPermission(["beekeeping.expenses.view", "beekeeping.expenses.create", "beekeeping.expenses.edit", "beekeeping.expenses.pay", "beekeeping.expenses.cancel"]);
-  const canAddSale = hasAnyPermission(["beekeeping.sales.create"]);
-  const canAddExpense = hasAnyPermission(["beekeeping.expenses.create"]);
+  const canAddSale = hasPermission("beekeeping.sales.create");
+  const canEditSale = hasPermission("beekeeping.sales.edit");
+  const canPaySale = hasPermission("beekeeping.sales.pay");
+  const canCancelSale = hasPermission("beekeeping.sales.cancel");
+  const canAddExpense = hasPermission("beekeeping.expenses.create");
+  const canEditExpense = hasPermission("beekeeping.expenses.edit");
+  const canPayExpense = hasPermission("beekeeping.expenses.pay");
+  const canCancelExpense = hasPermission("beekeeping.expenses.cancel");
+  const saleActions = 1 + Number(canEditSale) + Number(canPaySale) + Number(canCancelSale);
+  const expenseActions = 1 + Number(canEditExpense) + Number(canPayExpense) + Number(canCancelExpense);
   const [directory, setDirectory] = useState(initial);
   const [tab, setTab] = useState(initialTab);
   const [query, setQuery] = useState("");
@@ -147,7 +155,7 @@ export default function SalesView({ initial, initialTab }: { initial: BeeDirecto
             {sales.length === 0 ? <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-500">No sales in this period.</td></tr> : salePage.rows.map((item) => (
               <tr key={item.id}>
                 <td className="px-3 py-3 font-medium">{item.sale_code}</td><td className="px-3 py-3">{item.customer_name || "—"}</td><td className="px-3 py-3">{item.quantity_kg} kg</td><td className="px-3 py-3">{formatTzs(item.price_per_kg)}</td><td className="px-3 py-3">{formatTzs(item.total_amount)}</td><td className="px-3 py-3">{formatTzs(item.amount_received)}</td><td className="px-3 py-3">{formatTzs(item.balance)}</td><td className="px-3 py-3"><span className={`rounded-full px-2 py-0.5 text-xs ${statusClass(item.status)}`}>{item.status}</span></td>
-                <td className="px-3 py-3 text-right"><button type="button" aria-label="Sale actions" className="rounded-lg p-1 hover:bg-slate-100" onClick={(event) => openMenu(event, item.id, 4)}><MoreVertical size={16} /></button></td>
+                <td className="px-3 py-3 text-right"><button type="button" aria-label="Sale actions" className="rounded-lg p-1 hover:bg-slate-100" onClick={(event) => openMenu(event, item.id, saleActions)}><MoreVertical size={16} /></button></td>
               </tr>
             ))}
           </Table>
@@ -159,7 +167,7 @@ export default function SalesView({ initial, initialTab }: { initial: BeeDirecto
             {expenses.length === 0 ? <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-500">No expenses in this period.</td></tr> : expensePage.rows.map((item) => (
               <tr key={item.id}>
                 <td className="px-3 py-3 font-medium">{item.expense_code}</td><td className="px-3 py-3">{item.description}</td><td className="px-3 py-3">{item.category}</td><td className="px-3 py-3">{item.hive_code || item.location || "—"}</td><td className="px-3 py-3">{formatTzs(item.amount)}</td><td className="px-3 py-3">{formatTzs(item.amount_paid)}</td><td className="px-3 py-3">{formatTzs(item.balance)}</td><td className="px-3 py-3"><span className={`rounded-full px-2 py-0.5 text-xs ${statusClass(item.status)}`}>{item.status}</span></td>
-                <td className="px-3 py-3 text-right"><button type="button" aria-label="Expense actions" className="rounded-lg p-1 hover:bg-slate-100" onClick={(event) => openMenu(event, item.id, 4)}><MoreVertical size={16} /></button></td>
+                <td className="px-3 py-3 text-right"><button type="button" aria-label="Expense actions" className="rounded-lg p-1 hover:bg-slate-100" onClick={(event) => openMenu(event, item.id, expenseActions)}><MoreVertical size={16} /></button></td>
               </tr>
             ))}
           </Table>
@@ -170,17 +178,17 @@ export default function SalesView({ initial, initialTab }: { initial: BeeDirecto
       {menuSale ? (
         <ActionMenu top={menuPos.top} left={menuPos.left} onClose={() => setMenu(null)}>
           <ActionMenuItem label="View Details" onClick={() => { setSelectedSale(menuSale); setMenu(null); }} />
-          <ActionMenuItem label="Edit Sale" onClick={() => { setSale(menuSale); open("edit-sale", { customer_name: menuSale.customer_name, phone: menuSale.phone, price_per_kg: String(menuSale.price_per_kg), notes: menuSale.notes }); }} />
-          <ActionMenuItem label="Record Payment" onClick={() => { setSale(menuSale); open("pay-sale", { amount: String(menuSale.balance), payment_date: businessToday(), payment_method: "Cash", transaction_reference: "", notes: "" }); }} />
-          <ActionMenuItem label="Cancel Sale" onClick={() => cancel("sale", menuSale.id)} />
+          {canEditSale ? <ActionMenuItem label="Edit Sale" onClick={() => { setSale(menuSale); open("edit-sale", { customer_name: menuSale.customer_name, phone: menuSale.phone, price_per_kg: String(menuSale.price_per_kg), notes: menuSale.notes }); }} /> : null}
+          {canPaySale ? <ActionMenuItem label="Record Payment" onClick={() => { setSale(menuSale); open("pay-sale", { amount: String(menuSale.balance), payment_date: businessToday(), payment_method: "Cash", transaction_reference: "", notes: "" }); }} /> : null}
+          {canCancelSale ? <ActionMenuItem label="Cancel Sale" onClick={() => cancel("sale", menuSale.id)} /> : null}
         </ActionMenu>
       ) : null}
       {menuExpense ? (
         <ActionMenu top={menuPos.top} left={menuPos.left} onClose={() => setMenu(null)}>
           <ActionMenuItem label="View Details" onClick={() => { setSelectedExpense(menuExpense); setMenu(null); }} />
-          <ActionMenuItem label="Edit Expense" onClick={() => { setExpense(menuExpense); open("edit-expense", { category: menuExpense.category, description: menuExpense.description, amount: String(menuExpense.amount), expense_date: menuExpense.expense_date, due_date: menuExpense.due_date, location: menuExpense.location, hive_id: menuExpense.hive_id, vendor_name: menuExpense.vendor_name, notes: menuExpense.notes }); }} />
-          <ActionMenuItem label="Record Payment" onClick={() => { setExpense(menuExpense); open("pay-expense", { amount: String(menuExpense.balance), payment_date: businessToday(), payment_method: "Cash", transaction_reference: "", notes: "" }); }} />
-          <ActionMenuItem label="Cancel Expense" onClick={() => cancel("expense", menuExpense.id)} />
+          {canEditExpense ? <ActionMenuItem label="Edit Expense" onClick={() => { setExpense(menuExpense); open("edit-expense", { category: menuExpense.category, description: menuExpense.description, amount: String(menuExpense.amount), expense_date: menuExpense.expense_date, due_date: menuExpense.due_date, location: menuExpense.location, hive_id: menuExpense.hive_id, vendor_name: menuExpense.vendor_name, notes: menuExpense.notes }); }} /> : null}
+          {canPayExpense ? <ActionMenuItem label="Record Payment" onClick={() => { setExpense(menuExpense); open("pay-expense", { amount: String(menuExpense.balance), payment_date: businessToday(), payment_method: "Cash", transaction_reference: "", notes: "" }); }} /> : null}
+          {canCancelExpense ? <ActionMenuItem label="Cancel Expense" onClick={() => cancel("expense", menuExpense.id)} /> : null}
         </ActionMenu>
       ) : null}
 
