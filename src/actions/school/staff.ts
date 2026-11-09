@@ -1591,7 +1591,6 @@ export async function saveTeacherClassAccessAction(input: { staffId: string; lev
     const classLevel = new Map((classesRes.data ?? []).map((row) => [String(row.id), String(row.level_id)]));
     const levelIds = [...new Set(input.levelIds.map(str).filter((id) => validLevels.has(id)))];
     const classIds = [...new Set(input.classIds.map(str).filter((id) => levelIds.includes(classLevel.get(id) ?? "")))];
-    if (!levelIds.length) throw new SchoolError("Tick at least one level.", "VALIDATION");
 
     const next = new Map<string, { scope_kind: "level" | "class"; target_id: string }>();
     for (const levelId of levelIds) {
@@ -1637,6 +1636,7 @@ export async function saveTeacherClassAccessAction(input: { staffId: string; lev
       entityId: staffId,
       businessUnitId,
     });
+    revalidatePath("/school", "layout");
     return { ok: true as const, levelIds, classIds };
   } catch (error) {
     return { ok: false as const, error: schoolActionError(error) };

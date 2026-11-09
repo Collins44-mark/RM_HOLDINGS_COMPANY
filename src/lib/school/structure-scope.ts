@@ -23,6 +23,24 @@ const schoolWide = (): SchoolStructureScope => ({
   writeStreamIds: new Set(),
 });
 
+const noClasses = (): SchoolStructureScope => ({
+  schoolWide: false,
+  levelIds: new Set(),
+  classIds: new Set(),
+  streamIds: new Set(),
+  writeLevelIds: new Set(),
+  writeClassIds: new Set(),
+  writeStreamIds: new Set(),
+});
+
+export function academicAccessMode(rows: Array<{ scope_kind: string }>): "school" | "assigned" | "none" {
+  if (rows.some((row) => row.scope_kind === "school")) return "school";
+  if (rows.some((row) => row.scope_kind === "level" || row.scope_kind === "class" || row.scope_kind === "stream")) {
+    return "assigned";
+  }
+  return "none";
+}
+
 export async function loadSchoolStructureScope(ctx: SchoolContext): Promise<SchoolStructureScope> {
   const user = await requireAuth();
   if (isOwnerRole(user.roleCode)) return schoolWide();
@@ -34,7 +52,9 @@ export async function loadSchoolStructureScope(ctx: SchoolContext): Promise<Scho
     .eq("user_id", ctx.userId);
   if (accessRes.error && !isSchoolUnconfiguredRead(accessRes.error)) return schoolWide();
   const rows = accessRes.data ?? [];
-  if (rows.length === 0 || rows.some((row) => row.scope_kind === "school")) return schoolWide();
+  const mode = academicAccessMode(rows);
+  if (mode === "school") return schoolWide();
+  if (mode === "none") return noClasses();
 
   const assignedLevels = [...new Set(rows.filter((row) => row.scope_kind === "level" && row.target_id).map((row) => String(row.target_id)))];
   const assignedClasses = [...new Set(rows.filter((row) => row.scope_kind === "class" && row.target_id).map((row) => String(row.target_id)))];

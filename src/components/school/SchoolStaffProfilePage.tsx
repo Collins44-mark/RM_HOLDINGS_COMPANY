@@ -348,7 +348,7 @@ export function SchoolStaffProfilePage({
             <div>
               <h3 className="text-[14px] font-semibold text-navy">Classes this teacher can see</h3>
               <p className="mt-1 text-[12.5px] text-slate-500">
-                Tick a level to include every class in it. Tick classes under that level when this teacher should see only those classes and their students.
+                Tick a level to include every class in it. Tick classes under that level to keep only those classes. Untick a level or class and save to remove it. With nothing ticked, this teacher cannot see any class or its students.
               </p>
             </div>
             {classAccess === null ? (
