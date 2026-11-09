@@ -13,6 +13,7 @@ import {
 } from "@/lib/config/regional";
 import { LanguagePreference } from "@/components/i18n/LanguagePreference";
 import { useT } from "@/components/i18n/LocaleProvider";
+import { useLogoFill } from "@/components/branding/Logo";
 import type { OrganizationSettings } from "@/lib/data/organization-settings";
 
 const fieldClass =
@@ -35,6 +36,7 @@ export function GeneralSettingsForm({
     : ([settings.timezone, ...TIMEZONE_OPTIONS] as string[]);
 
   const [logo, setLogo] = useState(settings.logoUrl);
+  const logoFill = useLogoFill(logo);
   const [logoBusy, setLogoBusy] = useState(false);
   const [logoFailed, setLogoFailed] = useState(false);
   const [logoError, setLogoError] = useState("");
@@ -67,8 +69,11 @@ export function GeneralSettingsForm({
 
       <div className="px-5 pt-5 sm:px-6">
         <div className="flex items-center gap-4">
-          <label className={`relative inline-flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-b from-[#d7b56a] to-[#b48a32] text-[#3a2a0a] shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] ${canEdit ? "cursor-pointer" : ""}`}>
-            {logo ? <img src={logo} alt="" className="h-full w-full object-cover" /> : <span className="font-[family-name:var(--font-cormorant)] text-[26px] font-semibold leading-none">RM</span>}
+          <label
+            className={`relative inline-flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl text-[#3a2a0a] ${logo ? "" : "bg-gradient-to-b from-[#d7b56a] to-[#b48a32] shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]"} ${canEdit ? "cursor-pointer" : ""}`}
+            style={logo ? { backgroundColor: logoFill } : undefined}
+          >
+            {logo ? <img src={logo} alt="" className="h-full w-full object-contain" /> : <span className="font-[family-name:var(--font-cormorant)] text-[26px] font-semibold leading-none">RM</span>}
             {canEdit ? (
               <input
                 type="file"
