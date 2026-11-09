@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { publicEmail } from "@/lib/auth/identifiers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export type LinkedStaffInfo = {
@@ -256,7 +257,7 @@ export async function insertStaffForProfile(
       middle_name: names.middleName.slice(0, 80),
       last_name: names.lastName.slice(0, 80),
       phone: str(input.phone).slice(0, 40),
-      email: str(input.email).slice(0, 160),
+      email: publicEmail(input.email).slice(0, 160),
       staff_type_id: staffTypeId || null,
       position_id: staffPositionId || null,
       job_title: str(input.jobTitle).slice(0, 80),
@@ -342,6 +343,13 @@ export async function ensureTeacherStaffForProfile(
   input: { profileId: string; fullName: string; phone?: string; email?: string; roleId?: string },
 ) {
   const { data, error } = await admin.rpc("sch_ensure_teacher_staff", { p_profile_id: input.profileId });
+  if (!error) {
+    await admin
+      .from("sch_staff")
+      .update({ email: "" })
+      .eq("profile_id", input.profileId)
+      .ilike("email", "%@users.rmholdings.internal");
+  }
   if (error) {
     const missing = /could not find|does not exist|schema cache/i.test(error.message ?? "");
     if (!missing) return { error: error.message || "Unable to link the teacher to School Staff." };
@@ -351,7 +359,7 @@ export async function ensureTeacherStaffForProfile(
       profileId: input.profileId,
       fullName: input.fullName,
       phone: input.phone ?? "",
-      email: input.email ?? "",
+      email: publicEmail(input.email),
       jobTitle: "Teacher",
       roleId: input.roleId,
       staffTypeId,

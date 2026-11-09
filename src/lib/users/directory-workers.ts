@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { publicEmail } from "@/lib/auth/identifiers";
 import type { ManagedUser } from "@/lib/data/app-users";
 
 export type DirectoryWorkerSource = "school" | "farm";
@@ -103,7 +104,7 @@ async function schoolWorkers(client: SupabaseClient, users: ManagedUser[]) {
         recordId: String(row.id),
         name,
         phone,
-        email: text(row.email),
+        email: publicEmail(text(row.email)),
         position: positionName,
         staffNumber: text(row.staff_number),
         moduleCode: "school",

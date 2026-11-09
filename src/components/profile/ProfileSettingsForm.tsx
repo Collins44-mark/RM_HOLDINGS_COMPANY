@@ -113,7 +113,7 @@ export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
             <p className="mt-1 w-fit max-w-full truncate rounded-full bg-[#f3f5f8] px-2.5 py-0.5 text-[12px] font-medium text-slate-600">
               {user.roleName}
             </p>
-            <p className="mt-1.5 truncate text-[13px] text-slate-500">{user.email}</p>
+            {user.email ? <p className="mt-1.5 truncate text-[13px] text-slate-500">{user.email}</p> : null}
             <p className="mt-1 text-[12px] text-slate-400">{t("profile.photoHint")}</p>
             {photo ? (
               <button
@@ -165,7 +165,7 @@ export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
             />
           </label>
 
-          <ReadOnlyRow label={t("profile.email")} value={user.email} />
+          <ReadOnlyRow label={t("profile.email")} value={user.email || "—"} />
           <ReadOnlyRow label={t("profile.role")} value={user.roleName} />
 
           {state?.error ? (

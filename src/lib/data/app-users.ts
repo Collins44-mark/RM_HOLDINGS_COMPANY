@@ -4,7 +4,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { displayRoleName, permissionsForRoleCode } from "@/lib/auth/role-options";
-import { displayLoginIdentifier } from "@/lib/auth/identifiers";
+import { displayLoginIdentifier, publicEmail } from "@/lib/auth/identifiers";
 import { BUSINESS_UNITS } from "@/lib/config/app";
 import { staffByProfileIds, type LinkedStaffInfo } from "@/lib/school/staff-profile-link";
 import { listDirectoryWorkers } from "@/lib/users/directory-workers";
@@ -139,7 +139,7 @@ export function toManagedUser(profile: ProfileRecord): ManagedUser {
   const user: ManagedUser = {
     id: profile.id,
     name: profile.full_name,
-    email: profile.email,
+    email: publicEmail(profile.email) || null,
     phone: profile.phone,
     loginIdentifier: displayLoginIdentifier({ email: profile.email, phone: profile.phone }),
     roleCode: role.code,

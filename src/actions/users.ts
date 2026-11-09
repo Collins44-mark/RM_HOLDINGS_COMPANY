@@ -21,6 +21,7 @@ import {
   displayLoginIdentifier,
   normalizeEmail,
   normalizePhone,
+  publicEmail,
   syntheticEmailForPhone,
 } from "@/lib/auth/identifiers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -315,7 +316,7 @@ export async function createUserAction(
   const { error: profileError } = await admin.from("profiles").insert({
     id: created.data.user.id,
     full_name: parsed.data.name,
-    email: authEmail,
+    email: emailValue || null,
     phone: phoneValue,
     role_id: role.id,
     is_active: true,
@@ -359,7 +360,7 @@ export async function createUserAction(
   const createdUser: ManagedUser = {
     id: created.data.user.id,
     name: parsed.data.name,
-    email: emailValue || authEmail,
+    email: emailValue || null,
     phone: phoneValue,
     loginIdentifier: displayLoginIdentifier({ email: emailValue || authEmail, phone: phoneValue }),
     roleCode: parsed.data.roleCode,
@@ -675,10 +676,25 @@ export async function updateUserAction(
     }
   }
 
+  const emailValue = parsed.data.email ? normalizeEmail(parsed.data.email) : "";
+  const phoneValue = parsed.data.phone ? normalizePhone(parsed.data.phone) : null;
+  if (emailValue && !z.string().email().safeParse(emailValue).success) {
+    return { error: "Enter a valid email address." };
+  }
+  if (!emailValue && !phoneValue) {
+    return { error: "Provide an email address or a phone number." };
+  }
+  const loginEmail = emailValue || syntheticEmailForPhone(phoneValue!);
+  const authUpdate = await readyForRoles.admin.auth.admin.updateUserById(userId, {
+    email: loginEmail,
+    email_confirm: true,
+  });
+  if (authUpdate.error) return { error: authUpdate.error.message || "Unable to update the login." };
   const result = await setUserAccess({
     userId,
     name: parsed.data.name,
-    phone: parsed.data.phone ? normalizePhone(parsed.data.phone) : null,
+    email: emailValue || null,
+    phone: phoneValue,
     roleCode: parsed.data.roleCode,
     moduleCodes: parsed.data.modules,
     moduleRoles,
@@ -838,7 +854,7 @@ export async function createStaffProfileForUserAction(input: {
     profileId: userId,
     fullName: String(profile.data.full_name ?? ""),
     phone: String(profile.data.phone ?? ""),
-    email: String(profile.data.email ?? ""),
+    email: publicEmail(String(profile.data.email ?? "")),
     staffTypeId: String(input.staffTypeId ?? "").trim(),
     staffPositionId: String(input.staffPositionId ?? "").trim(),
     jobTitle: String(input.jobTitle ?? "").trim(),

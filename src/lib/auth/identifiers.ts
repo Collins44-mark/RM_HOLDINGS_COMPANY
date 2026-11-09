@@ -24,6 +24,13 @@ export function isSyntheticEmail(email: string | null | undefined) {
   return Boolean(email?.toLowerCase().endsWith(`@${PHONE_LOGIN_DOMAIN}`));
 }
 
+/** Email the owner typed. Phone-only accounts keep an internal login address that is never shown. */
+export function publicEmail(email: string | null | undefined) {
+  const value = email?.trim() ?? "";
+  if (!value || isSyntheticEmail(value)) return "";
+  return value;
+}
+
 export function displayLoginIdentifier(input: { email: string | null; phone: string | null }) {
   if (input.phone && isSyntheticEmail(input.email)) return input.phone;
   return input.email || input.phone || "";

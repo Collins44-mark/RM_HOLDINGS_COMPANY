@@ -21,6 +21,7 @@ import { schoolPageMeta, schoolPageRange } from "@/lib/school/pagination";
 import { parseMoney, parsePayday } from "@/lib/school/salary";
 import { formatCompactStaffNumber } from "@/lib/school/student-number";
 import { upsertSalaryArrangement } from "@/lib/school/salary-arrangement";
+import { publicEmail } from "@/lib/auth/identifiers";
 import {
   adminOrNull,
   linkedProfileIds,
@@ -664,7 +665,7 @@ export async function getSchoolStaffAction(id: string) {
       gender: str(row.gender),
       dateOfBirth: String(row.date_of_birth ?? ""),
       phone: str(row.phone),
-      email: str(row.email),
+      email: publicEmail(str(row.email)),
       address: str(row.address),
       staffTypeId: str(row.staff_type_id),
       typeName: str(type?.name),
@@ -909,7 +910,7 @@ export async function saveSchoolStaffAction(input: StaffFormInput) {
       gender: genderValue(input.gender),
       date_of_birth: dateValue(input.dateOfBirth, "Date of birth"),
       phone: str(input.phone).slice(0, 40),
-      email: str(input.email).slice(0, 160),
+      email: publicEmail(input.email).slice(0, 160),
       address: str(input.address).slice(0, 240),
       staff_type_id: staffTypeId || null,
       role_id: role?.id ?? null,
@@ -1479,7 +1480,7 @@ export async function grantStaffSystemAccessAction(input: {
     const name = personName(str(staffRes.data.first_name), str(staffRes.data.middle_name), str(staffRes.data.last_name));
     const formData = new FormData();
     formData.set("name", name);
-    formData.set("email", str(input.email) || str(staffRes.data.email));
+    formData.set("email", publicEmail(input.email) || publicEmail(str(staffRes.data.email)));
     formData.set("phone", str(input.phone) || str(staffRes.data.phone));
     formData.set("roleCode", storedRoleCode);
     formData.append("modules", "school");

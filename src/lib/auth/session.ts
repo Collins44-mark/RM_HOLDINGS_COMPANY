@@ -13,6 +13,7 @@ import { hasPermission, isOwnerRole } from "@/lib/auth/rbac";
 import { resolveEffectiveAccess } from "@/lib/auth/effective-access";
 import { identityFromAppMetadata } from "@/lib/auth/identity-from-claims";
 import { displayRoleName, roleDefinition } from "@/lib/auth/role-options";
+import { publicEmail } from "@/lib/auth/identifiers";
 import { identityFromUser, type AuthUser } from "@/lib/auth/types";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -53,7 +54,7 @@ function authUserFromClaims(user: User, profile?: LightProfileRecord | null): Au
   return {
     id: profile?.id ?? user.id,
     authUid: user.id,
-    email: profile?.email ?? user.email?.toLowerCase() ?? "",
+    email: publicEmail(profile?.email ?? user.email),
     name: displayNameFromAuth(user, profile?.full_name || user.email?.split("@")[0] || "User"),
     title: displayRoleName(claims.role, role?.name),
     phone: profile?.phone ?? (typeof user.user_metadata?.phone === "string" ? user.user_metadata.phone : null),
@@ -80,7 +81,7 @@ function legacyOwnerFromAuth(user: User): AuthUser {
   return {
     id: user.id,
     authUid: user.id,
-    email: user.email?.toLowerCase() ?? "",
+    email: publicEmail(user.email),
     name: fullName,
     title: typeof metadata.title === "string" ? metadata.title : "Owner",
     phone: typeof metadata.phone === "string" ? metadata.phone : null,
@@ -114,7 +115,7 @@ async function bootstrapOwnerProfile(user: User) {
   await admin.from("profiles").upsert({
     id: user.id,
     full_name: fullName,
-    email: user.email.toLowerCase(),
+    email: publicEmail(user.email),
     phone: typeof user.user_metadata?.phone === "string" ? user.user_metadata.phone : null,
     role_id: ownerRole.id,
     is_active: true,
@@ -160,7 +161,7 @@ async function hydrateAuthUser(user: User, options?: { skipProfile?: boolean }) 
   return {
     id: profile.id,
     authUid: user.id,
-    email: profile.email ?? user.email?.toLowerCase() ?? "",
+    email: publicEmail(profile.email ?? user.email),
     name: displayNameFromAuth(user, profile.full_name),
     title: access.roleName,
     phone: profile.phone,
