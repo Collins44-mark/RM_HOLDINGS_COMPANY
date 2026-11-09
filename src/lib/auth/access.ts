@@ -55,15 +55,79 @@ const MODULE_ENTRY_PAGES: Record<string, string[]> = {
     "/property/expenses",
     "/property/reports",
   ],
+  school: [
+    "/school",
+    "/school/students",
+    "/school/promotions",
+    "/school/admissions",
+    "/school/parents",
+    "/school/classes",
+    "/school/staff",
+    "/school/subjects",
+    "/school/exams-results",
+    "/school/fees",
+    "/school/expenses",
+    "/school/store",
+    "/school/transport",
+    "/school/transport/buses",
+    "/school/transport/drivers",
+    "/school/transport/routes",
+    "/school/transport/service",
+    "/school/reports",
+    "/school/settings",
+  ],
+  rice: [
+    "/rice",
+    "/rice/purchases",
+    "/rice/milling",
+    "/rice/warehouse",
+    "/rice/customer-storage",
+    "/rice/sales",
+    "/rice/finance",
+    "/rice/reports",
+    "/rice/settings",
+  ],
+  farm: [
+    "/farm",
+    "/farm/tractors",
+    "/farm/jobs",
+    "/farm/operations",
+    "/farm/fuel",
+    "/farm/finance",
+    "/farm/reports",
+    "/farm/customers",
+    "/farm/suppliers",
+    "/farm/staff",
+    "/farm/settings",
+  ],
+  supermarket: [
+    "/supermarket",
+    "/supermarket/pos",
+    "/supermarket/sales",
+    "/supermarket/returns",
+    "/supermarket/products",
+    "/supermarket/stock",
+    "/supermarket/promotions",
+    "/supermarket/purchasing",
+    "/supermarket/finance",
+    "/supermarket/reconciliation",
+    "/supermarket/reports",
+  ],
 };
+
+export function entryPathForModule(identity: AccessIdentity, moduleCode: string) {
+  if (isOwnerRole(identity.role)) return `/${moduleCode}`;
+  const root = `/${moduleCode}`;
+  const pages = MODULE_ENTRY_PAGES[moduleCode] ?? [root];
+  return pages.find((path) => canAccessPath(identity, path)) ?? (canAccessPath(identity, root) ? root : null);
+}
 
 export function landingPathFor(identity: AccessIdentity) {
   if (isOwnerRole(identity.role)) return "/dashboard";
 
   const assigned = identity.modules.filter((item) => item !== "*");
   if (assigned.length === 1) {
-    const pages = MODULE_ENTRY_PAGES[assigned[0]] ?? [`/${assigned[0]}`];
-    return pages.find((path) => canAccessPath(identity, path)) ?? `/${assigned[0]}`;
+    return entryPathForModule(identity, assigned[0]) ?? "/forbidden";
   }
   if (assigned.length > 1) return WORKSPACE_PATH;
 

@@ -240,13 +240,7 @@ export async function loadRiceWarehouseKindWorkspaceAction(
 
 export async function loadRiceStorageAccountAction(accountId: string) {
   try {
-    const ctx = await requireAnyRicePermission([
-      "rice.storage.view",
-      "rice.storage.create",
-      "rice.warehouse.view",
-      "rice.warehouse.receive",
-      "rice.warehouse.release",
-    ]);
+    const ctx = await requireAnyRicePermission(["rice.storage.view", "rice.storage.create"]);
     const movements = await loadRiceAccountMovements(ctx, accountId);
     return { ok: true as const, movements };
   } catch (error) {
@@ -272,13 +266,7 @@ export async function loadRiceStorageWorkspaceAction(
   } = {},
 ) {
   try {
-    const ctx = await requireAnyRicePermission([
-      "rice.storage.view",
-      "rice.storage.create",
-      "rice.warehouse.view",
-      "rice.warehouse.receive",
-      "rice.warehouse.release",
-    ]);
+    const ctx = await requireAnyRicePermission(["rice.storage.view", "rice.storage.create"]);
     const user = await requireAuth();
     const movement = rangeFrom({
       period: input.movementPeriod ?? input.period,
@@ -348,13 +336,7 @@ export async function loadRiceFinanceWorkspaceAction(
   input: { period?: string; from?: string; to?: string; page?: number; pageSize?: number } = {},
 ) {
   try {
-    const ctx = await requireAnyRicePermission([
-      "rice.finance.view",
-      "rice.payments.view",
-      "rice.payments.create",
-      "rice.expenses.view",
-      "rice.expenses.create",
-    ]);
+    const ctx = await requireAnyRicePermission(["rice.finance.view", "rice.expenses.view", "rice.expenses.create"]);
     const user = await requireAuth();
     const { range, from, to } = rangeFrom(input);
     const [purchases, sales, services, expenses, ledger] = await Promise.all([
@@ -384,7 +366,7 @@ export async function loadRiceFinanceWorkspaceAction(
 
 export async function loadRiceReportsWorkspaceAction(input: { period?: string; from?: string; to?: string } = {}) {
   try {
-    const ctx = await requireAnyRicePermission(["rice.reports.view", "rice.sales.view", "rice.purchases.view", "rice.finance.view"]);
+    const ctx = await requireAnyRicePermission(["rice.reports.view"]);
     const user = await requireAuth();
     const { range, from, to } = rangeFrom(input);
     const [items, purchases, batches, sales, services, expenses, storage, ledger] = await Promise.all([

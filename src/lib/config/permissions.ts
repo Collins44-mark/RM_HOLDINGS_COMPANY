@@ -71,6 +71,7 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       name: titleize(code),
     })),
     ...expand("school", [
+      { resource: "dashboard", actions: ["view"] },
       { resource: "students", actions: ["view", "manage", "withdraw", "transfer"] },
       { resource: "admissions", actions: ["view", "manage", "cancel"] },
       { resource: "parents", actions: ["view", "manage"] },
@@ -95,6 +96,7 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "settings", actions: ["view", "manage"] },
     ]).map((code) => ({ module: "school", code, name: titleize(code) })),
     ...expand("rice", [
+      { resource: "dashboard", actions: ["view"] },
       { resource: "farmers", actions: [...CRUD] },
       { resource: "purchases", actions: ["view", "create"] },
       { resource: "warehouse", actions: ["view", "receive", "release", "edit"] },
@@ -110,6 +112,7 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "settings", actions: ["view", "manage"] },
     ]).map((code) => ({ module: "rice", code, name: titleize(code) })),
     ...expand("farm", [
+      { resource: "dashboard", actions: ["view"] },
       { resource: "plots", actions: [...CRUD] },
       { resource: "seasons", actions: [...CRUD] },
       { resource: "inputs", actions: [...CRUD] },
@@ -127,6 +130,7 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "staff", actions: [...CRUD] },
     ]).map((code) => ({ module: "farm", code, name: titleize(code) })),
     ...expand("supermarket", [
+      { resource: "dashboard", actions: ["view"] },
       { resource: "products", actions: [...CRUD] },
       { resource: "categories", actions: [...CRUD] },
       { resource: "suppliers", actions: [...CRUD] },
@@ -141,8 +145,10 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "banking", actions: ["view", "create", "approve"] },
       { resource: "petty_cash", actions: ["view", "create", "approve"] },
       { resource: "tax", actions: ["view", "manage"] },
+      { resource: "reports", actions: ["view"] },
     ]).map((code) => ({ module: "supermarket", code, name: titleize(code) })),
     ...expand("property", [
+      { resource: "dashboard", actions: ["view"] },
       { resource: "properties", actions: [...CRUD] },
       { resource: "units", actions: [...CRUD] },
       { resource: "tenants", actions: [...CRUD] },
@@ -196,6 +202,7 @@ export function isOperablePermission(code: string) {
     code.startsWith("property.") ||
     code.startsWith("livestock.") ||
     code.startsWith("beekeeping.") ||
+    code === "school.dashboard.view" ||
     code === "school.settings.view" ||
     code === "school.settings.manage" ||
     code === "school.classes.view" ||

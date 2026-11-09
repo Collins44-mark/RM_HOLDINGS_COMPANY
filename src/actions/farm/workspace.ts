@@ -100,7 +100,7 @@ export type FarmSettingsWorkspace = { services: FarmServiceType[]; caps: FarmCap
 
 export async function loadFarmTractorsWorkspaceAction() {
   try {
-    const ctx = await requireAnyFarmPermission(["farm.tractors.view", "farm.tractors.create", "farm.jobs.view"]);
+    const ctx = await requireAnyFarmPermission(["farm.tractors.view", "farm.tractors.create", "farm.tractors.edit", "farm.tractors.delete"]);
     const tractors = await loadFarmTractors(ctx);
     return { ok: true as const, workspace: { tractors, caps: await caps() } };
   } catch (error) {
@@ -139,7 +139,7 @@ export async function loadFarmJobsWorkspaceAction(input: { period?: string; from
 
 export async function loadFarmFuelWorkspaceAction(input: { period?: string; from?: string; to?: string; page?: number; pageSize?: number }) {
   try {
-    const ctx = await requireAnyFarmPermission(["farm.fuel.view", "farm.maintenance.view", "farm.tractors.view"]);
+    const ctx = await requireAnyFarmPermission(["farm.fuel.view", "farm.fuel.create", "farm.maintenance.view", "farm.maintenance.create"]);
     const { from, to, range } = rangeFrom(input);
     const [fuel, maintenance, tractors, suppliers] = await Promise.all([
       loadFarmFuel(ctx, from, to, { page: input.page, pageSize: input.pageSize }),
@@ -186,7 +186,7 @@ export async function loadFarmOperationsWorkspaceAction(input: { period?: string
 
 export async function loadFarmFinanceWorkspaceAction(input: { period?: string; from?: string; to?: string; page?: number; pageSize?: number; expenseKind?: string }) {
   try {
-    const ctx = await requireAnyFarmPermission(["farm.finance.view", "farm.jobs.view", "farm.expenses.view"]);
+    const ctx = await requireAnyFarmPermission(["farm.finance.view", "farm.expenses.view", "farm.expenses.create"]);
     const { from, to, range } = rangeFrom(input);
     const [summary, expenses, jobs] = await Promise.all([
       loadFarmLedgerSummary(ctx, from, to),
@@ -211,7 +211,7 @@ export async function loadFarmFinanceWorkspaceAction(input: { period?: string; f
 
 export async function loadFarmReportsWorkspaceAction(input: { period?: string; from?: string; to?: string }) {
   try {
-    const ctx = await requireAnyFarmPermission(["farm.reports.view", "farm.jobs.view", "farm.finance.view"]);
+    const ctx = await requireAnyFarmPermission(["farm.reports.view"]);
     const { from, to, range } = rangeFrom(input);
     const [summary, expenses, jobs, tractors, fuel, maintenance, operations] = await Promise.all([
       loadFarmLedgerSummary(ctx, from, to),
@@ -244,7 +244,7 @@ export async function loadFarmReportsWorkspaceAction(input: { period?: string; f
 
 export async function loadFarmPartiesWorkspaceAction(kind: "CUSTOMER" | "SUPPLIER") {
   try {
-    const ctx = await requireAnyFarmPermission(["farm.customers.view", "farm.jobs.view", "farm.jobs.create"]);
+    const ctx = await requireAnyFarmPermission(["farm.customers.view", "farm.customers.create", "farm.customers.edit", "farm.customers.delete"]);
     const parties = await loadFarmParties(ctx, kind);
     return { ok: true as const, workspace: { parties, kind, caps: await caps() } };
   } catch (error) {
@@ -254,7 +254,7 @@ export async function loadFarmPartiesWorkspaceAction(kind: "CUSTOMER" | "SUPPLIE
 
 export async function loadFarmStaffWorkspaceAction() {
   try {
-    const ctx = await requireAnyFarmPermission(["farm.staff.view", "farm.jobs.view"]);
+    const ctx = await requireAnyFarmPermission(["farm.staff.view", "farm.staff.create", "farm.staff.edit", "farm.staff.delete"]);
     const staff = await loadFarmStaff(ctx);
     return { ok: true as const, workspace: { staff, caps: await caps() } };
   } catch (error) {
@@ -264,7 +264,7 @@ export async function loadFarmStaffWorkspaceAction() {
 
 export async function loadFarmSettingsWorkspaceAction() {
   try {
-    const ctx = await requireAnyFarmPermission(["farm.settings.view", "farm.settings.manage", "farm.jobs.view"]);
+    const ctx = await requireAnyFarmPermission(["farm.settings.view", "farm.settings.manage"]);
     const services = await loadFarmServiceTypes(ctx);
     return { ok: true as const, workspace: { services, caps: await caps() } };
   } catch (error) {

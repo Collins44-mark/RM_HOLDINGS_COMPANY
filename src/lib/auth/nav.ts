@@ -1,7 +1,7 @@
 import type { AuthUser } from "@/lib/auth/types";
 import type { NavItem } from "@/lib/config/navigation";
 import { MODULE_NAV, buildOwnerNav } from "@/lib/config/navigation";
-import { canAccessPath } from "@/lib/auth/access";
+import { canAccessPath, entryPathForModule } from "@/lib/auth/access";
 import { identityFromUser } from "@/lib/auth/types";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { getBusinessUnit, getModuleFromPath, type ModuleCode } from "@/lib/config/app";
@@ -96,13 +96,15 @@ export function navigationForPath(
     const identity = identityFromUser(user);
     const nav: NavItem[] = [
       { href: "/workspace", label: "Workspaces", icon: "dashboard", exact: true },
-      ...user.businessUnits
-        .filter((unit) => canAccessPath(identity, `/${unit.code}`))
-        .map((unit) => ({
-          href: `/${unit.code}`,
+      ...user.businessUnits.flatMap((unit) => {
+        const href = entryPathForModule(identity, unit.code);
+        if (!href) return [];
+        return [{
+          href,
           label: unit.name,
           icon: navIconForCode(unit.code),
-        })),
+        }];
+      }),
     ];
     return { nav, workspace: undefined, moduleCode: undefined as ModuleCode | undefined };
   }

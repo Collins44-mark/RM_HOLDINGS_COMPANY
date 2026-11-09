@@ -31,8 +31,7 @@ import type { SchoolEmergencyFund } from "@/lib/school/store-types";
 const VIEW = "school.expenses.view";
 const CREATE = "school.expenses.create";
 const EDIT = "school.expenses.edit";
-const TRANSPORT_VIEW = "school.transport.view";
-const VIEW_ANY = [VIEW, CREATE, EDIT, TRANSPORT_VIEW];
+const VIEW_ANY = [VIEW, CREATE, EDIT];
 
 function str(value: unknown) {
   return String(value ?? "").trim();

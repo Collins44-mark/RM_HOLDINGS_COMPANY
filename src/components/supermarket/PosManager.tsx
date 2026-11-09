@@ -61,11 +61,17 @@ import { normalizeBarcode } from "@/lib/supermarket/barcode";
 import { BarcodeScanButton } from "@/components/supermarket/barcode/BarcodeScannerModal";
 import { useHardwareBarcodeScan } from "@/components/supermarket/barcode/useHardwareBarcodeScan";
 import {
+  connectBluetoothPrinter,
   connectEscPosPrinter,
   hasGrantedEscPosPrinter,
+  isBluetoothPrintSupported,
   isEscPosSupported,
+  listConnectedReceiptPrinters,
   printCompletedSale,
+  printReceiptViaBluetooth,
   printReceiptViaEscPos,
+  selectReceiptPrinter,
+  type ReceiptPrinterChoice,
 } from "@/lib/pos/pos-receipt-print";
 
 const glass =
@@ -185,6 +191,8 @@ export function PosManager() {
   const [printBusy, setPrintBusy] = useState(false);
   const [printerNotice, setPrinterNotice] = useState<"none" | "no-printer" | "need-permission">("none");
   const [escPosReady, setEscPosReady] = useState(false);
+  const [printers, setPrinters] = useState<ReceiptPrinterChoice[]>([]);
+  const [selectedPrinterId, setSelectedPrinterId] = useState("");
   const [taxRates, setTaxRates] = useState<Array<{ name: string; rate: number; pricingMode: TaxPricingMode }>>([]);
 
   const catalog = useMemo(() => filterPosProducts(products, filterQuery, category), [products, filterQuery, category]);
@@ -202,6 +210,14 @@ export function PosManager() {
   const invoiceLabel = completed?.invoice ?? formatInvoiceNumber(invoiceNumber);
   const stamp = completed?.soldAt ?? invoiceStamp;
   const customerOptions = [WALK_IN_CUSTOMER, ...customers.filter((name) => name !== WALK_IN_CUSTOMER)];
+
+  useEffect(() => {
+    if (!completed) return;
+    void listConnectedReceiptPrinters().then((found) => {
+      setPrinters(found);
+      setSelectedPrinterId((current) => (found.some((printer) => printer.id === current) ? current : ""));
+    });
+  }, [completed]);
 
   useEffect(() => {
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE }).format(new Date());
@@ -606,12 +622,23 @@ export function PosManager() {
     setCompleting(false);
   }
 
-  async function printReceipt(mode: "auto" | "system" | "escpos" = "auto") {
+  async function detectPrinters() {
+    const found = await listConnectedReceiptPrinters();
+    setPrinters(found);
+    setSelectedPrinterId((current) => (found.some((printer) => printer.id === current) ? current : ""));
+  }
+
+  async function printReceipt(mode: "auto" | "system" | "escpos" | "bluetooth" = "auto") {
     const sale = completed;
     if (!sale || printBusy) return;
     setPrintBusy(true);
     try {
-      const result = await printCompletedSale(sale, mode);
+      const chosen = mode === "auto" && selectedPrinterId ? selectReceiptPrinter(selectedPrinterId) : null;
+      const result = chosen === "bluetooth"
+        ? await printReceiptViaBluetooth(sale)
+        : chosen === "serial"
+          ? await printReceiptViaEscPos(sale)
+          : await printCompletedSale(sale, mode);
       if (result.status === "printed") {
         setPrinterNotice("none");
         if (result.method === "escpos") setEscPosReady(true);
@@ -626,6 +653,32 @@ export function PosManager() {
       setEscPosReady(false);
     } catch {
       setPrinterNotice("no-printer");
+    } finally {
+      setPrintBusy(false);
+    }
+  }
+
+  async function connectBluetooth() {
+    const sale = completed;
+    if (!sale || printBusy) return;
+    setPrintBusy(true);
+    try {
+      const device = await connectBluetoothPrinter();
+      if (!device) {
+        setPrinterNotice("no-printer");
+        return;
+      }
+      await detectPrinters();
+      setSelectedPrinterId(`bluetooth:${device.id}`);
+      const result = await printReceiptViaBluetooth(sale);
+      if (result.status === "printed") {
+        setPrinterNotice("none");
+        return;
+      }
+      setPrinterNotice(result.status === "need-permission" ? "need-permission" : "no-printer");
+    } catch (error) {
+      const name = error instanceof DOMException ? error.name : "";
+      setPrinterNotice(name === "NotFoundError" ? "need-permission" : "no-printer");
     } finally {
       setPrintBusy(false);
     }
@@ -853,10 +906,16 @@ export function PosManager() {
               printBusy={printBusy}
               printerNotice={printerNotice}
               serialSupported={isEscPosSupported()}
+              bluetoothSupported={isBluetoothPrintSupported()}
+              printers={printers}
+              selectedPrinterId={selectedPrinterId}
+              onSelectPrinter={setSelectedPrinterId}
+              onDetectPrinters={() => void detectPrinters()}
               escPosReady={escPosReady}
               onPrint={() => void printReceipt("auto")}
               onSystemPrint={() => void printReceipt("system")}
               onConnectPrinter={() => void connectPrinter()}
+              onBluetoothPrinter={() => void connectBluetooth()}
               onNewSale={startNewSale}
             />
           ) : (
@@ -1362,10 +1421,16 @@ function SuccessState({
   printBusy,
   printerNotice,
   serialSupported,
+  bluetoothSupported,
+  printers,
+  selectedPrinterId,
+  onSelectPrinter,
+  onDetectPrinters,
   escPosReady,
   onPrint,
   onSystemPrint,
   onConnectPrinter,
+  onBluetoothPrinter,
   onNewSale,
 }: {
   sale: PosCompletedSale;
@@ -1373,10 +1438,16 @@ function SuccessState({
   printBusy: boolean;
   printerNotice: "none" | "no-printer" | "need-permission";
   serialSupported: boolean;
+  bluetoothSupported: boolean;
+  printers: ReceiptPrinterChoice[];
+  selectedPrinterId: string;
+  onSelectPrinter: (id: string) => void;
+  onDetectPrinters: () => void;
   escPosReady: boolean;
   onPrint: () => void;
   onSystemPrint: () => void;
   onConnectPrinter: () => void;
+  onBluetoothPrinter: () => void;
   onNewSale: () => void;
 }) {
   const showNotice = printerNotice !== "none" && !escPosReady;
@@ -1398,6 +1469,41 @@ function SuccessState({
       <p className="mt-4 text-[12px] font-medium uppercase tracking-[0.14em] text-slate-400">Amount</p>
       <p className="mt-1 text-[22px] font-semibold tracking-[-0.03em] text-navy">{formatTzs(sale.totalDue)}</p>
       <div className="mt-8 flex w-full flex-col gap-2">
+        <label className="text-left text-[12px] font-medium text-slate-500">
+          Printer
+          <select
+            value={selectedPrinterId}
+            onChange={(event) => onSelectPrinter(event.target.value)}
+            className="mt-1 h-10 w-full rounded-[12px] border border-[#d8e1eb] bg-white px-3 text-[13px] text-navy"
+          >
+            <option value="">System print dialog</option>
+            {printers.map((printer) => (
+              <option key={printer.id} value={printer.id}>
+                {printer.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={onDetectPrinters}
+            disabled={printBusy}
+            className="inline-flex h-9 flex-1 items-center justify-center rounded-[12px] border border-[#d8e1eb] bg-white text-[12.5px] font-medium text-navy disabled:opacity-70"
+          >
+            Detect printers
+          </button>
+          {bluetoothSupported ? (
+            <button
+              type="button"
+              onClick={onBluetoothPrinter}
+              disabled={printBusy}
+              className="inline-flex h-9 flex-1 items-center justify-center rounded-[12px] bg-[#0b2244] text-[12.5px] font-medium text-white disabled:opacity-70"
+            >
+              Bluetooth printer
+            </button>
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={onPrint}
@@ -1429,6 +1535,16 @@ function SuccessState({
                   className="inline-flex h-9 items-center justify-center rounded-[12px] bg-[#0b2244] text-[12.5px] font-medium text-white transition hover:bg-[#102a52] disabled:opacity-70"
                 >
                   {printerNotice === "need-permission" ? "Select Printer" : "Connect Printer"}
+                </button>
+              ) : null}
+              {bluetoothSupported ? (
+                <button
+                  type="button"
+                  onClick={onBluetoothPrinter}
+                  disabled={printBusy}
+                  className="inline-flex h-9 items-center justify-center rounded-[12px] border border-[#d8e1eb] bg-white text-[12.5px] font-medium text-navy disabled:opacity-70"
+                >
+                  Bluetooth printer
                 </button>
               ) : null}
             </div>

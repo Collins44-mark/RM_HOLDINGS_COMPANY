@@ -19,12 +19,57 @@ type SerialApi = {
 };
 
 export type PosPrintResult =
-  | { status: "printed"; method: "system" | "escpos" }
+  | { status: "printed"; method: "system" | "escpos" | "bluetooth" }
   | { status: "need-permission" }
   | { status: "no-printer" }
   | { status: "cancelled" };
 
+export type ReceiptPrinterChoice = {
+  id: string;
+  label: string;
+  kind: "serial" | "bluetooth";
+};
+
+const BLUETOOTH_SERVICES = [
+  "000018f0-0000-1000-8000-00805f9b34fb",
+  "49535343-fe7d-4ae5-8fa9-9fafd205e455",
+  "e7810a71-73ae-499d-8c15-faa9aef0c3f2",
+  "0000ffe0-0000-1000-8000-00805f9b34fb",
+  "0000ff00-0000-1000-8000-00805f9b34fb",
+];
+
+type BluetoothCharacteristicLike = {
+  properties: { write?: boolean; writeWithoutResponse?: boolean };
+  writeValue: (data: BufferSource) => Promise<void>;
+  writeValueWithoutResponse?: (data: BufferSource) => Promise<void>;
+};
+
+type BluetoothServiceLike = {
+  getCharacteristics: () => Promise<BluetoothCharacteristicLike[]>;
+};
+
+type BluetoothServerLike = {
+  connected: boolean;
+  connect: () => Promise<BluetoothServerLike>;
+  getPrimaryService: (uuid: string) => Promise<BluetoothServiceLike>;
+};
+
+type BluetoothDeviceLike = {
+  id: string;
+  name?: string;
+  gatt?: BluetoothServerLike | null;
+  addEventListener: (type: "gattserverdisconnected", listener: () => void) => void;
+};
+
+type BluetoothApi = {
+  getDevices?: () => Promise<BluetoothDeviceLike[]>;
+  requestDevice: (options: { acceptAllDevices: boolean; optionalServices: string[] }) => Promise<BluetoothDeviceLike>;
+};
+
 let rememberedPort: SerialPortLike | null = null;
+let grantedSerialPorts: SerialPortLike[] = [];
+let rememberedBluetooth: BluetoothDeviceLike | null = null;
+let grantedBluetooth: BluetoothDeviceLike[] = [];
 let disconnectBound = false;
 
 function serialApi(): SerialApi | null {
@@ -35,6 +80,72 @@ function serialApi(): SerialApi | null {
 
 export function isEscPosSupported() {
   return serialApi() !== null;
+}
+
+function bluetoothApi(): BluetoothApi | null {
+  if (typeof navigator === "undefined") return null;
+  const bluetooth = (navigator as Navigator & { bluetooth?: BluetoothApi }).bluetooth;
+  return bluetooth ?? null;
+}
+
+export function isBluetoothPrintSupported() {
+  return bluetoothApi() !== null;
+}
+
+function serialLabel(port: SerialPortLike, index: number) {
+  const info = (port as SerialPortLike & { getInfo?: () => { usbVendorId?: number; usbProductId?: number } }).getInfo?.();
+  if (info?.usbVendorId) {
+    const vendor = info.usbVendorId.toString(16);
+    const product = info.usbProductId?.toString(16) ?? "0";
+    return `USB printer ${vendor}:${product}`;
+  }
+  return `Connected printer ${index + 1}`;
+}
+
+export async function listConnectedReceiptPrinters(): Promise<ReceiptPrinterChoice[]> {
+  bindDisconnect();
+  const found: ReceiptPrinterChoice[] = [];
+  const serial = serialApi();
+  if (serial) {
+    try {
+      grantedSerialPorts = await serial.getPorts();
+      grantedSerialPorts.forEach((port, index) => {
+        found.push({ id: `serial:${index}`, label: serialLabel(port, index), kind: "serial" });
+      });
+    } catch {
+      grantedSerialPorts = [];
+    }
+  }
+  const bluetooth = bluetoothApi();
+  if (bluetooth?.getDevices) {
+    try {
+      grantedBluetooth = await bluetooth.getDevices();
+      for (const device of grantedBluetooth) {
+        found.push({
+          id: `bluetooth:${device.id}`,
+          label: device.name?.trim() || "Bluetooth printer",
+          kind: "bluetooth",
+        });
+      }
+    } catch {
+      grantedBluetooth = [];
+    }
+  }
+  return found;
+}
+
+export function selectReceiptPrinter(id: string) {
+  if (id.startsWith("serial:")) {
+    const port = grantedSerialPorts[Number(id.slice("serial:".length))] ?? null;
+    rememberedPort = port;
+    return port ? "serial" : null;
+  }
+  if (id.startsWith("bluetooth:")) {
+    const device = grantedBluetooth.find((item) => item.id === id.slice("bluetooth:".length)) ?? null;
+    rememberedBluetooth = device;
+    return device ? "bluetooth" : null;
+  }
+  return null;
 }
 
 function bindDisconnect() {
@@ -66,7 +177,73 @@ export async function connectEscPosPrinter() {
   if (!serial) return null;
   const port = await serial.requestPort();
   rememberedPort = port;
+  if (!grantedSerialPorts.includes(port)) grantedSerialPorts = [...grantedSerialPorts, port];
   return port;
+}
+
+export async function connectBluetoothPrinter() {
+  const bluetooth = bluetoothApi();
+  if (!bluetooth) return null;
+  const device = await bluetooth.requestDevice({
+    acceptAllDevices: true,
+    optionalServices: BLUETOOTH_SERVICES,
+  });
+  rememberedBluetooth = device;
+  device.addEventListener("gattserverdisconnected", () => {
+    if (rememberedBluetooth === device) rememberedBluetooth = device;
+  });
+  if (!grantedBluetooth.some((item) => item.id === device.id)) {
+    grantedBluetooth = [...grantedBluetooth, device];
+  }
+  return device;
+}
+
+async function writableCharacteristic(device: BluetoothDeviceLike) {
+  const server = device.gatt;
+  if (!server) return null;
+  const connected = server.connected ? server : await server.connect();
+  for (const uuid of BLUETOOTH_SERVICES) {
+    try {
+      const service = await connected.getPrimaryService(uuid);
+      const characteristics = await service.getCharacteristics();
+      const match = characteristics.find((item) => item.properties.writeWithoutResponse || item.properties.write);
+      if (match) return match;
+    } catch {
+      // This printer does not expose that service.
+    }
+  }
+  return null;
+}
+
+async function writeBluetooth(characteristic: BluetoothCharacteristicLike, bytes: Uint8Array) {
+  const size = characteristic.properties.writeWithoutResponse ? 180 : 20;
+  for (let index = 0; index < bytes.length; index += size) {
+    const chunk = bytes.slice(index, index + size);
+    if (characteristic.properties.writeWithoutResponse && characteristic.writeValueWithoutResponse) {
+      await characteristic.writeValueWithoutResponse(chunk);
+    } else {
+      await characteristic.writeValue(chunk);
+    }
+  }
+}
+
+export async function printReceiptViaBluetooth(sale: PosCompletedSale): Promise<PosPrintResult> {
+  const bluetooth = bluetoothApi();
+  if (!bluetooth) return { status: "no-printer" };
+  const device = rememberedBluetooth;
+  if (!device) return { status: "need-permission" };
+  try {
+    const characteristic = await writableCharacteristic(device);
+    if (!characteristic) return { status: "no-printer" };
+    await writeBluetooth(characteristic, buildEscPosBytes(sale));
+    return { status: "printed", method: "bluetooth" };
+  } catch (error) {
+    const name = error instanceof DOMException ? error.name : "";
+    if (name === "NotFoundError" || name === "NotAllowedError" || name === "SecurityError") {
+      return { status: "need-permission" };
+    }
+    return { status: "no-printer" };
+  }
 }
 
 function asAmount(value: number | undefined | null) {
@@ -502,9 +679,10 @@ export async function printReceiptViaEscPos(sale: PosCompletedSale): Promise<Pos
 
 export async function printCompletedSale(
   sale: PosCompletedSale,
-  mode: "auto" | "system" | "escpos" = "auto",
+  mode: "auto" | "system" | "escpos" | "bluetooth" = "auto",
 ): Promise<PosPrintResult> {
   if (mode === "system") return printReceiptViaSystem(sale);
+  if (mode === "bluetooth") return printReceiptViaBluetooth(sale);
   if (mode === "escpos") {
     const connected = await hasGrantedEscPosPrinter();
     if (!connected) return { status: "need-permission" };

@@ -37,9 +37,9 @@ export function riceCaps(user: AuthUser): RiceCaps {
     canAdjust: riceHasPermission(user, "rice.stock.edit") || riceHasPermission(user, "rice.warehouse.edit"),
     canStorage: riceHasPermission(user, "rice.storage.create") || riceHasPermission(user, "rice.warehouse.receive"),
     canSell: riceHasPermission(user, "rice.sales.create"),
-    canFinance: riceHasPermission(user, "rice.finance.view") || riceHasPermission(user, "rice.payments.view") || riceHasPermission(user, "rice.payments.create"),
+    canFinance: riceHasPermission(user, "rice.finance.view") || riceHasPermission(user, "rice.expenses.view"),
     canExpense: riceHasPermission(user, "rice.expenses.create"),
-    canReports: riceHasPermission(user, "rice.reports.view") || riceHasPermission(user, "rice.sales.view"),
+    canReports: riceHasPermission(user, "rice.reports.view"),
     canSettings: riceHasPermission(user, "rice.settings.manage"),
   };
 }

@@ -8,9 +8,15 @@ import { useListPage } from "@/lib/property/use-list-page";
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS, businessToday, roundMoney } from "@/lib/beekeeping/constants";
 import { beePeriodWindow, inWindow } from "@/lib/beekeeping/period";
 import type { BeeDirectory, BeeExpense, BeeSale } from "@/lib/beekeeping/directory";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { ActionMenu, ActionMenuItem, SaveButton, fieldClass, formatDate, overlayClass, placeActionMenu, saveJson, statusClass } from "../bee-ui";
 
 export default function SalesView({ initial, initialTab }: { initial: BeeDirectory; initialTab: "sales" | "expenses" }) {
+  const { hasAnyPermission } = useAuth();
+  const canSales = hasAnyPermission(["beekeeping.sales.view", "beekeeping.sales.create", "beekeeping.sales.edit", "beekeeping.sales.pay", "beekeeping.sales.cancel"]);
+  const canExpenses = hasAnyPermission(["beekeeping.expenses.view", "beekeeping.expenses.create", "beekeeping.expenses.edit", "beekeeping.expenses.pay", "beekeeping.expenses.cancel"]);
+  const canAddSale = hasAnyPermission(["beekeeping.sales.create"]);
+  const canAddExpense = hasAnyPermission(["beekeeping.expenses.create"]);
   const [directory, setDirectory] = useState(initial);
   const [tab, setTab] = useState(initialTab);
   const [query, setQuery] = useState("");
@@ -99,18 +105,20 @@ export default function SalesView({ initial, initialTab }: { initial: BeeDirecto
   }
 
   const preview = roundMoney(Number(draft.quantity_kg || 0) * Number(draft.price_per_kg || 0));
+  const activeTab = canSales && (tab === "sales" || !canExpenses) ? "sales" : "expenses";
+  const canAdd = activeTab === "sales" ? canAddSale : canAddExpense;
 
   return (
     <div className="space-y-5 pb-10">
       <div className="flex items-center justify-between"><div><h1 className="text-2xl font-bold">Sales & Expenses</h1><p className="text-sm text-slate-500">Honey stock, sales, payments, and beekeeping expenses.</p></div>
-        <button type="button" onClick={() => tab === "sales" ? open("sale", { sale_date: businessToday(), quantity_kg: "", price_per_kg: "", customer_name: "", phone: "", notes: "", amount_paid: "", payment_method: "Cash", payment_date: businessToday(), transaction_reference: "" }) : open("expense", { expense_date: businessToday(), category: EXPENSE_CATEGORIES[0], description: "", amount: "", location: "", hive_id: "", vendor_name: "", due_date: "", notes: "" })} className="rounded-xl bg-[#0b2244] px-4 py-2 text-sm font-semibold text-white">{tab === "sales" ? "+ Add Sale" : "+ Add Expense"}</button>
+        {canAdd ? <button type="button" onClick={() => activeTab === "sales" ? open("sale", { sale_date: businessToday(), quantity_kg: "", price_per_kg: "", customer_name: "", phone: "", notes: "", amount_paid: "", payment_method: "Cash", payment_date: businessToday(), transaction_reference: "" }) : open("expense", { expense_date: businessToday(), category: EXPENSE_CATEGORIES[0], description: "", amount: "", location: "", hive_id: "", vendor_name: "", due_date: "", notes: "" })} className="rounded-xl bg-[#0b2244] px-4 py-2 text-sm font-semibold text-white">{activeTab === "sales" ? "+ Add Sale" : "+ Add Expense"}</button> : null}
       </div>
       <div id="stock" className="grid grid-cols-3 gap-3">
         <Card label="Harvested" value={`${directory.stock.harvested} kg`} /><Card label="Sold" value={`${directory.stock.sold} kg`} /><Card label="Available" value={`${directory.stock.available} kg`} />
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={() => setTab("sales")} className={`rounded-xl px-4 py-2 text-sm ${tab === "sales" ? "bg-[#0b2244] text-white" : "bg-white"}`}>Sales</button>
-        <button type="button" onClick={() => setTab("expenses")} className={`rounded-xl px-4 py-2 text-sm ${tab === "expenses" ? "bg-[#0b2244] text-white" : "bg-white"}`}>Expenses</button>
+        {canSales ? <button type="button" onClick={() => setTab("sales")} className={`rounded-xl px-4 py-2 text-sm ${activeTab === "sales" ? "bg-[#0b2244] text-white" : "bg-white"}`}>Sales</button> : null}
+        {canExpenses ? <button type="button" onClick={() => setTab("expenses")} className={`rounded-xl px-4 py-2 text-sm ${activeTab === "expenses" ? "bg-[#0b2244] text-white" : "bg-white"}`}>Expenses</button> : null}
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" />
         <select value={period} onChange={(event) => setPeriod(event.target.value)} aria-label="Period" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
           <option value="week">This Week</option>
@@ -127,7 +135,7 @@ export default function SalesView({ initial, initialTab }: { initial: BeeDirecto
         )}
       </div>
       {error && !mode && <p className="text-sm text-red-600">{error}</p>}
-      {tab === "sales" ? (
+      {activeTab === "sales" ? (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Card label="Sales value" value={formatTzs(openSales.reduce((sum, item) => sum + item.total_amount, 0))} />

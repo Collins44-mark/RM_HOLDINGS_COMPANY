@@ -22,7 +22,7 @@ export function livestockAccess(identity: AccessIdentity): LivestockAccess {
   const houses = books || allow("livestock.houses.manage") || allow("livestock.rentals.manage");
   const sales = books || allow("livestock.sales.manage");
   return {
-    herd: books || allow("livestock.records.view") || allow("livestock.animals.view") || allow("livestock.purchases.manage") || allow("livestock.pregnancy.manage") || allow("livestock.births.manage") || allow("livestock.movements.manage") || allow("livestock.deaths.create") || allow("livestock.sales.manage") || houses,
+    herd: books || allow("livestock.records.view") || allow("livestock.animals.view"),
     purchases: books || allow("livestock.purchases.manage"),
     reproduction: books || allow("livestock.pregnancy.manage") || allow("livestock.births.manage"),
     movements: books || allow("livestock.movements.manage") || allow("livestock.deaths.create"),
@@ -35,12 +35,12 @@ export function livestockAccess(identity: AccessIdentity): LivestockAccess {
 export function scopeLivestockDirectory(data: LivestockDirectory, identity: AccessIdentity): LivestockDirectory {
   const access = livestockAccess(identity);
   const poultryOnly = access.houses && !access.sales && !hasPermission(identity, "livestock.records.view") && !hasPermission(identity, "livestock.animals.view") && !hasPermission(identity, "livestock.dashboard.view") && !hasPermission(identity, "livestock.reports.view");
-  const stock = !access.herd ? [] : poultryOnly ? data.stock.filter((row) => poultrySale(row.name)) : data.stock;
+  const stock = poultryOnly ? data.stock.filter((row) => poultrySale(row.name)) : access.herd ? data.stock : [];
   const herdStock = stock.filter((row) => row.active && row.name.toLowerCase() !== "eggs");
   return {
     ...data,
     access,
-    types: access.herd ? (poultryOnly ? data.types.filter((row) => poultrySale(row.name)) : data.types) : [],
+    types: poultryOnly ? data.types.filter((row) => poultrySale(row.name)) : access.herd ? data.types : [],
     stock,
     movements: access.movements && !poultryOnly ? data.movements : [],
     openings: access.herd && !poultryOnly ? data.openings : [],

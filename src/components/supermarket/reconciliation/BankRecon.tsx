@@ -210,8 +210,7 @@ function BankWorkspace({
         </>
       )}
       {omitChrome ? (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <PageBackButton href="/supermarket/reconciliation" label="Reconciliation" />
+        <div className="flex justify-end">
           <StatusBadge label={status.label} tone={unmatched > 0 ? "variance" : status.tone} />
         </div>
       ) : null}

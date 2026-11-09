@@ -6,7 +6,6 @@ import { z } from "zod";
 import { canAccessPath, landingPathFor } from "@/lib/auth/access";
 import { signInWithPassword, signOutFromAuthProvider } from "@/lib/auth/sign-in";
 import { CHANGE_PASSWORD_PATH, LOGIN_PATH } from "@/lib/config/app";
-import { permissionsForRoleCode } from "@/lib/auth/role-options";
 import { getAuthUser, getVerifiedAuthUser } from "@/lib/auth/session";
 import { identityFromUser } from "@/lib/auth/types";
 import { writeAuditEvent } from "@/lib/audit";
@@ -88,7 +87,7 @@ export async function loginAction(
       {
         role: signedIn.roleCode,
         modules: signedIn.modules,
-        permissions: permissionsForRoleCode(signedIn.roleCode),
+        permissions: signedIn.permissions,
       },
       next,
     ),

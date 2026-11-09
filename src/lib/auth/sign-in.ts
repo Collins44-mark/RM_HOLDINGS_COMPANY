@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import { identityFromAppMetadata } from "@/lib/auth/identity-from-claims";
+import { permissionsForRoleCode } from "@/lib/auth/role-options";
 import {
   findProfileByIdentifier,
   type ProfileRecord,
@@ -23,6 +24,7 @@ export type PasswordSignInResult =
       mustChangePassword: boolean;
       roleCode: string;
       modules: string[];
+      permissions: string[];
     }
   | { ok: false; error: string };
 
@@ -207,6 +209,12 @@ export async function signInWithPassword(
     },
   });
 
+  const permissions = claims
+    ? claims.permissions
+    : isOwnerRole(roleCode)
+      ? ["*"]
+      : permissionsForRoleCode(roleCode);
+
   return {
     ok: true,
     authUid: data.user.id,
@@ -214,6 +222,7 @@ export async function signInWithPassword(
     mustChangePassword: Boolean(profile?.must_change_password),
     roleCode,
     modules,
+    permissions,
   };
 }
 

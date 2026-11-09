@@ -39,12 +39,12 @@ export function farmCaps(user: AuthUser): FarmCaps {
     canFuel: farmHasPermission(user, "farm.fuel.create"),
     canMaintenance: farmHasPermission(user, "farm.maintenance.create"),
     canOperations: farmHasPermission(user, "farm.operations.create") || farmHasPermission(user, "farm.harvests.create"),
-    canFinance: farmHasPermission(user, "farm.finance.view") || farmHasPermission(user, "farm.jobs.view"),
+    canFinance: farmHasPermission(user, "farm.finance.view") || farmHasPermission(user, "farm.expenses.view"),
     canExpense: farmHasPermission(user, "farm.expenses.create") || farmHasPermission(user, "farm.fuel.create"),
-    canReports: farmHasPermission(user, "farm.reports.view") || farmHasPermission(user, "farm.jobs.view"),
+    canReports: farmHasPermission(user, "farm.reports.view"),
     canSettings: farmHasPermission(user, "farm.settings.manage"),
-    canParties: farmHasPermission(user, "farm.customers.create") || farmHasPermission(user, "farm.jobs.create"),
-    canStaff: farmHasPermission(user, "farm.staff.create") || farmHasPermission(user, "farm.jobs.edit"),
+    canParties: farmHasPermission(user, "farm.customers.create") || farmHasPermission(user, "farm.customers.edit"),
+    canStaff: farmHasPermission(user, "farm.staff.create") || farmHasPermission(user, "farm.staff.edit"),
   };
 }
 
