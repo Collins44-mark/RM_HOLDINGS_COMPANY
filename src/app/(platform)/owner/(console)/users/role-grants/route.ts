@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { requireOwner } from "@/lib/auth/session";
+import { requirePlatformAdmin } from "@/lib/auth/session";
 import { getRolePermissionState } from "@/lib/data/rbac";
 
 export async function GET(request: Request) {
-  await requireOwner();
+  await requirePlatformAdmin();
   const roleId = new URL(request.url).searchParams.get("roleId")?.trim() ?? "";
   if (!roleId) {
     return NextResponse.json({ error: "Missing role." }, { status: 400 });

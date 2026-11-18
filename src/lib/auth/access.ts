@@ -8,6 +8,7 @@ import {
   canAccessOwnerPath,
   isFinanceRole,
   isOwnerRole,
+  isPlatformAdminRole,
   type AccessIdentity,
 } from "@/lib/auth/rbac";
 import { canAccessRoutePermissions } from "@/lib/auth/route-permissions";
@@ -29,7 +30,7 @@ export function canAccessPath(identity: AccessIdentity, pathname: string) {
     return canAccessOwnerPath(identity, "/owner");
   }
   if (pathname === WORKSPACE_PATH || pathname.startsWith(`${WORKSPACE_PATH}/`)) {
-    return identity.modules.filter((item) => item !== "*").length > 1 || isOwnerRole(identity.role);
+    return identity.modules.filter((item) => item !== "*").length > 1 || isPlatformAdminRole(identity.role);
   }
 
   const moduleCode = getModuleFromPath(pathname);
@@ -116,14 +117,14 @@ const MODULE_ENTRY_PAGES: Record<string, string[]> = {
 };
 
 export function entryPathForModule(identity: AccessIdentity, moduleCode: string) {
-  if (isOwnerRole(identity.role)) return `/${moduleCode}`;
+  if (isPlatformAdminRole(identity.role)) return `/${moduleCode}`;
   const root = `/${moduleCode}`;
   const pages = MODULE_ENTRY_PAGES[moduleCode] ?? [root];
   return pages.find((path) => canAccessPath(identity, path)) ?? (canAccessPath(identity, root) ? root : null);
 }
 
 export function landingPathFor(identity: AccessIdentity) {
-  if (isOwnerRole(identity.role)) return "/dashboard";
+  if (isPlatformAdminRole(identity.role)) return "/dashboard";
 
   const assigned = identity.modules.filter((item) => item !== "*");
   if (assigned.length === 1) {

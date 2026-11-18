@@ -94,3 +94,22 @@ test("a user with no open page is not sent to a closed module home", () => {
 test("an owner still lands on the group dashboard", () => {
   assert.equal(landingPathFor(user({ role: "OWNER", modules: ["*"], permissions: ["*"] })), "/dashboard");
 });
+
+test("an administrator signs in to the admin area without system settings", () => {
+  const identity = user({
+    role: "ADMINISTRATOR",
+    modules: ["school", "rice", "farm", "supermarket", "property", "livestock", "beekeeping"],
+    permissions: [
+      "platform.dashboard.view",
+      "platform.users.view",
+      "platform.users.manage",
+      "platform.audit.view",
+      "platform.finance.view",
+      "school.*",
+    ],
+  });
+  assert.equal(landingPathFor(identity), "/dashboard");
+  assert.equal(canAccessPath(identity, "/owner/users"), true);
+  assert.equal(canAccessPath(identity, "/school/students"), true);
+  assert.equal(canAccessPath(identity, "/owner/settings"), false);
+});

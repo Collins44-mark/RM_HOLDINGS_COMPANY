@@ -3,7 +3,7 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { BUSINESS_UNITS_CACHE_TAG } from "@/lib/data/business-units";
 import { z } from "zod";
-import { requireVerifiedOwner } from "@/lib/auth/session";
+import { requireVerifiedPlatformAdmin } from "@/lib/auth/session";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import {
   ALL_MODULES_VALUE,
@@ -33,6 +33,7 @@ import {
   type ManagedUser,
 } from "@/lib/data/app-users";
 import { writeAuditEvent } from "@/lib/audit";
+import { ensureAdministratorRole } from "@/lib/data/rbac";
 import { syncUserAccessClaims } from "@/lib/auth/effective-access";
 import {
   ensureTeacherStaffForProfile,
@@ -143,6 +144,20 @@ async function assertRolesForModules(
   return { roles: byCode };
 }
 
+function ownerAssignmentError(actorRole: string, roleCode: string) {
+  if (isOwnerRole(roleCode) && !isOwnerRole(actorRole)) {
+    return "Only the Owner can assign the Owner role.";
+  }
+  return null;
+}
+
+function protectedOwnerError(actorRole: string, targetRole: string) {
+  if (isOwnerRole(targetRole) && !isOwnerRole(actorRole)) {
+    return "The Owner account can only be changed by the Owner.";
+  }
+  return null;
+}
+
 async function ownerCount() {
   const users = await listManagedUsers();
   return users.filter((user) => isOwnerRole(user.roleCode) && user.isActive).length;
@@ -170,6 +185,7 @@ async function setUserAccess(input: {
   const ready = adminOrError();
   if (!ready.ok) return { error: ready.error };
   const { admin } = ready;
+  if (input.roleCode === "ADMINISTRATOR") await ensureAdministratorRole(admin);
 
   const assignedCodes = assignedCodesForRole(input.roleCode, input.moduleCodes);
   const [roleResult, unitsResult] = await Promise.all([
@@ -237,7 +253,7 @@ export async function createUserAction(
   _prev: UsersActionState,
   formData: FormData,
 ): Promise<UsersActionState> {
-  await requireVerifiedOwner();
+  const actor = await requireVerifiedPlatformAdmin();
   const ready = adminOrError();
   if (!ready.ok) return { error: ready.error };
 
@@ -251,6 +267,8 @@ export async function createUserAction(
   if (!parsed.success) {
     return { error: "Enter a name, email or phone, module and role." };
   }
+  const assignmentError = ownerAssignmentError(actor.roleCode, parsed.data.roleCode);
+  if (assignmentError) return { error: assignmentError };
 
   const emailValue = parsed.data.email ? normalizeEmail(parsed.data.email) : "";
   const phoneValue = parsed.data.phone ? normalizePhone(parsed.data.phone) : null;
@@ -276,6 +294,7 @@ export async function createUserAction(
   const metadataModules = metadataModulesForRole(parsed.data.roleCode, parsed.data.modules);
   const { admin } = ready;
 
+  if (parsed.data.roleCode === "ADMINISTRATOR") await ensureAdministratorRole(admin);
   const catalog = await getAccessCatalog();
   const role =
     catalog.roles.find((item) => item.code === parsed.data.roleCode) ??
@@ -512,7 +531,7 @@ export async function createUserAction(
 }
 
 export async function resetPasswordAction(userId: string): Promise<UsersActionState> {
-  const actor = await requireVerifiedOwner();
+  const actor = await requireVerifiedPlatformAdmin();
   if (userId === actor.id) {
     return { error: "You cannot reset your own password from this screen." };
   }
@@ -522,6 +541,8 @@ export async function resetPasswordAction(userId: string): Promise<UsersActionSt
   const users = await listManagedUsers();
   const target = users.find((user) => user.id === userId);
   if (!target) return { error: "User was not found." };
+  const protectedOwner = protectedOwnerError(actor.roleCode, target.roleCode);
+  if (protectedOwner) return { error: protectedOwner };
 
   const temporaryPassword = generateTemporaryPassword();
   const { error } = await ready.admin.auth.admin.updateUserById(userId, { password: temporaryPassword });
@@ -558,10 +579,15 @@ export async function resetPasswordAction(userId: string): Promise<UsersActionSt
 }
 
 export async function unlockUserAction(userId: string): Promise<{ error?: string }> {
-  const actor = await requireVerifiedOwner();
+  const actor = await requireVerifiedPlatformAdmin();
   if (userId === actor.id) return { error: "You cannot unlock your own account from this screen." };
   const ready = adminOrError();
   if (!ready.ok) return { error: ready.error };
+  const users = await listManagedUsers();
+  const target = users.find((user) => user.id === userId);
+  if (!target) return { error: "User was not found." };
+  const protectedOwner = protectedOwnerError(actor.roleCode, target.roleCode);
+  if (protectedOwner) return { error: protectedOwner };
 
   await ready.admin
     .from("profiles")
@@ -585,7 +611,7 @@ export async function unlockUserAction(userId: string): Promise<{ error?: string
 }
 
 export async function disableUserAction(userId: string): Promise<{ error?: string }> {
-  const actor = await requireVerifiedOwner();
+  const actor = await requireVerifiedPlatformAdmin();
   if (userId === actor.id) return { error: "You cannot disable your own account." };
   const ready = adminOrError();
   if (!ready.ok) return { error: ready.error };
@@ -593,6 +619,8 @@ export async function disableUserAction(userId: string): Promise<{ error?: strin
   const users = await listManagedUsers();
   const target = users.find((user) => user.id === userId);
   if (!target) return { error: "User was not found." };
+  const protectedOwner = protectedOwnerError(actor.roleCode, target.roleCode);
+  if (protectedOwner) return { error: protectedOwner };
   if (isOwnerRole(target.roleCode) && (await ownerCount()) <= 1) {
     return { error: "The only Owner account cannot be disabled." };
   }
@@ -615,9 +643,14 @@ export async function disableUserAction(userId: string): Promise<{ error?: strin
 }
 
 export async function enableUserAction(userId: string): Promise<{ error?: string }> {
-  await requireVerifiedOwner();
+  const actor = await requireVerifiedPlatformAdmin();
   const ready = adminOrError();
   if (!ready.ok) return { error: ready.error };
+  const users = await listManagedUsers();
+  const target = users.find((user) => user.id === userId);
+  if (!target) return { error: "User was not found." };
+  const protectedOwner = protectedOwnerError(actor.roleCode, target.roleCode);
+  if (protectedOwner) return { error: protectedOwner };
   await ready.admin
     .from("profiles")
     .update({ is_active: true, updated_at: new Date().toISOString() })
@@ -634,11 +667,45 @@ export async function enableUserAction(userId: string): Promise<{ error?: string
   return {};
 }
 
+export async function deleteUserAction(userId: string): Promise<{ error?: string }> {
+  const actor = await requireVerifiedPlatformAdmin();
+  if (userId === actor.id) return { error: "You cannot delete your own account." };
+  if (userId.startsWith("worker:")) {
+    return { error: "This person has no login. Remove them from their staff record." };
+  }
+  const ready = adminOrError();
+  if (!ready.ok) return { error: ready.error };
+
+  const users = await listManagedUsers();
+  const target = users.find((user) => user.id === userId);
+  if (!target || target.worker) return { error: "User was not found." };
+  const protectedOwner = protectedOwnerError(actor.roleCode, target.roleCode);
+  if (protectedOwner) return { error: "The Owner account cannot be deleted." };
+  if (isOwnerRole(target.roleCode) && (await ownerCount()) <= 1) {
+    return { error: "The only Owner account cannot be deleted." };
+  }
+
+  await writeAuditEvent({
+    action: "user.deleted",
+    module: "users",
+    description: `Deleted user ${target.name}`,
+    severity: "high",
+    entityType: "user",
+    entityId: target.id,
+  });
+
+  const { error } = await ready.admin.auth.admin.deleteUser(userId);
+  if (error) return { error: "Unable to delete this user." };
+
+  revalidateUsersWorkspace();
+  return {};
+}
+
 export async function updateUserAction(
   _prev: UsersActionState,
   formData: FormData,
 ): Promise<UsersActionState> {
-  const actor = await requireVerifiedOwner();
+  const actor = await requireVerifiedPlatformAdmin();
   const userId = String(formData.get("userId") ?? "");
   if (!userId) return { error: "User was not found." };
   if (userId === actor.id) {
@@ -653,6 +720,8 @@ export async function updateUserAction(
     modules: parseModules(formData),
   });
   if (!parsed.success) return { error: "Enter valid user details." };
+  const assignmentError = ownerAssignmentError(actor.roleCode, parsed.data.roleCode);
+  if (assignmentError) return { error: assignmentError };
   const readyForRoles = adminOrError();
   if (!readyForRoles.ok) return { error: readyForRoles.error };
   const moduleRoles = parseModuleRoles(formData, parsed.data.modules, parsed.data.roleCode);
@@ -668,6 +737,8 @@ export async function updateUserAction(
   const users = await listManagedUsers();
   const target = users.find((user) => user.id === userId);
   if (!target) return { error: "User was not found." };
+  const protectedOwner = protectedOwnerError(actor.roleCode, target.roleCode);
+  if (protectedOwner) return { error: protectedOwner };
   if (isOwnerRole(target.roleCode) && !isOwnerRole(parsed.data.roleCode)) {
     const ready = adminOrError();
     if (!ready.ok) return { error: ready.error };
@@ -763,7 +834,7 @@ function personName(first: string, middle: string, last: string) {
 export async function searchUnlinkedStaffAction(q: string): Promise<
   { ok: true; staff: StaffLinkStaffOption[] } | { ok: false; error: string }
 > {
-  await requireVerifiedOwner();
+  await requireVerifiedPlatformAdmin();
   const ready = adminOrError();
   if (!ready.ok) return { ok: false, error: ready.error };
   const businessUnitId = await schoolBusinessUnitId(ready.admin);
@@ -801,7 +872,7 @@ export async function linkUserToStaffAction(input: {
   userId: string;
   staffId: string;
 }): Promise<{ error?: string; staff?: LinkedStaffInfo }> {
-  await requireVerifiedOwner();
+  await requireVerifiedPlatformAdmin();
   const ready = adminOrError();
   if (!ready.ok) return { error: ready.error };
   const userId = String(input.userId ?? "").trim();
@@ -834,7 +905,7 @@ export async function createStaffProfileForUserAction(input: {
   staffPositionId?: string;
   jobTitle?: string;
 }): Promise<{ error?: string; staff?: LinkedStaffInfo }> {
-  await requireVerifiedOwner();
+  await requireVerifiedPlatformAdmin();
   const ready = adminOrError();
   if (!ready.ok) return { error: ready.error };
   const userId = String(input.userId ?? "").trim();

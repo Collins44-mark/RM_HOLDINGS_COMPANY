@@ -9,7 +9,7 @@ import {
   type ModuleCode,
 } from "@/lib/config/app";
 import { canAccessPath, defaultHomeFor } from "@/lib/auth/access";
-import { hasPermission, isOwnerRole } from "@/lib/auth/rbac";
+import { hasPermission, isOwnerRole, isPlatformAdminRole } from "@/lib/auth/rbac";
 import { resolveEffectiveAccess } from "@/lib/auth/effective-access";
 import { identityFromAppMetadata } from "@/lib/auth/identity-from-claims";
 import { displayRoleName, roleDefinition } from "@/lib/auth/role-options";
@@ -262,6 +262,18 @@ export async function requireOwner() {
 export async function requireVerifiedOwner() {
   const user = await requireVerifiedAuth();
   if (!isOwnerRole(user.roleCode)) redirect("/forbidden");
+  return user;
+}
+
+export async function requirePlatformAdmin() {
+  const user = await requireAuth();
+  if (!isPlatformAdminRole(user.roleCode)) redirect("/forbidden");
+  return user;
+}
+
+export async function requireVerifiedPlatformAdmin() {
+  const user = await requireVerifiedAuth();
+  if (!isPlatformAdminRole(user.roleCode)) redirect("/forbidden");
   return user;
 }
 

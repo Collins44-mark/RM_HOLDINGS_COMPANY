@@ -16,6 +16,15 @@ export function isOwnerRole(role: string) {
   return (OWNER_ROLES as readonly string[]).includes(role);
 }
 
+export function isAdministratorRole(role: string) {
+  return role === ROLE_CODES.ADMINISTRATOR;
+}
+
+/** Owner, or the IT administrator who signs in to the admin area. */
+export function isPlatformAdminRole(role: string) {
+  return isOwnerRole(role) || isAdministratorRole(role);
+}
+
 export function isFinanceRole(role: string) {
   return (FINANCE_ROLES as readonly string[]).includes(role);
 }

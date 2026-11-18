@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { isOwnerRole } from "@/lib/auth/rbac";
+import { isAdministratorRole, isOwnerRole } from "@/lib/auth/rbac";
 import { displayRoleName, permissionsForRoleCode } from "@/lib/auth/role-options";
+import { ADMINISTRATOR_PERMISSION_MATCHERS } from "@/lib/config/permissions";
+import { BUSINESS_UNITS } from "@/lib/config/app";
 import {
   OPERABLE_PERMISSION_CATALOG,
   isOperablePermission,
@@ -118,6 +120,17 @@ export async function resolveEffectiveAccess(
       roleName: displayRoleName(role.code, role.name),
       modules: ["*"],
       permissions: ["*"],
+      moduleRoles: [],
+      overrides: [],
+    };
+  }
+
+  if (isAdministratorRole(role.code)) {
+    return {
+      roleCode: role.code,
+      roleName: displayRoleName(role.code, role.name),
+      modules: BUSINESS_UNITS.map((unit) => unit.code),
+      permissions: [...ADMINISTRATOR_PERMISSION_MATCHERS],
       moduleRoles: [],
       overrides: [],
     };

@@ -28,6 +28,7 @@ export function rolesForSelectedModules(moduleCodes: string[]): RoleDefinition[]
     ? ROLE_DEFINITIONS.filter(
         (role) =>
           (OWNER_ROLES as readonly string[]).includes(role.code) ||
+          role.code === ROLE_CODES.ADMINISTRATOR ||
           (FINANCE_ROLES as readonly string[]).includes(role.code) ||
           role.code === "BUSINESS_MANAGER" ||
           role.code === "STAFF",

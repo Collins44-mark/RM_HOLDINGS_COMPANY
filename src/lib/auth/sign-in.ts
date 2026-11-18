@@ -1,7 +1,8 @@
 import { after } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { isOwnerRole } from "@/lib/auth/rbac";
+import { isAdministratorRole, isOwnerRole } from "@/lib/auth/rbac";
+import { BUSINESS_UNITS } from "@/lib/config/app";
 import { identityFromAppMetadata } from "@/lib/auth/identity-from-claims";
 import { permissionsForRoleCode } from "@/lib/auth/role-options";
 import {
@@ -193,7 +194,9 @@ export async function signInWithPassword(
     ? claims.modules
     : isOwnerRole(roleCode)
       ? ["*"]
-      : [];
+      : isAdministratorRole(roleCode)
+        ? BUSINESS_UNITS.map((unit) => unit.code)
+        : [];
 
   await writeAuditEvent({
     action: "login.success",

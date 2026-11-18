@@ -18,8 +18,27 @@ export const ROLE_CODES = {
   LIVESTOCK_MANAGER: "LIVESTOCK_MANAGER",
   WAREHOUSE_MANAGER: "WAREHOUSE_MANAGER",
   BEEKEEPING_MANAGER: "BEEKEEPING_MANAGER",
+  ADMINISTRATOR: "ADMINISTRATOR",
   STAFF: "STAFF",
 } as const;
+
+/** IT administrator: operational access across the platform, without Owner-only controls. */
+export const ADMINISTRATOR_PERMISSION_MATCHERS = [
+  "platform.dashboard.view",
+  "platform.users.view",
+  "platform.users.manage",
+  "platform.audit.view",
+  "platform.finance.*",
+  "platform.reports.view",
+  "platform.business_units.view",
+  "school.*",
+  "rice.*",
+  "farm.*",
+  "supermarket.*",
+  "property.*",
+  "livestock.*",
+  "beekeeping.*",
+] as const;
 
 export const OWNER_ROLES = [ROLE_CODES.SUPER_ADMIN, ROLE_CODES.OWNER] as const;
 
@@ -271,6 +290,7 @@ export function catalogForModule(module: string) {
 export function isVisibleRbacRole(role: RoleDefinition) {
   if (role.code === ROLE_CODES.SCHOOL_ADMIN) return false;
   if ((OWNER_ROLES as readonly string[]).includes(role.code)) return true;
+  if (role.code === ROLE_CODES.ADMINISTRATOR) return true;
   if ((FINANCE_ROLES as readonly string[]).includes(role.code)) return true;
   if (role.code === ROLE_CODES.BUSINESS_MANAGER) return true;
   return role.modules.some((module) => isImplementedBusinessModule(module));
@@ -278,6 +298,7 @@ export function isVisibleRbacRole(role: RoleDefinition) {
 
 export function moduleScopeForRole(role: RoleDefinition) {
   if ((OWNER_ROLES as readonly string[]).includes(role.code)) return "*";
+  if (role.code === ROLE_CODES.ADMINISTRATOR) return "*";
   if ((FINANCE_ROLES as readonly string[]).includes(role.code)) return "platform";
   const implemented = role.modules.filter((module) => isImplementedBusinessModule(module));
   if (implemented[0]) return implemented[0];
@@ -400,6 +421,13 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
     description: "Full system access across RM Holdings.",
     modules: ["*"],
     permissionMatchers: ["*"],
+  },
+  {
+    code: ROLE_CODES.ADMINISTRATOR,
+    name: "Administrator",
+    description: "IT administrator. Signs in to the admin area and works across every module. Cannot change the Owner, system settings, or role templates.",
+    modules: ["*"],
+    permissionMatchers: [...ADMINISTRATOR_PERMISSION_MATCHERS],
   },
   {
     code: ROLE_CODES.GROUP_ACCOUNTANT,

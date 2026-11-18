@@ -35,7 +35,31 @@ function descriptionFor(code: string, dbDescription: string | null) {
   return roleDefinition(code)?.description ?? "";
 }
 
+export async function ensureAdministratorRole(
+  admin?: NonNullable<ReturnType<typeof createSupabaseAdminClient>>,
+) {
+  const db = admin ?? createSupabaseAdminClient();
+  if (!db) return null;
+  const existing = await db.from("roles").select("id").eq("code", "ADMINISTRATOR").maybeSingle();
+  if (existing.data?.id) return String(existing.data.id);
+  const inserted = await db
+    .from("roles")
+    .insert({
+      code: "ADMINISTRATOR",
+      name: "Administrator",
+      description:
+        "IT administrator. Signs in to the admin area and works across every module. Cannot change the Owner, system settings, or role templates.",
+      is_system: true,
+    })
+    .select("id")
+    .maybeSingle();
+  if (inserted.data?.id) return String(inserted.data.id);
+  const again = await db.from("roles").select("id").eq("code", "ADMINISTRATOR").maybeSingle();
+  return again.data?.id ? String(again.data.id) : null;
+}
+
 export async function listRoleSummaries(): Promise<RoleSummary[]> {
+  await ensureAdministratorRole();
   const db = await client();
   if (!db) return [];
 
@@ -97,6 +121,21 @@ function summaryFromRoleRow(
 ): RoleSummary | null {
   const definition = ROLE_DEFINITIONS.find((item) => item.code === role.code);
   if (role.code === ROLE_CODES.SCHOOL_ADMIN) return null;
+  if (role.code === ROLE_CODES.ADMINISTRATOR) {
+    return {
+      id: role.id,
+      code: role.code,
+      name: "Administrator",
+      description: descriptionFor(role.code, role.description),
+      moduleCount: 0,
+      permissionCount: 0,
+      moduleLabel: "All modules",
+      moduleCode: null,
+      permissionCodes: [],
+      locked: true,
+      slug: roleSlug(role.code),
+    };
+  }
   if (definition && !isVisibleRbacRole(definition)) return null;
 
   const inferred = definition ? moduleScopeForRole(definition) : null;

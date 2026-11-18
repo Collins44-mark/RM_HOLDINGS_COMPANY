@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { requireOwner } from "@/lib/auth/session";
+import { requirePlatformAdmin } from "@/lib/auth/session";
 import { getUserCustomization } from "@/lib/data/rbac";
 
 export async function GET(request: Request) {
-  await requireOwner();
+  await requirePlatformAdmin();
   const userId = new URL(request.url).searchParams.get("userId")?.trim() ?? "";
   if (!userId) {
     return NextResponse.json({ error: "Missing user." }, { status: 400 });

@@ -9,7 +9,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { ModuleContextBar } from "@/components/layout/ModuleContextBar";
 import { useSidebarCollapsed } from "@/lib/hooks/useSidebarCollapsed";
 import { navigationForPath, type NavBusinessUnit } from "@/lib/auth/nav";
-import { isOwnerRole } from "@/lib/auth/rbac";
+import { isPlatformAdminRole } from "@/lib/auth/rbac";
 import { SIDEBAR_WIDTH } from "@/lib/config/app";
 import type { AuthUser } from "@/lib/auth/types";
 import { useT } from "@/components/i18n/LocaleProvider";
@@ -96,7 +96,7 @@ export function AppShell({
           {moduleCode && moduleCode !== "owner" && moduleCode !== "supermarket" && moduleCode !== "school" && moduleCode !== "rice" && moduleCode !== "farm" ? (
             <ModuleContextBar
               moduleCode={moduleCode}
-              showDashboardCrumb={isOwnerRole(user.roleCode)}
+              showDashboardCrumb={isPlatformAdminRole(user.roleCode)}
             />
           ) : null}
           <div className="rm-page mx-auto w-full min-w-0 max-w-full">

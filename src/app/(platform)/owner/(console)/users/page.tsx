@@ -1,5 +1,5 @@
 import { UsersManager, type UsersWorkspaceView } from "@/components/users/UsersManager";
-import { requireOwner } from "@/lib/auth/session";
+import { requirePlatformAdmin } from "@/lib/auth/session";
 import { listManagedUsers } from "@/lib/data/app-users";
 import { listBusinessUnits } from "@/lib/data/business-units";
 import { listRoleSummaries } from "@/lib/data/rbac";
@@ -19,7 +19,7 @@ export default async function UsersPage({
 }: {
   searchParams: Promise<{ view?: string; unit?: string; role?: string }>;
 }) {
-  const actor = await requireOwner();
+  const actor = await requirePlatformAdmin();
   const params = await searchParams;
   const view = parseView(params.view);
   const [users, units, roles] = await Promise.all([

@@ -1,8 +1,8 @@
 "use server";
 
 import { revalidatePath, updateTag } from "next/cache";
-import { requireOwner } from "@/lib/auth/session";
-import { isOwnerRole } from "@/lib/auth/rbac";
+import { requireVerifiedPlatformAdmin } from "@/lib/auth/session";
+import { isAdministratorRole, isOwnerRole } from "@/lib/auth/rbac";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { syncUserAccessClaims } from "@/lib/auth/effective-access";
 import {
@@ -65,17 +65,17 @@ async function ensurePermissionRows(
 }
 
 export async function loadRoleSummariesAction(): Promise<RoleSummary[]> {
-  await requireOwner();
+  await requireVerifiedPlatformAdmin();
   return listRoleSummaries();
 }
 
 export async function loadRolePermissionStateAction(roleId: string) {
-  await requireOwner();
+  await requireVerifiedPlatformAdmin();
   return getRolePermissionState(roleId);
 }
 
 export async function loadUserCustomizationAction(userId: string): Promise<UserCustomization | null> {
-  await requireOwner();
+  await requireVerifiedPlatformAdmin();
   return getUserCustomization(userId);
 }
 
@@ -83,7 +83,10 @@ export async function saveRolePermissionsAction(
   roleId: string,
   permissionCodes: string[],
 ): Promise<{ error?: string }> {
-  const actor = await requireOwner();
+  const actor = await requireVerifiedPlatformAdmin();
+  if (!isOwnerRole(actor.roleCode)) {
+    return { error: "Only the Owner can change role templates." };
+  }
   const ready = adminOrError();
   if (!ready.ok) return { error: ready.error };
 
@@ -195,7 +198,10 @@ export async function createCustomRoleAction(input: {
   module: string;
   permissionCodes: string[];
 }): Promise<{ error?: string; role?: RoleSummary }> {
-  const actor = await requireOwner();
+  const actor = await requireVerifiedPlatformAdmin();
+  if (!isOwnerRole(actor.roleCode)) {
+    return { error: "Only the Owner can create role templates." };
+  }
   const ready = adminOrError();
   if (!ready.ok) return { error: ready.error };
   const name = input.name.trim();
@@ -292,7 +298,7 @@ export async function saveUserCustomizationAction(input: {
   moduleRoles: Record<string, string>;
   overrides: Array<{ businessUnitCode: string; permissionCode: string; effect: "allow" | "deny" }>;
 }): Promise<{ error?: string; modules?: string[]; roleName?: string }> {
-  const actor = await requireOwner();
+  const actor = await requireVerifiedPlatformAdmin();
   if (input.userId === actor.id) {
     return { error: "You cannot change your own role or module access." };
   }
@@ -326,8 +332,8 @@ export async function saveUserCustomizationAction(input: {
 
   const currentRole = Array.isArray(profile.role) ? profile.role[0] : profile.role;
   const currentRoleCode = (currentRole as { code?: string } | null)?.code ?? "STAFF";
-  if (isOwnerRole(currentRoleCode)) {
-    return { error: "Owner access cannot be customized from this screen." };
+  if (isOwnerRole(currentRoleCode) || isAdministratorRole(currentRoleCode)) {
+    return { error: "This account's access cannot be customized from this screen." };
   }
 
   const unitRows = (unitsResult.data ?? []) as Array<{ id: string; code: string; name: string }>;

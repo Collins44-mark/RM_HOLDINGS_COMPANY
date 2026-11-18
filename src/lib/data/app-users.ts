@@ -2,10 +2,10 @@ import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { isOwnerRole } from "@/lib/auth/rbac";
+import { isAdministratorRole, isOwnerRole } from "@/lib/auth/rbac";
+import { BUSINESS_UNITS } from "@/lib/config/app";
 import { displayRoleName, permissionsForRoleCode } from "@/lib/auth/role-options";
 import { displayLoginIdentifier, publicEmail } from "@/lib/auth/identifiers";
-import { BUSINESS_UNITS } from "@/lib/config/app";
 import { staffByProfileIds, type LinkedStaffInfo } from "@/lib/school/staff-profile-link";
 import { listDirectoryWorkers } from "@/lib/users/directory-workers";
 
@@ -132,8 +132,9 @@ export function toManagedUser(profile: ProfileRecord): ManagedUser {
   const role = roleOf(profile);
   const units = unitsOf(profile);
   const owner = isOwnerRole(role.code);
-  const modules = owner ? ["*"] : units.map((unit) => unit.code);
-  const moduleNames = owner
+  const administrator = isAdministratorRole(role.code);
+  const modules = owner ? ["*"] : administrator ? BUSINESS_UNITS.map((unit) => unit.code) : units.map((unit) => unit.code);
+  const moduleNames = owner || administrator
     ? ["All modules"]
     : units.map((unit) => unit.name);
   const user: ManagedUser = {
@@ -163,10 +164,11 @@ export function accessFromProfile(profile: ProfileRecord) {
   const role = roleOf(profile);
   const units = unitsOf(profile);
   const owner = isOwnerRole(role.code);
+  const administrator = isAdministratorRole(role.code);
   return {
     roleCode: role.code,
     roleName: displayRoleName(role.code, role.name),
-    modules: owner ? ["*"] : units.map((unit) => unit.code),
+    modules: owner ? ["*"] : administrator ? BUSINESS_UNITS.map((unit) => unit.code) : units.map((unit) => unit.code),
     businessUnits: units.map((unit) => ({ code: unit.code, name: unit.name })),
     permissions: owner ? ["*"] : permissionsForRoleCode(role.code),
   };

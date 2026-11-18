@@ -24,12 +24,13 @@ import {
 import { IMPLEMENTED_BUSINESS_MODULES, catalogForModule, groupPermissions, isImplementedBusinessModule, permissionModuleLabel } from "@/lib/config/permissions";
 import { PermissionTile } from "@/components/users/PermissionTile";
 import { createCustomRoleAction } from "@/actions/rbac";
-import { isOwnerRole } from "@/lib/auth/rbac";
+import { isAdministratorRole, isOwnerRole } from "@/lib/auth/rbac";
 import type { ManagedUser, ManagedUserStatus } from "@/lib/data/app-users";
 import type { RoleSummary } from "@/lib/auth/rbac-types";
 import {
   createStaffProfileForUserAction,
   createUserAction,
+  deleteUserAction,
   disableUserAction,
   enableUserAction,
   linkUserToStaffAction,
@@ -479,7 +480,7 @@ export function UsersManager({
                       <UserActionsMenu
                         onView={() => setSelected(user)}
                         onCustomize={() => openCustomize(user)}
-                        customizeDisabled={user.id === currentUserId || isOwnerRole(user.roleCode)}
+                        customizeDisabled={user.id === currentUserId || isOwnerRole(user.roleCode) || isAdministratorRole(user.roleCode)}
                         onGrantAccess={user.status === "no_access" ? () => setGrantUser(user) : undefined}
                         onLinkStaff={user.staff || user.status === "no_access" ? undefined : () => setStaffTarget({ user, mode: "link" })}
                         onCreateStaff={user.staff || user.status === "no_access" ? undefined : () => setStaffTarget({ user, mode: "create" })}
@@ -515,7 +516,7 @@ export function UsersManager({
                 <UserActionsMenu
                   onView={() => setSelected(user)}
                   onCustomize={() => openCustomize(user)}
-                  customizeDisabled={user.id === currentUserId || isOwnerRole(user.roleCode)}
+                  customizeDisabled={user.id === currentUserId || isOwnerRole(user.roleCode) || isAdministratorRole(user.roleCode)}
                   onGrantAccess={user.status === "no_access" ? () => setGrantUser(user) : undefined}
                   onLinkStaff={user.staff || user.status === "no_access" ? undefined : () => setStaffTarget({ user, mode: "link" })}
                   onCreateStaff={user.staff || user.status === "no_access" ? undefined : () => setStaffTarget({ user, mode: "create" })}
@@ -592,6 +593,22 @@ export function UsersManager({
           onEnable={() =>
             runAction(() => enableUserAction(selected.id), () => setSelected(null), { isActive: true })
           }
+          onDelete={() => {
+            const id = selected.id;
+            const name = selected.name;
+            if (!window.confirm(`Delete ${name} permanently? Their login is removed from the system. Past records stay, and they cannot sign in again.`)) {
+              return;
+            }
+            startTransition(async () => {
+              const result = await deleteUserAction(id);
+              if (result.error) {
+                setError(result.error);
+                return;
+              }
+              setRows((current) => current.filter((user) => user.id !== id));
+              setSelected(null);
+            });
+          }}
           onReset={() =>
             startTransition(async () => {
               const result = await resetPasswordAction(selected.id);
@@ -911,6 +928,7 @@ function UserDetails({
   onUnlock,
   onDisable,
   onEnable,
+  onDelete,
   onReset,
   onSave,
   onLinkStaff,
@@ -926,6 +944,7 @@ function UserDetails({
   onUnlock: () => void;
   onDisable: () => void;
   onEnable: () => void;
+  onDelete: () => void;
   onReset: () => void;
   onSave: (formData: FormData) => void;
   onLinkStaff: () => void;
@@ -1045,6 +1064,16 @@ function UserDetails({
               className="h-10 rounded-[12px] bg-white px-3 text-[13px] font-semibold text-navy ring-1 ring-black/10"
             >
               Enable Account
+            </button>
+          )}
+          {user.worker ? null : (
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={self || ownerProtected || pending}
+              className="h-10 rounded-[12px] bg-white px-3 text-[13px] font-semibold text-[#b42318] ring-1 ring-black/10 disabled:opacity-50"
+            >
+              Delete Account
             </button>
           )}
           {user.status !== "no_access" && !user.staff ? (

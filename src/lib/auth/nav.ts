@@ -3,7 +3,7 @@ import type { NavItem } from "@/lib/config/navigation";
 import { MODULE_NAV, buildOwnerNav } from "@/lib/config/navigation";
 import { canAccessPath, entryPathForModule } from "@/lib/auth/access";
 import { identityFromUser } from "@/lib/auth/types";
-import { isOwnerRole } from "@/lib/auth/rbac";
+import { isPlatformAdminRole } from "@/lib/auth/rbac";
 import { getBusinessUnit, getModuleFromPath, type ModuleCode } from "@/lib/config/app";
 import { navIconForCode } from "@/lib/data/business-units";
 
@@ -67,7 +67,7 @@ export function consoleNavigation(
   moduleCode: ModuleCode,
   businessUnits?: NavBusinessUnit[],
 ) {
-  if (isOwnerRole(user.roleCode)) {
+  if (isPlatformAdminRole(user.roleCode)) {
     const unit = moduleCode === "owner" ? undefined : getBusinessUnit(moduleCode);
     return {
       nav: filterNavForUser(buildOwnerNav(businessUnits), user),
@@ -112,7 +112,7 @@ export function navigationForPath(
   const fromPath = getModuleFromPath(pathname);
   const assigned = user.modules.find((code) => code !== "*") as ModuleCode | undefined;
   const moduleCode: ModuleCode =
-    fromPath ?? (isOwnerRole(user.roleCode) ? "owner" : assigned ?? "owner");
+    fromPath ?? (isPlatformAdminRole(user.roleCode) ? "owner" : assigned ?? "owner");
   const { nav, workspace } = consoleNavigation(user, moduleCode, businessUnits);
   return { nav, workspace, moduleCode };
 }

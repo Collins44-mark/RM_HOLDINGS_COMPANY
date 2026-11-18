@@ -1,6 +1,6 @@
 import type { SchoolContext } from "@/lib/school/access";
 import { isSchoolUnconfiguredRead } from "@/lib/school/access";
-import { isOwnerRole } from "@/lib/auth/rbac";
+import { isPlatformAdminRole } from "@/lib/auth/rbac";
 import { requireAuth } from "@/lib/auth/session";
 
 export type SchoolStructureScope = {
@@ -43,7 +43,7 @@ export function academicAccessMode(rows: Array<{ scope_kind: string }>): "school
 
 export async function loadSchoolStructureScope(ctx: SchoolContext): Promise<SchoolStructureScope> {
   const user = await requireAuth();
-  if (isOwnerRole(user.roleCode)) return schoolWide();
+  if (isPlatformAdminRole(user.roleCode)) return schoolWide();
 
   const accessRes = await ctx.supabase
     .from("sch_academic_access")
