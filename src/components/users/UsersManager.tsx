@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { ArrowLeft, Plus, Search } from "lucide-react";
+import { AppDialog } from "@/components/ui/AppDialog";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useListPage } from "@/lib/property/use-list-page";
 import { PageHeader, Surface } from "@/components/ui/PageHeader";
@@ -125,6 +126,7 @@ export function UsersManager({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [staffTarget, setStaffTarget] = useState<{ user: ManagedUser; mode: "link" | "create" } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
   const [roleModuleFilter, setRoleModuleFilter] = useState("all");
   const [createRoleOpen, setCreateRoleOpen] = useState(false);
 
@@ -593,22 +595,7 @@ export function UsersManager({
           onEnable={() =>
             runAction(() => enableUserAction(selected.id), () => setSelected(null), { isActive: true })
           }
-          onDelete={() => {
-            const id = selected.id;
-            const name = selected.name;
-            if (!window.confirm(`Delete ${name} permanently? Their login is removed from the system. Past records stay, and they cannot sign in again.`)) {
-              return;
-            }
-            startTransition(async () => {
-              const result = await deleteUserAction(id);
-              if (result.error) {
-                setError(result.error);
-                return;
-              }
-              setRows((current) => current.filter((user) => user.id !== id));
-              setSelected(null);
-            });
-          }}
+          onDelete={() => setPendingDelete({ id: selected.id, name: selected.name })}
           onReset={() =>
             startTransition(async () => {
               const result = await resetPasswordAction(selected.id);
@@ -624,6 +611,33 @@ export function UsersManager({
           onLinkStaff={() => setStaffTarget({ user: selected, mode: "link" })}
           onCreateStaff={() => setStaffTarget({ user: selected, mode: "create" })}
           onGrantAccess={() => setGrantUser(selected)}
+        />
+      ) : null}
+
+      {pendingDelete ? (
+        <AppDialog
+          title="Delete this user?"
+          message={`Delete ${pendingDelete.name} permanently? Their login is removed from the system. Past records stay, and they cannot sign in again.`}
+          confirmLabel={pending ? "Deleting…" : "Delete"}
+          tone="danger"
+          pending={pending}
+          onCancel={() => {
+            if (!pending) setPendingDelete(null);
+          }}
+          onConfirm={() => {
+            const id = pendingDelete.id;
+            startTransition(async () => {
+              const result = await deleteUserAction(id);
+              if (result.error) {
+                setError(result.error);
+                setPendingDelete(null);
+                return;
+              }
+              setRows((current) => current.filter((user) => user.id !== id));
+              setPendingDelete(null);
+              setSelected(null);
+            });
+          }}
         />
       ) : null}
 

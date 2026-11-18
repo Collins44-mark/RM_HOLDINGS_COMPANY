@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { MoreVertical } from "lucide-react";
+import { AppDialog } from "@/components/ui/AppDialog";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { formatTzs } from "@/lib/format/currency";
 import { useListPage } from "@/lib/property/use-list-page";
@@ -152,6 +153,7 @@ export default function HallBookingsView({ initialItems, halls, customers }: { i
   const [reason, setReason] = useState("");
   const [closeState, setCloseState] = useState("idle");
   const [closeError, setCloseError] = useState("");
+  const [notice, setNotice] = useState("");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
 
@@ -250,7 +252,7 @@ export default function HallBookingsView({ initialItems, halls, customers }: { i
   async function confirm(booking: BookingRecord) {
     setOpenMenuId(null);
     const error = await runAction(booking, "confirm");
-    if (error) window.alert(error);
+    if (error) setNotice(error);
   }
 
   async function submitClose() {
@@ -506,18 +508,28 @@ export default function HallBookingsView({ initialItems, halls, customers }: { i
       ) : null}
 
       {closeTarget ? (
-        <div className="fixed inset-x-0 bottom-0 top-14 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/30 px-4 py-4 sm:top-[72px]">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[#0b2244]/40 px-4 backdrop-blur-[3px]">
+          <div className="w-full max-w-[420px] rounded-[24px] border border-white/80 bg-white p-6 shadow-[0_24px_70px_rgba(15,35,64,0.22)]">
             <h2 className="text-lg font-bold">{closeTarget.kind === "cancel" ? "Cancel" : "Reject"} {closeTarget.booking.booking_number}</h2>
             <p className="mt-2 text-sm text-slate-600">The booking stays in the records. Payments are not refunded.</p>
             <textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Reason" className="mt-3 w-full rounded-xl border border-slate-200/50 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-300" />
             {closeError ? <p className="mt-3 text-sm text-rose-700">{closeError}</p> : null}
-            <div className="mt-5 flex justify-end gap-2">
-              <button type="button" className="rounded-xl px-4 py-2 text-sm" onClick={() => setCloseTarget(null)}>Keep booking</button>
-              <button type="button" disabled={closeState !== "idle"} onClick={submitClose} className="rounded-xl bg-rose-700 px-4 py-2 text-sm font-semibold text-white">{closeState === "saving" ? "…" : closeTarget.kind === "cancel" ? "Cancel booking" : "Reject booking"}</button>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" className="h-11 rounded-[14px] px-4 text-[14px] font-medium text-slate-600 ring-1 ring-black/10" onClick={() => setCloseTarget(null)}>Cancel</button>
+              <button type="button" disabled={closeState !== "idle"} onClick={submitClose} className="h-11 rounded-[14px] bg-[#b42318] px-4 text-[14px] font-semibold text-white disabled:opacity-60">{closeState === "saving" ? "Please wait…" : closeTarget.kind === "cancel" ? "Cancel booking" : "Reject booking"}</button>
             </div>
           </div>
         </div>
+      ) : null}
+      {notice ? (
+        <AppDialog
+          title="Couldn't update the booking"
+          message={notice}
+          confirmLabel="OK"
+          hideCancel
+          onCancel={() => setNotice("")}
+          onConfirm={() => setNotice("")}
+        />
       ) : null}
     </div>
   );

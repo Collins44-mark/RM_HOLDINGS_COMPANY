@@ -18,6 +18,7 @@ import {
 import { FinancePeriodFilter } from "@/components/supermarket/FinancePeriodFilter";
 import { cn } from "@/lib/cn";
 import { filterClass, inputClass, tableHead, tableScrollClass } from "@/components/supermarket/purchasing-ui";
+import { AppDialog } from "@/components/ui/AppDialog";
 import { EmptyState } from "@/components/ui/PageHeader";
 import { EXPENSE_CATEGORIES } from "@/lib/data/sample-supermarket-finance";
 import { formatTzs } from "@/lib/format/currency";
@@ -165,6 +166,8 @@ export function PettyCashPage() {
   const [recon, setRecon] = useState<{ id: string; status: string; date: string; preparedBy: string | null } | null>(null);
   const [modal, setModal] = useState<"expense" | "replenish" | "reconcile" | null>(null);
   const [tick, setTick] = useState(0);
+  const [reverseId, setReverseId] = useState<string | null>(null);
+  const [reversing, setReversing] = useState(false);
   const [fundForm, setFundForm] = useState({ name: "Petty Cash", openingBalance: "0.00" });
   const [fundBusy, setFundBusy] = useState(false);
 
@@ -442,12 +445,7 @@ export function PettyCashPage() {
                           <button
                             type="button"
                             className="text-[12.5px] font-semibold text-slate-500"
-                            onClick={async () => {
-                              if (!window.confirm("Reverse this posted petty cash transaction? The original remains on file.")) return;
-                              const result = await reversePettyCashTransactionAction(row.id);
-                              if (!result.ok) setError(result.error);
-                              else setTick((n) => n + 1);
-                            }}
+                            onClick={() => setReverseId(row.id)}
                           >
                             Reverse
                           </button>
@@ -484,6 +482,27 @@ export function PettyCashPage() {
           onSaved={() => {
             setModal(null);
             setTick((n) => n + 1);
+          }}
+        />
+      ) : null}
+      {reverseId ? (
+        <AppDialog
+          title="Reverse this transaction?"
+          message="Reverse this posted petty cash transaction? The original remains on file."
+          confirmLabel="Reverse"
+          tone="danger"
+          pending={reversing}
+          onCancel={() => {
+            if (!reversing) setReverseId(null);
+          }}
+          onConfirm={async () => {
+            const id = reverseId;
+            setReversing(true);
+            const result = await reversePettyCashTransactionAction(id);
+            setReversing(false);
+            setReverseId(null);
+            if (!result.ok) setError(result.error);
+            else setTick((n) => n + 1);
           }}
         />
       ) : null}
