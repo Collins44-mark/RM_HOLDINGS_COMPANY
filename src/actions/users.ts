@@ -685,6 +685,41 @@ export async function deleteUserAction(userId: string): Promise<{ error?: string
     return { error: "The only Owner account cannot be deleted." };
   }
 
+  const { admin } = ready;
+  const [schoolStaff, farmStaff] = await Promise.all([
+    admin.from("sch_staff").select("id").eq("profile_id", userId),
+    admin.from("farm_staff").select("id").eq("profile_id", userId),
+  ]);
+  const schoolIds = (schoolStaff.data ?? []).map((row) => String(row.id));
+  const farmIds = (farmStaff.data ?? []).map((row) => String(row.id));
+
+  await Promise.all([
+    admin.from("user_business_units").delete().eq("user_id", userId),
+    admin.from("user_module_roles").delete().eq("user_id", userId),
+    admin.from("user_permission_overrides").delete().eq("user_id", userId),
+    admin.from("sch_academic_access").delete().eq("user_id", userId),
+    admin.from("sch_staff").update({ profile_id: null, user_id: null }).eq("profile_id", userId),
+    admin.from("farm_staff").update({ profile_id: null }).eq("profile_id", userId),
+  ]);
+
+  const removed = await admin.from("profiles").delete().eq("id", userId);
+  if (removed.error) return { error: "Unable to delete this user." };
+
+  const stillThere = await admin.from("profiles").select("id").eq("id", userId).maybeSingle();
+  if (stillThere.data?.id) return { error: "The account is still in the system." };
+
+  if (schoolIds.length) {
+    await admin.from("sch_staff").update({ employment_status: "inactive", profile_id: null, user_id: null }).in("id", schoolIds);
+  }
+  if (farmIds.length) {
+    await admin.from("farm_staff").update({ is_active: false, profile_id: null }).in("id", farmIds);
+  }
+
+  const authDelete = await admin.auth.admin.deleteUser(userId);
+  if (authDelete.error && !/not found/i.test(authDelete.error.message)) {
+    return { error: "The profile was removed, but the login could not be deleted." };
+  }
+
   await writeAuditEvent({
     action: "user.deleted",
     module: "users",
@@ -693,9 +728,6 @@ export async function deleteUserAction(userId: string): Promise<{ error?: string
     entityType: "user",
     entityId: target.id,
   });
-
-  const { error } = await ready.admin.auth.admin.deleteUser(userId);
-  if (error) return { error: "Unable to delete this user." };
 
   revalidateUsersWorkspace();
   return {};

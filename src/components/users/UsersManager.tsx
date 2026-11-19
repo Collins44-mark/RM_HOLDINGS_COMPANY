@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, Plus, Search } from "lucide-react";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { PaginationBar } from "@/components/ui/PaginationBar";
@@ -107,10 +108,15 @@ export function UsersManager({
   businessUnits: UsersUnitOption[];
 }) {
   const t = useT();
+  const router = useRouter();
   const units = businessUnits;
   const [tab, setTab] = useState<UsersWorkspaceTab>(initialView);
   const [unitCode, setUnitCode] = useState<string | null>(initialUnitCode ?? null);
   const [rows, setRows] = useState(users);
+  const userListKey = users.map((user) => `${user.id}:${user.status}:${user.roleCode}`).join("|");
+  useEffect(() => {
+    setRows(users);
+  }, [userListKey, users]);
   const [roleCards, setRoleCards] = useState(roles);
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -636,6 +642,7 @@ export function UsersManager({
               setRows((current) => current.filter((user) => user.id !== id));
               setPendingDelete(null);
               setSelected(null);
+              router.refresh();
             });
           }}
         />

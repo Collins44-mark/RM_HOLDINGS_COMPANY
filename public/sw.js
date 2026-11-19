@@ -229,7 +229,7 @@ self.addEventListener("fetch", (event) => {
       const userId = await activeUserId();
       const kind = requestKind(request);
       try {
-        const fresh = await fetch(request);
+        const fresh = await fetch(new Request(request, { cache: "no-store" }));
         if (fresh.ok && fresh.type === "basic") {
           const copy = fresh.clone();
           event.waitUntil(storePage(request, copy, userId).catch(() => undefined));
