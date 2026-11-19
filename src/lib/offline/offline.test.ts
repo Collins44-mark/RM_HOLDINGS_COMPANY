@@ -7,6 +7,7 @@ import {
   shouldBypassServiceWorkerCache,
   shouldStoreNavigation,
 } from "./shell-policy";
+import { offlineShellPaths, shellAssetUrls } from "./shell-warm";
 import { bindSnapshotMemory, loadWorkspaceWithCache, readOfflineSnapshot, writeOfflineSnapshot } from "./snapshots";
 import { classifyActionError } from "./classify";
 import { setOfflineDispatcher, syncPendingOperations } from "./coordinator";
@@ -452,6 +453,30 @@ test("the service worker caches visited pages, including in-app navigation, and 
   assert.equal(
     shouldBypassServiceWorkerCache({ method: "GET", url: `${origin}/offline`, origin }),
     false,
+  );
+});
+
+test("the offline index covers every module screen, not only the page already open", () => {
+  const paths = offlineShellPaths();
+  assert.equal(new Set(paths).size, paths.length);
+  for (const path of [
+    "/dashboard",
+    "/owner/users",
+    "/school/staff",
+    "/school/transport/buses",
+    "/rice/warehouse",
+    "/farm/jobs",
+    "/supermarket/pos",
+    "/property/tenants",
+    "/livestock/houses",
+    "/beekeeping/hives",
+  ]) {
+    assert.equal(paths.includes(path), true, path);
+  }
+  assert.equal(paths.includes("/login"), false);
+  assert.deepEqual(
+    shellAssetUrls(`<script src="/_next/static/chunks/app.js"></script><link href="/images/logo.png" rel="stylesheet"><a href="/school">School</a>`),
+    ["/images/logo.png", "/_next/static/chunks/app.js"].sort(),
   );
 });
 

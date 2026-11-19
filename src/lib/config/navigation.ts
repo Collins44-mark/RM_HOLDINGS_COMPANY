@@ -215,6 +215,19 @@ export const BEEKEEPING_NAV: NavItem[] = [
   { href: "/beekeeping/reports", label: "Reports", icon: "reports" },
 ];
 
+export function collectNavPaths(items: NavItem[], into: Set<string> = new Set()) {
+  for (const item of items) {
+    const path = item.href.split("?")[0];
+    if (path.startsWith("/")) into.add(path);
+    for (const extra of item.alsoActive ?? []) {
+      const extraPath = extra.split("?")[0];
+      if (extraPath.startsWith("/")) into.add(extraPath);
+    }
+    if (item.children?.length) collectNavPaths(item.children, into);
+  }
+  return into;
+}
+
 export const MODULE_NAV: Record<string, NavItem[]> = {
   owner: buildOwnerNav(),
   school: SCHOOL_NAV,

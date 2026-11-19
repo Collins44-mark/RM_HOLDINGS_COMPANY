@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { AuthUser } from "@/lib/auth/types";
 import { bindOfflineSession, configureBrowserOfflineEngine, publishOfflineIdentity } from "@/lib/offline";
+import { warmOfflineShell } from "@/lib/offline/shell-warm";
 
 export function OfflineSyncHost({ user }: { user: AuthUser }) {
   const pathname = usePathname();
+  const router = useRouter();
   const session = { userId: user.id, authUid: user.authUid };
   bindOfflineSession(session);
   publishOfflineIdentity(user.id);
@@ -14,14 +16,21 @@ export function OfflineSyncHost({ user }: { user: AuthUser }) {
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
     let cancel = false;
-    void navigator.serviceWorker.ready.then(() => {
+    const warm = () => {
       if (cancel || navigator.onLine === false) return;
       const href = `${window.location.pathname}${window.location.search}`;
-      void fetch(href, { credentials: "same-origin", cache: "no-store" }).catch(() => undefined);
-    });
+      void warmOfflineShell(href);
+    };
+    void navigator.serviceWorker.ready.then(warm);
+    const onOnline = () => {
+      warm();
+      router.refresh();
+    };
+    window.addEventListener("online", onOnline);
     return () => {
       cancel = true;
+      window.removeEventListener("online", onOnline);
     };
-  }, [pathname, user.id]);
+  }, [pathname, router, user.id]);
   return null;
 }

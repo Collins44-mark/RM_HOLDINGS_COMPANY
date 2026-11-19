@@ -1,5 +1,5 @@
 /* RM Holdings app-shell worker. Keep cache rules aligned with src/lib/offline/shell-policy.ts */
-const VERSION = "rm-shell-v6";
+const VERSION = "rm-shell-v7";
 const STATIC_CACHE = `${VERSION}-static`;
 const PRECACHE = ["/offline", "/login", "/manifest.webmanifest", "/file.svg"];
 const PUBLIC_PATHS = new Set([
@@ -133,7 +133,7 @@ async function activeUserId() {
 }
 
 async function storePage(request, response, userId) {
-  if (!userId || !response.ok || response.type !== "basic") return;
+  if (!userId || !response.ok || response.type !== "basic" || response.redirected) return;
   const url = new URL(request.url);
   if (PUBLIC_PATHS.has(url.pathname)) return;
   const kind = requestKind(request);
@@ -237,8 +237,15 @@ self.addEventListener("fetch", (event) => {
         return fresh;
       } catch {
         const cached = await cachedPage(request, userId);
+        if (kind === "rsc") {
+          const flight = cached?.headers.get("content-type")?.includes("text/x-component") ? cached : null;
+          if (flight) return flight;
+          const documentRequest = new Request(new URL(url.pathname + url.search, url.origin).toString());
+          const document = await cachedPage(documentRequest, userId);
+          if (document) return document;
+          return new Response("", { status: 503 });
+        }
         if (cached) return cached;
-        if (kind === "rsc") return new Response("", { status: 503 });
         return offlineDocument();
       }
     })(),
