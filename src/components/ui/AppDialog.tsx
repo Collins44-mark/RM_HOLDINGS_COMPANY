@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
+import { cn } from "@/lib/cn";
 
 export function AppDialog({
   title,
@@ -10,6 +11,7 @@ export function AppDialog({
   cancelLabel = "Cancel",
   tone = "primary",
   pending = false,
+  succeeded = false,
   hideCancel = false,
   onCancel,
   onConfirm,
@@ -20,17 +22,18 @@ export function AppDialog({
   cancelLabel?: string;
   tone?: "primary" | "danger";
   pending?: boolean;
+  succeeded?: boolean;
   hideCancel?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape" && !pending) onCancel();
+      if (event.key === "Escape" && !pending && !succeeded) onCancel();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel, pending]);
+  }, [onCancel, pending, succeeded]);
 
   return createPortal(
     <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
@@ -39,7 +42,7 @@ export function AppDialog({
         className="absolute inset-0 bg-[#0b2244]/40 backdrop-blur-[3px]"
         aria-label={hideCancel ? "Close" : "Cancel"}
         onClick={() => {
-          if (!pending) onCancel();
+          if (!pending && !succeeded) onCancel();
         }}
       />
       <div
@@ -57,7 +60,7 @@ export function AppDialog({
             <button
               type="button"
               onClick={onCancel}
-              disabled={pending}
+              disabled={pending || succeeded}
               className="h-11 rounded-[14px] px-4 text-[14px] font-medium text-slate-600 ring-1 ring-black/10 disabled:opacity-50"
             >
               {cancelLabel}
@@ -66,18 +69,41 @@ export function AppDialog({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={pending}
-            className={
-              tone === "danger"
-                ? "h-11 rounded-[14px] bg-[#b42318] px-4 text-[14px] font-semibold text-white disabled:opacity-60"
-                : "h-11 rounded-[14px] bg-navy px-4 text-[14px] font-semibold text-white disabled:opacity-60"
-            }
+            disabled={pending || succeeded}
+            className={cn(
+              "inline-flex h-11 min-w-24 items-center justify-center rounded-[14px] px-4 text-[14px] font-semibold text-white disabled:opacity-100",
+              succeeded ? "bg-emerald-600" : tone === "danger" ? "bg-[#b42318]" : "bg-navy",
+            )}
           >
-            {pending ? "Please wait…" : confirmLabel}
+            {succeeded ? <AppleTick /> : pending ? <AppleSpinner /> : confirmLabel}
           </button>
         </div>
       </div>
     </div>,
     document.body,
+  );
+}
+
+function AppleSpinner() {
+  return (
+    <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="2.4" opacity="0.28" />
+      <path d="M20 12a8 8 0 0 0-8-8" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function AppleTick() {
+  return (
+    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M6 12.5 10 16.5 18 8"
+        stroke="currentColor"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="[stroke-dasharray:20] [stroke-dashoffset:0] [animation:app-dialog-tick_280ms_ease-out]"
+      />
+    </svg>
   );
 }

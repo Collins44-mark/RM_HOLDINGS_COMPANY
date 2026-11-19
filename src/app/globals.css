@@ -193,6 +193,15 @@ a {
   animation: modal-panel-enter 160ms ease-out;
 }
 
+@keyframes app-dialog-tick {
+  from {
+    stroke-dashoffset: 20;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .page-enter,
   .modal-overlay-enter,

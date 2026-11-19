@@ -667,14 +667,139 @@ export async function enableUserAction(userId: string): Promise<{ error?: string
   return {};
 }
 
+function phoneTail(value: string | null | undefined) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  return digits.length >= 9 ? digits.slice(-9) : "";
+}
+
+function samePersonPhone(left: string | null | undefined, right: string | null | undefined) {
+  const a = phoneTail(left);
+  const b = phoneTail(right);
+  return Boolean(a && a === b);
+}
+
+function staffPersonName(row: { first_name?: string | null; middle_name?: string | null; last_name?: string | null }) {
+  return [row.first_name, row.middle_name, row.last_name].map((part) => String(part ?? "").trim()).filter(Boolean).join(" ");
+}
+
+/** Drop a staff row from the users directory. Payroll history blocks a hard delete, so those rows are closed instead. */
+async function eraseSchoolStaff(admin: NonNullable<ReturnType<typeof createSupabaseAdminClient>>, ids: string[]) {
+  for (const id of ids) {
+    const removed = await admin.from("sch_staff").delete().eq("id", id);
+    if (!removed.error) continue;
+    const hidden = await admin
+      .from("sch_staff")
+      .update({ employment_status: "inactive", profile_id: null })
+      .eq("id", id);
+    if (hidden.error) return "Unable to remove this person from the staff list.";
+    const check = await admin.from("sch_staff").select("employment_status").eq("id", id).maybeSingle();
+    if (check.data && check.data.employment_status !== "inactive") {
+      return "This person is still listed as staff.";
+    }
+  }
+  return null;
+}
+
+async function eraseFarmStaff(admin: NonNullable<ReturnType<typeof createSupabaseAdminClient>>, ids: string[]) {
+  for (const id of ids) {
+    const removed = await admin.from("farm_staff").delete().eq("id", id);
+    if (!removed.error) continue;
+    const hidden = await admin.from("farm_staff").update({ is_active: false, profile_id: null }).eq("id", id);
+    if (hidden.error) return "Unable to remove this person from the staff list.";
+    const check = await admin.from("farm_staff").select("is_active").eq("id", id).maybeSingle();
+    if (check.data?.is_active) return "This person is still listed as staff.";
+  }
+  return null;
+}
+
+async function schoolStaffIdsForAccount(
+  admin: NonNullable<ReturnType<typeof createSupabaseAdminClient>>,
+  userId: string,
+  target: { name: string; phone: string | null },
+) {
+  const ids = new Set<string>();
+  const linked = await admin.from("sch_staff").select("id").eq("profile_id", userId);
+  for (const row of linked.data ?? []) ids.add(String(row.id));
+  const loose = await admin
+    .from("sch_staff")
+    .select("id, first_name, middle_name, last_name, phone, employment_status")
+    .is("profile_id", null);
+  const targetName = target.name.trim().toLowerCase();
+  for (const row of loose.data ?? []) {
+    if (String(row.employment_status ?? "") === "inactive") continue;
+    const phone = String(row.phone ?? "");
+    const name = staffPersonName(row).toLowerCase();
+    const phoneMatch = samePersonPhone(target.phone, phone);
+    const nameMatch = !phoneTail(phone) && !phoneTail(target.phone) && targetName.length > 1 && name === targetName;
+    if (phoneMatch || nameMatch) ids.add(String(row.id));
+  }
+  return [...ids];
+}
+
+async function farmStaffIdsForAccount(
+  admin: NonNullable<ReturnType<typeof createSupabaseAdminClient>>,
+  userId: string,
+  target: { name: string; phone: string | null },
+) {
+  const ids = new Set<string>();
+  const linked = await admin.from("farm_staff").select("id").eq("profile_id", userId);
+  if (!linked.error) {
+    for (const row of linked.data ?? []) ids.add(String(row.id));
+  }
+  const loose = await admin.from("farm_staff").select("id, name, phone, is_active, profile_id").eq("is_active", true);
+  if (loose.error || !loose.data) return [...ids];
+  const targetName = target.name.trim().toLowerCase();
+  for (const row of loose.data) {
+    const profileId = String((row as { profile_id?: string | null }).profile_id ?? "");
+    if (profileId && profileId !== userId) continue;
+    const phone = String(row.phone ?? "");
+    const name = String(row.name ?? "").trim().toLowerCase();
+    const phoneMatch = samePersonPhone(target.phone, phone);
+    const nameMatch = !phoneTail(phone) && !phoneTail(target.phone) && targetName.length > 1 && name === targetName;
+    if (profileId === userId || phoneMatch || nameMatch) ids.add(String(row.id));
+  }
+  return [...ids];
+}
+
+async function deleteDirectoryWorker(
+  admin: NonNullable<ReturnType<typeof createSupabaseAdminClient>>,
+  userId: string,
+) {
+  const [, source, ...rest] = userId.split(":");
+  const recordId = rest.join(":");
+  if (!recordId) return { error: "User was not found." };
+  if (source === "school") {
+    const error = await eraseSchoolStaff(admin, [recordId]);
+    return error ? { error } : {};
+  }
+  if (source === "farm") {
+    const error = await eraseFarmStaff(admin, [recordId]);
+    return error ? { error } : {};
+  }
+  return { error: "User was not found." };
+}
+
 export async function deleteUserAction(userId: string): Promise<{ error?: string }> {
   const actor = await requireVerifiedPlatformAdmin();
   if (userId === actor.id) return { error: "You cannot delete your own account." };
-  if (userId.startsWith("worker:")) {
-    return { error: "This person has no login. Remove them from their staff record." };
-  }
   const ready = adminOrError();
   if (!ready.ok) return { error: ready.error };
+  const { admin } = ready;
+
+  if (userId.startsWith("worker:")) {
+    const removed = await deleteDirectoryWorker(admin, userId);
+    if (removed.error) return removed;
+    revalidateUsersWorkspace();
+    await writeAuditEvent({
+      action: "user.deleted",
+      module: "users",
+      description: "Removed a staff listing with no login",
+      severity: "high",
+      entityType: "user",
+      entityId: userId,
+    });
+    return {};
+  }
 
   const users = await listManagedUsers();
   const target = users.find((user) => user.id === userId);
@@ -685,21 +810,20 @@ export async function deleteUserAction(userId: string): Promise<{ error?: string
     return { error: "The only Owner account cannot be deleted." };
   }
 
-  const { admin } = ready;
-  const [schoolStaff, farmStaff] = await Promise.all([
-    admin.from("sch_staff").select("id").eq("profile_id", userId),
-    admin.from("farm_staff").select("id").eq("profile_id", userId),
+  const [schoolIds, farmIds] = await Promise.all([
+    schoolStaffIdsForAccount(admin, userId, target),
+    farmStaffIdsForAccount(admin, userId, target),
   ]);
-  const schoolIds = (schoolStaff.data ?? []).map((row) => String(row.id));
-  const farmIds = (farmStaff.data ?? []).map((row) => String(row.id));
+  const schoolError = await eraseSchoolStaff(admin, schoolIds);
+  if (schoolError) return { error: schoolError };
+  const farmError = await eraseFarmStaff(admin, farmIds);
+  if (farmError) return { error: farmError };
 
   await Promise.all([
     admin.from("user_business_units").delete().eq("user_id", userId),
     admin.from("user_module_roles").delete().eq("user_id", userId),
     admin.from("user_permission_overrides").delete().eq("user_id", userId),
     admin.from("sch_academic_access").delete().eq("user_id", userId),
-    admin.from("sch_staff").update({ profile_id: null, user_id: null }).eq("profile_id", userId),
-    admin.from("farm_staff").update({ profile_id: null }).eq("profile_id", userId),
   ]);
 
   const removed = await admin.from("profiles").delete().eq("id", userId);
@@ -707,13 +831,6 @@ export async function deleteUserAction(userId: string): Promise<{ error?: string
 
   const stillThere = await admin.from("profiles").select("id").eq("id", userId).maybeSingle();
   if (stillThere.data?.id) return { error: "The account is still in the system." };
-
-  if (schoolIds.length) {
-    await admin.from("sch_staff").update({ employment_status: "inactive", profile_id: null, user_id: null }).in("id", schoolIds);
-  }
-  if (farmIds.length) {
-    await admin.from("farm_staff").update({ is_active: false, profile_id: null }).in("id", farmIds);
-  }
 
   const authDelete = await admin.auth.admin.deleteUser(userId);
   if (authDelete.error && !/not found/i.test(authDelete.error.message)) {

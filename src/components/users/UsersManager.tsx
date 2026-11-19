@@ -133,6 +133,7 @@ export function UsersManager({
   const [pending, startTransition] = useTransition();
   const [staffTarget, setStaffTarget] = useState<{ user: ManagedUser; mode: "link" | "create" } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
+  const [deleteDone, setDeleteDone] = useState(false);
   const [roleModuleFilter, setRoleModuleFilter] = useState("all");
   const [createRoleOpen, setCreateRoleOpen] = useState(false);
 
@@ -623,12 +624,13 @@ export function UsersManager({
       {pendingDelete ? (
         <AppDialog
           title="Delete this user?"
-          message={`Delete ${pendingDelete.name} permanently? Their login is removed from the system. Past records stay, and they cannot sign in again.`}
-          confirmLabel={pending ? "Deleting…" : "Delete"}
+          message={`Delete ${pendingDelete.name} permanently? Their login and staff listing are removed. They will not appear in this list again.`}
+          confirmLabel="Delete"
           tone="danger"
-          pending={pending}
+          pending={pending && !deleteDone}
+          succeeded={deleteDone}
           onCancel={() => {
-            if (!pending) setPendingDelete(null);
+            if (!pending && !deleteDone) setPendingDelete(null);
           }}
           onConfirm={() => {
             const id = pendingDelete.id;
@@ -639,10 +641,14 @@ export function UsersManager({
                 setPendingDelete(null);
                 return;
               }
-              setRows((current) => current.filter((user) => user.id !== id));
-              setPendingDelete(null);
-              setSelected(null);
-              router.refresh();
+              setDeleteDone(true);
+              window.setTimeout(() => {
+                setRows((current) => current.filter((user) => user.id !== id));
+                setPendingDelete(null);
+                setDeleteDone(false);
+                setSelected(null);
+                router.refresh();
+              }, 700);
             });
           }}
         />
@@ -1087,16 +1093,14 @@ function UserDetails({
               Enable Account
             </button>
           )}
-          {user.worker ? null : (
-            <button
-              type="button"
-              onClick={onDelete}
-              disabled={self || ownerProtected || pending}
-              className="h-10 rounded-[12px] bg-white px-3 text-[13px] font-semibold text-[#b42318] ring-1 ring-black/10 disabled:opacity-50"
-            >
-              Delete Account
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={self || ownerProtected || pending}
+            className="h-10 rounded-[12px] bg-white px-3 text-[13px] font-semibold text-[#b42318] ring-1 ring-black/10 disabled:opacity-50"
+          >
+            {user.worker ? "Delete worker" : "Delete Account"}
+          </button>
           {user.status !== "no_access" && !user.staff ? (
             <>
               <button
