@@ -1,5 +1,5 @@
 /* RM Holdings app-shell worker. Keep cache rules aligned with src/lib/offline/shell-policy.ts */
-const VERSION = "rm-shell-v5";
+const VERSION = "rm-shell-v6";
 const STATIC_CACHE = `${VERSION}-static`;
 const PRECACHE = ["/offline", "/login", "/manifest.webmanifest", "/file.svg"];
 const PUBLIC_PATHS = new Set([
@@ -15,6 +15,7 @@ const PUBLIC_PATHS = new Set([
   "/livestock/login",
   "/beekeeping/login",
 ]);
+const SHELL_DB = "rm-offline-shell";
 
 let currentUserId = "";
 
@@ -22,7 +23,7 @@ function headerMap(request) {
   return {
     rsc: request.headers.get("RSC"),
     "next-router-prefetch": request.headers.get("Next-Router-Prefetch"),
-    "next-router-state-tree": request.headers.get("Next-Router-State-Tree"),
+    "next-router-segment-prefetch": request.headers.get("Next-Router-Segment-Prefetch"),
   };
 }
 
@@ -32,11 +33,9 @@ function bypass(request) {
   if (url.origin !== self.location.origin) return true;
   if (url.pathname === "/offline-probe" || url.pathname === "/sw.js") return true;
   if (url.pathname.startsWith("/api")) return true;
-  if (url.searchParams.has("_rsc")) return true;
   const headers = headerMap(request);
-  if (headers.rsc === "1") return true;
   if (headers["next-router-prefetch"]) return true;
-  if (headers["next-router-state-tree"]) return true;
+  if (headers["next-router-segment-prefetch"]) return true;
   return false;
 }
 
@@ -52,15 +51,127 @@ function isStaticAsset(url) {
   );
 }
 
+function isAppPage(url) {
+  if (isStaticAsset(url)) return false;
+  if (url.pathname.startsWith("/_next/")) return false;
+  if (url.pathname.startsWith("/api")) return false;
+  return true;
+}
+
 function pageCacheName(userId) {
   const token = String(userId || "").replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 80);
   return `${VERSION}-pages-${token}`;
+}
+
+function requestKind(request) {
+  const url = new URL(request.url);
+  if (request.mode === "navigate") return "document";
+  if (request.headers.get("RSC") === "1" || url.searchParams.has("_rsc")) return "rsc";
+  return "document";
+}
+
+function pageKey(url, kind) {
+  const key = new URL(url.href);
+  key.hash = "";
+  key.searchParams.delete("_rsc");
+  key.searchParams.delete("rm-shell");
+  if (kind === "rsc") key.searchParams.set("rm-shell", "rsc");
+  return key.toString();
+}
+
+function openShellDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(SHELL_DB, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains("meta")) request.result.createObjectStore("meta");
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function readStoredUserId() {
+  try {
+    const db = await openShellDb();
+    try {
+      return await new Promise((resolve) => {
+        const tx = db.transaction("meta", "readonly");
+        const request = tx.objectStore("meta").get("userId");
+        request.onsuccess = () => resolve(typeof request.result === "string" ? request.result : "");
+        request.onerror = () => resolve("");
+      });
+    } finally {
+      db.close();
+    }
+  } catch {
+    return "";
+  }
+}
+
+async function writeStoredUserId(userId) {
+  try {
+    const db = await openShellDb();
+    try {
+      await new Promise((resolve) => {
+        const tx = db.transaction("meta", "readwrite");
+        tx.objectStore("meta").put(userId, "userId");
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      });
+    } finally {
+      db.close();
+    }
+  } catch {
+    /* The in-memory id still applies for this worker lifetime. */
+  }
+}
+
+async function activeUserId() {
+  if (currentUserId) return currentUserId;
+  currentUserId = await readStoredUserId();
+  return currentUserId;
+}
+
+async function storePage(request, response, userId) {
+  if (!userId || !response.ok || response.type !== "basic") return;
+  const url = new URL(request.url);
+  if (PUBLIC_PATHS.has(url.pathname)) return;
+  const kind = requestKind(request);
+  const headers = new Headers(response.headers);
+  headers.delete("set-cookie");
+  headers.delete("vary");
+  const body = await response.blob();
+  const stored = new Response(body, { status: 200, statusText: "OK", headers });
+  const cache = await caches.open(pageCacheName(userId));
+  await cache.put(pageKey(url, kind), stored);
+}
+
+async function cachedPage(request, userId) {
+  if (!userId) return null;
+  const url = new URL(request.url);
+  const kind = requestKind(request);
+  const cache = await caches.open(pageCacheName(userId));
+  const exact = await cache.match(pageKey(url, kind));
+  if (exact) return exact;
+  if (kind !== "document" || !url.search) return null;
+  const bare = new URL(url.pathname, url.origin);
+  return (await cache.match(pageKey(bare, "document"))) ?? null;
+}
+
+async function offlineDocument() {
+  const fallback = await caches.match("/offline", { cacheName: STATIC_CACHE });
+  if (fallback) return fallback;
+  return new Response("RM Holdings is offline. Open this page once while online to cache it.", {
+    status: 503,
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  });
 }
 
 self.addEventListener("message", (event) => {
   const data = event.data || {};
   if (data.type === "rm-offline-identity") {
     currentUserId = typeof data.userId === "string" ? data.userId : "";
+    event.waitUntil(writeStoredUserId(currentUserId));
   }
 });
 
@@ -91,39 +202,6 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return;
 
-  if (request.mode === "navigate") {
-    event.respondWith(
-      (async () => {
-        try {
-          const fresh = await fetch(request);
-          if (fresh.ok && fresh.type === "basic" && currentUserId && !PUBLIC_PATHS.has(url.pathname)) {
-            const copy = fresh.clone();
-            event.waitUntil(
-              caches
-                .open(pageCacheName(currentUserId))
-                .then((cache) => cache.put(request, copy))
-                .catch(() => undefined),
-            );
-          }
-          return fresh;
-        } catch {
-          if (currentUserId) {
-            const cache = await caches.open(pageCacheName(currentUserId));
-            const cached = await cache.match(request);
-            if (cached) return cached;
-          }
-          const fallback = await caches.match("/offline", { cacheName: STATIC_CACHE });
-          if (fallback) return fallback;
-          return new Response("RM Holdings is offline. Open this page once while online to cache it.", {
-            status: 503,
-            headers: { "Content-Type": "text/plain; charset=utf-8" },
-          });
-        }
-      })(),
-    );
-    return;
-  }
-
   if (isStaticAsset(url)) {
     if (self.location.hostname === "localhost" || self.location.hostname === "127.0.0.1") return;
     event.respondWith(
@@ -141,5 +219,28 @@ self.addEventListener("fetch", (event) => {
         }
       })(),
     );
+    return;
   }
+
+  if (!isAppPage(url)) return;
+
+  event.respondWith(
+    (async () => {
+      const userId = await activeUserId();
+      const kind = requestKind(request);
+      try {
+        const fresh = await fetch(request);
+        if (fresh.ok && fresh.type === "basic") {
+          const copy = fresh.clone();
+          event.waitUntil(storePage(request, copy, userId).catch(() => undefined));
+        }
+        return fresh;
+      } catch {
+        const cached = await cachedPage(request, userId);
+        if (cached) return cached;
+        if (kind === "rsc") return new Response("", { status: 503 });
+        return offlineDocument();
+      }
+    })(),
+  );
 });

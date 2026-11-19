@@ -1,4 +1,4 @@
-export const OFFLINE_SHELL_VERSION = "rm-shell-v5";
+export const OFFLINE_SHELL_VERSION = "rm-shell-v6";
 export const OFFLINE_IDENTITY_MESSAGE = "rm-offline-identity";
 
 const PUBLIC_SHELL_PATHS = new Set([
@@ -35,13 +35,11 @@ export function shouldBypassServiceWorkerCache(input: {
   if (input.method.toUpperCase() !== "GET") return true;
   if (!isSameOrigin(input.url, input.origin)) return true;
   const url = new URL(input.url);
-  if (url.pathname === "/offline-probe") return true;
+  if (url.pathname === "/offline-probe" || url.pathname === "/sw.js") return true;
   if (url.pathname.startsWith("/api")) return true;
-  if (url.searchParams.has("_rsc")) return true;
   const headers = input.headers ?? {};
-  if (headers.rsc === "1" || headers.RSC === "1") return true;
   if (headers["next-router-prefetch"] || headers["Next-Router-Prefetch"]) return true;
-  if (headers["next-router-state-tree"] || headers["Next-Router-State-Tree"]) return true;
+  if (headers["next-router-segment-prefetch"] || headers["Next-Router-Segment-Prefetch"]) return true;
   if (url.hostname.includes("supabase")) return true;
   return false;
 }

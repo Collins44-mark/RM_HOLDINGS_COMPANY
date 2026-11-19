@@ -404,7 +404,7 @@ test("interrupted supermarket sync leaves remaining school operations intact", a
   assert.equal(pending[0].type, "supermarket.create_purchase_order");
 });
 
-test("the service worker policy never caches mutations or RSC payloads", () => {
+test("the service worker caches visited pages, including in-app navigation, and skips mutations", () => {
   const origin = "https://rm-holdings-company.vercel.app";
   assert.equal(
     shouldBypassServiceWorkerCache({ method: "POST", url: `${origin}/farm/jobs`, origin }),
@@ -415,15 +415,25 @@ test("the service worker policy never caches mutations or RSC payloads", () => {
       method: "GET",
       url: `${origin}/farm/jobs?_rsc=1`,
       origin,
+      headers: { RSC: "1" },
     }),
-    true,
+    false,
   );
   assert.equal(
     shouldBypassServiceWorkerCache({
       method: "GET",
       url: `${origin}/farm/jobs`,
       origin,
-      headers: { RSC: "1" },
+      headers: { RSC: "1", "Next-Router-State-Tree": "%5B%22%22%5D" },
+    }),
+    false,
+  );
+  assert.equal(
+    shouldBypassServiceWorkerCache({
+      method: "GET",
+      url: `${origin}/farm/jobs`,
+      origin,
+      headers: { RSC: "1", "Next-Router-Prefetch": "1" },
     }),
     true,
   );
