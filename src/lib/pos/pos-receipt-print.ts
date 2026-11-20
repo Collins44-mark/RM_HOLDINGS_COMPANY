@@ -1,6 +1,7 @@
-import { APP_NAME, APP_TIMEZONE } from "@/lib/config/app";
-import { formatTzs } from "@/lib/format/currency";
+import { APP_TIMEZONE } from "@/lib/config/app";
+import { formatAmount, formatTzs } from "@/lib/format/currency";
 import { type PosCompletedSale } from "@/lib/data/sample-supermarket-pos";
+import { type SupermarketReceiptDetails } from "@/lib/supermarket/receipt-profile";
 
 const RECEIPT_COLS = 32;
 const SERIAL_BAUD = 9600;
@@ -227,7 +228,10 @@ async function writeBluetooth(characteristic: BluetoothCharacteristicLike, bytes
   }
 }
 
-export async function printReceiptViaBluetooth(sale: PosCompletedSale): Promise<PosPrintResult> {
+export async function printReceiptViaBluetooth(
+  sale: PosCompletedSale,
+  profile?: SupermarketReceiptDetails,
+): Promise<PosPrintResult> {
   const bluetooth = bluetoothApi();
   if (!bluetooth) return { status: "no-printer" };
   const device = rememberedBluetooth;
@@ -235,7 +239,7 @@ export async function printReceiptViaBluetooth(sale: PosCompletedSale): Promise<
   try {
     const characteristic = await writableCharacteristic(device);
     if (!characteristic) return { status: "no-printer" };
-    await writeBluetooth(characteristic, buildEscPosBytes(sale));
+    await writeBluetooth(characteristic, buildEscPosBytes(sale, profile));
     return { status: "printed", method: "bluetooth" };
   } catch (error) {
     const name = error instanceof DOMException ? error.name : "";
@@ -290,29 +294,33 @@ function invoiceLabel(sale: PosCompletedSale) {
   return `#${invoice}`;
 }
 
-function paymentLines(sale: PosCompletedSale) {
-  const lines: { label: string; value: string }[] = [{ label: "Payment", value: asText(sale.payment) }];
-  if (sale.allocations?.length) {
-    for (const row of sale.allocations) {
-      lines.push({
-        label: row.method,
-        value: formatTzs(asAmount(row.amount)),
-      });
-    }
-    return lines;
-  }
-  if (sale.payment === "Card") {
-    lines.push({ label: "Card Amount", value: formatTzs(asAmount(sale.cardAmount ?? sale.totalDue)) });
-  }
-  if (sale.payment === "Mixed") {
-    lines.push({ label: "Cash", value: formatTzs(asAmount(sale.mixedCash)) });
-    lines.push({ label: "Mobile Money", value: formatTzs(asAmount(sale.mixedMobile)) });
-  }
-  if (sale.payment === "Cash") {
-    lines.push({ label: "Cash Received", value: formatTzs(asAmount(sale.cashReceived)) });
-    lines.push({ label: "Change", value: formatTzs(asAmount(sale.change)) });
-  }
-  return lines;
+function receiptStoreName(sale: PosCompletedSale) {
+  const name = sale.store?.trim() ?? "";
+  if (!name || name === "—") return "";
+  return name;
+}
+
+function receiptProfile(sale: PosCompletedSale, profile?: SupermarketReceiptDetails): SupermarketReceiptDetails {
+  return {
+    storeName: profile?.storeName?.trim() || receiptStoreName(sale),
+    location: profile?.location?.trim() ?? "",
+    mobile: profile?.mobile?.trim() ?? "",
+    tin: profile?.tin?.trim() ?? "",
+    email: profile?.email?.trim() ?? "",
+    thanks: profile?.thanks?.trim() ?? "",
+  };
+}
+
+function centeredDetail(label: string, value: string) {
+  const text = value.trim();
+  if (!text) return "";
+  return `<p class="center">${escapeHtml(label)} ${escapeHtml(text)}</p>`;
+}
+
+function customerName(value: string | undefined | null) {
+  const name = value?.trim() ?? "";
+  if (!name || name === "—" || /^walk[-\s]?in(\s+customer)?$/i.test(name)) return "";
+  return name;
 }
 
 function itemRows(sale: PosCompletedSale) {
@@ -329,24 +337,32 @@ function itemRows(sale: PosCompletedSale) {
   });
 }
 
-export function buildPosReceiptHtml(sale: PosCompletedSale) {
+export function buildPosReceiptHtml(sale: PosCompletedSale, profile?: SupermarketReceiptDetails) {
   const items = itemRows(sale);
   const itemMarkup = items
     .map(
-      (item) => `<div class="item">
-        <p class="item-name">${escapeHtml(item.name)}</p>
-        <p class="item-line"><span>${item.quantity} × ${escapeHtml(formatTzs(item.unitPrice))}</span><span>${escapeHtml(formatTzs(item.lineTotal))}</span></p>
+      (item) => `<div class="item-line">
+        <span class="item-name">${escapeHtml(item.name)}</span>
+        <span class="num">${item.quantity}</span>
+        <span class="num">${escapeHtml(formatAmount(item.unitPrice))}</span>
+        <span class="num">${escapeHtml(formatAmount(item.lineTotal))}</span>
       </div>`,
     )
     .join("");
 
-  const extraPaymentMarkup = paymentLines(sale)
-    .filter((line) => line.label !== "Payment")
-    .map(
-      (line) =>
-        `<p><span class="label">${escapeHtml(line.label)}:</span>${escapeHtml(line.value)}</p>`,
-    )
-    .join("");
+  const namedCustomer = customerName(sale.customer);
+  const details = receiptProfile(sale, profile);
+  const customerMarkup = namedCustomer
+    ? `<p><span class="label">Customer:</span><span class="value">${escapeHtml(namedCustomer)}</span></p>`
+    : "";
+  const brand = [
+    details.storeName ? `<h1>${escapeHtml(details.storeName)}</h1>` : "",
+    details.location ? `<p class="center">${escapeHtml(details.location)}</p>` : "",
+    centeredDetail("Mobile:", details.mobile),
+    centeredDetail("TIN:", details.tin),
+    centeredDetail("Email:", details.email),
+  ].join("");
+  const thanks = details.thanks ? `<p class="thanks">${escapeHtml(details.thanks)}</p>` : "";
 
   return `<!doctype html>
 <html>
@@ -359,12 +375,15 @@ export function buildPosReceiptHtml(sale: PosCompletedSale) {
       html, body {
         margin: 0;
         padding: 0;
+        height: auto;
+        min-height: 0;
         background: #fff;
         color: #111;
       }
       body {
-        font-family: "Courier New", Courier, ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
         font-size: 12px;
+        font-weight: 400;
         line-height: 1.35;
         width: 72mm;
         max-width: 100%;
@@ -372,66 +391,82 @@ export function buildPosReceiptHtml(sale: PosCompletedSale) {
       .receipt {
         width: 72mm;
         max-width: 100%;
+        height: auto;
         box-sizing: border-box;
-        padding: 2mm 1.5mm 8mm;
+        padding: 2mm 1.5mm 12mm;
         color: #111;
         background: #fff;
       }
       h1 {
-        margin: 0 0 10px;
-        font-size: 14px;
+        margin: 0 0 6px;
+        font-size: 18px;
         font-weight: 700;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.01em;
         text-align: center;
-        text-transform: uppercase;
+      }
+      .center {
+        margin: 0 0 2px;
+        text-align: center;
+        font-weight: 400;
       }
       .meta { margin: 0 0 8px; }
-      .meta p { margin: 0 0 7px; }
+      .meta p {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin: 0 0 4px;
+      }
       .label {
-        display: block;
-        font-size: 11px;
-        font-weight: 700;
+        font-weight: 400;
+        color: #111;
+      }
+      .value {
+        text-align: right;
+        font-weight: 400;
       }
       .rule {
         margin: 8px 0;
         border: 0;
-        border-top: 1px dashed #111;
+        border-top: 1px solid #d7d7d7;
       }
-      .head {
-        margin: 0 0 6px;
-        font-weight: 700;
+      .cols, .item-line {
+        display: grid;
+        grid-template-columns: minmax(0, 1.6fr) 2.4em 4.4em 4.8em;
+        column-gap: 6px;
+        align-items: baseline;
       }
       .cols {
-        display: flex;
-        justify-content: space-between;
-        margin: 0 0 8px;
-        font-weight: 700;
+        margin: 0 0 6px;
+        font-size: 11px;
+        font-weight: 600;
         letter-spacing: 0.04em;
+        color: #333;
       }
-      .item { margin: 0 0 8px; }
-      .item-name { margin: 0; font-weight: 700; }
-      .item-line, .row, .cols {
+      .item-line { margin: 0 0 6px; }
+      .item-name { font-weight: 500; overflow-wrap: anywhere; }
+      .num { text-align: right; font-weight: 400; font-variant-numeric: tabular-nums; }
+      .row {
         display: flex;
         justify-content: space-between;
         gap: 8px;
       }
-      .item-line, .row { margin: 2px 0 0; }
-      .totals .row { margin: 3px 0 0; }
       .total {
-        margin-top: 6px;
+        margin-top: 4px;
         font-weight: 700;
-        font-size: 13px;
+        font-size: 14px;
       }
       .thanks {
         margin: 10px 0 0;
         text-align: center;
+        font-weight: 400;
+        color: #111;
       }
-      .thanks p { margin: 0 0 6px; }
       @media print {
         html, body {
           background: #fff !important;
           color: #000 !important;
           width: auto;
+          height: auto;
         }
         .receipt {
           width: 72mm;
@@ -443,43 +478,32 @@ export function buildPosReceiptHtml(sale: PosCompletedSale) {
   </head>
   <body>
     <article class="receipt">
-      <h1>${escapeHtml(APP_NAME)}</h1>
+      ${brand}
+      ${brand ? `<hr class="rule" />` : ""}
       <div class="meta">
-        <p><span class="label">Store:</span>${escapeHtml(asText(sale.store))}</p>
-        <p><span class="label">Invoice:</span>${escapeHtml(invoiceLabel(sale))}</p>
-        <p><span class="label">Date &amp; Time:</span>${escapeHtml(formatReceiptStamp(sale.soldAt))}</p>
-        <p><span class="label">Cashier:</span>${escapeHtml(asText(sale.cashier))}</p>
-        <p><span class="label">Customer:</span>${escapeHtml(asText(sale.customer))}</p>
+        <p><span class="label">Invoice:</span><span class="value">${escapeHtml(invoiceLabel(sale))}</span></p>
+        <p><span class="label">Date &amp; Time:</span><span class="value">${escapeHtml(formatReceiptStamp(sale.soldAt))}</span></p>
+        <p><span class="label">Cashier:</span><span class="value">${escapeHtml(asText(sale.cashier))}</span></p>
+        ${customerMarkup}
       </div>
       <hr class="rule" />
-      <p class="head">ITEM</p>
-      <p class="cols"><span>QTY&nbsp;&nbsp;&nbsp;PRICE</span><span>TOTAL</span></p>
+      <p class="cols"><span>ITEM</span><span class="num">QTY</span><span class="num">PRICE</span><span class="num">TOTAL</span></p>
       ${itemMarkup}
       <hr class="rule" />
-      <div class="totals">
-        <div class="row"><span>Subtotal</span><span>${escapeHtml(formatTzs(asAmount(sale.subtotal)))}</span></div>
-        <div class="row"><span>Discount</span><span>${escapeHtml(formatTzs(asAmount(sale.discount)))}</span></div>
-        <div class="row"><span>Tax</span><span>${escapeHtml(formatTzs(asAmount(sale.tax)))}</span></div>
-      </div>
-      <hr class="rule" />
       <div class="row total"><span>TOTAL</span><span>${escapeHtml(formatTzs(asAmount(sale.totalDue)))}</span></div>
-      <div class="meta" style="margin-top:8px">
-        <p><span class="label">Payment:</span>${escapeHtml(asText(sale.payment))}</p>
-        ${extraPaymentMarkup}
-      </div>
       <hr class="rule" />
-      <div class="thanks">
-        <p>Thank you for shopping with us.</p>
-        <p>${escapeHtml(APP_NAME)}</p>
-      </div>
+      ${thanks}
     </article>
   </body>
 </html>`;
 }
 
-export async function printReceiptViaSystem(sale: PosCompletedSale): Promise<PosPrintResult> {
+export async function printReceiptViaSystem(
+  sale: PosCompletedSale,
+  profile?: SupermarketReceiptDetails,
+): Promise<PosPrintResult> {
   if (typeof document === "undefined") return { status: "no-printer" };
-  const html = buildPosReceiptHtml(sale);
+  const html = buildPosReceiptHtml(sale, profile);
   const iframe = document.createElement("iframe");
   iframe.setAttribute("title", "POS Receipt");
   iframe.setAttribute("aria-hidden", "true");
@@ -503,6 +527,14 @@ export async function printReceiptViaSystem(sale: PosCompletedSale): Promise<Pos
       const frameWindow = iframe.contentWindow;
       const receipt = iframe.contentDocument?.querySelector(".receipt");
       if (!frameWindow || !receipt) return;
+      const height = Math.ceil(receipt.scrollHeight);
+      iframe.style.height = `${height + 24}px`;
+      const pageMm = Math.max(40, Math.ceil((height + 24) * 25.4 / 96) + 4);
+      const pageStyle = iframe.contentDocument?.createElement("style");
+      if (pageStyle) {
+        pageStyle.textContent = `@page { size: 80mm ${pageMm}mm; margin: 3mm 2.5mm; }`;
+        iframe.contentDocument?.head.appendChild(pageStyle);
+      }
       const cleanup = () => {
         iframe.remove();
       };
@@ -541,19 +573,6 @@ function padRow(left: string, right: string, width = RECEIPT_COLS) {
   return `${cleanLeft}${" ".repeat(space)}${cleanRight}`.slice(0, width);
 }
 
-function wrapLine(value: string, width = RECEIPT_COLS) {
-  const text = value.trim();
-  if (!text) return [""];
-  const lines: string[] = [];
-  let remaining = text;
-  while (remaining.length > width) {
-    lines.push(remaining.slice(0, width));
-    remaining = remaining.slice(width);
-  }
-  lines.push(remaining);
-  return lines;
-}
-
 function centerLine(value: string, width = RECEIPT_COLS) {
   const text = value.slice(0, width);
   const space = Math.max(0, width - text.length);
@@ -561,72 +580,68 @@ function centerLine(value: string, width = RECEIPT_COLS) {
   return `${" ".repeat(left)}${text}`;
 }
 
+function centeredChunks(value: string, width = RECEIPT_COLS) {
+  const text = value.trim();
+  const lines: string[] = [];
+  for (let index = 0; index < text.length; index += width) {
+    lines.push(centerLine(text.slice(index, index + width), width));
+  }
+  return lines;
+}
+
 function rule() {
   return "-".repeat(RECEIPT_COLS);
 }
 
-export function buildEscPosBytes(sale: PosCompletedSale) {
+function receiptColumns(item: string, qty: string, price: string, total: string, width = RECEIPT_COLS) {
+  const qtyText = qty.slice(0, 3).padStart(3);
+  const priceText = price.slice(0, 7).padStart(7);
+  const totalText = total.slice(0, 7).padStart(7);
+  const itemWidth = Math.max(4, width - (qtyText.length + priceText.length + totalText.length + 3));
+  return `${item.slice(0, itemWidth).padEnd(itemWidth)} ${qtyText} ${priceText} ${totalText}`.slice(0, width);
+}
+
+export function buildEscPosBytes(sale: PosCompletedSale, profile?: SupermarketReceiptDetails) {
   const ESC = 0x1b;
   const GS = 0x1d;
   const chunks: number[] = [ESC, 0x40, ESC, 0x61, 0x00];
   const write = (line = "") => {
     chunks.push(...encodeAscii(line), 0x0a);
   };
+  const bold = (on: boolean) => {
+    chunks.push(ESC, 0x45, on ? 0x01 : 0x00);
+  };
 
-  write(centerLine(APP_NAME.toUpperCase()));
-  write();
-  write("Store:");
-  write(asText(sale.store));
-  write();
-  write("Invoice:");
-  write(invoiceLabel(sale));
-  write();
-  write("Date & Time:");
-  write(formatReceiptStamp(sale.soldAt));
-  write();
-  write("Cashier:");
-  write(asText(sale.cashier));
-  write();
-  write("Customer:");
-  write(asText(sale.customer));
+  const details = receiptProfile(sale, profile);
+  if (details.storeName) {
+    bold(true);
+    for (const line of centeredChunks(details.storeName)) write(line);
+    bold(false);
+  }
+  if (details.location) for (const line of centeredChunks(details.location)) write(line);
+  if (details.mobile) for (const line of centeredChunks(`Mobile: ${details.mobile}`)) write(line);
+  if (details.tin) for (const line of centeredChunks(`TIN: ${details.tin}`)) write(line);
+  if (details.email) for (const line of centeredChunks(`Email: ${details.email}`)) write(line);
   write(rule());
-  write("ITEM");
-  write(padRow("QTY    PRICE", "TOTAL"));
-  write();
+  write(padRow("Invoice:", invoiceLabel(sale)));
+  write(padRow("Date & Time:", formatReceiptStamp(sale.soldAt)));
+  write(padRow("Cashier:", asText(sale.cashier)));
+  const namedCustomer = customerName(sale.customer);
+  if (namedCustomer) write(padRow("Customer:", namedCustomer));
+  write(rule());
+  write(receiptColumns("ITEM", "QTY", "PRICE", "TOTAL"));
   for (const item of itemRows(sale)) {
-    for (const line of wrapLine(item.name)) write(line);
-    write(padRow(`${item.quantity} x ${formatTzs(item.unitPrice)}`, formatTzs(item.lineTotal)));
-    write();
+    write(receiptColumns(item.name, String(item.quantity), formatAmount(item.unitPrice), formatAmount(item.lineTotal)));
   }
   write(rule());
-  write(padRow("Subtotal", formatTzs(asAmount(sale.subtotal))));
-  write(padRow("Discount", formatTzs(asAmount(sale.discount))));
-  write(padRow("Tax", formatTzs(asAmount(sale.tax))));
-  write(rule());
+  bold(true);
   write(padRow("TOTAL", formatTzs(asAmount(sale.totalDue))));
-  write();
-  write("Payment:");
-  write(asText(sale.payment));
-  if (sale.payment === "Cash") {
-    write();
-    write("Cash Received:");
-    write(formatTzs(asAmount(sale.cashReceived)));
-    write();
-    write("Change:");
-    write(formatTzs(asAmount(sale.change)));
-  } else {
-    for (const line of paymentLines(sale).filter((row) => row.label !== "Payment")) {
-      write();
-      write(`${line.label}:`);
-      write(line.value);
-    }
-  }
+  bold(false);
   write(rule());
-  write();
-  write(centerLine("Thank you for shopping"));
-  write(centerLine("with us."));
-  write();
-  write(centerLine(APP_NAME));
+  if (details.thanks) {
+    write();
+    for (const line of centeredChunks(details.thanks)) write(line);
+  }
   write();
   write();
   chunks.push(GS, 0x56, 0x00);
@@ -644,7 +659,10 @@ async function ensurePortOpen(port: SerialPortLike) {
   }
 }
 
-export async function printReceiptViaEscPos(sale: PosCompletedSale): Promise<PosPrintResult> {
+export async function printReceiptViaEscPos(
+  sale: PosCompletedSale,
+  profile?: SupermarketReceiptDetails,
+): Promise<PosPrintResult> {
   bindDisconnect();
   const serial = serialApi();
   if (!serial) return { status: "no-printer" };
@@ -666,7 +684,7 @@ export async function printReceiptViaEscPos(sale: PosCompletedSale): Promise<Pos
     await ensurePortOpen(port);
     const writer = port.writable?.getWriter();
     if (!writer) return { status: "need-permission" };
-    await writer.write(buildEscPosBytes(sale));
+    await writer.write(buildEscPosBytes(sale, profile));
     writer.releaseLock();
     return { status: "printed", method: "escpos" };
   } catch (error) {
@@ -680,19 +698,20 @@ export async function printReceiptViaEscPos(sale: PosCompletedSale): Promise<Pos
 export async function printCompletedSale(
   sale: PosCompletedSale,
   mode: "auto" | "system" | "escpos" | "bluetooth" = "auto",
+  profile?: SupermarketReceiptDetails,
 ): Promise<PosPrintResult> {
-  if (mode === "system") return printReceiptViaSystem(sale);
-  if (mode === "bluetooth") return printReceiptViaBluetooth(sale);
+  if (mode === "system") return printReceiptViaSystem(sale, profile);
+  if (mode === "bluetooth") return printReceiptViaBluetooth(sale, profile);
   if (mode === "escpos") {
     const connected = await hasGrantedEscPosPrinter();
     if (!connected) return { status: "need-permission" };
-    return printReceiptViaEscPos(sale);
+    return printReceiptViaEscPos(sale, profile);
   }
 
   if (await hasGrantedEscPosPrinter()) {
-    const direct = await printReceiptViaEscPos(sale);
+    const direct = await printReceiptViaEscPos(sale, profile);
     if (direct.status === "printed") return direct;
     if (direct.status === "need-permission") return direct;
   }
-  return printReceiptViaSystem(sale);
+  return printReceiptViaSystem(sale, profile);
 }

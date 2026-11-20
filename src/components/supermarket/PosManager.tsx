@@ -73,6 +73,7 @@ import {
   selectReceiptPrinter,
   type ReceiptPrinterChoice,
 } from "@/lib/pos/pos-receipt-print";
+import { EMPTY_RECEIPT_DETAILS, type SupermarketReceiptDetails } from "@/lib/supermarket/receipt-profile";
 
 const glass =
   "rounded-[26px] border border-white/75 bg-white/78 shadow-[0_12px_32px_rgba(15,35,64,0.045),inset_0_1px_0_rgba(255,255,255,0.92)] backdrop-blur-xl";
@@ -120,7 +121,7 @@ const PAYMENT_META: Record<
   Mixed: { icon: ArrowLeftRight, label: "Mixed" },
 };
 
-export function PosManager() {
+export function PosManager({ receipt = EMPTY_RECEIPT_DETAILS }: { receipt?: SupermarketReceiptDetails }) {
   const inventory = useSupermarketInventory();
   const searchRef = useRef<HTMLInputElement>(null);
   const searchTimer = useRef<number | null>(null);
@@ -609,6 +610,7 @@ export function PosManager() {
       cardAmount: cardPaid,
       mixedCash: mixedRows.filter((row) => row.method === "Cash").reduce((sum, row) => sum + splitAmount(row), 0),
       mixedMobile: mixedRows.filter((row) => row.method === "Mobile Money").reduce((sum, row) => sum + splitAmount(row), 0),
+      store: receipt.storeName,
       allocations: mixedRows.map((row) => ({
         method: row.method,
         amount: splitAmount(row),
@@ -635,10 +637,10 @@ export function PosManager() {
     try {
       const chosen = mode === "auto" && selectedPrinterId ? selectReceiptPrinter(selectedPrinterId) : null;
       const result = chosen === "bluetooth"
-        ? await printReceiptViaBluetooth(sale)
+        ? await printReceiptViaBluetooth(sale, receipt)
         : chosen === "serial"
-          ? await printReceiptViaEscPos(sale)
-          : await printCompletedSale(sale, mode);
+          ? await printReceiptViaEscPos(sale, receipt)
+          : await printCompletedSale(sale, mode, receipt);
       if (result.status === "printed") {
         setPrinterNotice("none");
         if (result.method === "escpos") setEscPosReady(true);
@@ -670,7 +672,7 @@ export function PosManager() {
       }
       await detectPrinters();
       setSelectedPrinterId(`bluetooth:${device.id}`);
-      const result = await printReceiptViaBluetooth(sale);
+      const result = await printReceiptViaBluetooth(sale, receipt);
       if (result.status === "printed") {
         setPrinterNotice("none");
         return;
@@ -694,7 +696,7 @@ export function PosManager() {
         setPrinterNotice(isEscPosSupported() ? "need-permission" : "no-printer");
         return;
       }
-      const result = await printReceiptViaEscPos(sale);
+      const result = await printReceiptViaEscPos(sale, receipt);
       if (result.status === "printed") {
         setEscPosReady(true);
         setPrinterNotice("none");

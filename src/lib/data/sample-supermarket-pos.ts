@@ -228,12 +228,13 @@ export function createCompletedSaleSnapshot(input: {
   mixedCash: number;
   mixedMobile: number;
   allocations?: { method: string; amount: number; provider?: string }[];
+  store?: string;
 }): PosCompletedSale {
   const items = input.items.map((item) => ({ ...item }));
   const sale: PosCompletedSale = {
     invoice: input.invoiceLabel?.trim() || formatInvoiceNumber(input.invoiceNumber),
     soldAt: input.soldAt,
-    store: POS_STORE,
+    store: input.store?.trim() ?? "",
     cashier: POS_CASHIER,
     customer: input.customer,
     items,

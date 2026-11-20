@@ -95,7 +95,7 @@ test("an owner still lands on the group dashboard", () => {
   assert.equal(landingPathFor(user({ role: "OWNER", modules: ["*"], permissions: ["*"] })), "/dashboard");
 });
 
-test("an administrator signs in to the admin area without system settings", () => {
+test("an administrator signs in to the admin area and can open system settings", () => {
   const identity = user({
     role: "ADMINISTRATOR",
     modules: ["school", "rice", "farm", "supermarket", "property", "livestock", "beekeeping"],
@@ -111,5 +111,5 @@ test("an administrator signs in to the admin area without system settings", () =
   assert.equal(landingPathFor(identity), "/dashboard");
   assert.equal(canAccessPath(identity, "/owner/users"), true);
   assert.equal(canAccessPath(identity, "/school/students"), true);
-  assert.equal(canAccessPath(identity, "/owner/settings"), false);
+  assert.equal(canAccessPath(identity, "/owner/settings"), true);
 });

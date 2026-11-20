@@ -2,7 +2,7 @@
 
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
-import { requireOwner } from "@/lib/auth/session";
+import { requirePlatformAdmin } from "@/lib/auth/session";
 import {
   BUSINESS_UNITS_CACHE_TAG,
   updateBusinessUnitLocation,
@@ -23,7 +23,7 @@ export async function saveBusinessUnitLocationAction(
   _prev: BusinessUnitLocationState,
   formData: FormData,
 ): Promise<BusinessUnitLocationState> {
-  await requireOwner();
+  await requirePlatformAdmin();
 
   const parsed = schema.safeParse({
     businessUnitId: formData.get("businessUnitId"),

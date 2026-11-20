@@ -79,6 +79,7 @@ export function ownerRoutePermission(pathname: string): string | null {
 
 export function canAccessOwnerPath(identity: AccessIdentity, pathname: string) {
   if (isOwnerRole(identity.role)) return true;
+  if (isAdministratorRole(identity.role) && pathname.startsWith("/owner/settings")) return true;
   const permission = ownerRoutePermission(pathname);
   if (!permission) {
     return isFinanceRole(identity.role) || hasPermission(identity, "platform.dashboard.view");

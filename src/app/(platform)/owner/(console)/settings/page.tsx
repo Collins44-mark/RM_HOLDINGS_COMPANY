@@ -1,8 +1,7 @@
 import { GeneralSettingsForm } from "@/components/settings/GeneralSettingsForm";
 import { BusinessUnitLocationsForm } from "@/components/settings/BusinessUnitLocationsForm";
-import { MobileMoneyProvidersForm } from "@/components/settings/MobileMoneyProvidersForm";
 import { requireAuth } from "@/lib/auth/session";
-import { isOwnerRole } from "@/lib/auth/rbac";
+import { isPlatformAdminRole } from "@/lib/auth/rbac";
 import { listBusinessUnitLocationRows } from "@/lib/data/business-units";
 import { getOrganizationSettings } from "@/lib/data/organization-settings";
 import { getTranslator } from "@/lib/i18n/server";
@@ -11,7 +10,7 @@ export const metadata = { title: "System Settings" };
 
 export default async function SettingsPage() {
   const [user, t] = await Promise.all([requireAuth(), getTranslator()]);
-  const canEdit = isOwnerRole(user.roleCode);
+  const canEdit = isPlatformAdminRole(user.roleCode);
   const [settings, units] = await Promise.all([
     getOrganizationSettings(),
     listBusinessUnitLocationRows(),
@@ -29,7 +28,6 @@ export default async function SettingsPage() {
       </div>
       <GeneralSettingsForm settings={settings} canEdit={canEdit} />
       <BusinessUnitLocationsForm units={units} canEdit={canEdit} />
-      <MobileMoneyProvidersForm canEdit={canEdit} />
     </div>
   );
 }

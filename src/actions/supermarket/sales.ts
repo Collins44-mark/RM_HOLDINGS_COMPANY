@@ -9,6 +9,7 @@ import { identityFromUser } from "@/lib/auth/types";
 import {
   actionErrorMessage,
   mapDbError,
+  requireAnySupermarketPermission,
   requireSupermarketContext,
   requireSupermarketPermission,
   SupermarketError,
@@ -20,6 +21,7 @@ import {
   paymentDisplayType,
 } from "@/lib/supermarket/payment-display";
 import { formatMobileMoneyLabel } from "@/lib/supermarket/pos-payments";
+import { RECEIPT_STORE_MARKER } from "@/lib/supermarket/store-settings";
 import { buildPosSaleRpcArgs, posIdempotencyRpcMissing } from "@/lib/supermarket/pos-idempotency";
 import { mapExpense, mapPayment, mapPromotion, mapSale } from "@/lib/supermarket/mappers";
 import type {
@@ -211,8 +213,9 @@ export async function getPosCheckoutOptionsAction() {
     const [customersRes, historyRes, providersRes] = await Promise.all([
       supabase
         .from("sm_pos_customers")
-        .select("id, name")
+        .select("id, name, phone")
         .eq("business_unit_id", businessUnitId)
+        .neq("phone", RECEIPT_STORE_MARKER)
         .order("name")
         .limit(200),
       supabase
@@ -299,7 +302,10 @@ export type PaymentProviderRecord = {
 
 export async function listMobileMoneyProvidersAction() {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketPermission("platform.settings.manage");
+    const { supabase, businessUnitId } = await requireAnySupermarketPermission([
+      "platform.settings.manage",
+      "supermarket.settings.manage",
+    ]);
     const { data, error } = await supabase
       .from("sm_payment_providers")
       .select("id, name, payment_number, is_active")
@@ -329,7 +335,10 @@ export async function upsertMobileMoneyProviderAction(input: {
   isActive?: boolean;
 }) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketPermission("platform.settings.manage");
+    const { supabase, businessUnitId } = await requireAnySupermarketPermission([
+      "platform.settings.manage",
+      "supermarket.settings.manage",
+    ]);
     const name = input.name.trim();
     const paymentNumber = input.paymentNumber.trim();
     if (!name) throw new SupermarketError("Enter a display name.", "VALIDATION");
@@ -366,7 +375,10 @@ export async function upsertMobileMoneyProviderAction(input: {
 
 export async function setMobileMoneyProviderActiveAction(input: { id: string; isActive: boolean }) {
   try {
-    const { supabase, businessUnitId } = await requireSupermarketPermission("platform.settings.manage");
+    const { supabase, businessUnitId } = await requireAnySupermarketPermission([
+      "platform.settings.manage",
+      "supermarket.settings.manage",
+    ]);
     providerLabelCache.delete(businessUnitId);
     const { error } = await supabase
       .from("sm_payment_providers")

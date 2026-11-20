@@ -36,9 +36,12 @@ import {
 } from "@/lib/data/sample-supermarket-sales";
 import { refreshSales, useSupermarketSales } from "@/lib/supermarket/client-stores";
 import { paymentLineLabel, parseStoredProvider, POS_TENDER_METHODS, salesPaymentColumnLabel, type SalesPaymentFilter } from "@/lib/supermarket/pos-payments";
+import { printReceiptViaSystem } from "@/lib/pos/pos-receipt-print";
+import type { PosCompletedSale } from "@/lib/data/sample-supermarket-pos";
+import { EMPTY_RECEIPT_DETAILS, type SupermarketReceiptDetails } from "@/lib/supermarket/receipt-profile";
 import type { SupermarketSale as DbSale } from "@/lib/supermarket/types";
 
-function mapDbSale(sale: DbSale): SupermarketSale {
+function mapDbSale(sale: DbSale, storeName: string): SupermarketSale {
   const soldAt = sale.date;
   const payment: SalesPayment = sale.payment;
   const status: SalesStatus =
@@ -51,7 +54,7 @@ function mapDbSale(sale: DbSale): SupermarketSale {
     timeLabel: soldAt.includes("T") ? soldAt.slice(11, 16) : "—",
     customer: sale.customer,
     cashier: sale.cashier,
-    store: "Main Store",
+    store: storeName,
     payment,
     paymentLines: (sale.payments ?? []).map((line) => ({
       method: line.method,
@@ -374,7 +377,7 @@ function PeriodControl({
   );
 }
 
-export function SalesManager() {
+export function SalesManager({ receipt = EMPTY_RECEIPT_DETAILS }: { receipt?: SupermarketReceiptDetails }) {
   const [periodPreset, setPeriodPreset] = useState<SalesPeriodPreset>("week");
   const [customRange, setCustomRange] = useState<SalesDateRange>({ from: "2026-09-01", to: "2026-09-14" });
   const [cashier, setCashier] = useState("all");
@@ -400,8 +403,8 @@ export function SalesManager() {
   }, [period.start, period.end]);
 
   const liveSales = useMemo(
-    () => salesState.sales.map(mapDbSale),
-    [salesState.sales],
+    () => salesState.sales.map((sale) => mapDbSale(sale, receipt.storeName)),
+    [salesState.sales, receipt.storeName],
   );
   const cashiers = useMemo(
     () => ["all", ...[...new Set(liveSales.map((sale) => sale.cashier).filter(Boolean))].sort()],
@@ -454,12 +457,7 @@ export function SalesManager() {
   }
 
   function printSale(sale: SupermarketSale) {
-    const popup = window.open("", "_blank", "noopener,noreferrer,width=720,height=900");
-    if (!popup) return;
-    popup.document.write(receiptMarkup(sale));
-    popup.document.close();
-    popup.focus();
-    popup.print();
+    void printReceiptViaSystem(receiptSale(sale, receipt.storeName), receipt);
   }
 
   return (
@@ -1287,24 +1285,28 @@ function ActionItem({ label, onSelect }: { label: string; onSelect: () => void }
   );
 }
 
-function receiptMarkup(sale: SupermarketSale) {
-  const rows = sale.lines
-    .map(
-      (item) =>
-        `<tr><td>${item.name}</td><td>${item.quantity} × ${item.unitPrice.toLocaleString("en-US")}</td><td>${formatTzs(item.quantity * item.unitPrice)}</td></tr>`,
-    )
-    .join("");
-  return `<!doctype html><html><head><title>${sale.id}</title>
-    <style>body{font-family:ui-sans-serif,system-ui;padding:24px;color:#0b2244} table{width:100%;border-collapse:collapse} td{padding:6px 0;font-size:13px} h1{font-size:20px}</style>
-    </head><body>
-    <h1>Receipt #${sale.id}</h1>
-    <p>${sale.dateLabel} ${sale.timeLabel} · ${sale.status}</p>
-    <p>Customer: ${sale.customer}<br>Cashier: ${sale.cashier}<br>Payment: ${
-      sale.paymentLines?.length
-        ? sale.paymentLines.map((line) => `${line.method} ${formatTzs(line.amount)}`).join("; ")
-        : sale.payment
-    }</p>
-    <table>${rows}</table>
-    <p><strong>Total ${formatTzs(saleTotal(sale))}</strong></p>
-    </body></html>`;
+function receiptSale(sale: SupermarketSale, storeName: string): PosCompletedSale {
+  return {
+    invoice: sale.id,
+    soldAt: new Date(sale.soldAt),
+    store: storeName.trim() || sale.store.trim(),
+    cashier: sale.cashier,
+    customer: sale.customer,
+    items: sale.lines.map((line, index) => ({
+      id: String(index),
+      name: line.name,
+      sku: "",
+      barcode: "",
+      category: "",
+      unitPrice: line.unitPrice,
+      quantity: line.quantity,
+      stock: 0,
+      accent: "",
+    })),
+    subtotal: sale.amount,
+    discount: sale.discount,
+    tax: 0,
+    totalDue: saleTotal(sale),
+    payment: sale.payment === "Bank" ? "Card" : sale.payment,
+  };
 }

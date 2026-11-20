@@ -185,6 +185,7 @@ export const SUPERMARKET_NAV: NavItem[] = [
     label: "Reports",
     icon: "reports",
   },
+  { href: "/supermarket/settings", label: "Settings", icon: "settings" },
 ];
 
 export const PROPERTY_NAV: NavItem[] = [

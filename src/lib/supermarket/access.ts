@@ -2,7 +2,7 @@ import { cache } from "react";
 import { unstable_rethrow } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth/session";
-import { isOwnerRole } from "@/lib/auth/rbac";
+import { isOwnerRole, isPlatformAdminRole } from "@/lib/auth/rbac";
 import { matchPermission } from "@/lib/config/permissions";
 
 export type SupermarketContext = {
@@ -225,7 +225,7 @@ export async function requireSupermarketPermission(permission: string): Promise<
   const ctx = await requireSupermarketContext();
   const user = await requireAuth();
 
-  if (isOwnerRole(user.roleCode)) {
+  if (isOwnerRole(user.roleCode) || (permission === "platform.settings.manage" && isPlatformAdminRole(user.roleCode))) {
     return ctx;
   }
 
@@ -239,6 +239,7 @@ export async function requireSupermarketPermission(permission: string): Promise<
 
 function identityAllows(user: Awaited<ReturnType<typeof requireAuth>>, permission: string) {
   if (isOwnerRole(user.roleCode)) return true;
+  if (permission === "platform.settings.manage" && isPlatformAdminRole(user.roleCode)) return true;
   return user.permissions.some((matcher) => matcher !== "*" && matchPermission(permission, matcher));
 }
 

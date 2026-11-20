@@ -2,7 +2,7 @@
 
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
-import { requireOwner } from "@/lib/auth/session";
+import { requirePlatformAdmin } from "@/lib/auth/session";
 import { writeAuditEvent } from "@/lib/audit";
 import {
   isSupportedCurrency,
@@ -32,7 +32,7 @@ export async function saveOrganizationSettingsAction(
   _prev: OrganizationSettingsState,
   formData: FormData,
 ): Promise<OrganizationSettingsState> {
-  await requireOwner();
+  await requirePlatformAdmin();
 
   const parsed = schema.safeParse({
     organisationName: formData.get("organisationName"),
@@ -103,7 +103,7 @@ export async function saveOrganizationSettingsAction(
 }
 
 export async function saveOrganizationLogoAction(image: string): Promise<OrganizationSettingsState> {
-  await requireOwner();
+  await requirePlatformAdmin();
   if (!isStoredImage(image)) return { error: "Choose a smaller logo image." };
   const result = await updateOrganizationLogo(image);
   if (!result.ok) return { error: result.error };
@@ -121,7 +121,7 @@ export async function saveOrganizationLogoAction(image: string): Promise<Organiz
 }
 
 export async function removeOrganizationLogoAction(): Promise<OrganizationSettingsState> {
-  await requireOwner();
+  await requirePlatformAdmin();
   const result = await updateOrganizationLogo("");
   if (!result.ok) return { error: result.error };
   await writeAuditEvent({

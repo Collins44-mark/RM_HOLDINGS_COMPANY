@@ -113,6 +113,7 @@ const MODULE_ENTRY_PAGES: Record<string, string[]> = {
     "/supermarket/finance",
     "/supermarket/reconciliation",
     "/supermarket/reports",
+    "/supermarket/settings",
   ],
 };
 

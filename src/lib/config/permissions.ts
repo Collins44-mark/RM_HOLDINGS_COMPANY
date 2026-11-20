@@ -31,6 +31,7 @@ export const ADMINISTRATOR_PERMISSION_MATCHERS = [
   "platform.finance.*",
   "platform.reports.view",
   "platform.business_units.view",
+  "platform.settings.manage",
   "school.*",
   "rice.*",
   "farm.*",
@@ -165,6 +166,7 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "petty_cash", actions: ["view", "create", "approve"] },
       { resource: "tax", actions: ["view", "manage"] },
       { resource: "reports", actions: ["view"] },
+      { resource: "settings", actions: ["view", "manage"] },
     ]).map((code) => ({ module: "supermarket", code, name: titleize(code) })),
     ...expand("property", [
       { resource: "dashboard", actions: ["view"] },
@@ -425,7 +427,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     code: ROLE_CODES.ADMINISTRATOR,
     name: "Administrator",
-    description: "IT administrator. Signs in to the admin area and works across every module. Cannot change the Owner, system settings, or role templates.",
+    description: "IT administrator. Signs in to the admin area, works across every module, and can use system settings. Cannot change the Owner or role templates.",
     modules: ["*"],
     permissionMatchers: [...ADMINISTRATOR_PERMISSION_MATCHERS],
   },
