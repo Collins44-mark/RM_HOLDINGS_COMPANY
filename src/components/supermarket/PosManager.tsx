@@ -16,6 +16,7 @@ import {
   Pause,
   Plus,
   Printer,
+  ScanLine,
   Search,
   Smartphone,
   Trash2,
@@ -60,6 +61,7 @@ import { APP_TIMEZONE } from "@/lib/config/app";
 import { normalizeBarcode } from "@/lib/supermarket/barcode";
 import { BarcodeScanButton } from "@/components/supermarket/barcode/BarcodeScannerModal";
 import { useHardwareBarcodeScan } from "@/components/supermarket/barcode/useHardwareBarcodeScan";
+import { hidScannerAvailable, requestBarcodeHidDevice, type BarcodeScannerStatus } from "@/lib/supermarket/barcode-scanner";
 import {
   connectBluetoothPrinter,
   connectEscPosPrinter,
@@ -163,6 +165,11 @@ export function PosManager({ receipt = EMPTY_RECEIPT_DETAILS }: { receipt?: Supe
   const [filterQuery, setFilterQuery] = useState("");
   const [scanNotice, setScanNotice] = useState("");
   const [scanOk, setScanOk] = useState(false);
+  const [scannerStatus, setScannerStatus] = useState<BarcodeScannerStatus | "product-found">("ready");
+  const [cameraMode, setCameraMode] = useState(false);
+  const [hidAvailable, setHidAvailable] = useState(false);
+  const foundTimer = useRef<number | null>(null);
+  const foundUntil = useRef(0);
   const pendingScanRef = useRef<string | null>(null);
   const [category, setCategory] = useState<string>("all");
   const [items, setItems] = useState<PosCartItem[]>([]);
@@ -247,8 +254,7 @@ export function PosManager({ receipt = EMPTY_RECEIPT_DETAILS }: { receipt?: Supe
     setInvoiceStamp((current) => current ?? new Date());
     setHeldSales(readHeldSales());
     searchRef.current?.focus();
-    void import("@zxing/browser");
-    void import("@zxing/library");
+    setHidAvailable(hidScannerAvailable());
   }, []);
 
   function rememberHeldSales(updater: (current: PosHeldSale[]) => PosHeldSale[]) {
@@ -510,6 +516,10 @@ export function PosManager({ receipt = EMPTY_RECEIPT_DETAILS }: { receipt?: Supe
     }
     setScanOk(true);
     setScanNotice(`Added ${match.name}`);
+    setScannerStatus("product-found");
+    foundUntil.current = Date.now() + 1200;
+    if (foundTimer.current) window.clearTimeout(foundTimer.current);
+    foundTimer.current = window.setTimeout(() => setScannerStatus("ready"), 1200);
     addProduct(match);
     if (searchRef.current) searchRef.current.value = "";
     setQuery("");
@@ -539,10 +549,14 @@ export function PosManager({ receipt = EMPTY_RECEIPT_DETAILS }: { receipt?: Supe
   useHardwareBarcodeScan({
     inputRef: searchRef,
     onScan: (code) => applyBarcodeRef.current(code),
+    onStatus: (status) => {
+      if (status === "input-detected") clearSearchSoon();
+      if (status === "ready" && Date.now() < foundUntil.current) return;
+      setScannerStatus(status);
+    },
     enabled: !completed,
     captureUnfocused: !completed,
     handleFocusedEnter: false,
-    duplicateWindowMs: 80,
   });
 
   async function completeSale() {
@@ -786,7 +800,7 @@ export function PosManager({ receipt = EMPTY_RECEIPT_DETAILS }: { receipt?: Supe
       <div className="grid grid-cols-1 items-start gap-3.5 md:grid-cols-[minmax(0,1fr)_minmax(22rem,28rem)]">
         <section className={cn(glass, "min-w-0 p-3 sm:p-5")}>
           <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-navy">Products</h2>
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <label className="relative min-w-0 flex-1">
               <span className="sr-only">Search products, SKU, barcode</span>
               <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={1.9} />
@@ -794,11 +808,7 @@ export function PosManager({ receipt = EMPTY_RECEIPT_DETAILS }: { receipt?: Supe
                 ref={searchRef}
                 onChange={(event) => {
                   const value = event.target.value;
-                  const code = normalizeBarcode(value);
-                  if (code.length >= 4 && productByCode.has(code.toLowerCase())) {
-                    commitScan(code);
-                    return;
-                  }
+                  setScanNotice("");
                   clearSearchSoon();
                   searchTimer.current = window.setTimeout(() => {
                     setQuery(value);
@@ -818,8 +828,27 @@ export function PosManager({ receipt = EMPTY_RECEIPT_DETAILS }: { receipt?: Supe
             </label>
             <BarcodeScanButton
               onDetected={commitScan}
-              className={cn(glassBtn, "h-11 w-11 shrink-0 rounded-[16px] text-slate-500")}
-            />
+              onOpenChange={(open) => {
+                setCameraMode(open);
+                if (!open) {
+                  setScannerStatus("ready");
+                  searchRef.current?.focus();
+                }
+              }}
+              className={cn(glassBtn, "h-11 shrink-0 gap-1.5 rounded-[16px] px-3 text-[13px] font-medium text-slate-600")}
+            >
+              <ScanLine className="h-4 w-4" strokeWidth={1.8} />
+              Use Camera
+            </BarcodeScanButton>
+            {hidAvailable ? (
+              <button
+                type="button"
+                onClick={() => void requestBarcodeHidDevice()}
+                className={cn(glassBtn, "h-11 shrink-0 rounded-[16px] px-3 text-[12.5px] font-medium text-slate-500")}
+              >
+                Allow HID scanner
+              </button>
+            ) : null}
             <label className="w-[7.4rem] shrink-0 sm:w-[11.5rem]">
               <span className="sr-only">All Categories</span>
               <span className="relative block">
@@ -839,6 +868,17 @@ export function PosManager({ receipt = EMPTY_RECEIPT_DETAILS }: { receipt?: Supe
               </span>
             </label>
           </div>
+          <p className="mt-2 text-[12.5px] text-slate-500" role="status">
+            {cameraMode
+              ? "Camera Mode Active"
+              : scannerStatus === "input-detected"
+                ? "Scanner Input Detected"
+                : scannerStatus === "disconnected"
+                  ? "Scanner Disconnected"
+                  : scannerStatus === "product-found"
+                    ? "Product Found"
+                    : "Scanner Ready"}
+          </p>
           {scanNotice ? (
             <p className={cn("mt-2 text-[13px]", scanOk ? "font-medium text-[#1f8a4c]" : "text-[#8a5a5a]")} role="status">
               {scanNotice}

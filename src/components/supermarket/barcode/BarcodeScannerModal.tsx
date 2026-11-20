@@ -295,25 +295,31 @@ export function BarcodeScannerModal({
 
 export function BarcodeScanButton({
   onDetected,
+  onOpenChange,
   className,
   children,
 }: {
   onDetected: (barcode: string) => void;
+  onOpenChange?: (open: boolean) => void;
   className?: string;
   children?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  function setScannerOpen(next: boolean) {
+    setOpen(next);
+    onOpenChange?.(next);
+  }
   return (
     <>
       <button
         type="button"
-        aria-label="Scan barcode"
-        onClick={() => setOpen(true)}
+        aria-label="Use Camera"
+        onClick={() => setScannerOpen(true)}
         className={className}
       >
         {children ?? <ScanLine className="h-4 w-4" strokeWidth={1.8} />}
       </button>
-      <BarcodeScannerModal open={open} onClose={() => setOpen(false)} onDetected={onDetected} />
+      <BarcodeScannerModal open={open} onClose={() => setScannerOpen(false)} onDetected={onDetected} />
     </>
   );
 }
