@@ -3,8 +3,8 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { BUSINESS_UNITS_CACHE_TAG } from "@/lib/data/business-units";
 import { z } from "zod";
-import { requireVerifiedPlatformAdmin } from "@/lib/auth/session";
-import { isOwnerRole } from "@/lib/auth/rbac";
+import { requireVerifiedOwner, requireVerifiedPlatformAdmin } from "@/lib/auth/session";
+import { isAdministratorRole, isOwnerRole } from "@/lib/auth/rbac";
 import {
   ALL_MODULES_VALUE,
   assignedCodesForRole,
@@ -847,6 +847,46 @@ export async function deleteUserAction(userId: string): Promise<{ error?: string
   });
 
   revalidateUsersWorkspace();
+  return {};
+}
+
+export async function setAdministratorAction(userId: string): Promise<{ error?: string }> {
+  const actor = await requireVerifiedOwner();
+  if (!userId || userId.startsWith("worker:")) {
+    return { error: "This person needs a login before they can be an Administrator." };
+  }
+  if (userId === actor.id) return { error: "You cannot change your own role." };
+
+  const users = await listManagedUsers();
+  const target = users.find((user) => user.id === userId);
+  if (!target || target.worker) {
+    return { error: "This person needs a login before they can be an Administrator." };
+  }
+  if (isAdministratorRole(target.roleCode)) return { error: "This user is already an Administrator." };
+  if (isOwnerRole(target.roleCode) && (await ownerCount()) <= 1) {
+    return { error: "The only Owner account cannot be changed." };
+  }
+
+  const result = await setUserAccess({
+    userId,
+    name: target.name,
+    email: target.email,
+    phone: target.phone,
+    roleCode: "ADMINISTRATOR",
+    moduleCodes: [ALL_MODULES_VALUE],
+  });
+  if ("error" in result) return { error: result.error };
+
+  revalidateUsersWorkspace();
+  await writeAuditEvent({
+    action: "user.role.changed",
+    module: "users",
+    description: `Set ${target.name} as Administrator`,
+    severity: "high",
+    entityType: "user",
+    entityId: userId,
+    metadata: { previous_role: target.roleCode, next_role: "ADMINISTRATOR" },
+  });
   return {};
 }
 

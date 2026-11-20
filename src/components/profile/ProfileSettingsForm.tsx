@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Lock } from "lucide-react";
 import { updateAvatarAction, updateProfileAction, type ProfileState } from "@/actions/profile";
+import { changePasswordAction, type PasswordChangeState } from "@/actions/password";
 import { publishProfileAvatar, useProfileAvatar } from "@/lib/auth/profile-avatar";
 import { readFittedImage } from "@/lib/images/read-image";
 import { SaveLabel } from "@/components/ui/SaveMark";
@@ -40,6 +41,11 @@ export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
     updateProfileAction,
     null,
   );
+  const [passwordState, passwordAction, passwordPending] = useActionState<PasswordChangeState, FormData>(
+    changePasswordAction,
+    null,
+  );
+  const passwordFormRef = useRef<HTMLFormElement>(null);
   const savedAvatar = useProfileAvatar(user?.id);
   const [photo, setPhoto] = useState(user?.avatarUrl || "");
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -50,6 +56,10 @@ export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
     if (!savedAvatar.ready) return;
     setPhoto(savedAvatar.url ?? "");
   }, [savedAvatar.ready, savedAvatar.url]);
+
+  useEffect(() => {
+    if (passwordState?.success) passwordFormRef.current?.reset();
+  }, [passwordState]);
 
   if (!user) return null;
 
@@ -186,6 +196,46 @@ export function ProfileSettingsForm({ user: userProp }: { user?: AuthUser }) {
               className="inline-flex h-12 w-full items-center justify-center rounded-[14px] bg-navy px-5 text-[15px] font-semibold text-white transition hover:bg-[#132844] disabled:opacity-70 sm:w-auto"
             >
               <SaveLabel busy={pending} failed={Boolean(state?.error)} label={t("common.save")} />
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section id="password" className="glass-card rounded-card px-4 py-4 sm:px-6 sm:py-5">
+        <h2 className="text-[16px] font-bold tracking-[-0.02em] text-navy sm:text-[18px]">
+          {t("profile.password")}
+        </h2>
+        <p className="mt-1 text-[13px] text-slate-500">{t("profile.passwordHint")}</p>
+        <form ref={passwordFormRef} action={passwordAction} className="mt-5 space-y-4">
+          <label className="grid gap-1.5 sm:grid-cols-[168px_1fr] sm:items-center sm:gap-5">
+            <span className="text-[13px] font-medium text-slate-500">{t("profile.currentPassword")}</span>
+            <input name="currentPassword" type="password" required autoComplete="current-password" className={fieldClass} />
+          </label>
+          <label className="grid gap-1.5 sm:grid-cols-[168px_1fr] sm:items-center sm:gap-5">
+            <span className="text-[13px] font-medium text-slate-500">{t("profile.newPassword")}</span>
+            <input name="newPassword" type="password" required minLength={8} autoComplete="new-password" className={fieldClass} />
+          </label>
+          <label className="grid gap-1.5 sm:grid-cols-[168px_1fr] sm:items-center sm:gap-5">
+            <span className="text-[13px] font-medium text-slate-500">{t("profile.confirmPassword")}</span>
+            <input name="confirmPassword" type="password" required minLength={8} autoComplete="new-password" className={fieldClass} />
+          </label>
+          {passwordState?.error ? (
+            <p className="rounded-[14px] border border-red-200/70 bg-red-50/80 px-3 py-2.5 text-sm text-[#9b2c2c]" role="alert">
+              {passwordState.error}
+            </p>
+          ) : null}
+          {passwordState?.success ? (
+            <p className="rounded-[14px] border border-emerald-200/70 bg-emerald-50/80 px-3 py-2.5 text-sm text-[#1f8a4c]">
+              {t("profile.passwordSaved")}
+            </p>
+          ) : null}
+          <div className="flex justify-end pt-1">
+            <button
+              type="submit"
+              disabled={passwordPending}
+              className="inline-flex h-12 w-full items-center justify-center rounded-[14px] bg-navy px-5 text-[15px] font-semibold text-white transition hover:bg-[#132844] disabled:opacity-70 sm:w-auto"
+            >
+              <SaveLabel busy={passwordPending} failed={Boolean(passwordState?.error)} label={t("common.save")} />
             </button>
           </div>
         </form>

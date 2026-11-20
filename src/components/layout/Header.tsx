@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { Bell, ChevronDown, LogOut, Search, UserRound } from "lucide-react";
+import { Bell, ChevronDown, Lock, LogOut, Search, UserRound } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
 import { SyncStatusIndicator } from "@/components/offline/SyncStatusIndicator";
 import { searchIndexForUser } from "@/lib/auth/nav";
@@ -294,6 +294,14 @@ export function Header({
               >
                 <UserRound className="h-4 w-4" />
                 {t("chrome.profileSettings")}
+              </Link>
+              <Link
+                href="/profile#password"
+                className="flex items-center gap-2 px-3 py-2.5 text-sm text-navy hover:bg-slate-50"
+                onClick={() => setProfileOpen(false)}
+              >
+                <Lock className="h-4 w-4" />
+                {t("profile.password")}
               </Link>
               <form action={logoutAction}>
                 <SignOutButton />

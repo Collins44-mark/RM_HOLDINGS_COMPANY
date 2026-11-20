@@ -38,6 +38,7 @@ import {
   linkUserToStaffAction,
   resetPasswordAction,
   searchUnlinkedStaffAction,
+  setAdministratorAction,
   unlockUserAction,
   updateUserAction,
   type CredentialsPayload,
@@ -97,6 +98,7 @@ export function UsersManager({
   users,
   roles,
   currentUserId,
+  canGrantAdministrator = false,
   businessUnits,
 }: {
   initialView: UsersWorkspaceView;
@@ -105,6 +107,7 @@ export function UsersManager({
   users: ManagedUser[];
   roles: RoleSummary[];
   currentUserId: string;
+  canGrantAdministrator?: boolean;
   businessUnits: UsersUnitOption[];
 }) {
   const t = useT();
@@ -618,6 +621,17 @@ export function UsersManager({
           onLinkStaff={() => setStaffTarget({ user: selected, mode: "link" })}
           onCreateStaff={() => setStaffTarget({ user: selected, mode: "create" })}
           onGrantAccess={() => setGrantUser(selected)}
+          onSetAdministrator={
+            canGrantAdministrator
+              ? () =>
+                  runAction(() => setAdministratorAction(selected.id), () => setSelected(null), {
+                    roleCode: "ADMINISTRATOR",
+                    roleName: "Administrator",
+                    modules: units.map((unit) => unit.code),
+                    moduleNames: ["All modules"],
+                  })
+              : undefined
+          }
         />
       ) : null}
 
@@ -961,6 +975,7 @@ function UserDetails({
   onLinkStaff,
   onCreateStaff,
   onGrantAccess,
+  onSetAdministrator,
 }: {
   user: ManagedUser;
   currentUserId: string;
@@ -977,6 +992,7 @@ function UserDetails({
   onLinkStaff: () => void;
   onCreateStaff: () => void;
   onGrantAccess: () => void;
+  onSetAdministrator?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const self = user.id === currentUserId;
@@ -1036,6 +1052,16 @@ function UserDetails({
           </dl>
         </section>
         <div className="flex flex-wrap gap-2">
+          {onSetAdministrator && !self && !user.worker && !isAdministratorRole(user.roleCode) ? (
+            <button
+              type="button"
+              onClick={onSetAdministrator}
+              disabled={pending}
+              className="h-10 rounded-[12px] bg-navy px-3 text-[13px] font-semibold text-white disabled:opacity-50"
+            >
+              Set as Administrator
+            </button>
+          ) : null}
           {user.status === "no_access" ? (
             <button
               type="button"

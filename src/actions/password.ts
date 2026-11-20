@@ -9,7 +9,7 @@ import { landingPathFor } from "@/lib/auth/access";
 import { LOGIN_PATH } from "@/lib/config/app";
 import { writeAuditEvent } from "@/lib/audit";
 
-export type PasswordChangeState = { error?: string } | null;
+export type PasswordChangeState = { error?: string; success?: boolean } | null;
 
 const schema = z
   .object({
@@ -39,16 +39,21 @@ export async function changePasswordAction(
   }
 
   const supabase = await createSupabaseServerClient();
-  if (!supabase || !user.email) {
+  if (!supabase) {
+    return { error: "Authentication is not configured." };
+  }
+  const authUser = await supabase.auth.getUser();
+  const loginEmail = authUser.data.user?.email;
+  if (!loginEmail) {
     return { error: "Authentication is not configured." };
   }
 
   const verified = await supabase.auth.signInWithPassword({
-    email: user.email,
+    email: loginEmail,
     password: parsed.data.currentPassword,
   });
   if (verified.error) {
-    return { error: "Current temporary password is incorrect." };
+    return { error: "Current password is incorrect." };
   }
 
   const { error } = await supabase.auth.updateUser({ password: parsed.data.newPassword });
@@ -64,7 +69,10 @@ export async function changePasswordAction(
     severity: "medium",
     entityType: "user",
     entityId: user.id,
-    actor: { id: user.id, name: user.name, email: user.email },
+    actor: { id: user.id, name: user.name, email: loginEmail },
   });
-  redirect(landingPathFor(identityFromUser({ ...user, mustChangePassword: false })));
+  if (user.mustChangePassword) {
+    redirect(landingPathFor(identityFromUser({ ...user, mustChangePassword: false })));
+  }
+  return { success: true };
 }

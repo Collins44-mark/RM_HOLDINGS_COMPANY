@@ -1,4 +1,5 @@
 import { UsersManager, type UsersWorkspaceView } from "@/components/users/UsersManager";
+import { isOwnerRole } from "@/lib/auth/rbac";
 import { requirePlatformAdmin } from "@/lib/auth/session";
 import { listManagedUsers } from "@/lib/data/app-users";
 import { listBusinessUnits } from "@/lib/data/business-units";
@@ -38,6 +39,7 @@ export default async function UsersPage({
       users={users}
       roles={roles}
       currentUserId={actor.id}
+      canGrantAdministrator={isOwnerRole(actor.roleCode)}
       businessUnits={units.map((unit) => ({
         code: unit.code,
         name: unit.name,
