@@ -8,9 +8,11 @@ import { AccessModal, PermissionSkeleton } from "@/components/users/AccessModal"
 import { PermissionTile } from "@/components/users/PermissionTile";
 import { isOwnerRole } from "@/lib/auth/rbac";
 import {
+  OPERABLE_PERMISSION_CATALOG,
   catalogForModule,
   groupPermissions,
   moduleScopeForRole,
+  permissionsForRole,
 } from "@/lib/config/permissions";
 import { roleDefinition } from "@/lib/auth/role-options";
 import type { RoleSummary } from "@/lib/auth/rbac-types";
@@ -31,12 +33,7 @@ export function RolePermissionEditor({
   onSaved: (codes: string[]) => void;
 }) {
   const locked = isOwnerRole(role.code) || role.locked;
-  const groups = useMemo(() => {
-    const definition = roleDefinition(role.code);
-    const scope = role.moduleCode || (definition ? moduleScopeForRole(definition) : null);
-    const catalog = scope && scope !== "*" ? catalogForModule(scope) : [];
-    return groupPermissions(catalog);
-  }, [role.code, role.moduleCode]);
+  const groups = useMemo(() => groupPermissions(catalogForRole(role)), [role]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sod, setSod] = useState<SodControls>({ ...DEFAULT_SOD_CONTROLS });
   const sodBaseline = useRef<SodControls>({ ...DEFAULT_SOD_CONTROLS });
@@ -62,10 +59,13 @@ export function RolePermissionEditor({
 
   useEffect(() => {
     let cancelled = false;
+    const linked = groups.flatMap((group) =>
+      group.resources.flatMap((resource) => resource.permissions.map((permission) => permission.code)),
+    );
     async function load() {
       const [grants, controls] = await Promise.all([
         locked
-          ? Promise.resolve({ ok: true as const, permissionCodes: [] as string[] })
+          ? Promise.resolve({ ok: true as const, permissionCodes: linked })
           : fetch(`/owner/users/role-grants?roleId=${encodeURIComponent(role.id)}`, { cache: "no-store" }).then(
               async (response) => {
                 if (!response.ok) return { ok: false as const };
@@ -86,7 +86,7 @@ export function RolePermissionEditor({
     return () => {
       cancelled = true;
     };
-  }, [locked, role.id]);
+  }, [groups, locked, role.id]);
 
   function toggle(code: string) {
     if (locked) return;
@@ -154,17 +154,7 @@ export function RolePermissionEditor({
       {error ? (
         <p className="mb-3 rounded-[14px] border border-red-200/70 bg-red-50/80 px-3 py-2.5 text-sm text-[#9b2c2c]">{error}</p>
       ) : null}
-      {locked ? (
-        <div className="space-y-4">
-          <div className="rounded-[18px] border border-black/[0.04] bg-[#f8fafc]/90 px-5 py-5">
-            <p className="text-[15px] font-semibold text-navy">Owner</p>
-            <p className="mt-1 text-[13.5px] text-slate-500">All modules</p>
-            <p className="mt-1 text-[13.5px] text-slate-500">All implemented permissions</p>
-            <p className="mt-3 text-[13px] text-slate-500">Full system access. Owner permissions cannot be reduced.</p>
-          </div>
-          <SodSection sod={sod} locked onToggle={() => undefined} />
-        </div>
-      ) : !ready ? (
+      {!ready ? (
         <PermissionSkeleton />
       ) : (
         <div className="space-y-4">
@@ -178,12 +168,13 @@ export function RolePermissionEditor({
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {resource.permissions.map((permission) => {
-                      const action = permission.code.split(".")[2] ?? permission.name;
+                      const action = permission.code.split(".").slice(2).join(" ") || permission.name;
                       return (
                         <PermissionTile
                           key={permission.code}
                           label={action.charAt(0).toUpperCase() + action.slice(1)}
                           checked={selected.has(permission.code)}
+                          disabled={locked}
                           onChange={() => toggle(permission.code)}
                         />
                       );
@@ -193,6 +184,13 @@ export function RolePermissionEditor({
               ))}
             </section>
           ))}
+          {locked ? (
+            <p className="text-[13px] text-slate-500">
+              {isOwnerRole(role.code)
+                ? "These are the live system permissions for the Owner. They stay granted."
+                : "These are the live system permissions for this role. This template stays fixed."}
+            </p>
+          ) : null}
           {groups.length === 0 ? (
             <p className="text-[13.5px] text-slate-500">No operational permissions are registered for this role yet.</p>
           ) : null}
@@ -201,11 +199,22 @@ export function RolePermissionEditor({
               This role can both prepare and approve. Self-approval is still blocked by default unless you change Financial Controls.
             </p>
           ) : null}
-          <SodSection sod={sod} locked={false} onToggle={toggleSod} />
+          <SodSection sod={sod} locked={locked} onToggle={toggleSod} />
         </div>
       )}
     </AccessModal>
   );
+}
+
+function catalogForRole(role: RoleSummary) {
+  const definition = roleDefinition(role.code);
+  const scope = role.moduleCode && role.moduleCode !== "platform" ? role.moduleCode : definition ? moduleScopeForRole(definition) : role.moduleCode;
+  if (definition && (!scope || scope === "*" || scope === "platform")) {
+    const allowed = new Set(permissionsForRole(definition));
+    return OPERABLE_PERMISSION_CATALOG.filter((item) => allowed.has(item.code));
+  }
+  if (scope && scope !== "*") return catalogForModule(scope);
+  return definition ? OPERABLE_PERMISSION_CATALOG.filter((item) => permissionsForRole(definition).includes(item.code)) : [];
 }
 
 function SodSection({

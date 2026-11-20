@@ -1,6 +1,7 @@
 "use server";
 
-import { requireOwner } from "@/lib/auth/session";
+import { isOwnerRole } from "@/lib/auth/rbac";
+import { getAuthUser, getVerifiedAuthUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { writeAuditEvent } from "@/lib/audit";
 import {
@@ -10,7 +11,8 @@ import {
 } from "@/lib/supermarket/sod";
 
 export async function loadSodControlsAction(): Promise<SodControls> {
-  await requireOwner();
+  const user = await getAuthUser();
+  if (!user || !isOwnerRole(user.roleCode)) return { ...DEFAULT_SOD_CONTROLS };
   const admin = createSupabaseAdminClient();
   if (!admin) return { ...DEFAULT_SOD_CONTROLS };
   const { data: bu } = await admin.from("business_units").select("id").eq("code", "supermarket").maybeSingle();
@@ -27,7 +29,10 @@ export async function loadSodControlsAction(): Promise<SodControls> {
 }
 
 export async function saveSodControlsAction(input: SodControls): Promise<{ error?: string }> {
-  const actor = await requireOwner();
+  const actor = await getVerifiedAuthUser();
+  if (!actor || !isOwnerRole(actor.roleCode)) {
+    return { error: "Only the Owner can change financial controls." };
+  }
   const admin = createSupabaseAdminClient();
   if (!admin) return { error: "Unable to save financial controls." };
   const { data: bu } = await admin.from("business_units").select("id").eq("code", "supermarket").maybeSingle();
