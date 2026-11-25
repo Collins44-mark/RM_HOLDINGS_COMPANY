@@ -240,6 +240,13 @@ export const REPORT_DEFINITIONS: ReportDefinition[] = [
     exports: [],
   },
   {
+    id: "rice-loans",
+    module: "rice",
+    label: "Farmer Loans",
+    description: "Loans given to farmers, principal repaid, and outstanding balances.",
+    exports: [],
+  },
+  {
     id: "farm-summary",
     module: "farm",
     label: "Financial Summary",

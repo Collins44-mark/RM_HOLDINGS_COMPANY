@@ -93,6 +93,7 @@ export const SCHOOL_NAV: NavItem[] = [
 export const RICE_NAV: NavItem[] = [
   { href: "/rice", label: "Overview", icon: "dashboard", exact: true },
   { href: "/rice/purchases", label: "Purchases", icon: "wallet", alsoActive: ["/rice/farmers"] },
+  { href: "/rice/loans", label: "Farmer Loans", icon: "money", alsoActive: ["/rice/loans"] },
   { href: "/rice/milling", label: "Milling & Production", icon: "wheat", alsoActive: ["/rice/grading"] },
   { href: "/rice/warehouse", label: "Warehouse", icon: "warehouse", alsoActive: ["/rice/stock"] },
   { href: "/rice/customer-storage", label: "Customer Storage", icon: "package" },

@@ -1,5 +1,5 @@
 import { loadRiceReportsWorkspaceAction } from "@/actions/rice/workspace";
-import { ReportDataTable, ReportEmptyState, ReportResultHeader, ReportSurface } from "@/components/reports/report-ui";
+import { ReportDataTable, ReportEmptyState, ReportMetricCard, ReportResultHeader, ReportSurface } from "@/components/reports/report-ui";
 import { formatTzs } from "@/lib/format/currency";
 import type { ReportPeriod } from "@/lib/data/report-period";
 
@@ -155,6 +155,60 @@ export async function EmbeddedRiceReport({
       rows: data.accounts.map((row) => ({ account: row.accountNumber, party: row.partyName, qty: kg(row.qtyKg) })),
     },
   };
+  if (reportId === "rice-loans") {
+    const loans = data.loans;
+    const statusLabel = (status: string, outstanding: number, disbursed: number) => {
+      if (disbursed <= 0 && status !== "CLOSED") return "Approved";
+      if (outstanding <= 0) return "Fully repaid";
+      if (status === "ACTIVE") return "Active";
+      return status.charAt(0) + status.slice(1).toLowerCase();
+    };
+    return (
+      <ReportSurface className="space-y-4 p-5">
+        <ReportResultHeader moduleLabel="Rice" title="Farmer Loans" description={data.periodLabel} />
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          <ReportMetricCard label="Disbursed" value={formatTzs(loans.disbursed)} />
+          <ReportMetricCard label="Repaid" value={formatTzs(loans.repaid)} />
+          <ReportMetricCard label="Outstanding" value={formatTzs(loans.outstanding)} />
+        </div>
+        <ReportDataTable
+          columns={[
+            { key: "number", label: "Loan" },
+            { key: "farmer", label: "Farmer" },
+            { key: "disbursed", label: "Disbursed" },
+            { key: "repaid", label: "Repaid" },
+            { key: "outstanding", label: "Outstanding" },
+            { key: "status", label: "Status" },
+          ]}
+          rows={loans.loans.map((row) => ({
+            number: row.number,
+            farmer: row.farmerName,
+            disbursed: formatTzs(row.disbursed),
+            repaid: formatTzs(row.principalRepaid),
+            outstanding: formatTzs(row.outstanding),
+            status: statusLabel(row.status, row.outstanding, row.disbursed),
+          }))}
+        />
+        <h3 className="text-[15px] font-semibold text-navy">Loans and repayments in this period</h3>
+        <ReportDataTable
+          columns={[
+            { key: "date", label: "Date" },
+            { key: "number", label: "Loan" },
+            { key: "farmer", label: "Farmer" },
+            { key: "kind", label: "Type" },
+            { key: "amount", label: "Amount" },
+          ]}
+          rows={loans.movements.map((row) => ({
+            date: row.date,
+            number: row.number,
+            farmer: row.farmerName,
+            kind: row.kind === "DISBURSEMENT" ? "Loan given" : "Repayment",
+            amount: formatTzs(row.amount),
+          }))}
+        />
+      </ReportSurface>
+    );
+  }
   const table = tables[reportId];
   if (!table) {
     return <ReportEmptyState title="Report not available" description="This rice report is not available." />;

@@ -151,5 +151,43 @@ export function downloadRiceReportsPdf(workspace: RiceReportsWorkspace, locale: 
     })),
     { emptyMessage: t("rice.finance.empty") },
   );
+  doc.addSectionTable(
+    t("rice.reports.loans"),
+    [
+      { key: "number", label: t("rice.reports.loan"), width: 80 },
+      { key: "farmer", label: t("rice.reports.farmer"), width: 160 },
+      { key: "disbursed", label: t("rice.reports.disbursed"), width: 100 },
+      { key: "repaid", label: t("rice.reports.repaid"), width: 100 },
+      { key: "outstanding", label: t("rice.reports.outstanding"), width: 100 },
+      { key: "status", label: t("common.status"), width: 90 },
+    ],
+    workspace.loans.loans.map((row) => ({
+      number: row.number,
+      farmer: row.farmerName,
+      disbursed: formatTzs(row.disbursed),
+      repaid: formatTzs(row.principalRepaid),
+      outstanding: formatTzs(row.outstanding),
+      status: row.outstanding <= 0 ? t("rice.reports.loanRepaid") : row.disbursed <= 0 ? t("rice.reports.loanApproved") : t("rice.reports.loanActive"),
+    })),
+    { emptyMessage: t("rice.reports.loansEmpty") },
+  );
+  doc.addSectionTable(
+    t("rice.reports.loanMovements"),
+    [
+      { key: "date", label: t("common.date"), width: 80 },
+      { key: "number", label: t("rice.reports.loan"), width: 80 },
+      { key: "farmer", label: t("rice.reports.farmer"), width: 160 },
+      { key: "kind", label: t("common.type"), width: 110 },
+      { key: "amount", label: t("common.amount"), width: 100 },
+    ],
+    workspace.loans.movements.map((row) => ({
+      date: row.date,
+      number: row.number,
+      farmer: row.farmerName,
+      kind: row.kind === "DISBURSEMENT" ? t("rice.reports.loanGiven") : t("rice.reports.repayment"),
+      amount: formatTzs(row.amount),
+    })),
+    { emptyMessage: t("rice.reports.loanMovementsEmpty") },
+  );
   downloadPdfBytes(doc.build(), `rice-mill-report-${workspace.periodLabel.replace(/\s+/g, "-").toLowerCase()}.pdf`);
 }

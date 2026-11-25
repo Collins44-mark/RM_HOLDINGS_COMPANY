@@ -119,6 +119,7 @@ export const PERMISSION_CATALOG: PermissionItem[] =
       { resource: "dashboard", actions: ["view"] },
       { resource: "farmers", actions: [...CRUD] },
       { resource: "purchases", actions: ["view", "create"] },
+      { resource: "loans", actions: ["view", "apply", "approve", "disburse", "repay"] },
       { resource: "warehouse", actions: ["view", "receive", "release", "edit"] },
       { resource: "stock", actions: ["view", "edit"] },
       { resource: "milling", actions: ["view", "create"] },

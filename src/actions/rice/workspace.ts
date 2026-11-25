@@ -35,6 +35,8 @@ import type {
   RiceWarehouseMovement,
   RiceItemKind,
 } from "@/lib/rice/types";
+import { loadLoanReport } from "@/lib/rice/loan-queries";
+import type { LoanReport } from "@/lib/rice/loan-model";
 import { parseRiceWarehouseKind } from "@/lib/rice/warehouse-kind";
 import type { PageMeta } from "@/lib/pagination";
 
@@ -116,6 +118,7 @@ export type RiceReportsWorkspace = RiceFinanceWorkspace & {
   batches: RiceMillBatch[];
   accounts: RiceStorageAccount[];
   storageMovements: RiceStorageMovement[];
+  loans: LoanReport;
 };
 
 export type RiceSettingsWorkspace = {
@@ -369,7 +372,7 @@ export async function loadRiceReportsWorkspaceAction(input: { period?: string; f
     const ctx = await requireAnyRicePermission(["rice.reports.view"]);
     const user = await requireAuth();
     const { range, from, to } = rangeFrom(input);
-    const [items, purchases, batches, sales, services, expenses, storage, ledger] = await Promise.all([
+    const [items, purchases, batches, sales, services, expenses, storage, ledger, loans] = await Promise.all([
       loadRiceItems(ctx),
       loadRicePurchases(ctx, from, to, "all"),
       loadRiceBatches(ctx, from, to, "all"),
@@ -378,6 +381,7 @@ export async function loadRiceReportsWorkspaceAction(input: { period?: string; f
       loadRiceExpenses(ctx, from, to, "all"),
       loadRiceStorage(ctx, "all"),
       loadRiceLedgerSummary(ctx, from, to),
+      loadLoanReport(ctx, from, to),
     ]);
     return {
       ok: true as const,
@@ -390,6 +394,7 @@ export async function loadRiceReportsWorkspaceAction(input: { period?: string; f
         expenses: expenses.rows,
         accounts: storage.accounts,
         storageMovements: storage.movements,
+        loans,
         summary: ledger,
         caps: riceCaps(user),
         periodLabel: range.label,

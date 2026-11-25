@@ -88,6 +88,7 @@ const ROUTE_PERMISSION_RULES: RoutePermissionRule[] = [
   { prefix: "/rice/grading", any: ["rice.milling.view", "rice.milling.create", "rice.grading.view"] },
   { prefix: "/rice/stock", any: ["rice.warehouse.view", "rice.stock.view", "rice.stock.edit"] },
   { prefix: "/rice/payments", any: ["rice.sales.view", "rice.sales.create", "rice.payments.view"] },
+  { prefix: "/rice/loans", any: ["rice.loans.view", "rice.loans.apply", "rice.loans.approve", "rice.loans.disburse", "rice.loans.repay"] },
   { prefix: "/rice/purchases", any: ["rice.purchases.view", "rice.purchases.create", "rice.farmers.view"] },
   { prefix: "/rice/milling", any: ["rice.milling.view", "rice.milling.create"] },
   { prefix: "/rice/warehouse", any: ["rice.warehouse.view", "rice.stock.view", "rice.stock.edit"] },

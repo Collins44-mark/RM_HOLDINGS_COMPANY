@@ -59,6 +59,7 @@ test("one permission does not reveal neighbouring pages", () => {
   assert.equal(canAccessPath(farm, "/farm/reports"), false);
   const rice = user({ modules: ["rice"], permissions: ["rice.purchases.view"] });
   assert.equal(canAccessPath(rice, "/rice/purchases"), true);
+  assert.equal(canAccessPath(rice, "/rice/loans"), false);
   assert.equal(canAccessPath(rice, "/rice/reports"), false);
   assert.equal(canAccessPath(rice, "/rice/customer-storage"), false);
   const school = user({ modules: ["school"], permissions: ["school.students.view"] });

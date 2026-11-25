@@ -25,8 +25,12 @@ export function RiceReportsPage({
   const { locale } = useLocale();
   const items = workspace?.items ?? [];
   const accounts = workspace?.accounts ?? [];
+  const loans = workspace?.loans.loans ?? [];
+  const movements = workspace?.loans.movements ?? [];
   const itemPage = useListPage(items, `${period}:${items.length}`);
   const accountPage = useListPage(accounts, `${period}:${accounts.length}`);
+  const loanPage = useListPage(loans, `${period}:${loans.length}`);
+  const movementPage = useListPage(movements, `${period}:${movements.length}`);
 
   return (
     <div className="space-y-5 pb-10">
@@ -116,10 +120,94 @@ export function RiceReportsPage({
             </div>
             <PaginationBar page={accountPage.page} total={accounts.length} pageSize={accountPage.pageSize} onPage={accountPage.setPage} onPageSize={accountPage.setPageSize} />
           </section>
+          <section className={glassPanel}>
+            <h2 className="text-[16px] font-semibold text-navy">{t("rice.reports.loans")}</h2>
+            <dl className="mt-4 grid grid-cols-2 gap-3 text-[13.5px] md:grid-cols-3">
+              <Row label={t("rice.reports.disbursed")} value={formatTzs(workspace.loans.disbursed)} />
+              <Row label={t("rice.reports.repaid")} value={formatTzs(workspace.loans.repaid)} />
+              <Row label={t("rice.reports.outstanding")} value={formatTzs(workspace.loans.outstanding)} />
+            </dl>
+            <div className={`${tableScrollClass} mt-4`}>
+              <table className="min-w-full text-left text-[13.5px]">
+                <thead className={tableHead}>
+                  <tr>
+                    <th className="px-3 py-2">{t("rice.reports.loan")}</th>
+                    <th className="px-3 py-2">{t("rice.reports.farmer")}</th>
+                    <th className="px-3 py-2">{t("rice.reports.disbursed")}</th>
+                    <th className="px-3 py-2">{t("rice.reports.repaid")}</th>
+                    <th className="px-3 py-2">{t("rice.reports.outstanding")}</th>
+                    <th className="px-3 py-2">{t("common.status")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loans.length === 0 ? (
+                    <tr>
+                      <td className="px-3 py-6 text-slate-500" colSpan={6}>
+                        {t("rice.reports.loansEmpty")}
+                      </td>
+                    </tr>
+                  ) : (
+                    loanPage.rows.map((row) => (
+                      <tr key={row.id} className="border-t border-navy/5 text-navy">
+                        <td className="px-3 py-2.5">{row.number}</td>
+                        <td className="px-3 py-2.5">{row.farmerName}</td>
+                        <td className="px-3 py-2.5">{formatTzs(row.disbursed)}</td>
+                        <td className="px-3 py-2.5">{formatTzs(row.principalRepaid)}</td>
+                        <td className="px-3 py-2.5">{formatTzs(row.outstanding)}</td>
+                        <td className="px-3 py-2.5">{loanStatusLabel(t, row.status, row.outstanding, row.disbursed)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <PaginationBar page={loanPage.page} total={loans.length} pageSize={loanPage.pageSize} onPage={loanPage.setPage} onPageSize={loanPage.setPageSize} />
+            <h3 className="mt-6 text-[15px] font-semibold text-navy">{t("rice.reports.loanMovements")}</h3>
+            <div className={`${tableScrollClass} mt-4`}>
+              <table className="min-w-full text-left text-[13.5px]">
+                <thead className={tableHead}>
+                  <tr>
+                    <th className="px-3 py-2">{t("common.date")}</th>
+                    <th className="px-3 py-2">{t("rice.reports.loan")}</th>
+                    <th className="px-3 py-2">{t("rice.reports.farmer")}</th>
+                    <th className="px-3 py-2">{t("common.type")}</th>
+                    <th className="px-3 py-2">{t("common.amount")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movements.length === 0 ? (
+                    <tr>
+                      <td className="px-3 py-6 text-slate-500" colSpan={5}>
+                        {t("rice.reports.loanMovementsEmpty")}
+                      </td>
+                    </tr>
+                  ) : (
+                    movementPage.rows.map((row) => (
+                      <tr key={row.id} className="border-t border-navy/5 text-navy">
+                        <td className="px-3 py-2.5">{row.date}</td>
+                        <td className="px-3 py-2.5">{row.number}</td>
+                        <td className="px-3 py-2.5">{row.farmerName}</td>
+                        <td className="px-3 py-2.5">{row.kind === "DISBURSEMENT" ? t("rice.reports.loanGiven") : t("rice.reports.repayment")}</td>
+                        <td className="px-3 py-2.5">{formatTzs(row.amount)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <PaginationBar page={movementPage.page} total={movements.length} pageSize={movementPage.pageSize} onPage={movementPage.setPage} onPageSize={movementPage.setPageSize} />
+          </section>
         </>
       ) : null}
     </div>
   );
+}
+
+function loanStatusLabel(t: (key: "rice.reports.loanApproved" | "rice.reports.loanRepaid" | "rice.reports.loanActive") => string, status: string, outstanding: number, disbursed: number) {
+  if (disbursed <= 0 && status !== "CLOSED") return t("rice.reports.loanApproved");
+  if (outstanding <= 0) return t("rice.reports.loanRepaid");
+  if (status === "ACTIVE") return t("rice.reports.loanActive");
+  return status.charAt(0) + status.slice(1).toLowerCase();
 }
 
 function Row({ label, value }: { label: string; value: string }) {
