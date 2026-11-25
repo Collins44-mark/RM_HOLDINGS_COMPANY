@@ -145,6 +145,7 @@ const enCore = {
   "finance.tab.trend": "Trend Analysis",
   "finance.tab.category": "Category Breakdown",
   "finance.tab.salary": "Salaries",
+  "finance.tab.historical": "Historical Ledgers",
   "reports.title": "Reports",
   "reports.description":
     "Generate and download operational, financial and management reports for any business unit.",
@@ -335,6 +336,7 @@ const swCore = {
   "finance.tab.trend": "Mchanganuo wa Mwelekeo",
   "finance.tab.category": "Mgawanyo wa Kategoria",
   "finance.tab.salary": "Mishahara",
+  "finance.tab.historical": "Leja za Historia",
   "reports.title": "Ripoti",
   "reports.description":
     "Tengeneza na pakua ripoti za uendeshaji, fedha na usimamizi kwa kitengo chochote cha biashara.",

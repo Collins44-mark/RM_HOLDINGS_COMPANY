@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { writeOfflineSnapshot } from "@/lib/offline/snapshots";
 import { FinanceCategoryTable } from "@/components/finance/FinanceCategoryTable";
+import { HistoricalLedgersPanel } from "@/components/finance/HistoricalLedgersPanel";
 import { FinanceHeader } from "@/components/finance/FinanceHeader";
 import { FinanceSummaryCards } from "@/components/finance/FinanceSummaryCards";
 import { FinanceTabs } from "@/components/finance/FinanceTabs";
@@ -17,6 +18,7 @@ import type {
   FinanceTrendRow,
   UnitFinanceRow,
 } from "@/lib/data/finance";
+import type { HistoricalLedgerData } from "@/lib/finance/historical-ledgers";
 import type { ReportPeriod } from "@/lib/data/report-period";
 
 export function FinanceWorkspace({
@@ -31,6 +33,7 @@ export function FinanceWorkspace({
   trendGrain,
   categories,
   salary,
+  historical,
 }: {
   period: ReportPeriod;
   label: string;
@@ -43,6 +46,7 @@ export function FinanceWorkspace({
   trendGrain: "month" | "day";
   categories: FinanceCategoryRow[];
   salary?: SchoolSalaryWorkspaceResult | null;
+  historical: HistoricalLedgerData;
 }) {
   const [tab, setTab] = useState<FinanceTab>(initialTab);
 
@@ -68,7 +72,7 @@ export function FinanceWorkspace({
     function onPopState() {
       const params = new URLSearchParams(window.location.search);
       const raw = params.get("tab");
-      setTab(raw === "trend" || raw === "category" || raw === "salary" ? raw : "units");
+      setTab(raw === "trend" || raw === "category" || raw === "salary" || raw === "historical" ? raw : "units");
     }
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -87,6 +91,7 @@ export function FinanceWorkspace({
       {tab === "category" ? <FinanceCategoryTable rows={categories} /> : null}
       {tab === "units" ? <FinancialPerformanceCard rows={rows} totals={totals} /> : null}
       {tab === "salary" ? <SchoolSalaryPage initial={salary ?? null} ownerHref /> : null}
+      {tab === "historical" ? <HistoricalLedgersPanel accounts={historical.accounts} lines={historical.lines} error={historical.error} /> : null}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Banknote, Building2, PieChart, TrendingUp } from "lucide-react";
+import { Banknote, BookOpen, Building2, PieChart, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useT } from "@/components/i18n/LocaleProvider";
 import type { FinanceTab } from "@/lib/data/finance";
@@ -18,6 +18,7 @@ export function FinanceTabs({
     { id: "trend", label: t("finance.tab.trend"), icon: TrendingUp },
     { id: "category", label: t("finance.tab.category"), icon: PieChart },
     { id: "salary", label: t("finance.tab.salary"), icon: Banknote },
+    { id: "historical", label: t("finance.tab.historical"), icon: BookOpen },
   ];
   return (
     <nav aria-label="Finance views" className="flex flex-wrap gap-2">

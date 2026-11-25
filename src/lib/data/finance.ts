@@ -97,7 +97,7 @@ export type FinanceDelta = {
   margin: number;
 };
 
-export type FinanceTab = "units" | "trend" | "category" | "salary";
+export type FinanceTab = "units" | "trend" | "category" | "salary" | "historical";
 
 export type FinanceTrendRow = {
   period: string;
@@ -117,7 +117,7 @@ export type FinanceCategoryRow = {
 
 export function parseFinanceTab(value: string | string[] | undefined): FinanceTab {
   const raw = Array.isArray(value) ? value[0] : value;
-  if (raw === "trend" || raw === "category" || raw === "units" || raw === "salary") return raw;
+  if (raw === "trend" || raw === "category" || raw === "units" || raw === "salary" || raw === "historical") return raw;
   return "units";
 }
 
@@ -1022,6 +1022,7 @@ async function consolidateLedgers(
  * Beekeeping cash is completed honey-sale payments minus completed expense payments.
  * Livestock cash is completed sale and poultry-rent payments minus completed expense payments.
  * Never falls back to sample-finance or Prisma FinanceTransaction.
+ * Historical Tally rows are not read from here. Cash totals stay on the operational tables above.
  */
 export async function getConsolidatedFinance(input: {
   period: RevenuePeriod;

@@ -1,4 +1,5 @@
 import { loadSchoolSalaryWorkspaceAction } from "@/actions/school/salary";
+import { getHistoricalLedgers } from "@/lib/data/historical-ledgers";
 import { FinanceWorkspace } from "@/components/finance/FinanceWorkspace";
 import {
   getConsolidatedFinanceForReportPeriod,
@@ -19,9 +20,10 @@ export default async function FinancePage({
   const from = typeof params.from === "string" ? params.from : undefined;
   const to = typeof params.to === "string" ? params.to : undefined;
 
-  const [finance, salary] = await Promise.all([
+  const [finance, salary, historical] = await Promise.all([
     getConsolidatedFinanceForReportPeriod({ period, from, to }),
     loadSchoolSalaryWorkspaceAction({ period, from, to, status: "active" }),
+    getHistoricalLedgers(),
   ]);
 
   return (
@@ -37,6 +39,7 @@ export default async function FinancePage({
       trendGrain={finance.trendGrain}
       categories={finance.categories}
       salary={salary}
+      historical={historical}
     />
   );
 }
