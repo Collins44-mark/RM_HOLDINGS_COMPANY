@@ -1,11 +1,13 @@
 "use client";
 
-import { useActionState, useMemo, useState, useTransition } from "react";
+import { useActionState, useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { MapPin } from "lucide-react";
-import { saveBusinessUnitLocationAction } from "@/actions/business-units";
+import { saveBusinessUnitLocationAction, saveBusinessUnitNameAction } from "@/actions/business-units";
 import { NavGlyph } from "@/components/icons/nav-icons";
 import { useT } from "@/components/i18n/LocaleProvider";
 import { navIconForCode } from "@/lib/data/business-units";
+import { SaveLabel } from "@/components/ui/SaveMark";
 
 type UnitOption = {
   id: string;
@@ -25,10 +27,25 @@ function LocationRow({
   canEdit: boolean;
 }) {
   const t = useT();
+  const router = useRouter();
+  const nameFormId = useId();
   const [state, action, pending] = useActionState(saveBusinessUnitLocationAction, null);
+  const [nameState, nameAction, namePending] = useActionState(saveBusinessUnitNameAction, null);
   const [value, setValue] = useState(unit.storedLocation);
   const [committed, setCommitted] = useState(unit.storedLocation);
+  const [name, setName] = useState(unit.name);
+  const [committedName, setCommittedName] = useState(unit.name);
+  const [editing, setEditing] = useState(false);
+  const savedName = useRef(unit.name);
   const [, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (!nameState?.ok) return;
+    setName(savedName.current);
+    setCommittedName(savedName.current);
+    setEditing(false);
+    router.refresh();
+  }, [nameState, router]);
 
   function submitIfChanged(next = value) {
     if (!canEdit || next.trim() === committed.trim()) return;
@@ -42,23 +59,46 @@ function LocationRow({
   }
 
   return (
-    <form
-      action={action}
-      onSubmit={(event) => {
-        event.preventDefault();
-        submitIfChanged();
-      }}
-      className="grid grid-cols-1 items-center gap-2 border-b border-black/[0.04] py-3 last:border-0 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] sm:gap-6"
-    >
-      <input type="hidden" name="businessUnitId" value={unit.id} />
+    <div className="grid grid-cols-1 items-center gap-2 border-b border-black/[0.04] py-3 last:border-0 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_auto] sm:gap-6">
       <div className="flex min-w-0 items-center gap-2.5">
         <NavGlyph
           name={navIconForCode(unit.code)}
           className="h-[18px] w-[18px] shrink-0 text-navy/55"
         />
-        <span className="truncate text-[14px] font-medium text-navy">{unit.name}</span>
+        {editing ? (
+          <form
+            id={nameFormId}
+            action={nameAction}
+            className="min-w-0 flex-1"
+            onSubmit={() => {
+              savedName.current = name.trim().replace(/\s+/g, " ");
+            }}
+          >
+            <input type="hidden" name="businessUnitId" value={unit.id} />
+            <input
+              name="name"
+              value={name}
+              maxLength={80}
+              autoFocus
+              disabled={namePending}
+              onChange={(event) => setName(event.target.value)}
+              className={fieldClass}
+            />
+            {nameState?.error ? <p className="mt-1 text-xs text-rose-600">{nameState.error}</p> : null}
+          </form>
+        ) : (
+          <span className="truncate text-[14px] font-medium text-navy">{committedName}</span>
+        )}
       </div>
-      <div className="min-w-0">
+      <form
+        action={action}
+        onSubmit={(event) => {
+          event.preventDefault();
+          submitIfChanged();
+        }}
+        className="min-w-0"
+      >
+        <input type="hidden" name="businessUnitId" value={unit.id} />
         <input
           name="location"
           value={value}
@@ -72,8 +112,43 @@ function LocationRow({
         {state?.error ? (
           <p className="mt-1 text-xs text-rose-600">{state.error}</p>
         ) : null}
-      </div>
-    </form>
+      </form>
+      {canEdit ? (
+        <div className="flex items-center justify-end gap-2">
+          {editing ? (
+            <>
+              <button
+                type="button"
+                disabled={namePending}
+                onClick={() => {
+                  setName(committedName);
+                  setEditing(false);
+                }}
+                className="h-11 rounded-[14px] px-3 text-[13px] font-semibold text-slate-500"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="submit"
+                form={nameFormId}
+                disabled={namePending || name.trim().length < 2}
+                className="h-11 rounded-[14px] bg-navy px-4 text-[13.5px] font-semibold text-white disabled:opacity-60"
+              >
+                <SaveLabel busy={namePending} failed={Boolean(nameState?.error)} label={t("settings.saveName")} />
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="h-11 rounded-[14px] border border-black/[0.08] bg-white px-4 text-[13.5px] font-semibold text-navy"
+            >
+              {t("settings.editName")}
+            </button>
+          )}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -106,13 +181,14 @@ export function BusinessUnitLocationsForm({
       </div>
 
       <div className="px-5 pb-5 pt-4 sm:px-6 sm:pb-6">
-        <div className="hidden grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] gap-6 px-0 pb-2 sm:grid">
+        <div className="hidden grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_auto] gap-6 px-0 pb-2 sm:grid">
           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
             {t("settings.column.businessUnit")}
           </p>
           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
             {t("settings.column.location")}
           </p>
+          <span />
         </div>
         {rows.length === 0 ? (
           <p className="py-4 text-sm text-slate-500">{t("settings.unitsEmpty")}</p>

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Cormorant_Garamond, Inter } from "next/font/google";
 import "./globals.css";
 import { LocaleProvider } from "@/components/i18n/LocaleProvider";
 import { ServiceWorkerRegister } from "@/components/offline/ServiceWorkerRegister";
@@ -7,20 +6,6 @@ import { getOrganizationSettings } from "@/lib/data/organization-settings";
 import { hydrateRuntimeSettings } from "@/lib/config/runtime-settings";
 import { htmlLang } from "@/lib/i18n";
 import { resolveRequestLocale } from "@/lib/i18n/server";
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
-
-const cormorant = Cormorant_Garamond({
-  variable: "--font-cormorant",
-  subsets: ["latin"],
-  weight: ["600", "700"],
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: {
@@ -41,7 +26,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang={htmlLang(locale)}
-      className={`${inter.variable} ${cormorant.variable} h-full antialiased`}
+      className="h-full antialiased"
     >
       <body className="min-h-full bg-canvas font-sans text-navy">
         <LocaleProvider

@@ -315,3 +315,58 @@ export async function updateBusinessUnitLocation(input: {
     nextLocation: location,
   };
 }
+
+export async function updateBusinessUnitName(input: {
+  id: string;
+  name: string;
+}): Promise<
+  | { ok: true; unchanged: true; name: string }
+  | { ok: true; unchanged: false; previousName: string; name: string }
+  | { ok: false; error: string }
+> {
+  const admin = createSupabaseAdminClient();
+  if (!admin) {
+    return { ok: false, error: "Server is missing SUPABASE_SERVICE_ROLE_KEY." };
+  }
+
+  const name = input.name.trim().replace(/\s+/g, " ");
+  if (name.length < 2 || name.length > 80) {
+    return { ok: false, error: "Enter a name between 2 and 80 characters." };
+  }
+
+  const { data: rows, error: readError } = await admin.from("business_units").select("id, name");
+  if (readError || !rows) {
+    return { ok: false, error: "Could not save the name." };
+  }
+
+  const existing = rows.find((row) => String(row.id) === input.id);
+  if (!existing) {
+    return { ok: false, error: "Could not save the name." };
+  }
+
+  const previous = String(existing.name).trim();
+  if (previous === name) {
+    return { ok: true, unchanged: true, name };
+  }
+
+  const duplicate = rows.some(
+    (row) => String(row.id) !== input.id && String(row.name).trim().toLowerCase() === name.toLowerCase(),
+  );
+  if (duplicate) {
+    return { ok: false, error: "Another business unit already uses that name." };
+  }
+
+  const { error } = await admin.from("business_units").update({ name }).eq("id", input.id);
+  if (error) {
+    console.error(
+      JSON.stringify({
+        scope: "business-units",
+        operation: "updateBusinessUnitName",
+        message: error.message,
+      }),
+    );
+    return { ok: false, error: "Could not save the name." };
+  }
+
+  return { ok: true, unchanged: false, previousName: previous, name };
+}
