@@ -116,6 +116,7 @@ export type FarmExpense = {
   occurredOn: string;
   amount: number;
   notes: string | null;
+  reference: string | null;
   sourceType: string;
 };
 
@@ -147,6 +148,7 @@ export type FarmOperation = {
   occurredOn: string;
   areaHa: number | null;
   cost: number;
+  reference: string | null;
 };
 
 export type FarmHarvest = {

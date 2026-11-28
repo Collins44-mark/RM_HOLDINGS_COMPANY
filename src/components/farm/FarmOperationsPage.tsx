@@ -30,11 +30,13 @@ export function FarmOperationsPage({
   period,
   from = "",
   to = "",
+  query = "",
 }: {
   initial: { ok: true; workspace: FarmOperationsWorkspace } | { ok: false; error: string };
   period: ReportPeriod;
   from?: string;
   to?: string;
+  query?: string;
 }) {
   const t = useT();
   const [workspace, setWorkspace] = useState(initial.ok ? initial.workspace : null);
@@ -52,7 +54,12 @@ export function FarmOperationsPage({
   const [op, setOp] = useState({ plotId: "", seasonId: "", tractorId: "", activity: "", occurredOn: todayIso(), areaHa: "", cost: "" });
   const [harvest, setHarvest] = useState({ seasonId: "", quantity: "", unit: "kg", harvestedOn: todayIso() });
   const operations = workspace?.operations ?? [];
-  const operationPage = useListPage(operations, `${period}:${from}:${to}:${operations.length}`);
+  const [operationQuery, setOperationQuery] = useState(query);
+  const needle = operationQuery.trim().toLowerCase();
+  const visibleOperations = needle
+    ? operations.filter((row) => [row.number, row.activity, row.reference].some((value) => (value ?? "").toLowerCase().includes(needle)))
+    : operations;
+  const operationPage = useListPage(visibleOperations, `${period}:${from}:${to}:${needle}:${visibleOperations.length}`);
   const boundsRef = useRef<{ from: string; to: string } | null>(null);
 
   async function refresh(range = boundsRef.current) {
@@ -202,26 +209,36 @@ export function FarmOperationsPage({
       ) : null}
 
       <section className={glassPanel}>
-        <h2 className="text-[16px] font-semibold text-navy">{t("farm.ops.list")}</h2>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <h2 className="text-[16px] font-semibold text-navy">{t("farm.ops.list")}</h2>
+          <label className="block w-full sm:w-64">
+            <span className="mb-1 block text-[12px] font-medium text-slate-500">{t("common.search")}</span>
+            <input className={inputClass} value={operationQuery} placeholder={t("farm.history.search")} onChange={(event) => setOperationQuery(event.target.value)} />
+          </label>
+        </div>
         <div className={`${tableScrollClass} mt-4`}>
           <table className="min-w-full text-left text-[13.5px]">
             <thead className={tableHead}>
               <tr>
+                <th className="px-3 py-2">{t("farm.history.number")}</th>
                 <th className="px-3 py-2">{t("common.date")}</th>
                 <th className="px-3 py-2">{t("farm.ops.activity")}</th>
                 <th className="px-3 py-2">{t("farm.ops.plot")}</th>
                 <th className="px-3 py-2">{t("farm.ops.cost")}</th>
+                <th className="px-3 py-2">{t("farm.history.source")}</th>
               </tr>
             </thead>
             <tbody>
-              {operations.length === 0 ? (
-                <tr><td className="px-3 py-6 text-slate-500" colSpan={4}>{t("farm.ops.empty")}</td></tr>
+              {visibleOperations.length === 0 ? (
+                <tr><td className="px-3 py-6 text-slate-500" colSpan={6}>{t("farm.ops.empty")}</td></tr>
               ) : operationPage.rows.map((row) => (
                 <tr key={row.id} className="border-t border-navy/5 text-navy">
-                  <td className="px-3 py-2.5">{row.occurredOn}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">{row.number}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">{row.occurredOn}</td>
                   <td className="px-3 py-2.5">{row.activity}</td>
                   <td className="px-3 py-2.5">{row.plotName ?? "—"}</td>
-                  <td className="px-3 py-2.5">{formatTzs(row.cost)}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">{formatTzs(row.cost)}</td>
+                  <td className="px-3 py-2.5 break-all text-[12px] text-slate-600">{row.reference || "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -230,7 +247,7 @@ export function FarmOperationsPage({
         <PaginationBar
           showWhenEmpty
           page={operationPage.page}
-          total={operations.length}
+          total={visibleOperations.length}
           pageSize={operationPage.pageSize}
           onPage={operationPage.setPage}
           onPageSize={operationPage.setPageSize}

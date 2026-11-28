@@ -58,16 +58,24 @@ function groupReceivables(jobs: FarmJob[]): CustomerDebt[] {
 export function FarmFinancePage({
   initial,
   period,
+  from = "",
+  to = "",
+  query = "",
 }: {
   initial: { ok: true; workspace: FarmFinanceWorkspace } | { ok: false; error: string };
   period: ReportPeriod;
+  from?: string;
+  to?: string;
+  query?: string;
 }) {
   const [dateFilter, setDateFilter] = useState("This Month");
   const [page, setPage] = useState(1);
   const [expensePeriod, setExpensePeriod] = useState<ReportPeriod>(period);
   const [expenseKind, setExpenseKind] = useState<"ALL" | "FUEL" | "MAINTENANCE">("ALL");
-  const [expenseFrom, setExpenseFrom] = useState("");
-  const [expenseTo, setExpenseTo] = useState("");
+  const [expenseFrom, setExpenseFrom] = useState(from);
+  const [expenseTo, setExpenseTo] = useState(to);
+  const [expenseQuery, setExpenseQuery] = useState(query);
+  const [appliedQuery, setAppliedQuery] = useState(query);
   const [viewing, setViewing] = useState<CustomerDebt | null>(null);
   const expenseBounds = useRef<{ from: string; to: string } | null>(null);
   const t = useT();
@@ -79,7 +87,7 @@ export function FarmFinancePage({
   const customers = useMemo(() => groupReceivables(workspace?.jobs ?? []), [workspace?.jobs]);
   const customerPage = useListPage(customers, String(customers.length));
 
-  async function reloadExpenses(pageNumber = workspace?.listPage.page ?? 1, pageSize = workspace?.listPage.pageSize ?? 10) {
+  async function reloadExpenses(pageNumber = workspace?.listPage.page ?? 1, pageSize = workspace?.listPage.pageSize ?? 10, search = appliedQuery) {
     const range = expenseBounds.current;
     const next = await loadFarmFinanceWorkspaceAction({
       period: range ? "custom" : expensePeriod,
@@ -88,6 +96,7 @@ export function FarmFinancePage({
       page: pageNumber,
       pageSize,
       expenseKind,
+      q: search,
     });
     if (!next.ok) {
       setError(next.error);
@@ -99,13 +108,18 @@ export function FarmFinancePage({
   }
 
   useEffect(() => {
+    const timer = window.setTimeout(() => setAppliedQuery(expenseQuery.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [expenseQuery]);
+
+  useEffect(() => {
     const range = periodBounds(expensePeriod, expenseFrom, expenseTo);
     if (!range) return;
     expenseBounds.current = range;
-    void reloadExpenses(1, workspace?.listPage.pageSize ?? 10);
-    // Reload the expense list only when its date or type filter changes.
+    void reloadExpenses(1, workspace?.listPage.pageSize ?? 10, appliedQuery);
+    // Reload the expense list only when its date, type, or search changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expensePeriod, expenseFrom, expenseTo, expenseKind]);
+  }, [expensePeriod, expenseFrom, expenseTo, expenseKind, appliedQuery]);
 
   return (
     <div className="space-y-5 pb-10">
@@ -290,25 +304,40 @@ export function FarmFinancePage({
                 setExpenseTo(next.to);
               }}
             />
+            <label className="block w-full sm:w-64">
+              <span className="mb-1 block text-[12px] font-medium text-slate-500">{t("common.search")}</span>
+              <input
+                className={filterClass}
+                value={expenseQuery}
+                placeholder={t("farm.history.search")}
+                onChange={(event) => setExpenseQuery(event.target.value)}
+              />
+            </label>
           </div>
         </div>
         <div className={`${tableScrollClass} mt-4`}>
           <table className="min-w-full text-left text-[13.5px]">
             <thead className={tableHead}>
               <tr>
+                <th className="px-3 py-2">{t("farm.history.number")}</th>
                 <th className="px-3 py-2">{t("common.date")}</th>
                 <th className="px-3 py-2">{t("common.type")}</th>
+                <th className="px-3 py-2">{t("farm.history.description")}</th>
                 <th className="px-3 py-2">{t("common.amount")}</th>
+                <th className="px-3 py-2">{t("farm.history.source")}</th>
               </tr>
             </thead>
             <tbody>
               {(workspace?.expenses ?? []).length === 0 ? (
-                <tr><td className="px-3 py-6 text-slate-500" colSpan={3}>{t("rice.finance.empty")}</td></tr>
+                <tr><td className="px-3 py-6 text-slate-500" colSpan={6}>{t("rice.finance.empty")}</td></tr>
               ) : (workspace?.expenses ?? []).map((row) => (
                 <tr key={row.id} className="border-t border-navy/5 text-navy">
-                  <td className="px-3 py-2.5">{row.occurredOn}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">{row.number}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">{row.occurredOn}</td>
                   <td className="px-3 py-2.5">{expenseKindLabel(t, row.kind)}</td>
-                  <td className="px-3 py-2.5">{formatTzs(row.amount)}</td>
+                  <td className="px-3 py-2.5">{row.notes || "—"}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">{formatTzs(row.amount)}</td>
+                  <td className="px-3 py-2.5 break-all text-[12px] text-slate-600">{row.reference || "—"}</td>
                 </tr>
               ))}
             </tbody>

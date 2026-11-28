@@ -2,6 +2,7 @@ import type { AuthUser } from "@/lib/auth/types";
 import { EMPTY_PAGE, pageMeta, pageRange, parsePageSize, type PageMeta } from "@/lib/pagination";
 import { FarmError, farmHasPermission, isFarmEmptyRead, isFarmMissingRelation, type FarmContext } from "@/lib/farm/access";
 import { summarizeFarmLedgers, type FarmFinanceSummary, type FarmLedgerExpense, type FarmLedgerJob } from "@/lib/farm/accounting";
+import { farmSearchNeedle } from "@/lib/farm/history-window";
 import type {
   FarmActivityRow,
   FarmCaps,
@@ -271,17 +272,19 @@ export async function loadFarmMaintenance(ctx: FarmContext, from?: string, to?: 
   };
 }
 
-export async function loadFarmExpenses(ctx: FarmContext, from?: string, to?: string, paging: FarmPaging = "all", kind?: string): Promise<{ rows: FarmExpense[]; listPage: PageMeta }> {
+export async function loadFarmExpenses(ctx: FarmContext, from?: string, to?: string, paging: FarmPaging = "all", kind?: string, search?: string): Promise<{ rows: FarmExpense[]; listPage: PageMeta }> {
   const page = resolvePaging(paging);
+  const needle = farmSearchNeedle(search ?? "");
   let query = ctx.supabase
     .from("farm_expenses")
-    .select("id, expense_number, kind, occurred_on, amount, notes, source_type", { count: "exact" })
+    .select("id, expense_number, kind, occurred_on, amount, notes, payment_reference, source_type", { count: "exact" })
     .eq("business_unit_id", ctx.businessUnitId)
     .eq("is_active", true)
     .order("occurred_on", { ascending: false });
   if (from) query = query.gte("occurred_on", from);
   if (to) query = query.lte("occurred_on", to);
   if (kind === "FUEL" || kind === "MAINTENANCE") query = query.eq("kind", kind);
+  if (needle) query = query.or(`expense_number.ilike.%${needle}%,notes.ilike.%${needle}%,payment_reference.ilike.%${needle}%`);
   if (page) query = query.range(page.from, page.to);
   const { rows, count } = await farmQuery(ctx, () => query, "Couldn't load expenses.");
   const seen = new Set<string>();
@@ -297,6 +300,7 @@ export async function loadFarmExpenses(ctx: FarmContext, from?: string, to?: str
         occurredOn: s(row.occurred_on),
         amount: n(row.amount),
         notes: row.notes ? s(row.notes) : null,
+        reference: row.payment_reference ? s(row.payment_reference) : null,
         sourceType: s(row.source_type),
       }];
     }),
@@ -354,7 +358,7 @@ export async function loadFarmSeasons(ctx: FarmContext): Promise<FarmSeason[]> {
 export async function loadFarmOperations(ctx: FarmContext, from?: string, to?: string): Promise<FarmOperation[]> {
   let query = ctx.supabase
     .from("farm_operations")
-    .select("id, operation_number, activity, occurred_on, area_ha, cost, farm_plots(name), farm_seasons(name), farm_tractors(name)")
+    .select("id, operation_number, activity, occurred_on, area_ha, cost, notes, farm_plots(name), farm_seasons(name), farm_tractors(name)")
     .eq("business_unit_id", ctx.businessUnitId)
     .eq("is_active", true)
     .order("occurred_on", { ascending: false });
@@ -377,6 +381,7 @@ export async function loadFarmOperations(ctx: FarmContext, from?: string, to?: s
       occurredOn: s(row.occurred_on),
       areaHa: row.area_ha == null ? null : n(row.area_ha),
       cost: n(row.cost),
+      reference: row.notes ? s(row.notes) : null,
     };
   });
 }
